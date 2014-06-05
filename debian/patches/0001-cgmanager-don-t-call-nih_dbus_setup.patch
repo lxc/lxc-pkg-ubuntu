@@ -1,0 +1,39 @@
+From dbf426b2fdb7651cad62815c134df9bcd8be709f Mon Sep 17 00:00:00 2001
+From: Serge Hallyn <serge.hallyn@ubuntu.com>
+Date: Fri, 11 Apr 2014 10:01:51 -0500
+Subject: cgmanager: don't call nih_dbus_setup
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+it actually sets us up to run the nih_mainloop, but we will never run
+that.
+
+Signed-off-by: Serge Hallyn <serge.hallyn@ubuntu.com>
+Acked-by: Stéphane Graber <stgraber@ubuntu.com>
+---
+ src/lxc/cgmanager.c | 11 -----------
+ 1 file changed, 11 deletions(-)
+
+diff --git a/src/lxc/cgmanager.c b/src/lxc/cgmanager.c
+index 1dea824..fc959ec 100644
+--- a/src/lxc/cgmanager.c
++++ b/src/lxc/cgmanager.c
+@@ -147,17 +147,6 @@ static bool cgm_dbus_connect(void)
+ 		cgm_unlock();
+ 		return false;
+ 	}
+-	if (nih_dbus_setup(connection, NULL) < 0) {
+-		NihError *nerr;
+-		nerr = nih_error_get();
+-		DEBUG("Unable to open cgmanager connection at %s: %s", CGMANAGER_DBUS_SOCK,
+-			nerr->message);
+-		nih_free(nerr);
+-		dbus_error_free(&dbus_error);
+-		dbus_connection_unref(connection);
+-		cgm_unlock();
+-		return false;
+-	}
+ 	dbus_connection_set_exit_on_disconnect(connection, FALSE);
+ 	dbus_error_free(&dbus_error);
+ 	cgroup_manager = nih_dbus_proxy_new(NULL, connection,

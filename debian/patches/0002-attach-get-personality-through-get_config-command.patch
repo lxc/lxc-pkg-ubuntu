@@ -1,0 +1,131 @@
+From 57ca482beedba819513bc48493f76212814560d8 Mon Sep 17 00:00:00 2001
+From: Serge Hallyn <serge.hallyn@ubuntu.com>
+Date: Thu, 22 May 2014 16:53:40 -0500
+Subject: attach: get personality through get_config command
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+Newer kernels optionally disallow reading /proc/$$/personality by
+non-root users.  We can get the personality through the lxc command
+interface, so do so.
+
+Also try to be more consistent about personality being a signed long.
+We had it as int, unsigned long, signed long throughout the code.
+
+(This addresses bug
+https://bugs.launchpad.net/ubuntu/+source/linux/+bug/1322067 :
+3.15.0-1.x breaks lxc-attach for unprivileged containers)
+
+Signed-off-by: Serge Hallyn <serge.hallyn@ubuntu.com>
+Acked-by: Stéphane Graber <stgraber@ubuntu.com>
+---
+ src/lxc/attach.c | 39 ++++++++++++++++++++++-----------------
+ src/lxc/attach.h |  2 +-
+ src/lxc/conf.h   |  2 +-
+ 3 files changed, 24 insertions(+), 19 deletions(-)
+
+diff --git a/src/lxc/attach.c b/src/lxc/attach.c
+index 842a509..3bab957 100644
+--- a/src/lxc/attach.c
++++ b/src/lxc/attach.c
+@@ -55,6 +55,7 @@
+ #include "lxcseccomp.h"
+ #include <lxc/lxccontainer.h>
+ #include "lsm/lsm.h"
++#include "confile.h"
+ 
+ #if HAVE_SYS_PERSONALITY_H
+ #include <sys/personality.h>
+@@ -116,23 +117,6 @@ static struct lxc_proc_context_info *lxc_proc_get_context_info(pid_t pid)
+ 		goto out_error;
+ 	}
+ 
+-	/* read personality */
+-	snprintf(proc_fn, MAXPATHLEN, "/proc/%d/personality", pid);
+-
+-	proc_file = fopen(proc_fn, "r");
+-	if (!proc_file) {
+-		SYSERROR("Could not open %s", proc_fn);
+-		goto out_error;
+-	}
+-
+-	ret = fscanf(proc_file, "%lx", &info->personality);
+-	fclose(proc_file);
+-
+-	if (ret == EOF || ret == 0) {
+-		SYSERROR("Could not read personality from %s", proc_fn);
+-		errno = ENOENT;
+-		goto out_error;
+-	}
+ 	info->lsm_label = lsm_process_label_get(pid);
+ 
+ 	return info;
+@@ -635,6 +619,18 @@ static bool fetch_seccomp(const char *name, const char *lxcpath,
+ 	return true;
+ }
+ 
++static signed long get_personality(const char *name, const char *lxcpath)
++{
++	char *p = lxc_cmd_get_config_item(name, "lxc.personality", lxcpath);
++	signed long ret;
++
++	if (!p)
++		return -1;
++	ret = lxc_config_parse_arch(p);
++	free(p);
++	return ret;
++}
++
+ int lxc_attach(const char* name, const char* lxcpath, lxc_attach_exec_t exec_function, void* exec_payload, lxc_attach_options_t* options, pid_t* attached_process)
+ {
+ 	int ret, status;
+@@ -643,6 +639,7 @@ int lxc_attach(const char* name, const char* lxcpath, lxc_attach_exec_t exec_fun
+ 	char* cwd;
+ 	char* new_cwd;
+ 	int ipc_sockets[2];
++	signed long personality;
+ 
+ 	if (!options)
+ 		options = &attach_static_default_options;
+@@ -659,6 +656,14 @@ int lxc_attach(const char* name, const char* lxcpath, lxc_attach_exec_t exec_fun
+ 		return -1;
+ 	}
+ 
++	personality = get_personality(name, lxcpath);
++	if (init_ctx->personality < 0) {
++		ERROR("Failed to get personality of the container");
++		lxc_proc_put_context_info(init_ctx);
++		return -1;
++	}
++	init_ctx->personality = personality;
++
+ 	if (!fetch_seccomp(name, lxcpath, init_ctx, options))
+ 		WARN("Failed to get seccomp policy");
+ 
+diff --git a/src/lxc/attach.h b/src/lxc/attach.h
+index 8c833b1..97a6af6 100644
+--- a/src/lxc/attach.h
++++ b/src/lxc/attach.h
+@@ -32,7 +32,7 @@ struct lxc_conf;
+ struct lxc_proc_context_info {
+ 	char *lsm_label;
+ 	struct lxc_container *container;
+-	unsigned long personality;
++	signed long personality;
+ 	unsigned long long capability_mask;
+ };
+ 
+diff --git a/src/lxc/conf.h b/src/lxc/conf.h
+index c370587..55a6f0e 100644
+--- a/src/lxc/conf.h
++++ b/src/lxc/conf.h
+@@ -281,7 +281,7 @@ struct lxc_conf {
+ 	int pts;
+ 	int reboot;
+ 	int need_utmp_watch;
+-	int personality;
++	signed long personality;
+ 	struct utsname *utsname;
+ 	struct lxc_list cgroup;
+ 	struct lxc_list id_map;
