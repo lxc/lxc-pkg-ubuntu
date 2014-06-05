@@ -1,0 +1,4 @@
+mv_conffile /etc/apparmor.d/abstractions/lxc-container-default /etc/apparmor.d/abstractions/lxc/container-base 0.8.0~rc1-4ubuntu18 lxc
+mv_conffile /etc/apparmor.d/abstractions/lxc-start-container /etc/apparmor.d/abstractions/lxc/start-container 0.8.0~rc1-4ubuntu18 lxc
+mv_conffile /etc/dnsmasq.d/lxc /etc/dnsmasq.d-available/lxc 0.8.0~rc1-4ubuntu48 lxc
+mv_conffile /etc/lxc/lxc.conf /etc/lxc/default.conf 0.9.0~alpha2-0ubuntu1+b1~bzr1108-28~ lxc
