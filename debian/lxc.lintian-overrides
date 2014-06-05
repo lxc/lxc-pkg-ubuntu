@@ -1,0 +1,12 @@
+postrm-does-not-call-updaterc.d-for-init.d-script etc/init.d/lxc
+postrm-does-not-call-updaterc.d-for-init.d-script etc/init.d/lxc-instance
+postrm-does-not-call-updaterc.d-for-init.d-script etc/init.d/lxc-net
+init.d-script-not-marked-as-conffile etc/init.d/lxc
+init.d-script-not-marked-as-conffile etc/init.d/lxc-instance
+init.d-script-not-marked-as-conffile etc/init.d/lxc-net
+init.d-script-not-included-in-package etc/init.d/lxc
+init.d-script-not-included-in-package etc/init.d/lxc-instance
+init.d-script-not-included-in-package etc/init.d/lxc-net
+setuid-binary usr/lib/*/lxc/lxc-user-nic 4755 root/root
+non-standard-dir-perm var/cache/lxc/ 0700 != 0755
+non-standard-dir-perm var/lib/lxc/ 0700 != 0755
