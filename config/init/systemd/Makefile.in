@@ -79,7 +79,8 @@ POST_UNINSTALL = :
 build_triplet = @build@
 host_triplet = @host@
 subdir = config/init/systemd
-DIST_COMMON = $(srcdir)/Makefile.in $(srcdir)/Makefile.am
+DIST_COMMON = $(srcdir)/Makefile.in $(srcdir)/Makefile.am \
+	$(srcdir)/lxc.service.in
 ACLOCAL_M4 = $(top_srcdir)/aclocal.m4
 am__aclocal_m4_deps = $(top_srcdir)/config/acinclude.m4 \
 	$(top_srcdir)/config/tls.m4 $(top_srcdir)/configure.ac
@@ -87,7 +88,7 @@ am__configure_deps = $(am__aclocal_m4_deps) $(CONFIGURE_DEPENDENCIES) \
 	$(ACLOCAL_M4)
 mkinstalldirs = $(install_sh) -d
 CONFIG_HEADER = $(top_builddir)/src/config.h
-CONFIG_CLEAN_FILES =
+CONFIG_CLEAN_FILES = lxc.service
 CONFIG_CLEAN_VPATH_FILES =
 am__vpath_adj_setup = srcdirstrip=`echo "$(srcdir)" | sed 's|.|.|g'`;
 am__vpath_adj = case $$p in \
@@ -306,8 +307,10 @@ EXTRA_DIST = \
 	lxc.service
 
 @INIT_SCRIPT_SYSTEMD_TRUE@SYSTEMD_UNIT_DIR = $(prefix)/lib/systemd/system
-@INIT_SCRIPT_SYSTEMD_TRUE@pkglibexec_SCRIPTS = lxc-devsetup
-all: all-am
+@INIT_SCRIPT_SYSTEMD_TRUE@BUILT_SOURCES = lxc-autostart-helper
+@INIT_SCRIPT_SYSTEMD_TRUE@pkglibexec_SCRIPTS = lxc-devsetup lxc-autostart-helper
+all: $(BUILT_SOURCES)
+	$(MAKE) $(AM_MAKEFLAGS) all-am
 
 .SUFFIXES:
 $(srcdir)/Makefile.in:  $(srcdir)/Makefile.am  $(am__configure_deps)
@@ -340,6 +343,8 @@ $(top_srcdir)/configure:  $(am__configure_deps)
 $(ACLOCAL_M4):  $(am__aclocal_m4_deps)
 	cd $(top_builddir) && $(MAKE) $(AM_MAKEFLAGS) am--refresh
 $(am__aclocal_m4_deps):
+lxc.service: $(top_builddir)/config.status $(srcdir)/lxc.service.in
+	cd $(top_builddir) && $(SHELL) ./config.status $(subdir)/$@
 install-pkglibexecSCRIPTS: $(pkglibexec_SCRIPTS)
 	@$(NORMAL_INSTALL)
 	@list='$(pkglibexec_SCRIPTS)'; test -n "$(pkglibexecdir)" || list=; \
@@ -413,13 +418,15 @@ distdir: $(DISTFILES)
 	  fi; \
 	done
 check-am: all-am
-check: check-am
+check: $(BUILT_SOURCES)
+	$(MAKE) $(AM_MAKEFLAGS) check-am
 all-am: Makefile $(SCRIPTS)
 installdirs:
 	for dir in "$(DESTDIR)$(pkglibexecdir)"; do \
 	  test -z "$$dir" || $(MKDIR_P) "$$dir"; \
 	done
-install: install-am
+install: $(BUILT_SOURCES)
+	$(MAKE) $(AM_MAKEFLAGS) install-am
 install-exec: install-exec-am
 install-data: install-data-am
 uninstall: uninstall-am
@@ -449,6 +456,7 @@ distclean-generic:
 maintainer-clean-generic:
 	@echo "This command is intended for maintainers to use"
 	@echo "it deletes files that may require special tools to rebuild."
+	-test -z "$(BUILT_SOURCES)" || rm -f $(BUILT_SOURCES)
 @INIT_SCRIPT_SYSTEMD_FALSE@install-data-local:
 @INIT_SCRIPT_SYSTEMD_FALSE@uninstall-local:
 clean: clean-am
@@ -517,7 +525,7 @@ ps-am:
 
 uninstall-am: uninstall-local uninstall-pkglibexecSCRIPTS
 
-.MAKE: install-am install-strip
+.MAKE: all check install install-am install-strip
 
 .PHONY: all all-am check check-am clean clean-generic cscopelist-am \
 	ctags-am distclean distclean-generic distdir dvi dvi-am html \
@@ -533,7 +541,16 @@ uninstall-am: uninstall-local uninstall-pkglibexecSCRIPTS
 	uninstall-pkglibexecSCRIPTS
 
 
-@INIT_SCRIPT_SYSTEMD_TRUE@install-systemd: lxc.service lxc-devsetup
+@INIT_SCRIPT_SYSTEMD_TRUE@lxc-autostart-helper: ../sysvinit/lxc.in $(top_builddir)/config.status
+@INIT_SCRIPT_SYSTEMD_TRUE@	$(AM_V_GEN)sed                                          \
+@INIT_SCRIPT_SYSTEMD_TRUE@	    -e 's|[@]SYSCONFDIR[@]|$(sysconfdir)|g'             \
+@INIT_SCRIPT_SYSTEMD_TRUE@	    -e 's|[@]LOCALSTATEDIR[@]|$(localstatedir)|g'       \
+@INIT_SCRIPT_SYSTEMD_TRUE@	    -e 's|[@]BINDIR[@]|$(bindir)|g'                     \
+@INIT_SCRIPT_SYSTEMD_TRUE@	    < $< > $@-t &&                                      \
+@INIT_SCRIPT_SYSTEMD_TRUE@	    chmod a+x $@-t &&                                   \
+@INIT_SCRIPT_SYSTEMD_TRUE@	    mv $@-t $@
+
+@INIT_SCRIPT_SYSTEMD_TRUE@install-systemd: lxc.service lxc-devsetup lxc-autostart-helper
 @INIT_SCRIPT_SYSTEMD_TRUE@	$(MKDIR_P) $(DESTDIR)$(SYSTEMD_UNIT_DIR)
 @INIT_SCRIPT_SYSTEMD_TRUE@	$(INSTALL_DATA) lxc.service $(DESTDIR)$(SYSTEMD_UNIT_DIR)/
 

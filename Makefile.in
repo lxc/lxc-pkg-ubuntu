@@ -89,7 +89,7 @@ DIST_COMMON = INSTALL NEWS README AUTHORS ChangeLog \
 	$(srcdir)/lxc.pc.in $(srcdir)/lxc.spec.in \
 	$(top_srcdir)/doc/legacy/lxc-ls.sgml.in \
 	$(top_srcdir)/doc/ja/legacy/lxc-ls.sgml.in \
-	$(top_srcdir)/src/lxc/legacy/lxc-ls.in COPYING TODO \
+	$(top_srcdir)/src/lxc/legacy/lxc-ls.in COPYING \
 	$(top_srcdir)/config/compile $(top_srcdir)/config/config.guess \
 	$(top_srcdir)/config/config.sub \
 	$(top_srcdir)/config/install-sh $(top_srcdir)/config/missing

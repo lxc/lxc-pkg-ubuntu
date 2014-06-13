@@ -953,7 +953,7 @@ static struct cgroup_process_info *lxc_cgroupfs_create(const char *name, const c
 				current_entire_path = NULL;
 				goto cleanup_name_on_this_level;
 			} else if (r < 0 && errno != EEXIST) {
-				SYSERROR("Could not create cgroup %s", current_entire_path);
+				SYSERROR("Could not create cgroup '%s' in '%s'.", current_entire_path, info_ptr->designated_mount_point->mount_point);
 				goto cleanup_from_error;
 			} else if (r == 0) {
 				/* successfully created */
@@ -961,7 +961,7 @@ static struct cgroup_process_info *lxc_cgroupfs_create(const char *name, const c
 				if (r < 0)
 					goto cleanup_from_error;
 				if (!init_cpuset_if_needed(info_ptr->designated_mount_point, current_entire_path)) {
-					ERROR("Failed to initialize cpuset in new '%s'.", current_entire_path);
+					ERROR("Failed to initialize cpuset for '%s' in '%s'.", current_entire_path, info_ptr->designated_mount_point->mount_point);
 					goto cleanup_from_error;
 				}
 				info_ptr->created_paths[info_ptr->created_paths_count++] = current_entire_path;
@@ -1344,6 +1344,15 @@ static bool cgroupfs_mount_cgroup(void *hdata, const char *root, int type)
 		return false;
 	base_info = cgfs_d->info;
 
+	/* If we get passed the _NOSPEC types, we default to _MIXED, since we don't
+	 * have access to the lxc_conf object at this point. It really should be up
+	 * to the caller to fix this, but this doesn't really hurt.
+	 */
+	if (type == LXC_AUTO_CGROUP_FULL_NOSPEC)
+		type = LXC_AUTO_CGROUP_FULL_MIXED;
+	else if (type == LXC_AUTO_CGROUP_NOSPEC)
+		type = LXC_AUTO_CGROUP_MIXED;
+
 	if (type < LXC_AUTO_CGROUP_RO || type > LXC_AUTO_CGROUP_FULL_MIXED) {
 		ERROR("could not mount cgroups into container: invalid type specified internally");
 		errno = EINVAL;
@@ -1442,6 +1451,24 @@ static bool cgroupfs_mount_cgroup(void *hdata, const char *root, int type)
 				goto out_error;
 			}
 
+			/* for read-only and mixed cases, we have to bind-mount the tmpfs directory
+			 * that points to the hierarchy itself (i.e. /sys/fs/cgroup/cpu etc.) onto
+			 * itself and then bind-mount it read-only, since we keep the tmpfs itself
+			 * read-write (see comment below)
+			 */
+			if (type == LXC_AUTO_CGROUP_MIXED || type == LXC_AUTO_CGROUP_RO) {
+				r = mount(abs_path, abs_path, NULL, MS_BIND, NULL);
+				if (r < 0) {
+					SYSERROR("error bind-mounting %s onto itself", abs_path);
+					goto out_error;
+				}
+				r = mount(NULL, abs_path, NULL, MS_REMOUNT|MS_BIND|MS_RDONLY, NULL);
+				if (r < 0) {
+					SYSERROR("error re-mounting %s readonly", abs_path);
+					goto out_error;
+				}
+			}
+
 			free(abs_path);
 			abs_path = NULL;
 
@@ -1487,13 +1514,21 @@ static bool cgroupfs_mount_cgroup(void *hdata, const char *root, int type)
 		parts = NULL;
 	}
 
-	/* try to remount the tmpfs readonly, since the container shouldn't
-	 * change anything (this will also make sure that trying to create
-	 * new cgroups outside the allowed area fails with an error instead
-	 * of simply causing this to create directories in the tmpfs itself)
+	/* We used to remount the entire tmpfs readonly if any :ro or
+	 * :mixed mode was specified. However, Ubuntu's mountall has the
+	 * unfortunate behavior to block bootup if /sys/fs/cgroup is
+	 * mounted read-only and cannot be remounted read-write.
+	 * (mountall reads /lib/init/fstab and tries to (re-)mount all of
+	 * these if they are not already mounted with the right options;
+	 * it contains an entry for /sys/fs/cgroup. In case it can't do
+	 * that, it prompts for the user to either manually fix it or
+	 * boot anyway. But without user input, booting of the container
+	 * hangs.)
+	 *
+	 * Instead of remounting the entire tmpfs readonly, we only
+	 * remount the paths readonly that are part of the cgroup
+	 * hierarchy.
 	 */
-	if (type != LXC_AUTO_CGROUP_RW && type != LXC_AUTO_CGROUP_FULL_RW)
-		mount(NULL, path, NULL, MS_REMOUNT|MS_RDONLY, NULL);
 
 	free(path);
 

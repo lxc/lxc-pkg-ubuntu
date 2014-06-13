@@ -115,6 +115,12 @@ lxc_log_define(lxc_conf, lxc);
 #define LO_FLAGS_AUTOCLEAR 4
 #endif
 
+/* needed for cgroup automount checks, regardless of whether we
+ * have included linux/capability.h or not */
+#ifndef CAP_SYS_ADMIN
+#define CAP_SYS_ADMIN 21
+#endif
+
 /* Define pivot_root() if missing from the C library */
 #ifndef HAVE_PIVOT_ROOT
 static int pivot_root(const char * new_root, const char * put_old)
@@ -163,6 +169,9 @@ struct caps_opt {
 	char *name;
 	int value;
 };
+
+/* Declare this here, since we don't want to reshuffle the whole file. */
+static int in_caplist(int cap, struct lxc_list *caps);
 
 static int instanciate_veth(struct lxc_handler *, struct lxc_netdev *);
 static int instanciate_macvlan(struct lxc_handler *, struct lxc_netdev *);
@@ -743,8 +752,32 @@ static int lxc_mount_auto_mounts(struct lxc_conf *conf, int flags, struct lxc_ha
 	}
 
 	if (flags & LXC_AUTO_CGROUP_MASK) {
-		if (!cgroup_mount(conf->rootfs.mount, handler,
-				  flags & LXC_AUTO_CGROUP_MASK)) {
+		int cg_flags;
+
+		cg_flags = flags & LXC_AUTO_CGROUP_MASK;
+		/* If the type of cgroup mount was not specified, it depends on the
+		 * container's capabilities as to what makes sense: if we have
+		 * CAP_SYS_ADMIN, the read-only part can be remounted read-write
+		 * anyway, so we may as well default to read-write; then the admin
+		 * will not be given a false sense of security. (And if they really
+		 * want mixed r/o r/w, then they can explicitly specify :mixed.)
+		 * OTOH, if the container lacks CAP_SYS_ADMIN, do only default to
+		 * :mixed, because then the container can't remount it read-write. */
+		if (cg_flags == LXC_AUTO_CGROUP_NOSPEC || cg_flags == LXC_AUTO_CGROUP_FULL_NOSPEC) {
+			int has_sys_admin = 0;
+			if (!lxc_list_empty(&conf->keepcaps)) {
+				has_sys_admin = in_caplist(CAP_SYS_ADMIN, &conf->keepcaps);
+			} else {
+				has_sys_admin = !in_caplist(CAP_SYS_ADMIN, &conf->caps);
+			}
+			if (cg_flags == LXC_AUTO_CGROUP_NOSPEC) {
+				cg_flags = has_sys_admin ? LXC_AUTO_CGROUP_RW : LXC_AUTO_CGROUP_MIXED;
+			} else {
+				cg_flags = has_sys_admin ? LXC_AUTO_CGROUP_FULL_RW : LXC_AUTO_CGROUP_FULL_MIXED;
+			}
+		}
+
+		if (!cgroup_mount(conf->rootfs.mount, handler, cg_flags)) {
 			SYSERROR("error mounting /sys/fs/cgroup");
 			return -1;
 		}
@@ -828,6 +861,7 @@ static int setup_dev_symlinks(const struct lxc_rootfs *rootfs)
 {
 	char path[MAXPATHLEN];
 	int ret,i;
+	struct stat s;
 
 
 	for (i = 0; i < sizeof(dev_symlinks) / sizeof(dev_symlinks[0]); i++) {
@@ -835,10 +869,24 @@ static int setup_dev_symlinks(const struct lxc_rootfs *rootfs)
 		ret = snprintf(path, sizeof(path), "%s/dev/%s", rootfs->mount, d->name);
 		if (ret < 0 || ret >= MAXPATHLEN)
 			return -1;
+
+		/*
+		 * Stat the path first.  If we don't get an error
+		 * accept it as is and don't try to create it
+		 */
+		if (!stat(path, &s)) {
+			continue;
+		}
+
 		ret = symlink(d->oldpath, path);
+
 		if (ret && errno != EEXIST) {
-			SYSERROR("Error creating %s", path);
-			return -1;
+			if ( errno == EROFS ) {
+				WARN("Warning: Read Only file system while creating %s", path);
+			} else {
+				SYSERROR("Error creating %s", path);
+				return -1;
+			}
 		}
 	}
 	return 0;
@@ -2145,42 +2193,63 @@ static int setup_mount_entries(const struct lxc_rootfs *rootfs, struct lxc_list 
 	return ret;
 }
 
+static int parse_cap(const char *cap)
+{
+	char *ptr = NULL;
+	int i, capid = -1;
+
+	for (i = 0; i < sizeof(caps_opt)/sizeof(caps_opt[0]); i++) {
+
+		if (strcmp(cap, caps_opt[i].name))
+			continue;
+
+		capid = caps_opt[i].value;
+		break;
+	}
+
+	if (capid < 0) {
+		/* try to see if it's numeric, so the user may specify
+		 * capabilities  that the running kernel knows about but
+		 * we don't */
+		errno = 0;
+		capid = strtol(cap, &ptr, 10);
+		if (!ptr || *ptr != '\0' || errno != 0)
+			/* not a valid number */
+			capid = -1;
+		else if (capid > lxc_caps_last_cap())
+			/* we have a number but it's not a valid
+			 * capability */
+			capid = -1;
+	}
+
+	return capid;
+}
+
+int in_caplist(int cap, struct lxc_list *caps)
+{
+	struct lxc_list *iterator;
+	int capid;
+
+	lxc_list_for_each(iterator, caps) {
+		capid = parse_cap(iterator->elem);
+		if (capid == cap)
+			return 1;
+	}
+
+	return 0;
+}
+
 static int setup_caps(struct lxc_list *caps)
 {
 	struct lxc_list *iterator;
 	char *drop_entry;
-	char *ptr;
-	int i, capid;
+	int capid;
 
 	lxc_list_for_each(iterator, caps) {
 
 		drop_entry = iterator->elem;
 
-		capid = -1;
-
-		for (i = 0; i < sizeof(caps_opt)/sizeof(caps_opt[0]); i++) {
-
-			if (strcmp(drop_entry, caps_opt[i].name))
-				continue;
-
-			capid = caps_opt[i].value;
-			break;
-		}
-
-		if (capid < 0) {
-			/* try to see if it's numeric, so the user may specify
-			* capabilities  that the running kernel knows about but
-			* we don't */
-			errno = 0;
-			capid = strtol(drop_entry, &ptr, 10);
-			if (!ptr || *ptr != '\0' || errno != 0)
-				/* not a valid number */
-				capid = -1;
-			else if (capid > lxc_caps_last_cap())
-				/* we have a number but it's not a valid
-				* capability */
-				capid = -1;
-		}
+		capid = parse_cap(drop_entry);
 
 	        if (capid < 0) {
 			ERROR("unknown capability %s", drop_entry);
@@ -2205,7 +2274,6 @@ static int dropcaps_except(struct lxc_list *caps)
 {
 	struct lxc_list *iterator;
 	char *keep_entry;
-	char *ptr;
 	int i, capid;
 	int numcaps = lxc_caps_last_cap() + 1;
 	INFO("found %d capabilities", numcaps);
@@ -2221,38 +2289,14 @@ static int dropcaps_except(struct lxc_list *caps)
 
 		keep_entry = iterator->elem;
 
-		capid = -1;
-
-		for (i = 0; i < sizeof(caps_opt)/sizeof(caps_opt[0]); i++) {
-
-			if (strcmp(keep_entry, caps_opt[i].name))
-				continue;
-
-			capid = caps_opt[i].value;
-			break;
-		}
-
-		if (capid < 0) {
-			/* try to see if it's numeric, so the user may specify
-			* capabilities  that the running kernel knows about but
-			* we don't */
-			capid = strtol(keep_entry, &ptr, 10);
-			if (!ptr || *ptr != '\0' ||
-			capid == INT_MIN || capid == INT_MAX)
-				/* not a valid number */
-				capid = -1;
-			else if (capid > lxc_caps_last_cap())
-				/* we have a number but it's not a valid
-				* capability */
-				capid = -1;
-		}
+		capid = parse_cap(keep_entry);
 
 	        if (capid < 0) {
 			ERROR("unknown capability %s", keep_entry);
 			return -1;
 		}
 
-		DEBUG("drop capability '%s' (%d)", keep_entry, capid);
+		DEBUG("keep capability '%s' (%d)", keep_entry, capid);
 
 		caplist[capid] = 1;
 	}
@@ -3706,6 +3750,131 @@ void tmp_proc_unmount(struct lxc_conf *lxc_conf)
 	}
 }
 
+static void null_endofword(char *word)
+{
+	while (*word && *word != ' ' && *word != '\t')
+		word++;
+	*word = '\0';
+}
+
+/*
+ * skip @nfields spaces in @src
+ */
+static char *get_field(char *src, int nfields)
+{
+	char *p = src;
+	int i;
+
+	for (i = 0; i < nfields; i++) {
+		while (*p && *p != ' ' && *p != '\t')
+			p++;
+		if (!*p)
+			break;
+		p++;
+	}
+	return p;
+}
+
+static void remount_all_slave(void)
+{
+	/* walk /proc/mounts and change any shared entries to slave */
+	FILE *f = fopen("/proc/self/mountinfo", "r");
+	char *line = NULL;
+	size_t len = 0;
+
+	if (!f) {
+		SYSERROR("Failed to open /proc/self/mountinfo to mark all shared");
+		ERROR("Continuing container startup...");
+		return;
+	}
+
+	while (getline(&line, &len, f) != -1) {
+		char *target, *opts;
+		target = get_field(line, 4);
+		if (!target)
+			continue;
+		opts = get_field(target, 2);
+		if (!opts)
+			continue;
+		null_endofword(opts);
+		if (!strstr(opts, "shared"))
+			continue;
+		null_endofword(target);
+		if (mount(NULL, target, NULL, MS_SLAVE, NULL)) {
+			SYSERROR("Failed to make %s rslave", target);
+			ERROR("Continuing...");
+		}
+	}
+	fclose(f);
+	if (line)
+		free(line);
+}
+
+/*
+ * This does the work of remounting / if it is shared, calling the
+ * container pre-mount hooks, and mounting the rootfs.
+ */
+int do_rootfs_setup(struct lxc_conf *conf, const char *name, const char *lxcpath)
+{
+	if (conf->rootfs_setup) {
+		/*
+		 * rootfs was set up in another namespace.  bind-mount it
+		 * to give us a mount in our own ns so we can pivot_root to it
+		 */
+		const char *path = conf->rootfs.mount;
+		if (mount(path, path, "rootfs", MS_BIND, NULL) < 0) {
+			ERROR("Failed to bind-mount container / onto itself");
+			return false;
+		}
+	}
+
+	if (detect_ramfs_rootfs()) {
+		if (chroot_into_slave(conf)) {
+			ERROR("Failed to chroot into slave /");
+			return -1;
+		}
+	}
+
+	remount_all_slave();
+
+	if (run_lxc_hooks(name, "pre-mount", conf, lxcpath, NULL)) {
+		ERROR("failed to run pre-mount hooks for container '%s'.", name);
+		return -1;
+	}
+
+	if (setup_rootfs(conf)) {
+		ERROR("failed to setup rootfs for '%s'", name);
+		return -1;
+	}
+
+	conf->rootfs_setup = true;
+	return 0;
+}
+
+static bool verify_start_hooks(struct lxc_conf *conf)
+{
+	struct lxc_list *it;
+	char path[MAXPATHLEN];
+	lxc_list_for_each(it, &conf->hooks[LXCHOOK_START]) {
+		char *hookname = it->elem;
+		struct stat st;
+		int ret;
+
+		ret = snprintf(path, MAXPATHLEN, "%s%s",
+			conf->rootfs.mount, hookname);
+		if (ret < 0 || ret >= MAXPATHLEN)
+			return false;
+		ret = stat(path, &st);
+		if (ret) {
+			SYSERROR("Start hook %s not found in container rootfs",
+					hookname);
+			return false;
+		}
+	}
+
+	return true;
+}
+
 int lxc_setup(struct lxc_handler *handler)
 {
 	const char *name = handler->name;
@@ -3713,17 +3882,9 @@ int lxc_setup(struct lxc_handler *handler)
 	const char *lxcpath = handler->lxcpath;
 	void *data = handler->data;
 
-	if (detect_shared_rootfs()) {
-		if (mount(NULL, "/", NULL, MS_SLAVE|MS_REC, NULL)) {
-			SYSERROR("Failed to make / rslave");
-			ERROR("Continuing...");
-		}
-	}
-	if (detect_ramfs_rootfs()) {
-		if (chroot_into_slave(lxc_conf)) {
-			ERROR("Failed to chroot into slave /");
-			return -1;
-		}
+	if (do_rootfs_setup(lxc_conf, name, lxcpath) < 0) {
+		ERROR("Error setting up rootfs mount after spawn");
+		return -1;
 	}
 
 	if (lxc_conf->inherit_ns_fd[LXC_NS_UTS] == -1) {
@@ -3735,16 +3896,6 @@ int lxc_setup(struct lxc_handler *handler)
 
 	if (setup_network(&lxc_conf->network)) {
 		ERROR("failed to setup the network for '%s'", name);
-		return -1;
-	}
-
-	if (run_lxc_hooks(name, "pre-mount", lxc_conf, lxcpath, NULL)) {
-		ERROR("failed to run pre-mount hooks for container '%s'.", name);
-		return -1;
-	}
-
-	if (setup_rootfs(lxc_conf)) {
-		ERROR("failed to setup rootfs for '%s'", name);
 		return -1;
 	}
 
@@ -3776,6 +3927,10 @@ int lxc_setup(struct lxc_handler *handler)
 		ERROR("failed to setup the mount entries for '%s'", name);
 		return -1;
 	}
+
+	/* Make sure any start hooks are in the rootfs */
+	if (!verify_start_hooks(lxc_conf))
+		return -1;
 
 	/* now mount only cgroup, if wanted;
 	 * before, /sys could not have been mounted

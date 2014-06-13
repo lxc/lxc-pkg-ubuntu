@@ -69,6 +69,7 @@
 #include "namespace.h"
 #include "lxcseccomp.h"
 #include "caps.h"
+#include "bdev.h"
 #include "lsm/lsm.h"
 
 lxc_log_define(lxc_start, lxc);
@@ -705,9 +706,6 @@ static int do_start(void *data)
 	if (lxc_console_set_stdfds(handler) < 0)
 		goto out_warn_father;
 
-	if (lxc_check_inherited(handler->conf, handler->sigfd))
-		return -1;
-
 	/* If we mounted a temporary proc, then unmount it now */
 	tmp_proc_unmount(handler->conf);
 
@@ -1057,6 +1055,21 @@ int __lxc_start(const char *name, struct lxc_conf *conf,
 		handler->conf->need_utmp_watch = 0;
 	}
 
+	if (geteuid() == 0 && !lxc_list_empty(&conf->id_map)) {
+		/* if the backing store is a device, mount it here and now */
+		if (rootfs_is_blockdev(conf)) {
+			if (unshare(CLONE_NEWNS) < 0) {
+				ERROR("Error unsharing mounts");
+				goto out_fini_nonet;
+			}
+			if (do_rootfs_setup(conf, name, lxcpath) < 0) {
+				ERROR("Error setting up rootfs mount as root before spawn");
+				goto out_fini_nonet;
+			}
+			INFO("Set up container rootfs as host root");
+		}
+	}
+
 	err = lxc_spawn(handler);
 	if (err) {
 		ERROR("failed to spawn '%s'", name);
@@ -1156,6 +1169,9 @@ int lxc_start(const char *name, char *const argv[], struct lxc_conf *conf,
 	struct start_args start_arg = {
 		.argv = argv,
 	};
+
+	if (lxc_check_inherited(conf, -1))
+		return -1;
 
 	conf->need_utmp_watch = 1;
 	return __lxc_start(name, conf, &start_ops, &start_arg, lxcpath);

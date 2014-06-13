@@ -13,11 +13,11 @@
 # Description: Bring up/down LXC autostart containers
 ### END INIT INFO
 
-sysconfdir="/usr/local/etc"
-bindir="/usr/local/bin"
-localstatedir="/usr/local/var"
+sysconfdir="@SYSCONFDIR@"
+bindir="@BINDIR@"
+localstatedir="@LOCALSTATEDIR@"
 
-# These can be overridden in /usr/local/etc/sysconfig/lxc
+# These can be overridden in @SYSCONFDIR@/sysconfig/lxc
 
 # BOOTGROUPS - What groups should start on bootup?
 #	Comma separated list of groups.
