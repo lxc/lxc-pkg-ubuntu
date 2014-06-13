@@ -66,6 +66,11 @@
 
 lxc_log_define(bdev, lxc);
 
+struct rsync_data_char {
+	char *src;
+	char *dest;
+};
+
 static int do_rsync(const char *src, const char *dest)
 {
 	// call out to rsync
@@ -1433,6 +1438,22 @@ out:
 	return ret;
 }
 
+static int btrfs_snapshot_wrapper(void *data)
+{
+	struct rsync_data_char *arg = data;
+	if (setgid(0) < 0) {
+		ERROR("Failed to setgid to 0");
+		return -1;
+	}
+	if (setgroups(0, NULL) < 0)
+		WARN("Failed to clear groups");
+	if (setuid(0) < 0) {
+		ERROR("Failed to setuid to 0");
+		return -1;
+	}
+	return btrfs_snapshot(arg->src, arg->dest);
+}
+
 static int btrfs_clonepaths(struct bdev *orig, struct bdev *new, const char *oldname,
 		const char *cname, const char *oldpath, const char *lxcpath, int snap,
 		uint64_t newsize, struct lxc_conf *conf)
@@ -1467,8 +1488,14 @@ static int btrfs_clonepaths(struct bdev *orig, struct bdev *new, const char *old
 	if (orig->mntopts && (new->mntopts = strdup(orig->mntopts)) == NULL)
 		return -1;
 
-	if (snap)
-		return btrfs_snapshot(orig->dest, new->dest);
+	if (snap) {
+		struct rsync_data_char sdata;
+		if (!am_unpriv())
+			return btrfs_snapshot(orig->dest, new->dest);
+		sdata.dest = new->dest;
+		sdata.src = orig->dest;
+		return userns_exec_1(conf, btrfs_snapshot_wrapper, &sdata);
+	}
 
 	if (rmdir(new->dest) < 0 && errno != -ENOENT) {
 		SYSERROR("removing %s", new->dest);
@@ -1510,6 +1537,8 @@ static int btrfs_destroy(struct bdev *orig)
 	args.name[BTRFS_SUBVOL_NAME_MAX-1] = 0;
 	ret = ioctl(fd, BTRFS_IOC_SNAP_DESTROY, &args);
 	INFO("btrfs: snapshot create ioctl returned %d", ret);
+	if (ret < 0 && errno == EPERM)
+		INFO("Is the rootfs mounted with -o user_subvol_rm_allowed?");
 
 	free(newfull);
 	close(fd);
@@ -1886,11 +1915,6 @@ static int overlayfs_umount(struct bdev *bdev)
 		return -22;
 	return umount(bdev->dest);
 }
-
-struct rsync_data_char {
-	char *src;
-	char *dest;
-};
 
 static int rsync_delta(struct rsync_data_char *data)
 {
@@ -2430,11 +2454,9 @@ struct bdev *bdev_get(const char *type)
 	return bdev;
 }
 
-struct bdev *bdev_init(const char *src, const char *dst, const char *mntopts)
+static const struct bdev_type *bdev_query(const char *src)
 {
 	int i;
-	struct bdev *bdev;
-
 	for (i=0; i<numbdevs; i++) {
 		int r;
 		r = bdevs[i].ops->detect(src);
@@ -2444,12 +2466,24 @@ struct bdev *bdev_init(const char *src, const char *dst, const char *mntopts)
 
 	if (i == numbdevs)
 		return NULL;
+	return &bdevs[i];
+}
+
+struct bdev *bdev_init(const char *src, const char *dst, const char *mntopts)
+{
+	struct bdev *bdev;
+	const struct bdev_type *q;
+
+	q = bdev_query(src);
+	if (!q)
+		return NULL;
+
 	bdev = malloc(sizeof(struct bdev));
 	if (!bdev)
 		return NULL;
 	memset(bdev, 0, sizeof(struct bdev));
-	bdev->ops = bdevs[i].ops;
-	bdev->type = bdevs[i].name;
+	bdev->ops = q->ops;
+	bdev->type = q->name;
 	if (mntopts)
 		bdev->mntopts = strdup(mntopts);
 	if (src)
@@ -2538,6 +2572,7 @@ static bool unpriv_snap_allowed(struct bdev *b, const char *t, bool snap,
 		// overlayfs -- which is also allowed)
 		if (strcmp(b->type, "dir") == 0 ||
 				strcmp(b->type, "overlayfs") == 0 ||
+				strcmp(b->type, "btrfs") == 0 ||
 				strcmp(b->type, "loop") == 0)
 			return true;
 		return false;
@@ -2546,7 +2581,7 @@ static bool unpriv_snap_allowed(struct bdev *b, const char *t, bool snap,
 	// unprivileged users can copy and snapshot dir, overlayfs,
 	// and loop.  In particular, not zfs, btrfs, or lvm.
 	if (strcmp(t, "dir") == 0 || strcmp(t, "overlayfs") == 0 ||
-			strcmp(t, "loop") == 0)
+			strcmp(t, "btrfs") == 0 || strcmp(t, "loop") == 0)
 		return true;
 	return false;
 }
@@ -2768,4 +2803,23 @@ char *overlay_getlower(char *p)
 	if (p1)
 		*p1 = '\0';
 	return p;
+}
+
+bool rootfs_is_blockdev(struct lxc_conf *conf)
+{
+	const struct bdev_type *q;
+	struct stat st;
+	int ret;
+
+	ret = stat(conf->rootfs.path, &st);
+	if (ret == 0 && S_ISBLK(st.st_mode))
+		return true;
+	q = bdev_query(conf->rootfs.path);
+	if (!q)
+		return false;
+	if (strcmp(q->name, "lvm") == 0 ||
+		strcmp(q->name, "loop") == 0 ||
+		strcmp(q->name, "nbd") == 0)
+		return true;
+	return false;
 }

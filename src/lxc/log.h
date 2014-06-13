@@ -21,8 +21,8 @@
  * License along with this library; if not, write to the Free Software
  * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA
  */
-#ifndef _log_h
-#define _log_h
+#ifndef __LXC_LOG_H
+#define __LXC_LOG_H
 
 #include "config.h"
 
@@ -43,6 +43,13 @@
 
 #define LXC_LOG_PREFIX_SIZE	32
 #define LXC_LOG_BUFFER_SIZE	512
+
+/* This attribute is required to silence clang warnings */
+#if defined(__GNUC__)
+#define ATTR_UNUSED __attribute__ ((unused))
+#else
+#define ATTR_UNUSED
+#endif
 
 /* predefined priorities. */
 enum lxc_loglevel {
@@ -180,10 +187,10 @@ __lxc_log(const struct lxc_log_category* category,
  */
 #define lxc_log_priority_define(acategory, PRIORITY)			\
 									\
-static inline void LXC_##PRIORITY(struct lxc_log_locinfo *,		\
+ATTR_UNUSED static inline void LXC_##PRIORITY(struct lxc_log_locinfo *,		\
 	const char *, ...) __attribute__ ((format (printf, 2, 3)));	\
 									\
-static inline void LXC_##PRIORITY(struct lxc_log_locinfo* locinfo,	\
+ATTR_UNUSED static inline void LXC_##PRIORITY(struct lxc_log_locinfo* locinfo,	\
 				  const char* format, ...)		\
 {									\
 	if (lxc_log_priority_is_enabled(acategory, 			\
