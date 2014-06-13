@@ -555,7 +555,7 @@ static bool lxcapi_start(struct lxc_container *c, int useinit, char * const argv
 	FILE *pid_fp = NULL;
 	char *default_args[] = {
 		"/sbin/init",
-		'\0',
+		NULL,
 	};
 
 	/* container exists */
@@ -918,9 +918,9 @@ static bool create_run_template(struct lxc_container *c, char *tpath, bool quiet
 				}
 			}
 		}
-		if (strcmp(bdev->type, "dir") != 0) {
+		if (strcmp(bdev->type, "dir") && strcmp(bdev->type, "btrfs")) {
 			if (geteuid() != 0) {
-				ERROR("non-root users can only create directory-backed containers");
+				ERROR("non-root users can only create btrfs and directory-backed containers");
 				exit(1);
 			}
 			if (bdev->ops->mount(bdev) < 0) {
@@ -1177,7 +1177,7 @@ static bool prepend_lxc_header(char *path, const char *t, char *const argv[])
 		fprintf(f, "%02x", md_value[i]);
 	fprintf(f, "\n");
 #endif
-	fprintf(f, "# For additional config options, please look at lxc.conf(5)\n");
+	fprintf(f, "# For additional config options, please look at lxc.container.conf(5)\n");
 	if (fwrite(contents, 1, flen, f) != flen) {
 		SYSERROR("Writing original contents");
 		free(contents);
@@ -1987,10 +1987,41 @@ static int lxc_rmdir_onedev_wrapper(void *data)
 	return lxc_rmdir_onedev(arg);
 }
 
+static int do_bdev_destroy(struct lxc_conf *conf)
+{
+	struct bdev *r;
+	int ret = 0;
+
+	r = bdev_init(conf->rootfs.path, conf->rootfs.mount, NULL);
+	if (!r)
+		return -1;
+
+	if (r->ops->destroy(r) < 0)
+		ret = -1;
+	bdev_put(r);
+	return ret;
+}
+
+static int bdev_destroy_wrapper(void *data)
+{
+	struct lxc_conf *conf = data;
+
+	if (setgid(0) < 0) {
+		ERROR("Failed to setgid to 0");
+		return -1;
+	}
+	if (setgroups(0, NULL) < 0)
+		WARN("Failed to clear groups");
+	if (setuid(0) < 0) {
+		ERROR("Failed to setuid to 0");
+		return -1;
+	}
+	return do_bdev_destroy(conf);
+}
+
 // do we want the api to support --force, or leave that to the caller?
 static bool lxcapi_destroy(struct lxc_container *c)
 {
-	struct bdev *r = NULL;
 	bool bret = false;
 	int ret;
 
@@ -2011,15 +2042,14 @@ static bool lxcapi_destroy(struct lxc_container *c)
 		goto out;
 	}
 
-	if (!am_unpriv() && c->lxc_conf && c->lxc_conf->rootfs.path && c->lxc_conf->rootfs.mount) {
-		r = bdev_init(c->lxc_conf->rootfs.path, c->lxc_conf->rootfs.mount, NULL);
-		if (r) {
-			if (r->ops->destroy(r) < 0) {
-				bdev_put(r);
-				ERROR("Error destroying rootfs for %s", c->name);
-				goto out;
-			}
-			bdev_put(r);
+	if (c->lxc_conf && c->lxc_conf->rootfs.path && c->lxc_conf->rootfs.mount) {
+		if (am_unpriv())
+			ret = userns_exec_1(c->lxc_conf, bdev_destroy_wrapper, c->lxc_conf);
+		else
+			ret = do_bdev_destroy(c->lxc_conf);
+		if (ret < 0) {
+			ERROR("Error destroying rootfs for %s", c->name);
+			goto out;
 		}
 	}
 
@@ -2829,6 +2859,9 @@ static int lxcapi_snapshot(struct lxc_container *c, const char *commentfile)
 	struct lxc_container *c2;
 	char snappath[MAXPATHLEN], newname[20];
 
+	if (!c || !lxcapi_is_defined(c))
+		return -1;
+
 	// /var/lib/lxc -> /var/lib/lxcsnaps \0
 	ret = snprintf(snappath, MAXPATHLEN, "%ssnaps/%s", c->config_path, c->name);
 	if (ret < 0 || ret >= MAXPATHLEN)
@@ -3060,13 +3093,7 @@ static bool lxcapi_snapshot_restore(struct lxc_container *c, const char *snapnam
 
 	if (!newname)
 		newname = c->name;
-	if (strcmp(c->name, newname) == 0) {
-		if (!lxcapi_destroy(c)) {
-			ERROR("Could not destroy existing container %s", newname);
-			bdev_put(bdev);
-			return false;
-		}
-	}
+
 	ret = snprintf(clonelxcpath, MAXPATHLEN, "%ssnaps/%s", c->config_path, c->name);
 	if (ret < 0 || ret >= MAXPATHLEN) {
 		bdev_put(bdev);
@@ -3080,6 +3107,15 @@ static bool lxcapi_snapshot_restore(struct lxc_container *c, const char *snapnam
 		if (snap) lxc_container_put(snap);
 		bdev_put(bdev);
 		return false;
+	}
+
+	if (strcmp(c->name, newname) == 0) {
+		if (!lxcapi_destroy(c)) {
+			ERROR("Could not destroy existing container %s", newname);
+			lxc_container_put(snap);
+			bdev_put(bdev);
+			return false;
+		}
 	}
 
 	if (strcmp(bdev->type, "dir") != 0 && strcmp(bdev->type, "loop") != 0)

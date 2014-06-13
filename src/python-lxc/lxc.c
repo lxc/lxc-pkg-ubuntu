@@ -148,7 +148,7 @@ static lxc_attach_options_t *lxc_attach_parse_options(PyObject *kwds)
     PyObject *stdout_obj = NULL;
     PyObject *stderr_obj = NULL;
     PyObject *initial_cwd_obj = NULL;
-    PyObject *dummy;
+    PyObject *dummy = NULL;
     bool parse_result;
 
     lxc_attach_options_t default_options = LXC_ATTACH_OPTIONS_DEFAULT;
@@ -257,7 +257,7 @@ static PyObject *
 LXC_arch_to_personality(PyObject *self, PyObject *arg)
 {
     long rv = -1;
-    PyObject *pystr;
+    PyObject *pystr = NULL;
     char *str;
 
     if (!PyUnicode_Check(arg)) {
@@ -329,12 +329,20 @@ LXC_get_global_config_item(PyObject *self, PyObject *args, PyObject *kwds)
 {
     static char *kwlist[] = {"key", NULL};
     char* key = NULL;
+    const char* value = NULL;
 
     if (! PyArg_ParseTupleAndKeywords(args, kwds, "s|", kwlist,
                                       &key))
         return NULL;
 
-    return PyUnicode_FromString(lxc_get_global_config_item(key));
+    value = lxc_get_global_config_item(key);
+
+    if (!value) {
+        PyErr_SetString(PyExc_KeyError, "Invalid configuration key");
+        return NULL;
+    }
+
+    return PyUnicode_FromString(value);
 }
 
 static PyObject *
@@ -729,11 +737,12 @@ Container_create(Container *self, PyObject *args, PyObject *kwds)
     char* template_name = NULL;
     int flags = 0;
     char** create_args = {NULL};
-    PyObject *retval = NULL, *vargs = NULL;
+    PyObject *retval = NULL;
+    PyObject *vargs = NULL;
     int i = 0;
     static char *kwlist[] = {"template", "flags", "args", NULL};
 
-    if (! PyArg_ParseTupleAndKeywords(args, kwds, "s|iO", kwlist,
+    if (! PyArg_ParseTupleAndKeywords(args, kwds, "|siO", kwlist,
                                       &template_name, &flags, &vargs))
         return NULL;
 
@@ -1221,7 +1230,7 @@ Container_snapshot(Container *self, PyObject *args, PyObject *kwds)
     int retval = 0;
     int ret = 0;
     char newname[20];
-    PyObject *py_comment_path;
+    PyObject *py_comment_path = NULL;
 
     if (! PyArg_ParseTupleAndKeywords(args, kwds, "|O&", kwlist,
                                       PyUnicode_FSConverter, &py_comment_path))

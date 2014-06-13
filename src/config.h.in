@@ -3,6 +3,9 @@
 /* Python3 is available */
 #undef ENABLE_PYTHON
 
+/* Have cgmanager_get_pid_cgroup_abs_sync */
+#undef HAVE_CGMANAGER_GET_PID_CGROUP_ABS_SYNC
+
 /* Define to 1 if you have the `confstr' function. */
 #undef HAVE_CONFSTR
 

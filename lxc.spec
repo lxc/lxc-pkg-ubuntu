@@ -45,7 +45,7 @@ BuildRequires: systemd-units
 %endif
 
 Name: lxc
-Version: 1.0.3
+Version: 1.0.4
 Release: %{?beta_rel:0.1.%{beta_rel}}%{?!beta_rel:%{norm_rel}}%{?dist}
 URL: http://linuxcontainers.org
 Source: http://linuxcontainers.org/downloads/%{name}-%{version}%{?beta_dot}.tar.gz
@@ -154,6 +154,7 @@ rm -rf %{buildroot}
 %attr(4111,root,root) %{_libexecdir}/%{name}/lxc-user-nic
 %if %{with_systemd}
 %attr(555,root,root) %{_libexecdir}/%{name}/lxc-devsetup
+%attr(555,root,root) %{_libexecdir}/%{name}/lxc-autostart-helper
 %endif
 
 %if %{with_python}

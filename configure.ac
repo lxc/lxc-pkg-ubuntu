@@ -3,7 +3,7 @@
 
 m4_define([lxc_version_major], 1)
 m4_define([lxc_version_minor], 0)
-m4_define([lxc_version_micro], 3)
+m4_define([lxc_version_micro], 4)
 m4_define([lxc_version_beta], [])
 
 m4_define([lxc_version_base], [lxc_version_major.lxc_version_minor.lxc_version_micro])
@@ -256,6 +256,16 @@ AM_COND_IF([ENABLE_CGMANAGER],
 	PKG_CHECK_MODULES([DBUS], [dbus-1 >= 1.2.16])
 	])
 
+AC_MSG_CHECKING(for get_pid_cgroup_abs_sync)
+save_LIBS=$LIBS
+AC_SEARCH_LIBS([cgmanager_get_pid_cgroup_abs_sync], [cgmanager], [have_abs_cgroups=yes], [have_abs_cgroups=no], [-lnih -lnih-dbus -ldbus-1])
+LIBS=$save_LIBS
+if test "x$have_abs_cgroups" = "xyes"; then
+	AC_DEFINE([HAVE_CGMANAGER_GET_PID_CGROUP_ABS_SYNC], 1, [Have cgmanager_get_pid_cgroup_abs_sync])
+	AC_MSG_RESULT([yes])
+else
+	AC_MSG_RESULT([no])
+fi
 # Linux capabilities
 AC_ARG_ENABLE([capabilities],
 	[AC_HELP_STRING([--enable-capabilities], [enable kernel capabilities support [default=auto]])],
@@ -565,7 +575,9 @@ AC_CONFIG_FILES([
 	config/bash/lxc
 	config/init/Makefile
 	config/init/sysvinit/Makefile
+	config/init/sysvinit/lxc
 	config/init/systemd/Makefile
+	config/init/systemd/lxc.service
 	config/init/upstart/Makefile
 	config/etc/Makefile
 	config/templates/Makefile
