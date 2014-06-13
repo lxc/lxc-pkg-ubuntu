@@ -77,7 +77,7 @@ override_dh_installinit:
 	cp debian/lxc/etc/init/lxc-net.conf debian/lxc.lxc-net.upstart
 	dh_installinit --no-restart-on-upgrade --name=lxc
 	dh_installinit --no-restart-on-upgrade --name=lxc-net
-	dh_installinit --no-restart-on-upgrade --name=lxc-instance
+	dh_installinit --no-start --no-restart-on-upgrade --name=lxc-instance
 
 override_dh_strip:
 	dh_strip --dbg-package=lxc-dbg

@@ -13,6 +13,8 @@ lxc (1.0.4-0ubuntu0.1) UNRELEASED; urgency=medium
     - Remove hardcoded dependency on apparmor, instead generate it from
       rules so that the source package can be backported without changes (the
       right apparmor version will be picked up based on the release number).
+    - Do not start lxc-instance in postinst without any instance specified,
+      as that is an invalid request.
 
  -- Stéphane Graber <stgraber@ubuntu.com>  Fri, 13 Jun 2014 15:07:39 -0400
 
