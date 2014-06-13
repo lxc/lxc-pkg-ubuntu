@@ -81,3 +81,12 @@ override_dh_installinit:
 
 override_dh_strip:
 	dh_strip --dbg-package=lxc-dbg
+
+override_dh_gencontrol:
+	if dpkg --compare-versions "$(shell grep DISTRIB_RELEASE /etc/lsb-release | cut -d= -f2)" ge "14.04"; then \
+		dh_gencontrol -- -V'lxc:Depends=apparmor (>= 2.8.95~2430-0ubuntu4)'; \
+	elif dpkg --compare-versions "$(shell grep DISTRIB_RELEASE /etc/lsb-release | cut -d= -f2)" ge "13.10"; then \
+		dh_gencontrol -- -V'lxc:Depends=apparmor (>= 2.8.0-0ubuntu25)'; \
+	else \
+		dh_gencontrol -- -V'lxc:Depends=apparmor'; \
+	fi

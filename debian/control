@@ -26,13 +26,13 @@ Package: lxc
 Architecture: linux-any
 Pre-Depends: ${misc:Pre-Depends}
 Depends: adduser,
-         apparmor (>= 2.8.95~2430-0ubuntu4),
          bridge-utils,
          dnsmasq-base,
          iptables,
          liblxc1 (= ${binary:Version}),
          python3,
          python3-lxc,
+         ${lxc:Depends},
          ${misc:Depends},
          ${shlibs:Depends}
 Recommends: lxc-templates (>= 0.8.0~rc1-4ubuntu43)
@@ -110,8 +110,8 @@ Description: Linux Containers userspace tools (test binaries)
 Package: liblxc1
 Architecture: linux-any
 Pre-Depends: ${misc:Pre-Depends}
-Depends: cgmanager, rsync, ${misc:Depends}, ${shlibs:Depends}
-Recommends: uidmap
+Depends: cgmanager | cgroup-lite, rsync, ${misc:Depends}, ${shlibs:Depends}
+Recommends: cgmanager, uidmap
 Replaces: liblxc0, lxc (<< 0.9.0~alpha3-0ubuntu1~)
 Breaks: lxc (<< 0.9.0~alpha3-0ubuntu1~)
 Provides: liblxc0
