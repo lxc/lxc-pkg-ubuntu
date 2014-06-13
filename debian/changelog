@@ -1,3 +1,21 @@
+lxc (1.0.4-0ubuntu0.1) UNRELEASED; urgency=medium
+
+  * New upstream bugfix release. (MRE trackaging bug LP: #1329932)
+    - Drop all existing patches (all applied upstream).
+    - Fix lxc-attach failing from a different login session. (LP: #1315052)
+    - Fix wrong cgroup on login to container. (LP: #1315521)
+
+  * Sync packaging with utopic:
+    - Depend on either cgmanager or cgroup-lite and recommend cgmanager.
+      This should ensure systems get cgmanager by default even if cgroup-lite
+      is already installed, yet makes it possible for the user to remove
+      cgmanager if they really want to.
+    - Remove hardcoded dependency on apparmor, instead generate it from
+      rules so that the source package can be backported without changes (the
+      right apparmor version will be picked up based on the release number).
+
+ -- Stéphane Graber <stgraber@ubuntu.com>  Fri, 13 Jun 2014 15:07:39 -0400
+
 lxc (1.0.3-0ubuntu3) trusty; urgency=medium
 
   * Add a dependency on the new apparmor to make sure we have the new
