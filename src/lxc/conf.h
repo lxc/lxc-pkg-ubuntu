@@ -20,8 +20,8 @@
  * License along with this library; if not, write to the Free Software
  * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA
  */
-#ifndef _conf_h
-#define _conf_h
+#ifndef __LXC_CONF_H
+#define __LXC_CONF_H
 
 #include "config.h"
 
@@ -240,9 +240,16 @@ enum {
 	LXC_AUTO_CGROUP_FULL_RO       = 0x040,   /* /sys/fs/cgroup (full mount, read-only) */
 	LXC_AUTO_CGROUP_FULL_RW       = 0x050,   /* /sys/fs/cgroup (full mount, read-write) */
 	LXC_AUTO_CGROUP_FULL_MIXED    = 0x060,   /* /sys/fs/cgroup (full mount, parent r/o, own r/w) */
-	LXC_AUTO_CGROUP_MASK          = 0x070,
+	/* These are defined in such a way as to retain
+	 * binary compatibility with earlier versions of
+	 * this code. If the previous mask is applied,
+	 * both of these will default back to the _MIXED
+	 * variants, which is safe. */
+	LXC_AUTO_CGROUP_NOSPEC        = 0x0B0,   /* /sys/fs/cgroup (partial mount, r/w or mixed, depending on caps) */
+	LXC_AUTO_CGROUP_FULL_NOSPEC   = 0x0E0,   /* /sys/fs/cgroup (full mount, r/w or mixed, depending on caps) */
+	LXC_AUTO_CGROUP_MASK          = 0x0F0,
 
-	LXC_AUTO_ALL_MASK             = 0x07F,   /* all known settings */
+	LXC_AUTO_ALL_MASK             = 0x0FF,   /* all known settings */
 };
 
 /*
@@ -327,6 +334,10 @@ struct lxc_conf {
 	int start_delay;
 	int start_order;
 	struct lxc_list groups;
+	int nbd_idx;
+
+	/* set to true when rootfs has been setup */
+	bool rootfs_setup;
 };
 
 int run_lxc_hooks(const char *name, char *hook, struct lxc_conf *conf,
@@ -362,6 +373,9 @@ extern int lxc_clear_automounts(struct lxc_conf *c);
 extern int lxc_clear_hooks(struct lxc_conf *c, const char *key);
 extern int lxc_clear_idmaps(struct lxc_conf *c);
 extern int lxc_clear_groups(struct lxc_conf *c);
+
+extern int do_rootfs_setup(struct lxc_conf *conf, const char *name,
+			   const char *lxcpath);
 
 /*
  * Configure the container from inside

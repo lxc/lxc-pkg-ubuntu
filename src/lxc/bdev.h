@@ -34,23 +34,6 @@
 
 struct bdev;
 
-/*
- * specifications for how to create a new backing store
- */
-struct bdev_specs {
-	char *fstype;
-	uint64_t fssize;  // fs size in bytes
-	struct {
-		char *zfsroot;
-	} zfs;
-	struct {
-		char *vg;
-		char *lv;
-		char *thinpool; // lvm thin pool to use, if any
-	} lvm;
-	char *dir;
-};
-
 struct bdev_ops {
 	/* detect whether path is of this bdev type */
 	int (*detect)(const char *path);
@@ -109,6 +92,8 @@ struct bdev *bdev_copy(struct lxc_container *c0, const char *cname,
 struct bdev *bdev_create(const char *dest, const char *type,
 			const char *cname, struct bdev_specs *specs);
 void bdev_put(struct bdev *bdev);
+
+bool rootfs_is_blockdev(struct lxc_conf *conf);
 
 /* define constants if the kernel/glibc headers don't define them */
 #ifndef MS_DIRSYNC
