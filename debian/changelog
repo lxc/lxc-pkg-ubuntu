@@ -5,6 +5,11 @@ lxc (1.0.4-0ubuntu0.1) UNRELEASED; urgency=medium
     - Fix lxc-attach failing from a different login session. (LP: #1315052)
     - Fix wrong cgroup on login to container. (LP: #1315521)
 
+  * Cherry-pick upstream (stable branch) commits to fix testsuite under adt:
+    - tests: Avoid the download template when possible
+    - tests: Don't fail when HOME isn't defined
+    - tests: apparmor: Always end with a newline
+
   * Sync packaging with utopic:
     - Depend on either cgmanager or cgroup-lite and recommend cgmanager.
       This should ensure systems get cgmanager by default even if cgroup-lite
