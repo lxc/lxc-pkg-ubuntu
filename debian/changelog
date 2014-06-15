@@ -1,4 +1,4 @@
-lxc (1.0.4-0ubuntu0.1) UNRELEASED; urgency=medium
+lxc (1.0.4-0ubuntu0.1) trusty; urgency=medium
 
   * New upstream bugfix release. (MRE trackaging bug LP: #1329932)
     - Drop all existing patches (all applied upstream).
@@ -21,7 +21,7 @@ lxc (1.0.4-0ubuntu0.1) UNRELEASED; urgency=medium
     - Do not start lxc-instance in postinst without any instance specified,
       as that is an invalid request.
 
- -- Stéphane Graber <stgraber@ubuntu.com>  Fri, 13 Jun 2014 15:07:39 -0400
+ -- Stéphane Graber <stgraber@ubuntu.com>  Sat, 14 Jun 2014 20:09:57 -0400
 
 lxc (1.0.3-0ubuntu3) trusty; urgency=medium
 
