@@ -1,3 +1,9 @@
+lxc (1.0.4-0ubuntu3) UNRELEASED; urgency=medium
+
+  * Enable ppc64el adt as we now have ppc64el images available for download.
+
+ -- Stéphane Graber <stgraber@ubuntu.com>  Thu, 03 Jul 2014 16:40:08 -0400
+
 lxc (1.0.4-0ubuntu2) utopic; urgency=medium
 
   * Cherry-pick upstream commits to fix testsuite under adt:
