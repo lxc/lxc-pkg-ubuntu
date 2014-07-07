@@ -1,8 +1,24 @@
 # This derives from the global common config
 lxc.include = @LXCTEMPLATECONFIG@/common.conf
 
+# Allow for 6 tty devices by default
+lxc.tty = 6
+
+# Turn on autodev for systemd
+lxc.autodev = 1
+
+# Disable kmsg
+lxc.kmsg = 0
+
+# Set the halt/stop signals
+lxc.haltsignal=SIGRTMIN+4
+lxc.stopsignal=SIGRTMIN+14
+
 # Mount entries
-lxc.mount.auto = cgroup:mixed proc:mixed sys:ro
+lxc.mount.auto = proc:mixed sys:ro
+
+# Uncomment to disable creating tty devices subdirectory in /dev
+# lxc.devttydir =
 
 # Capabilities
 # Uncomment these if you don't run anything that needs the capability, and
@@ -20,4 +36,6 @@ lxc.mount.auto = cgroup:mixed proc:mixed sys:ro
 # lxc.cap.drop = setuid           # breaks sshd,nfs statd
 # lxc.cap.drop = audit_control    # breaks sshd (set_loginuid failed)
 # lxc.cap.drop = audit_write
-lxc.cap.drop = sys_nice sys_pacct sys_rawio
+# lxc.cap.drop = setpcap          # big big login delays in Fedora 20 systemd
+#
+lxc.cap.drop = setfcap sys_nice sys_pacct sys_rawio

@@ -46,12 +46,14 @@
 
 lxc_log_define(lxc_utils, lxc);
 
-static int _recursive_rmdir_onedev(char *dirname, dev_t pdev)
+static int _recursive_rmdir_onedev(char *dirname, dev_t pdev,
+				   const char *exclude, int level)
 {
 	struct dirent dirent, *direntp;
 	DIR *dir;
 	int ret, failed=0;
 	char pathname[MAXPATHLEN];
+	bool hadexclude = false;
 
 	dir = opendir(dirname);
 	if (!dir) {
@@ -76,6 +78,29 @@ static int _recursive_rmdir_onedev(char *dirname, dev_t pdev)
 			failed=1;
 			continue;
 		}
+
+		if (!level && exclude && !strcmp(direntp->d_name, exclude)) {
+			ret = rmdir(pathname);
+			if (ret < 0) {
+				switch(errno) {
+				case ENOTEMPTY:
+					INFO("Not deleting snapshots");
+					hadexclude = true;
+					break;
+				case ENOTDIR:
+					ret = unlink(pathname);
+					if (ret)
+						INFO("%s: failed to remove %s", __func__, pathname);
+					break;
+				default:
+					SYSERROR("%s: failed to rmdir %s", __func__, pathname);
+					failed = 1;
+					break;
+				}
+			}
+			continue;
+		}
+
 		ret = lstat(pathname, &mystat);
 		if (ret) {
 			ERROR("%s: failed to stat %s", __func__, pathname);
@@ -85,7 +110,7 @@ static int _recursive_rmdir_onedev(char *dirname, dev_t pdev)
 		if (mystat.st_dev != pdev)
 			continue;
 		if (S_ISDIR(mystat.st_mode)) {
-			if (_recursive_rmdir_onedev(pathname, pdev) < 0)
+			if (_recursive_rmdir_onedev(pathname, pdev, exclude, level+1) < 0)
 				failed=1;
 		} else {
 			if (unlink(pathname) < 0) {
@@ -96,8 +121,10 @@ static int _recursive_rmdir_onedev(char *dirname, dev_t pdev)
 	}
 
 	if (rmdir(dirname) < 0) {
-		ERROR("%s: failed to delete %s", __func__, dirname);
-		failed=1;
+		if (!hadexclude) {
+			ERROR("%s: failed to delete %s", __func__, dirname);
+			failed=1;
+		}
 	}
 
 	ret = closedir(dir);
@@ -110,7 +137,7 @@ static int _recursive_rmdir_onedev(char *dirname, dev_t pdev)
 }
 
 /* returns 0 on success, -1 if there were any failures */
-extern int lxc_rmdir_onedev(char *path)
+extern int lxc_rmdir_onedev(char *path, const char *exclude)
 {
 	struct stat mystat;
 
@@ -119,7 +146,7 @@ extern int lxc_rmdir_onedev(char *path)
 		return -1;
 	}
 
-	return _recursive_rmdir_onedev(path, mystat.st_dev);
+	return _recursive_rmdir_onedev(path, mystat.st_dev, exclude, 0);
 }
 
 static int mount_fs(const char *source, const char *target, const char *type)
@@ -1272,7 +1299,7 @@ int detect_ramfs_rootfs(void)
 	return 0;
 }
 
-char *on_path(char *cmd) {
+char *on_path(char *cmd, const char *rootfs) {
 	char *path = NULL;
 	char *entry = NULL;
 	char *saveptr = NULL;
@@ -1289,7 +1316,10 @@ char *on_path(char *cmd) {
 
 	entry = strtok_r(path, ":", &saveptr);
 	while (entry) {
-		ret = snprintf(cmdpath, MAXPATHLEN, "%s/%s", entry, cmd);
+		if (rootfs)
+			ret = snprintf(cmdpath, MAXPATHLEN, "%s/%s/%s", rootfs, entry, cmd);
+		else
+			ret = snprintf(cmdpath, MAXPATHLEN, "%s/%s", entry, cmd);
 
 		if (ret < 0 || ret >= MAXPATHLEN)
 			goto next_loop;
@@ -1304,5 +1334,115 @@ next_loop:
 	}
 
 	free(path);
+	return NULL;
+}
+
+bool file_exists(const char *f)
+{
+	struct stat statbuf;
+
+	return stat(f, &statbuf) == 0;
+}
+
+/* historically lxc-init has been under /usr/lib/lxc and under
+ * /usr/lib/$ARCH/lxc.  It now lives as $prefix/sbin/init.lxc.
+ */
+char *choose_init(const char *rootfs)
+{
+	char *retv = NULL;
+	int ret, env_set = 0;
+	struct stat mystat;
+
+	if (!getenv("PATH")) {
+		if (setenv("PATH", "/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin", 0))
+			SYSERROR("Failed to setenv");
+		env_set = 1;
+	}
+
+	retv = on_path("init.lxc", rootfs);
+
+	if (env_set) {
+		if (unsetenv("PATH"))
+			SYSERROR("Failed to unsetenv");
+	}
+
+	if (retv)
+		return retv;
+
+	retv = malloc(PATH_MAX);
+	if (!retv)
+		return NULL;
+
+	if (rootfs)
+		ret = snprintf(retv, PATH_MAX, "%s/%s/init.lxc", rootfs, SBINDIR);
+	else
+		ret = snprintf(retv, PATH_MAX, SBINDIR "/init.lxc");
+	if (ret < 0 || ret >= PATH_MAX) {
+		ERROR("pathname too long");
+		goto out1;
+	}
+
+	ret = stat(retv, &mystat);
+	if (ret == 0)
+		return retv;
+
+	if (rootfs)
+		ret = snprintf(retv, PATH_MAX, "%s/%s/lxc/lxc-init", rootfs, LXCINITDIR);
+	else
+		ret = snprintf(retv, PATH_MAX, LXCINITDIR "/lxc/lxc-init");
+	if (ret < 0 || ret >= PATH_MAX) {
+		ERROR("pathname too long");
+		goto out1;
+	}
+
+	ret = stat(retv, &mystat);
+	if (ret == 0)
+		return retv;
+
+	if (rootfs)
+		ret = snprintf(retv, PATH_MAX, "%s/usr/lib/lxc/lxc-init", rootfs);
+	else
+		ret = snprintf(retv, PATH_MAX, "/usr/lib/lxc/lxc-init");
+	if (ret < 0 || ret >= PATH_MAX) {
+		ERROR("pathname too long");
+		goto out1;
+	}
+	ret = stat(retv, &mystat);
+	if (ret == 0)
+		return retv;
+
+	if (rootfs)
+		ret = snprintf(retv, PATH_MAX, "%s/sbin/lxc-init", rootfs);
+	else
+		ret = snprintf(retv, PATH_MAX, "/sbin/lxc-init");
+	if (ret < 0 || ret >= PATH_MAX) {
+		ERROR("pathname too long");
+		goto out1;
+	}
+	ret = stat(retv, &mystat);
+	if (ret == 0)
+		return retv;
+
+	/*
+	 * Last resort, look for the statically compiled init.lxc which we
+	 * hopefully bind-mounted in.
+	 * If we are called during container setup, and we get to this point,
+	 * then the init.lxc.static from the host will need to be bind-mounted
+	 * in.  So we return NULL here to indicate that.
+	 */
+	if (rootfs)
+		goto out1;
+
+	ret = snprintf(retv, PATH_MAX, "/init.lxc.static");
+	if (ret < 0 || ret >= PATH_MAX) {
+		WARN("Nonsense - name /lxc.init.static too long");
+		goto out1;
+	}
+	ret = stat(retv, &mystat);
+	if (ret == 0)
+		return retv;
+
+out1:
+	free(retv);
 	return NULL;
 }

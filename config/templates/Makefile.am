@@ -1,8 +1,14 @@
 templatesconfigdir=@LXCTEMPLATECONFIG@
 
+EXTRA_DIST = common.seccomp
+
 templatesconfig_DATA = \
+	archlinux.common.conf \
+	archlinux.userns.conf \
 	centos.common.conf \
 	centos.userns.conf \
+	common.conf \
+	common.seccomp \
 	debian.common.conf \
 	debian.userns.conf \
 	fedora.common.conf \
@@ -10,6 +16,8 @@ templatesconfig_DATA = \
 	gentoo.common.conf \
 	gentoo.moresecure.conf \
 	gentoo.userns.conf \
+	opensuse.common.conf \
+	opensuse.userns.conf \
 	oracle.common.conf \
 	oracle.userns.conf \
 	plamo.common.conf \
@@ -19,4 +27,5 @@ templatesconfig_DATA = \
 	ubuntu-cloud.userns.conf \
 	ubuntu.common.conf \
 	ubuntu.lucid.conf \
-	ubuntu.userns.conf
+	ubuntu.userns.conf \
+	userns.conf

@@ -1,8 +1,8 @@
 # This derives from the global common config
 lxc.include = @LXCTEMPLATECONFIG@/common.conf
 
-# Mount entries
-lxc.mount.auto = cgroup:mixed proc:mixed sys:ro
+# Enable autodev
+lxc.autodev = 1
 
 # Capabilities
 # Uncomment these if you don't run anything that needs the capability, and
@@ -20,4 +20,6 @@ lxc.mount.auto = cgroup:mixed proc:mixed sys:ro
 # lxc.cap.drop = setuid           # breaks sshd,nfs statd
 # lxc.cap.drop = audit_control    # breaks sshd (set_loginuid failed)
 # lxc.cap.drop = audit_write
+# lxc.cap.drop = setpcap          # big big login delays in Fedora 20 systemd
+# lxc.cap.drop = setfcap
 lxc.cap.drop = sys_nice sys_pacct sys_rawio

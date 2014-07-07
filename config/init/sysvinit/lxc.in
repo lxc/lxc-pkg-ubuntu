@@ -39,7 +39,7 @@ OPTIONS=
 
 # STOPOPTS are stop options.  The can be used for anything else to stop.
 #	If you want to kill containers fast, use -k
-STOPOPTS="-a -s"
+STOPOPTS="-a -A -s"
 
 # Source function library.
 test ! -r "$sysconfdir"/rc.d/init.d/functions ||

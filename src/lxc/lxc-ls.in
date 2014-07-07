@@ -106,9 +106,9 @@ def get_root_path(path):
 
 
 # Constants
-FIELDS = ("name", "state", "ipv4", "ipv6", "autostart", "pid",
-          "memory", "ram", "swap")
-DEFAULT_FIELDS = ("name", "state", "ipv4", "ipv6", "autostart")
+FIELDS = ("name", "state", "interfaces", "ipv4", "ipv6", "autostart", "pid",
+          "memory", "ram", "swap", "groups")
+DEFAULT_FIELDS = ("name", "state", "ipv4", "ipv6", "groups", "autostart")
 
 # Begin parsing the command line
 parser = argparse.ArgumentParser(description=_("LXC: List containers"),
@@ -145,11 +145,18 @@ parser.add_argument("-F", "--fancy-format", type=str,
                     default=",".join(DEFAULT_FIELDS),
                     help=_("comma separated list of fields to show"))
 
+parser.add_argument("-g", "--groups", type=str, action="append",
+                    metavar="GROUPS",
+                    help=_("groups (comma separated) the container must "
+                           "be a member of"))
+
 parser.add_argument("--nesting", dest="nesting", action="store_true",
                     help=_("show nested containers"))
 
 parser.add_argument("filter", metavar='FILTER', type=str, nargs="?",
                     help=_("regexp to be applied on the container list"))
+
+parser.add_argument("--version", action="version", version=lxc.version)
 
 args = parser.parse_args()
 
@@ -224,7 +231,8 @@ def get_containers(fd=None, base="/", root=False):
                 continue
 
             # Return before grabbing the object (non-root)
-            if not args.state and not args.fancy and not args.nesting:
+            if not args.state and not args.fancy and not args.nesting \
+                    and not args.groups:
                 containers.append(entry)
                 continue
 
@@ -232,6 +240,23 @@ def get_containers(fd=None, base="/", root=False):
                 container = lxc.Container(container_name, path)
             except:
                 continue
+
+            if args.groups or "autostart" in args.fancy_format \
+                    or "groups" in args.fancy_format:
+                try:
+                    groups = container.get_config_item("lxc.group")
+                except KeyError:
+                    groups = []
+
+            if args.groups:
+                set_has = set(groups)
+
+                for group in args.groups:
+                    set_must = set(group.split(","))
+                    if not set_must - set_has:
+                        break
+                else:
+                    continue
 
             if container.controllable:
                 state = container.state
@@ -258,15 +283,19 @@ def get_containers(fd=None, base="/", root=False):
                 elif container.init_pid != -1:
                     entry['pid'] = str(container.init_pid)
 
+            if 'groups' in args.fancy_format:
+                entry['groups'] = "-"
+                if len(groups) > 0:
+                    entry['groups'] = ", ".join(groups)
+
             if 'autostart' in args.fancy_format:
                 entry['autostart'] = "NO"
                 try:
                     if container.get_config_item("lxc.start.auto") == "1":
-                        entry['autostart'] = "YES"
-
-                        groups = container.get_config_item("lxc.group")
                         if len(groups) > 0:
-                            entry['autostart'] = "YES (%s)" % ", ".join(groups)
+                            entry['autostart'] = "BY-GROUP"
+                        else:
+                            entry['autostart'] = "YES"
                 except KeyError:
                     pass
 
@@ -327,6 +356,18 @@ def get_containers(fd=None, base="/", root=False):
                         ips = container.get_ips(family=family)
                         if ips:
                             entry[protocol] = ", ".join(ips)
+
+            # Get the interfaces
+            if 'interfaces' in args.fancy_format:
+                entry['interfaces'] = "-"
+
+                if state == 'UNKNOWN' or (container.running and
+                                          not SUPPORT_SETNS_NET):
+                    entry['interfaces'] = "UNKNOWN"
+                elif container.running:
+                    interfaces = container.get_interfaces()
+                    if interfaces:
+                        entry['interfaces'] = ", ".join(interfaces)
 
             # Nested containers
             if args.nesting:

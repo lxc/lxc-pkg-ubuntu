@@ -2,9 +2,9 @@
 # Process this file with autoconf to produce a configure script.
 
 m4_define([lxc_version_major], 1)
-m4_define([lxc_version_minor], 0)
-m4_define([lxc_version_micro], 4)
-m4_define([lxc_version_beta], [])
+m4_define([lxc_version_minor], 1)
+m4_define([lxc_version_micro], 0)
+m4_define([lxc_version_beta], [alpha1])
 
 m4_define([lxc_version_base], [lxc_version_major.lxc_version_minor.lxc_version_micro])
 m4_define([lxc_version],
@@ -218,8 +218,8 @@ fi
 AM_CONDITIONAL([ENABLE_SELINUX], [test "x$enable_selinux" = "xyes"])
 AM_COND_IF([ENABLE_SELINUX],
 	[AC_CHECK_HEADER([selinux/selinux.h],[],[AC_MSG_ERROR([You must install the SELinux development package in order to compile lxc])])
-	AC_CHECK_LIB([selinux], [setexeccon_raw],[],[AC_MSG_ERROR([You must install the SELinux development package in order to compile lxc])])
-	AC_SUBST([SELINUX_LIBS])])
+	AC_CHECK_LIB([selinux], [setexeccon_raw],[true],[AC_MSG_ERROR([You must install the SELinux development package in order to compile lxc])])
+	AC_SUBST([SELINUX_LIBS], [-lselinux])])
 
 # Seccomp syscall filter
 AC_ARG_ENABLE([seccomp],
@@ -266,6 +266,19 @@ if test "x$have_abs_cgroups" = "xyes"; then
 else
 	AC_MSG_RESULT([no])
 fi
+
+# Check for static libcap, make sure the function checked for differs from the
+# the one checked below so the cache doesn't give a wrong answer
+OLD_CFLAGS="$CFLAGS"
+CFLAGS="$CFLAGS -static"
+AC_CHECK_LIB([cap],[cap_init],[have_static_libcap=yes],[have_static_libcap=no])
+AM_CONDITIONAL([HAVE_STATIC_LIBCAP], [test "x$have_static_libcap" = "xyes"])
+if test "x$have_static_libcap" = "xyes"; then
+	AC_DEFINE([HAVE_STATIC_LIBCAP], 1, [Have static libcap])
+fi
+CFLAGS="$OLD_CFLAGS"
+
+
 # Linux capabilities
 AC_ARG_ENABLE([capabilities],
 	[AC_HELP_STRING([--enable-capabilities], [enable kernel capabilities support [default=auto]])],
@@ -277,7 +290,7 @@ fi
 AM_CONDITIONAL([ENABLE_CAP], [test "x$enable_capabilities" = "xyes"])
 
 AM_COND_IF([ENABLE_CAP],
-	[AC_CHECK_LIB(cap,cap_set_proc,[],[AC_MSG_ERROR([You are missing libcap support.])])
+	[AC_CHECK_LIB(cap,cap_set_proc,[true],[AC_MSG_ERROR([You are missing libcap support.])])
 	AC_SUBST([CAP_LIBS], [-lcap])])
 
 # HAVE_SCMP_FILTER_CTX=1 will tell us we have libseccomp api >= 1.0.0
@@ -581,8 +594,11 @@ AC_CONFIG_FILES([
 	config/init/upstart/Makefile
 	config/etc/Makefile
 	config/templates/Makefile
+	config/templates/archlinux.common.conf
+	config/templates/archlinux.userns.conf
 	config/templates/centos.common.conf
 	config/templates/centos.userns.conf
+	config/templates/common.conf
 	config/templates/debian.common.conf
 	config/templates/debian.userns.conf
 	config/templates/fedora.common.conf
@@ -590,6 +606,8 @@ AC_CONFIG_FILES([
 	config/templates/gentoo.common.conf
 	config/templates/gentoo.moresecure.conf
 	config/templates/gentoo.userns.conf
+	config/templates/opensuse.common.conf
+	config/templates/opensuse.userns.conf
 	config/templates/oracle.common.conf
 	config/templates/oracle.userns.conf
 	config/templates/plamo.common.conf
@@ -600,6 +618,7 @@ AC_CONFIG_FILES([
 	config/templates/ubuntu.common.conf
 	config/templates/ubuntu.lucid.conf
 	config/templates/ubuntu.userns.conf
+	config/templates/userns.conf
 	config/yum/Makefile
 
 	doc/Makefile

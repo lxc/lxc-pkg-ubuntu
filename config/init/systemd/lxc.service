@@ -5,9 +5,9 @@ After=syslog.target network.target
 [Service]
 Type=oneshot
 RemainAfterExit=yes
-ExecStartPre=${exec_prefix}/libexec/lxc/lxc-devsetup
-ExecStart=${exec_prefix}/libexec/lxc/lxc-autostart-helper start
-ExecStop=${exec_prefix}/libexec/lxc/lxc-autostart-helper stop
+ExecStartPre=/usr/local/libexec/lxc/lxc-devsetup
+ExecStart=/usr/local/libexec/lxc/lxc-autostart-helper start
+ExecStop=/usr/local/libexec/lxc/lxc-autostart-helper stop
 # Environment=BOOTUP=serial
 # Environment=CONSOLETYPE=serial
 StandardOutput=syslog
