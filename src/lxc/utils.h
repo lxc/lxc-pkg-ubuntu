@@ -34,7 +34,7 @@
 #include "config.h"
 
 /* returns 1 on success, 0 if there were any failures */
-extern int lxc_rmdir_onedev(char *path);
+extern int lxc_rmdir_onedev(char *path, const char *exclude);
 extern void lxc_setup_fs(void);
 extern int get_u16(unsigned short *val, const char *arg, int base);
 extern int mkdir_p(const char *dir, mode_t mode);
@@ -279,4 +279,6 @@ uint64_t fnv_64a_buf(void *buf, size_t len, uint64_t hval);
 
 int detect_shared_rootfs(void);
 int detect_ramfs_rootfs(void);
-char *on_path(char *cmd);
+char *on_path(char *cmd, const char *rootfs);
+bool file_exists(const char *f);
+char *choose_init(const char *rootfs);

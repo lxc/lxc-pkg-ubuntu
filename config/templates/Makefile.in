@@ -80,8 +80,10 @@ build_triplet = @build@
 host_triplet = @host@
 subdir = config/templates
 DIST_COMMON = $(srcdir)/Makefile.in $(srcdir)/Makefile.am \
+	$(srcdir)/archlinux.common.conf.in \
+	$(srcdir)/archlinux.userns.conf.in \
 	$(srcdir)/centos.common.conf.in \
-	$(srcdir)/centos.userns.conf.in \
+	$(srcdir)/centos.userns.conf.in $(srcdir)/common.conf.in \
 	$(srcdir)/debian.common.conf.in \
 	$(srcdir)/debian.userns.conf.in \
 	$(srcdir)/fedora.common.conf.in \
@@ -89,6 +91,8 @@ DIST_COMMON = $(srcdir)/Makefile.in $(srcdir)/Makefile.am \
 	$(srcdir)/gentoo.common.conf.in \
 	$(srcdir)/gentoo.moresecure.conf.in \
 	$(srcdir)/gentoo.userns.conf.in \
+	$(srcdir)/opensuse.common.conf.in \
+	$(srcdir)/opensuse.userns.conf.in \
 	$(srcdir)/oracle.common.conf.in \
 	$(srcdir)/oracle.userns.conf.in $(srcdir)/plamo.common.conf.in \
 	$(srcdir)/plamo.userns.conf.in \
@@ -96,7 +100,7 @@ DIST_COMMON = $(srcdir)/Makefile.in $(srcdir)/Makefile.am \
 	$(srcdir)/ubuntu-cloud.lucid.conf.in \
 	$(srcdir)/ubuntu-cloud.userns.conf.in \
 	$(srcdir)/ubuntu.common.conf.in $(srcdir)/ubuntu.lucid.conf.in \
-	$(srcdir)/ubuntu.userns.conf.in
+	$(srcdir)/ubuntu.userns.conf.in $(srcdir)/userns.conf.in
 ACLOCAL_M4 = $(top_srcdir)/aclocal.m4
 am__aclocal_m4_deps = $(top_srcdir)/config/acinclude.m4 \
 	$(top_srcdir)/config/tls.m4 $(top_srcdir)/configure.ac
@@ -104,13 +108,16 @@ am__configure_deps = $(am__aclocal_m4_deps) $(CONFIGURE_DEPENDENCIES) \
 	$(ACLOCAL_M4)
 mkinstalldirs = $(install_sh) -d
 CONFIG_HEADER = $(top_builddir)/src/config.h
-CONFIG_CLEAN_FILES = centos.common.conf centos.userns.conf \
+CONFIG_CLEAN_FILES = archlinux.common.conf archlinux.userns.conf \
+	centos.common.conf centos.userns.conf common.conf \
 	debian.common.conf debian.userns.conf fedora.common.conf \
 	fedora.userns.conf gentoo.common.conf gentoo.moresecure.conf \
-	gentoo.userns.conf oracle.common.conf oracle.userns.conf \
-	plamo.common.conf plamo.userns.conf ubuntu-cloud.common.conf \
+	gentoo.userns.conf opensuse.common.conf opensuse.userns.conf \
+	oracle.common.conf oracle.userns.conf plamo.common.conf \
+	plamo.userns.conf ubuntu-cloud.common.conf \
 	ubuntu-cloud.lucid.conf ubuntu-cloud.userns.conf \
-	ubuntu.common.conf ubuntu.lucid.conf ubuntu.userns.conf
+	ubuntu.common.conf ubuntu.lucid.conf ubuntu.userns.conf \
+	userns.conf
 CONFIG_CLEAN_VPATH_FILES =
 AM_V_P = $(am__v_P_@AM_V@)
 am__v_P_ = $(am__v_P_@AM_DEFAULT_V@)
@@ -325,9 +332,14 @@ top_build_prefix = @top_build_prefix@
 top_builddir = @top_builddir@
 top_srcdir = @top_srcdir@
 templatesconfigdir = @LXCTEMPLATECONFIG@
+EXTRA_DIST = common.seccomp
 templatesconfig_DATA = \
+	archlinux.common.conf \
+	archlinux.userns.conf \
 	centos.common.conf \
 	centos.userns.conf \
+	common.conf \
+	common.seccomp \
 	debian.common.conf \
 	debian.userns.conf \
 	fedora.common.conf \
@@ -335,6 +347,8 @@ templatesconfig_DATA = \
 	gentoo.common.conf \
 	gentoo.moresecure.conf \
 	gentoo.userns.conf \
+	opensuse.common.conf \
+	opensuse.userns.conf \
 	oracle.common.conf \
 	oracle.userns.conf \
 	plamo.common.conf \
@@ -344,7 +358,8 @@ templatesconfig_DATA = \
 	ubuntu-cloud.userns.conf \
 	ubuntu.common.conf \
 	ubuntu.lucid.conf \
-	ubuntu.userns.conf
+	ubuntu.userns.conf \
+	userns.conf
 
 all: all-am
 
@@ -379,9 +394,15 @@ $(top_srcdir)/configure:  $(am__configure_deps)
 $(ACLOCAL_M4):  $(am__aclocal_m4_deps)
 	cd $(top_builddir) && $(MAKE) $(AM_MAKEFLAGS) am--refresh
 $(am__aclocal_m4_deps):
+archlinux.common.conf: $(top_builddir)/config.status $(srcdir)/archlinux.common.conf.in
+	cd $(top_builddir) && $(SHELL) ./config.status $(subdir)/$@
+archlinux.userns.conf: $(top_builddir)/config.status $(srcdir)/archlinux.userns.conf.in
+	cd $(top_builddir) && $(SHELL) ./config.status $(subdir)/$@
 centos.common.conf: $(top_builddir)/config.status $(srcdir)/centos.common.conf.in
 	cd $(top_builddir) && $(SHELL) ./config.status $(subdir)/$@
 centos.userns.conf: $(top_builddir)/config.status $(srcdir)/centos.userns.conf.in
+	cd $(top_builddir) && $(SHELL) ./config.status $(subdir)/$@
+common.conf: $(top_builddir)/config.status $(srcdir)/common.conf.in
 	cd $(top_builddir) && $(SHELL) ./config.status $(subdir)/$@
 debian.common.conf: $(top_builddir)/config.status $(srcdir)/debian.common.conf.in
 	cd $(top_builddir) && $(SHELL) ./config.status $(subdir)/$@
@@ -396,6 +417,10 @@ gentoo.common.conf: $(top_builddir)/config.status $(srcdir)/gentoo.common.conf.i
 gentoo.moresecure.conf: $(top_builddir)/config.status $(srcdir)/gentoo.moresecure.conf.in
 	cd $(top_builddir) && $(SHELL) ./config.status $(subdir)/$@
 gentoo.userns.conf: $(top_builddir)/config.status $(srcdir)/gentoo.userns.conf.in
+	cd $(top_builddir) && $(SHELL) ./config.status $(subdir)/$@
+opensuse.common.conf: $(top_builddir)/config.status $(srcdir)/opensuse.common.conf.in
+	cd $(top_builddir) && $(SHELL) ./config.status $(subdir)/$@
+opensuse.userns.conf: $(top_builddir)/config.status $(srcdir)/opensuse.userns.conf.in
 	cd $(top_builddir) && $(SHELL) ./config.status $(subdir)/$@
 oracle.common.conf: $(top_builddir)/config.status $(srcdir)/oracle.common.conf.in
 	cd $(top_builddir) && $(SHELL) ./config.status $(subdir)/$@
@@ -416,6 +441,8 @@ ubuntu.common.conf: $(top_builddir)/config.status $(srcdir)/ubuntu.common.conf.i
 ubuntu.lucid.conf: $(top_builddir)/config.status $(srcdir)/ubuntu.lucid.conf.in
 	cd $(top_builddir) && $(SHELL) ./config.status $(subdir)/$@
 ubuntu.userns.conf: $(top_builddir)/config.status $(srcdir)/ubuntu.userns.conf.in
+	cd $(top_builddir) && $(SHELL) ./config.status $(subdir)/$@
+userns.conf: $(top_builddir)/config.status $(srcdir)/userns.conf.in
 	cd $(top_builddir) && $(SHELL) ./config.status $(subdir)/$@
 install-templatesconfigDATA: $(templatesconfig_DATA)
 	@$(NORMAL_INSTALL)

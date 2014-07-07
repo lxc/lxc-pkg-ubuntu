@@ -24,8 +24,7 @@
 #ifndef __LXC_BDEV_H
 #define __LXC_BDEV_H
 /* blockdev operations for:
- * aufs, dir, raw, btrfs, overlayfs, aufs, lvm, loop, zfs
- * someday: qemu-nbd, qcow2, qed
+ * aufs, dir, raw, btrfs, overlayfs, aufs, lvm, loop, zfs, nbd (qcow2, raw, vdi, qed)
  */
 
 #include "config.h"
@@ -66,11 +65,13 @@ struct bdev {
 	// turn the following into a union if need be
 	// lofd is the open fd for the mounted loopback file
 	int lofd;
+	// index for the connected nbd device
+	int nbd_idx;
 };
 
 char *overlay_getlower(char *p);
 
-bool bdev_is_dir(const char *path);
+bool bdev_is_dir(struct lxc_conf *conf, const char *path);
 
 /*
  * Instantiate a bdev object.  The src is used to determine which blockdev
@@ -83,7 +84,8 @@ bool bdev_is_dir(const char *path);
  * use /var/lib/lxc/canonical/rootfs as lower dir, and /var/lib/lxc/c1/delta
  * as the upper, writeable layer.
  */
-struct bdev *bdev_init(const char *src, const char *dst, const char *data);
+struct bdev *bdev_init(struct lxc_conf *conf, const char *src, const char *dst,
+			const char *data);
 
 struct bdev *bdev_copy(struct lxc_container *c0, const char *cname,
 			const char *lxcpath, const char *bdevtype,
@@ -92,6 +94,13 @@ struct bdev *bdev_copy(struct lxc_container *c0, const char *cname,
 struct bdev *bdev_create(const char *dest, const char *type,
 			const char *cname, struct bdev_specs *specs);
 void bdev_put(struct bdev *bdev);
+
+/*
+ * these are really for qemu-nbd support, as container shutdown
+ * must explicitly request device detach.
+ */
+bool attach_block_device(struct lxc_conf *conf);
+void detach_block_device(struct lxc_conf *conf);
 
 bool rootfs_is_blockdev(struct lxc_conf *conf);
 

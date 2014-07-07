@@ -115,9 +115,11 @@ bin_PROGRAMS = lxc-attach$(EXEEXT) lxc-autostart$(EXEEXT) \
 	lxc-monitor$(EXEEXT) lxc-snapshot$(EXEEXT) lxc-start$(EXEEXT) \
 	lxc-stop$(EXEEXT) lxc-unfreeze$(EXEEXT) lxc-unshare$(EXEEXT) \
 	lxc-usernsexec$(EXEEXT) lxc-wait$(EXEEXT)
-sbin_PROGRAMS = init.lxc$(EXEEXT)
+sbin_PROGRAMS = init.lxc$(EXEEXT) $(am__EXEEXT_1)
 pkglibexec_PROGRAMS = lxc-monitord$(EXEEXT) lxc-user-nic$(EXEEXT)
 @ENABLE_RPATH_TRUE@am__append_19 = -Wl,-rpath -Wl,$(libdir)
+@HAVE_STATIC_LIBCAP_TRUE@am__append_20 = init.lxc.static
+@HAVE_FGETLN_TRUE@@HAVE_GETLINE_FALSE@@HAVE_STATIC_LIBCAP_TRUE@am__append_21 = ../include/getline.c
 subdir = src/lxc
 DIST_COMMON = $(srcdir)/Makefile.in $(srcdir)/Makefile.am \
 	$(srcdir)/lxc-checkconfig.in $(srcdir)/lxc-ls.in \
@@ -137,12 +139,25 @@ CONFIG_CLEAN_VPATH_FILES =
 am__installdirs = "$(DESTDIR)$(bindir)" "$(DESTDIR)$(pkglibexecdir)" \
 	"$(DESTDIR)$(sbindir)" "$(DESTDIR)$(sodir)" \
 	"$(DESTDIR)$(bindir)" "$(DESTDIR)$(pkgincludedir)"
+@HAVE_STATIC_LIBCAP_TRUE@am__EXEEXT_1 = init.lxc.static$(EXEEXT)
 PROGRAMS = $(bin_PROGRAMS) $(pkglibexec_PROGRAMS) $(sbin_PROGRAMS) \
 	$(so_PROGRAMS)
 am_init_lxc_OBJECTS = lxc_init.$(OBJEXT)
 init_lxc_OBJECTS = $(am_init_lxc_OBJECTS)
 init_lxc_LDADD = $(LDADD)
 init_lxc_DEPENDENCIES = liblxc.so
+am__init_lxc_static_SOURCES_DIST = lxc_init.c error.c log.c utils.c \
+	caps.c ../include/getline.c
+am__dirstamp = $(am__leading_dot)dirstamp
+@HAVE_FGETLN_TRUE@@HAVE_GETLINE_FALSE@@HAVE_STATIC_LIBCAP_TRUE@am__objects_1 = ../include/getline.$(OBJEXT)
+@HAVE_STATIC_LIBCAP_TRUE@am_init_lxc_static_OBJECTS =  \
+@HAVE_STATIC_LIBCAP_TRUE@	lxc_init.$(OBJEXT) error.$(OBJEXT) \
+@HAVE_STATIC_LIBCAP_TRUE@	log.$(OBJEXT) utils.$(OBJEXT) \
+@HAVE_STATIC_LIBCAP_TRUE@	caps.$(OBJEXT) $(am__objects_1)
+init_lxc_static_OBJECTS = $(am_init_lxc_static_OBJECTS)
+init_lxc_static_DEPENDENCIES =
+init_lxc_static_LINK = $(CCLD) $(AM_CFLAGS) $(CFLAGS) \
+	$(init_lxc_static_LDFLAGS) $(LDFLAGS) -o $@
 am__liblxc_so_SOURCES_DIST = arguments.c arguments.h bdev.c bdev.h \
 	commands.c commands.h start.c start.h execute.c monitor.c \
 	monitor.h console.c freezer.c error.h error.c parse.c parse.h \
@@ -157,19 +172,18 @@ am__liblxc_so_SOURCES_DIST = arguments.c arguments.h bdev.c bdev.h \
 	../include/ifaddrs.h ../include/openpty.c ../include/openpty.h \
 	../include/lxcmntent.c ../include/lxcmntent.h \
 	../include/getline.c ../include/getline.h seccomp.c
-am__dirstamp = $(am__leading_dot)dirstamp
-@ENABLE_APPARMOR_TRUE@am__objects_1 =  \
+@ENABLE_APPARMOR_TRUE@am__objects_2 =  \
 @ENABLE_APPARMOR_TRUE@	lsm/liblxc_so-apparmor.$(OBJEXT)
-@ENABLE_SELINUX_TRUE@am__objects_2 = lsm/liblxc_so-selinux.$(OBJEXT)
-am__objects_3 = lsm/liblxc_so-nop.$(OBJEXT) \
-	lsm/liblxc_so-lsm.$(OBJEXT) $(am__objects_1) $(am__objects_2)
-@ENABLE_CGMANAGER_TRUE@am__objects_4 = liblxc_so-cgmanager.$(OBJEXT)
-@IS_BIONIC_TRUE@am__objects_5 =  \
+@ENABLE_SELINUX_TRUE@am__objects_3 = lsm/liblxc_so-selinux.$(OBJEXT)
+am__objects_4 = lsm/liblxc_so-nop.$(OBJEXT) \
+	lsm/liblxc_so-lsm.$(OBJEXT) $(am__objects_2) $(am__objects_3)
+@ENABLE_CGMANAGER_TRUE@am__objects_5 = liblxc_so-cgmanager.$(OBJEXT)
+@IS_BIONIC_TRUE@am__objects_6 =  \
 @IS_BIONIC_TRUE@	../include/liblxc_so-ifaddrs.$(OBJEXT) \
 @IS_BIONIC_TRUE@	../include/liblxc_so-openpty.$(OBJEXT) \
 @IS_BIONIC_TRUE@	../include/liblxc_so-lxcmntent.$(OBJEXT)
-@HAVE_FGETLN_TRUE@@HAVE_GETLINE_FALSE@am__objects_6 = ../include/liblxc_so-getline.$(OBJEXT)
-@ENABLE_SECCOMP_TRUE@am__objects_7 = liblxc_so-seccomp.$(OBJEXT)
+@HAVE_FGETLN_TRUE@@HAVE_GETLINE_FALSE@am__objects_7 = ../include/liblxc_so-getline.$(OBJEXT)
+@ENABLE_SECCOMP_TRUE@am__objects_8 = liblxc_so-seccomp.$(OBJEXT)
 am_liblxc_so_OBJECTS = liblxc_so-arguments.$(OBJEXT) \
 	liblxc_so-bdev.$(OBJEXT) liblxc_so-commands.$(OBJEXT) \
 	liblxc_so-start.$(OBJEXT) liblxc_so-execute.$(OBJEXT) \
@@ -185,9 +199,9 @@ am_liblxc_so_OBJECTS = liblxc_so-arguments.$(OBJEXT) \
 	liblxc_so-genl.$(OBJEXT) liblxc_so-caps.$(OBJEXT) \
 	liblxc_so-mainloop.$(OBJEXT) liblxc_so-af_unix.$(OBJEXT) \
 	liblxc_so-lxcutmp.$(OBJEXT) liblxc_so-lxclock.$(OBJEXT) \
-	liblxc_so-lxccontainer.$(OBJEXT) $(am__objects_3) \
-	$(am__objects_4) $(am__objects_5) $(am__objects_6) \
-	$(am__objects_7)
+	liblxc_so-lxccontainer.$(OBJEXT) $(am__objects_4) \
+	$(am__objects_5) $(am__objects_6) $(am__objects_7) \
+	$(am__objects_8)
 liblxc_so_OBJECTS = $(am_liblxc_so_OBJECTS)
 am__DEPENDENCIES_1 =
 @ENABLE_CGMANAGER_TRUE@am__DEPENDENCIES_2 = $(am__DEPENDENCIES_1) \
@@ -195,7 +209,8 @@ am__DEPENDENCIES_1 =
 @ENABLE_CGMANAGER_TRUE@	$(am__DEPENDENCIES_1) \
 @ENABLE_CGMANAGER_TRUE@	$(am__DEPENDENCIES_1)
 liblxc_so_DEPENDENCIES = $(am__DEPENDENCIES_1) $(am__DEPENDENCIES_1) \
-	$(am__DEPENDENCIES_1) $(am__DEPENDENCIES_2)
+	$(am__DEPENDENCIES_1) $(am__DEPENDENCIES_1) \
+	$(am__DEPENDENCIES_2)
 liblxc_so_LINK = $(CCLD) $(liblxc_so_CFLAGS) $(CFLAGS) \
 	$(liblxc_so_LDFLAGS) $(LDFLAGS) -o $@
 am_lxc_attach_OBJECTS = lxc_attach.$(OBJEXT)
@@ -342,30 +357,30 @@ AM_V_CCLD = $(am__v_CCLD_@AM_V@)
 am__v_CCLD_ = $(am__v_CCLD_@AM_DEFAULT_V@)
 am__v_CCLD_0 = @echo "  CCLD    " $@;
 am__v_CCLD_1 = 
-SOURCES = $(init_lxc_SOURCES) $(liblxc_so_SOURCES) \
-	$(lxc_attach_SOURCES) $(lxc_autostart_SOURCES) \
-	$(lxc_cgroup_SOURCES) $(lxc_clone_SOURCES) \
-	$(lxc_config_SOURCES) $(lxc_console_SOURCES) \
-	$(lxc_create_SOURCES) $(lxc_destroy_SOURCES) \
-	$(lxc_execute_SOURCES) $(lxc_freeze_SOURCES) \
-	$(lxc_info_SOURCES) $(lxc_monitor_SOURCES) \
-	$(lxc_monitord_SOURCES) $(lxc_snapshot_SOURCES) \
-	$(lxc_start_SOURCES) $(lxc_stop_SOURCES) \
-	$(lxc_unfreeze_SOURCES) $(lxc_unshare_SOURCES) \
-	$(lxc_user_nic_SOURCES) $(lxc_usernsexec_SOURCES) \
-	$(lxc_wait_SOURCES)
-DIST_SOURCES = $(init_lxc_SOURCES) $(am__liblxc_so_SOURCES_DIST) \
-	$(lxc_attach_SOURCES) $(lxc_autostart_SOURCES) \
-	$(lxc_cgroup_SOURCES) $(lxc_clone_SOURCES) \
-	$(lxc_config_SOURCES) $(lxc_console_SOURCES) \
-	$(lxc_create_SOURCES) $(lxc_destroy_SOURCES) \
-	$(lxc_execute_SOURCES) $(lxc_freeze_SOURCES) \
-	$(lxc_info_SOURCES) $(lxc_monitor_SOURCES) \
-	$(lxc_monitord_SOURCES) $(lxc_snapshot_SOURCES) \
-	$(lxc_start_SOURCES) $(lxc_stop_SOURCES) \
-	$(lxc_unfreeze_SOURCES) $(lxc_unshare_SOURCES) \
-	$(lxc_user_nic_SOURCES) $(lxc_usernsexec_SOURCES) \
-	$(lxc_wait_SOURCES)
+SOURCES = $(init_lxc_SOURCES) $(init_lxc_static_SOURCES) \
+	$(liblxc_so_SOURCES) $(lxc_attach_SOURCES) \
+	$(lxc_autostart_SOURCES) $(lxc_cgroup_SOURCES) \
+	$(lxc_clone_SOURCES) $(lxc_config_SOURCES) \
+	$(lxc_console_SOURCES) $(lxc_create_SOURCES) \
+	$(lxc_destroy_SOURCES) $(lxc_execute_SOURCES) \
+	$(lxc_freeze_SOURCES) $(lxc_info_SOURCES) \
+	$(lxc_monitor_SOURCES) $(lxc_monitord_SOURCES) \
+	$(lxc_snapshot_SOURCES) $(lxc_start_SOURCES) \
+	$(lxc_stop_SOURCES) $(lxc_unfreeze_SOURCES) \
+	$(lxc_unshare_SOURCES) $(lxc_user_nic_SOURCES) \
+	$(lxc_usernsexec_SOURCES) $(lxc_wait_SOURCES)
+DIST_SOURCES = $(init_lxc_SOURCES) $(am__init_lxc_static_SOURCES_DIST) \
+	$(am__liblxc_so_SOURCES_DIST) $(lxc_attach_SOURCES) \
+	$(lxc_autostart_SOURCES) $(lxc_cgroup_SOURCES) \
+	$(lxc_clone_SOURCES) $(lxc_config_SOURCES) \
+	$(lxc_console_SOURCES) $(lxc_create_SOURCES) \
+	$(lxc_destroy_SOURCES) $(lxc_execute_SOURCES) \
+	$(lxc_freeze_SOURCES) $(lxc_info_SOURCES) \
+	$(lxc_monitor_SOURCES) $(lxc_monitord_SOURCES) \
+	$(lxc_snapshot_SOURCES) $(lxc_start_SOURCES) \
+	$(lxc_stop_SOURCES) $(lxc_unfreeze_SOURCES) \
+	$(lxc_unshare_SOURCES) $(lxc_user_nic_SOURCES) \
+	$(lxc_usernsexec_SOURCES) $(lxc_wait_SOURCES)
 am__can_run_installinfo = \
   case $$AM_UPDATE_INFO_DIR in \
     n|no|NO) false;; \
@@ -601,8 +616,8 @@ liblxc_so_LDFLAGS = \
 	-shared \
 	-Wl,-soname,liblxc.so.$(firstword $(subst ., ,$(VERSION)))
 
-liblxc_so_LDADD = $(CAP_LIBS) $(APPARMOR_LIBS) $(SECCOMP_LIBS) \
-	$(am__append_14)
+liblxc_so_LDADD = $(CAP_LIBS) $(APPARMOR_LIBS) $(SELINUX_LIBS) \
+	$(SECCOMP_LIBS) $(am__append_14)
 bin_SCRIPTS = lxc-checkconfig $(am__append_16) $(am__append_17) \
 	$(am__append_18)
 EXTRA_DIST = \
@@ -611,7 +626,7 @@ EXTRA_DIST = \
 	lxc-top
 
 AM_LDFLAGS = -Wl,-E $(am__append_19)
-LDADD = liblxc.so @CAP_LIBS@ @APPARMOR_LIBS@ @SECCOMP_LIBS@
+LDADD = liblxc.so @CAP_LIBS@ @APPARMOR_LIBS@ @SELINUX_LIBS@ @SECCOMP_LIBS@
 lxc_attach_SOURCES = lxc_attach.c
 lxc_autostart_SOURCES = lxc_autostart.c
 lxc_cgroup_SOURCES = lxc_cgroup.c
@@ -634,6 +649,10 @@ lxc_create_SOURCES = lxc_create.c
 lxc_snapshot_SOURCES = lxc_snapshot.c
 lxc_usernsexec_SOURCES = lxc_usernsexec.c
 lxc_user_nic_SOURCES = lxc_user_nic.c network.c network.h
+@HAVE_STATIC_LIBCAP_TRUE@init_lxc_static_SOURCES = lxc_init.c error.c \
+@HAVE_STATIC_LIBCAP_TRUE@	log.c utils.c caps.c $(am__append_21)
+@HAVE_STATIC_LIBCAP_TRUE@init_lxc_static_LDFLAGS = -static
+@HAVE_STATIC_LIBCAP_TRUE@init_lxc_static_LDADD = @CAP_LIBS@
 all: all-am
 
 .SUFFIXES:
@@ -850,6 +869,18 @@ clean-soPROGRAMS:
 init.lxc$(EXEEXT): $(init_lxc_OBJECTS) $(init_lxc_DEPENDENCIES) $(EXTRA_init_lxc_DEPENDENCIES) 
 	@rm -f init.lxc$(EXEEXT)
 	$(AM_V_CCLD)$(LINK) $(init_lxc_OBJECTS) $(init_lxc_LDADD) $(LIBS)
+../include/$(am__dirstamp):
+	@$(MKDIR_P) ../include
+	@: > ../include/$(am__dirstamp)
+../include/$(DEPDIR)/$(am__dirstamp):
+	@$(MKDIR_P) ../include/$(DEPDIR)
+	@: > ../include/$(DEPDIR)/$(am__dirstamp)
+../include/getline.$(OBJEXT): ../include/$(am__dirstamp) \
+	../include/$(DEPDIR)/$(am__dirstamp)
+
+init.lxc.static$(EXEEXT): $(init_lxc_static_OBJECTS) $(init_lxc_static_DEPENDENCIES) $(EXTRA_init_lxc_static_DEPENDENCIES) 
+	@rm -f init.lxc.static$(EXEEXT)
+	$(AM_V_CCLD)$(init_lxc_static_LINK) $(init_lxc_static_OBJECTS) $(init_lxc_static_LDADD) $(LIBS)
 lsm/$(am__dirstamp):
 	@$(MKDIR_P) lsm
 	@: > lsm/$(am__dirstamp)
@@ -864,12 +895,6 @@ lsm/liblxc_so-apparmor.$(OBJEXT): lsm/$(am__dirstamp) \
 	lsm/$(DEPDIR)/$(am__dirstamp)
 lsm/liblxc_so-selinux.$(OBJEXT): lsm/$(am__dirstamp) \
 	lsm/$(DEPDIR)/$(am__dirstamp)
-../include/$(am__dirstamp):
-	@$(MKDIR_P) ../include
-	@: > ../include/$(am__dirstamp)
-../include/$(DEPDIR)/$(am__dirstamp):
-	@$(MKDIR_P) ../include/$(DEPDIR)
-	@: > ../include/$(DEPDIR)/$(am__dirstamp)
 ../include/liblxc_so-ifaddrs.$(OBJEXT): ../include/$(am__dirstamp) \
 	../include/$(DEPDIR)/$(am__dirstamp)
 ../include/liblxc_so-openpty.$(OBJEXT): ../include/$(am__dirstamp) \
@@ -1010,10 +1035,13 @@ mostlyclean-compile:
 distclean-compile:
 	-rm -f *.tab.c
 
+@AMDEP_TRUE@@am__include@ @am__quote@../include/$(DEPDIR)/getline.Po@am__quote@
 @AMDEP_TRUE@@am__include@ @am__quote@../include/$(DEPDIR)/liblxc_so-getline.Po@am__quote@
 @AMDEP_TRUE@@am__include@ @am__quote@../include/$(DEPDIR)/liblxc_so-ifaddrs.Po@am__quote@
 @AMDEP_TRUE@@am__include@ @am__quote@../include/$(DEPDIR)/liblxc_so-lxcmntent.Po@am__quote@
 @AMDEP_TRUE@@am__include@ @am__quote@../include/$(DEPDIR)/liblxc_so-openpty.Po@am__quote@
+@AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/caps.Po@am__quote@
+@AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/error.Po@am__quote@
 @AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/liblxc_so-af_unix.Po@am__quote@
 @AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/liblxc_so-arguments.Po@am__quote@
 @AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/liblxc_so-attach.Po@am__quote@
@@ -1046,6 +1074,7 @@ distclean-compile:
 @AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/liblxc_so-state.Po@am__quote@
 @AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/liblxc_so-sync.Po@am__quote@
 @AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/liblxc_so-utils.Po@am__quote@
+@AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/log.Po@am__quote@
 @AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/lxc_attach.Po@am__quote@
 @AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/lxc_autostart.Po@am__quote@
 @AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/lxc_cgroup.Po@am__quote@
@@ -1069,6 +1098,7 @@ distclean-compile:
 @AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/lxc_usernsexec.Po@am__quote@
 @AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/lxc_wait.Po@am__quote@
 @AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/network.Po@am__quote@
+@AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/utils.Po@am__quote@
 @AMDEP_TRUE@@am__include@ @am__quote@lsm/$(DEPDIR)/liblxc_so-apparmor.Po@am__quote@
 @AMDEP_TRUE@@am__include@ @am__quote@lsm/$(DEPDIR)/liblxc_so-lsm.Po@am__quote@
 @AMDEP_TRUE@@am__include@ @am__quote@lsm/$(DEPDIR)/liblxc_so-nop.Po@am__quote@

@@ -99,6 +99,16 @@ struct lxc_container {
 	 */
 	struct lxc_conf *lxc_conf;
 
+	/*!
+	 * \private
+	 * The non-common, unexpanded configuration.  This includes the
+	 * list of lxc.include files, and does not contain any
+	 * individual configuration items from the include files.
+	 * Anything coming from the container's own configuration file
+	 * or from lxcapi_set_config_item() does get added here.
+	 */
+	struct lxc_conf *lxc_unexp_conf;
+
 	// public fields
 	/*! Human-readable string representing last error */
 	char *error_string;
@@ -284,6 +294,17 @@ struct lxc_container {
 	 * \note Container must be stopped and have no dependent snapshots.
 	 */
 	bool (*destroy)(struct lxc_container *c);
+
+	/*!
+	 * \brief Delete the container and all its snapshots.
+	 *
+	 * \param c Container.
+	 *
+	 * \return \c true on success, else \c false.
+	 *
+	 * \note Container must be stopped.
+	 */
+	bool (*destroy_with_snapshots)(struct lxc_container *c);
 
 	/*!
 	 * \brief Save configuaration to a file.
@@ -649,7 +670,7 @@ struct lxc_container {
 	 * \brief Create a container snapshot.
 	 *
 	 * Assuming default paths, snapshots will be created as
-	 * \c /var/lib/lxcsnaps/\<c\>/snap\<n\>
+	 * \c /var/lib/lxc/\<c\>/snaps/snap\<n\>
 	 * where \c \<c\> represents the container name and \c \<n\>
 	 * represents the zero-based snapshot number.
 	 *
@@ -691,7 +712,7 @@ struct lxc_container {
 	 *  fail if the  snapshot is overlay-based, since the snapshots
 	 *  will pin the original container.
 	 * \note As an example, if the container exists as \c /var/lib/lxc/c1, snapname might be \c 'snap0'
-	 *  (representing \c /var/lib/lxcsnaps/c1/snap0). If \p newname is \p c2,
+	 *  (representing \c /var/lib/lxc/c1/snaps/snap0). If \p newname is \p c2,
 	 *  then \c snap0 will be copied to \c /var/lib/lxc/c2.
 	 */
 	bool (*snapshot_restore)(struct lxc_container *c, const char *snapname, const char *newname);
@@ -705,6 +726,15 @@ struct lxc_container {
 	 * \return \c true on success, else \c false.
 	 */
 	bool (*snapshot_destroy)(struct lxc_container *c, const char *snapname);
+
+	/*!
+	 * \brief Destroy all the container's snapshot.
+	 *
+	 * \param c Container.
+	 *
+	 * \return \c true on success, else \c false.
+	 */
+	bool (*snapshot_destroy_all)(struct lxc_container *c);
 
 	/*!
 	 * \brief Determine if the caller may control the container.

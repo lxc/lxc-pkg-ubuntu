@@ -152,7 +152,7 @@ liblxc_so_LDFLAGS = \
 	-shared \
 	-Wl,-soname,liblxc.so.$(firstword $(subst ., ,$(VERSION)))
 
-liblxc_so_LDADD = $(CAP_LIBS) $(APPARMOR_LIBS) $(SECCOMP_LIBS)
+liblxc_so_LDADD = $(CAP_LIBS) $(APPARMOR_LIBS) $(SELINUX_LIBS) $(SECCOMP_LIBS)
 
 if ENABLE_CGMANAGER
 liblxc_so_LDADD += $(CGMANAGER_LIBS) $(DBUS_LIBS) $(NIH_LIBS) $(NIH_DBUS_LIBS)
@@ -208,7 +208,7 @@ AM_LDFLAGS = -Wl,-E
 if ENABLE_RPATH
 AM_LDFLAGS += -Wl,-rpath -Wl,$(libdir)
 endif
-LDADD=liblxc.so @CAP_LIBS@ @APPARMOR_LIBS@ @SECCOMP_LIBS@
+LDADD=liblxc.so @CAP_LIBS@ @APPARMOR_LIBS@ @SELINUX_LIBS@ @SECCOMP_LIBS@
 
 lxc_attach_SOURCES = lxc_attach.c
 lxc_autostart_SOURCES = lxc_autostart.c
@@ -232,6 +232,21 @@ lxc_create_SOURCES = lxc_create.c
 lxc_snapshot_SOURCES = lxc_snapshot.c
 lxc_usernsexec_SOURCES = lxc_usernsexec.c
 lxc_user_nic_SOURCES = lxc_user_nic.c network.c network.h
+
+if HAVE_STATIC_LIBCAP
+sbin_PROGRAMS += init.lxc.static
+
+init_lxc_static_SOURCES = lxc_init.c error.c log.c utils.c caps.c
+
+if !HAVE_GETLINE
+if HAVE_FGETLN
+init_lxc_static_SOURCES += ../include/getline.c
+endif
+endif
+
+init_lxc_static_LDFLAGS = -static
+init_lxc_static_LDADD = @CAP_LIBS@
+endif
 
 install-exec-local: install-soPROGRAMS
 	mkdir -p $(DESTDIR)$(datadir)/lxc
