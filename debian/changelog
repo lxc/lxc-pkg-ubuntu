@@ -1,3 +1,13 @@
+lxc (1.0.5-0ubuntu0.1) UNRELEASED; urgency=medium
+
+  * New upstream bugfix release. (MRE tracking bug: LP: #1341638)
+    - Changelog at: https://linuxcontainers.org/news/
+
+  * Sync packaging with utopic:
+    - Enable ppc64el adt as we now have ppc64el images available for download.
+
+ -- Stéphane Graber <stgraber@ubuntu.com>  Mon, 14 Jul 2014 11:44:09 -0400
+
 lxc (1.0.4-0ubuntu0.1) trusty; urgency=medium
 
   * New upstream bugfix release. (MRE trackaging bug LP: #1329932)
