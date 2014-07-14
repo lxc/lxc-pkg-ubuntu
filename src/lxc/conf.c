@@ -447,6 +447,10 @@ static int find_fstype_cb(char* buffer, void *data)
 	fstype += lxc_char_left_gc(fstype, strlen(fstype));
 	fstype[lxc_char_right_gc(fstype, strlen(fstype))] = '\0';
 
+	/* ignore blank line and comment */
+	if (fstype[0] == '\0' || fstype[0] == '#')
+		return 0;
+
 	DEBUG("trying to mount '%s'->'%s' with fstype '%s'",
 	      cbarg->rootfs, cbarg->target, fstype);
 
@@ -3318,7 +3322,8 @@ int lxc_map_ids(struct lxc_list *idmap, pid_t pid)
 }
 
 /*
- * return the host uid to which the container root is mapped in *val.
+ * return the host uid/gid to which the container root is mapped in
+ * *val.
  * Return true if id was found, false otherwise.
  */
 bool get_mapped_rootid(struct lxc_conf *conf, enum idtype idtype,
@@ -3329,7 +3334,7 @@ bool get_mapped_rootid(struct lxc_conf *conf, enum idtype idtype,
 
 	lxc_list_for_each(it, &conf->id_map) {
 		map = it->elem;
-		if (map->idtype != ID_TYPE_UID)
+		if (map->idtype != idtype)
 			continue;
 		if (map->nsid != 0)
 			continue;
@@ -3483,15 +3488,17 @@ void lxc_delete_tty(struct lxc_tty_info *tty_info)
 }
 
 /*
- * chown_mapped_root: for an unprivileged user with uid X to chown a dir
- * to subuid Y, he needs to run chown as root in a userns where
- * nsid 0 is mapped to hostuid Y, and nsid Y is mapped to hostuid
- * X.  That way, the container root is privileged with respect to
- * hostuid X, allowing him to do the chown.
+ * chown_mapped_root: for an unprivileged user with uid/gid X to
+ * chown a dir to subuid/subgid Y, he needs to run chown as root
+ * in a userns where nsid 0 is mapped to hostuid/hostgid Y, and
+ * nsid Y is mapped to hostuid/hostgid X.  That way, the container
+ * root is privileged with respect to hostuid/hostgid X, allowing
+ * him to do the chown.
  */
 int chown_mapped_root(char *path, struct lxc_conf *conf)
 {
-	uid_t rootid;
+	uid_t rootuid;
+	gid_t rootgid;
 	pid_t pid;
 	unsigned long val;
 	char *chownpath = path;
@@ -3500,7 +3507,12 @@ int chown_mapped_root(char *path, struct lxc_conf *conf)
 		ERROR("No mapping for container root");
 		return -1;
 	}
-	rootid = (uid_t) val;
+	rootuid = (uid_t) val;
+	if (!get_mapped_rootid(conf, ID_TYPE_GID, &val)) {
+		ERROR("No mapping for container root");
+		return -1;
+	}
+	rootgid = (gid_t) val;
 
 	/*
 	 * In case of overlay, we want only the writeable layer
@@ -3521,14 +3533,14 @@ int chown_mapped_root(char *path, struct lxc_conf *conf)
 	}
 	path = chownpath;
 	if (geteuid() == 0) {
-		if (chown(path, rootid, -1) < 0) {
+		if (chown(path, rootuid, rootgid) < 0) {
 			ERROR("Error chowning %s", path);
 			return -1;
 		}
 		return 0;
 	}
 
-	if (rootid == geteuid()) {
+	if (rootuid == geteuid()) {
 		// nothing to do
 		INFO("%s: container root is our uid;  no need to chown" ,__func__);
 		return 0;
@@ -3540,13 +3552,36 @@ int chown_mapped_root(char *path, struct lxc_conf *conf)
 		return -1;
 	}
 	if (!pid) {
-		int hostuid = geteuid(), ret;
-		char map1[100], map2[100], map3[100];
-		char *args[] = {"lxc-usernsexec", "-m", map1, "-m", map2, "-m",
-				 map3, "--", "chown", "0", path, NULL};
+		int hostuid = geteuid(), hostgid = getegid(), ret;
+		struct stat sb;
+		char map1[100], map2[100], map3[100], map4[100], map5[100];
+		char ugid[100];
+		char *args1[] = { "lxc-usernsexec", "-m", map1, "-m", map2,
+				"-m", map3, "-m", map5,
+				"--", "chown", ugid, path, NULL };
+		char *args2[] = { "lxc-usernsexec", "-m", map1, "-m", map2,
+				"-m", map3, "-m", map4, "-m", map5,
+				"--", "chown", ugid, path, NULL };
 
-		// "u:0:rootid:1"
-		ret = snprintf(map1, 100, "u:0:%d:1", rootid);
+		// save the current gid of "path"
+		if (stat(path, &sb) < 0) {
+			ERROR("Error stat %s", path);
+			return -1;
+		}
+
+		/*
+		 * A file has to be group-owned by a gid mapped into the
+		 * container, or the container won't be privileged over it.
+		 */
+		if (sb.st_uid == geteuid() &&
+				mapped_hostid(sb.st_gid, conf, ID_TYPE_GID) < 0 &&
+				chown(path, -1, hostgid) < 0) {
+			ERROR("Failed chgrping %s", path);
+			return -1;
+		}
+
+		// "u:0:rootuid:1"
+		ret = snprintf(map1, 100, "u:0:%d:1", rootuid);
 		if (ret < 0 || ret >= 100) {
 			ERROR("Error uid printing map string");
 			return -1;
@@ -3559,14 +3594,39 @@ int chown_mapped_root(char *path, struct lxc_conf *conf)
 			return -1;
 		}
 
-		// "g:0:hostgid:1"
-		ret = snprintf(map3, 100, "g:0:%d:1", getgid());
+		// "g:0:rootgid:1"
+		ret = snprintf(map3, 100, "g:0:%d:1", rootgid);
 		if (ret < 0 || ret >= 100) {
-			ERROR("Error uid printing map string");
+			ERROR("Error gid printing map string");
 			return -1;
 		}
 
-		ret = execvp("lxc-usernsexec", args);
+		// "g:pathgid:rootgid+pathgid:1"
+		ret = snprintf(map4, 100, "g:%d:%d:1", (gid_t)sb.st_gid,
+				rootgid + (gid_t)sb.st_gid);
+		if (ret < 0 || ret >= 100) {
+			ERROR("Error gid printing map string");
+			return -1;
+		}
+
+		// "g:hostgid:hostgid:1"
+		ret = snprintf(map5, 100, "g:%d:%d:1", hostgid, hostgid);
+		if (ret < 0 || ret >= 100) {
+			ERROR("Error gid printing map string");
+			return -1;
+		}
+
+		// "0:pathgid" (chown)
+		ret = snprintf(ugid, 100, "0:%d", (gid_t)sb.st_gid);
+		if (ret < 0 || ret >= 100) {
+			ERROR("Error owner printing format string for chown");
+			return -1;
+		}
+
+		if (hostgid == sb.st_gid)
+			ret = execvp("lxc-usernsexec", args1);
+		else
+			ret = execvp("lxc-usernsexec", args2);
 		SYSERROR("Failed executing usernsexec");
 		exit(1);
 	}
@@ -4377,14 +4437,14 @@ static int run_userns_fn(void *data)
 }
 
 /*
- * Add a ID_TYPE_UID entry to an existing lxc_conf, if it is not
- * alread there.
- * We may want to generalize this to do gids as well as uids, but right now
- * it's not necessary.
+ * Add ID_TYPE_UID/ID_TYPE_GID entries to an existing lxc_conf,
+ * if they are not already there.
  */
-static struct lxc_list *idmap_add_id(struct lxc_conf *conf, uid_t uid)
+static struct lxc_list *idmap_add_id(struct lxc_conf *conf,
+		uid_t uid, gid_t gid)
 {
-	int hostid_mapped = mapped_hostid(uid, conf, ID_TYPE_UID);
+	int hostuid_mapped = mapped_hostid(uid, conf, ID_TYPE_UID);
+	int hostgid_mapped = mapped_hostid(gid, conf, ID_TYPE_GID);
 	struct lxc_list *new = NULL, *tmp, *it, *next;
 	struct id_map *entry;
 
@@ -4395,9 +4455,9 @@ static struct lxc_list *idmap_add_id(struct lxc_conf *conf, uid_t uid)
 	}
 	lxc_list_init(new);
 
-	if (hostid_mapped < 0) {
-		hostid_mapped = find_unmapped_nsuid(conf, ID_TYPE_UID);
-		if (hostid_mapped < 0)
+	if (hostuid_mapped < 0) {
+		hostuid_mapped = find_unmapped_nsuid(conf, ID_TYPE_UID);
+		if (hostuid_mapped < 0)
 			goto err;
 		tmp = malloc(sizeof(*tmp));
 		if (!tmp)
@@ -4409,8 +4469,27 @@ static struct lxc_list *idmap_add_id(struct lxc_conf *conf, uid_t uid)
 		}
 		tmp->elem = entry;
 		entry->idtype = ID_TYPE_UID;
-		entry->nsid = hostid_mapped;
-		entry->hostid = (unsigned long)uid;
+		entry->nsid = hostuid_mapped;
+		entry->hostid = (unsigned long) uid;
+		entry->range = 1;
+		lxc_list_add_tail(new, tmp);
+	}
+	if (hostgid_mapped < 0) {
+		hostgid_mapped = find_unmapped_nsuid(conf, ID_TYPE_GID);
+		if (hostgid_mapped < 0)
+			goto err;
+		tmp = malloc(sizeof(*tmp));
+		if (!tmp)
+			goto err;
+		entry = malloc(sizeof(*entry));
+		if (!entry) {
+			free(tmp);
+			goto err;
+		}
+		tmp->elem = entry;
+		entry->idtype = ID_TYPE_GID;
+		entry->nsid = hostgid_mapped;
+		entry->hostid = (unsigned long) gid;
 		entry->range = 1;
 		lxc_list_add_tail(new, tmp);
 	}
@@ -4432,7 +4511,7 @@ static struct lxc_list *idmap_add_id(struct lxc_conf *conf, uid_t uid)
 	return new;
 
 err:
-	ERROR("Out of memory building a new uid map");
+	ERROR("Out of memory building a new uid/gid map");
 	if (new)
 		lxc_free_idmap(new);
 	free(new);
@@ -4441,7 +4520,7 @@ err:
 
 /*
  * Run a function in a new user namespace.
- * The caller's euid will be mapped in if it is not already.
+ * The caller's euid/egid will be mapped in if it is not already.
  */
 int userns_exec_1(struct lxc_conf *conf, int (*fn)(void *), void *data)
 {
@@ -4466,8 +4545,8 @@ int userns_exec_1(struct lxc_conf *conf, int (*fn)(void *), void *data)
 	close(p[0]);
 	p[0] = -1;
 
-	if ((idmap = idmap_add_id(conf, geteuid())) == NULL) {
-		ERROR("Error adding self to container uid map");
+	if ((idmap = idmap_add_id(conf, geteuid(), getegid())) == NULL) {
+		ERROR("Error adding self to container uid/gid map");
 		goto err;
 	}
 

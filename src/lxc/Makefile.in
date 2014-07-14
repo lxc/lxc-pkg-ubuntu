@@ -195,7 +195,8 @@ am__DEPENDENCIES_1 =
 @ENABLE_CGMANAGER_TRUE@	$(am__DEPENDENCIES_1) \
 @ENABLE_CGMANAGER_TRUE@	$(am__DEPENDENCIES_1)
 liblxc_so_DEPENDENCIES = $(am__DEPENDENCIES_1) $(am__DEPENDENCIES_1) \
-	$(am__DEPENDENCIES_1) $(am__DEPENDENCIES_2)
+	$(am__DEPENDENCIES_1) $(am__DEPENDENCIES_1) \
+	$(am__DEPENDENCIES_2)
 liblxc_so_LINK = $(CCLD) $(liblxc_so_CFLAGS) $(CFLAGS) \
 	$(liblxc_so_LDFLAGS) $(LDFLAGS) -o $@
 am_lxc_attach_OBJECTS = lxc_attach.$(OBJEXT)
@@ -601,8 +602,8 @@ liblxc_so_LDFLAGS = \
 	-shared \
 	-Wl,-soname,liblxc.so.$(firstword $(subst ., ,$(VERSION)))
 
-liblxc_so_LDADD = $(CAP_LIBS) $(APPARMOR_LIBS) $(SECCOMP_LIBS) \
-	$(am__append_14)
+liblxc_so_LDADD = $(CAP_LIBS) $(APPARMOR_LIBS) $(SELINUX_LIBS) \
+	$(SECCOMP_LIBS) $(am__append_14)
 bin_SCRIPTS = lxc-checkconfig $(am__append_16) $(am__append_17) \
 	$(am__append_18)
 EXTRA_DIST = \
@@ -611,7 +612,7 @@ EXTRA_DIST = \
 	lxc-top
 
 AM_LDFLAGS = -Wl,-E $(am__append_19)
-LDADD = liblxc.so @CAP_LIBS@ @APPARMOR_LIBS@ @SECCOMP_LIBS@
+LDADD = liblxc.so @CAP_LIBS@ @APPARMOR_LIBS@ @SELINUX_LIBS@ @SECCOMP_LIBS@
 lxc_attach_SOURCES = lxc_attach.c
 lxc_autostart_SOURCES = lxc_autostart.c
 lxc_cgroup_SOURCES = lxc_cgroup.c

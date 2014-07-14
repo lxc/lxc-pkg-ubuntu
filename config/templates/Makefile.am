@@ -1,8 +1,11 @@
 templatesconfigdir=@LXCTEMPLATECONFIG@
 
+EXTRA_DIST = common.seccomp
+
 templatesconfig_DATA = \
 	centos.common.conf \
 	centos.userns.conf \
+	common.seccomp \
 	debian.common.conf \
 	debian.userns.conf \
 	fedora.common.conf \
