@@ -1,3 +1,13 @@
+lxc (1.1.0~alpha1-0ubuntu2) utopic; urgency=medium
+
+  * d/p/0001-lxc-test-unpriv-usernic.in-make-sure-to-chgrp-as-wel.patch:
+    Fix test failures in jenkins.
+  * d/p/0002-Remove-mention-of-mountcgroups-in-ubuntu.common-conf.patch:
+    Fix the comment in the ubuntu common config about how to support nesting.
+    (LP: #1342960)
+
+ -- Serge Hallyn <serge.hallyn@ubuntu.com>  Thu, 17 Jul 2014 16:42:46 -0500
+
 lxc (1.1.0~alpha1-0ubuntu1) utopic; urgency=medium
 
   * New upstream release (1.1.0~alpha1)
