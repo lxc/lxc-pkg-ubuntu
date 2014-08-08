@@ -1,0 +1,1 @@
+lxc-tests: binary-without-manpage usr/bin/lxc-test-*

@@ -1,0 +1,160 @@
+Source: lxc
+Section: admin
+Priority: optional
+Maintainer: Ubuntu Developers <ubuntu-devel-discuss@lists.ubuntu.com>
+Build-Depends: autotools-dev,
+               debhelper (>= 9),
+               dh-apparmor,
+               dh-autoreconf,
+               docbook2x,
+               hardening-wrapper,
+               libapparmor-dev,
+               libcap-dev,
+               libcgmanager-dev,
+               libgnutls-dev,
+               liblua5.2-dev,
+               libseccomp-dev [i386 amd64 armhf],
+               libselinux1-dev,
+               linux-libc-dev,
+               pkg-config,
+               python3-all-dev (>= 3.2.3)
+Standards-Version: 3.9.5
+Homepage: http://linuxcontainers.org
+X-Python3-Version: >= 3.2
+XS-Testsuite: autopkgtest
+
+Package: lxc
+Architecture: linux-any
+Pre-Depends: ${misc:Pre-Depends}
+Depends: adduser,
+         bridge-utils,
+         dnsmasq-base,
+         iptables,
+         liblxc1 (= ${binary:Version}),
+         python3,
+         python3-lxc,
+         ${lxc:Depends},
+         ${misc:Depends},
+         ${shlibs:Depends}
+Recommends: lxc-templates (>= 0.8.0~rc1-4ubuntu43)
+Suggests: btrfs-tools, lvm2, lxctl
+Description: Linux Containers userspace tools
+ Containers are insulated areas inside a system, which have their own namespace
+ for filesystem, network, PID, IPC, CPU and memory allocation and which can be
+ created using the Control Group and Namespace features included in the Linux
+ kernel.
+ .
+ This package provides the lxc-* tools, which can be used to start a single
+ daemon in a container, or to boot an entire "containerized" system, and to
+ manage and debug your containers.
+
+Package: lxc-dbg
+Section: debug
+Priority: extra
+Architecture: linux-any
+Depends: lxc (= ${binary:Version}),
+         lxc-dev (= ${binary:Version}),
+         ${misc:Depends}
+Description: Linux Containers userspace tools (debug)
+ Containers are insulated areas inside a system, which have their own namespace
+ for filesystem, network, PID, IPC, CPU and memory allocation and which can be
+ created using the Control Group and Namespace features included in the Linux
+ kernel.
+ .
+ This package contains the debugging symbols.
+
+Package: lxc-dev
+Section: libdevel
+Architecture: linux-any
+Depends: lxc (= ${binary:Version}), ${misc:Depends}
+Description: Linux Containers userspace tools (development)
+ Containers are insulated areas inside a system, which have their own namespace
+ for filesystem, network, PID, IPC, CPU and memory allocation and which can be
+ created using the Control Group and Namespace features included in the Linux
+ kernel.
+ .
+ This package contains the development files.
+
+Package: lxc-templates
+Architecture: linux-any
+Depends: lxc (>= 0.8.0~rc1-4ubuntu43), ${misc:Depends}
+Recommends: busybox-static,
+            cloud-image-utils | cloud-utils,
+            debootstrap | cdebootstrap,
+            openssl,
+            rsync,
+            uuid-runtime,
+            xz-utils
+Suggests: qemu-user-static
+Replaces: lxc (<< 0.8.0~rc1-4ubuntu43)
+Breaks: lxc (<< 0.8.0~rc1-4ubuntu43)
+Description: Linux Containers userspace tools (templates)
+ Containers are insulated areas inside a system, which have their own namespace
+ for filesystem, network, PID, IPC, CPU and memory allocation and which can be
+ created using the Control Group and Namespace features included in the Linux
+ kernel.
+ .
+ This package contains the templates.
+
+Package: lxc-tests
+Architecture: linux-any
+Depends: liblxc1 (= ${binary:Version}), ${misc:Depends}, ${shlibs:Depends}
+Recommends: lxc, lxc-templates
+Description: Linux Containers userspace tools (test binaries)
+ Containers are insulated areas inside a system, which have their own namespace
+ for filesystem, network, PID, IPC, CPU and memory allocation and which can be
+ created using the Control Group and Namespace features included in the Linux
+ kernel.
+ .
+ This package contains the test binaries.
+
+Package: liblxc1
+Architecture: linux-any
+Pre-Depends: ${misc:Pre-Depends}
+Depends: cgmanager | cgroup-lite, rsync, ${misc:Depends}, ${shlibs:Depends}
+Recommends: cgmanager, uidmap
+Replaces: liblxc0, lxc (<< 0.9.0~alpha3-0ubuntu1~)
+Breaks: lxc (<< 0.9.0~alpha3-0ubuntu1~)
+Provides: liblxc0
+Conflicts: liblxc0
+Description: Linux Containers userspace tools (library)
+ Containers are insulated areas inside a system, which have their own namespace
+ for filesystem, network, PID, IPC, CPU and memory allocation and which can be
+ created using the Control Group and Namespace features included in the Linux
+ kernel.
+ .
+ This package contains the libraries.
+
+Package: python3-lxc
+Architecture: linux-any
+Section: python
+Depends: liblxc1 (=${binary:Version}),
+         ${misc:Depends},
+         ${python3:Depends},
+         ${shlibs:Depends}
+Recommends: lxc-templates (>= 0.8.0~rc1-4ubuntu43)
+Description: Linux Containers userspace tools (Python 3.x bindings)
+ Containers are insulated areas inside a system, which have their own namespace
+ for filesystem, network, PID, IPC, CPU and memory allocation and which can be
+ created using the Control Group and Namespace features included in the Linux
+ kernel.
+ .
+ This package contains the Python 3.x bindings.
+
+Package: lua-lxc
+Architecture: linux-any
+Section: interpreters
+Depends: liblua5.2-0,
+         liblxc1 (=${binary:Version}),
+         lua-filesystem,
+         lua5.2,
+         ${misc:Depends},
+         ${shlibs:Depends}
+Recommends: lxc-templates (>= 0.8.0~rc1-4ubuntu43)
+Description: Linux Containers userspace tools (LUA bindings)
+ Containers are insulated areas inside a system, which have their own namespace
+ for filesystem, network, PID, IPC, CPU and memory allocation and which can be
+ created using the Control Group and Namespace features included in the Linux
+ kernel.
+ .
+ This package contains the LUA bindings.
