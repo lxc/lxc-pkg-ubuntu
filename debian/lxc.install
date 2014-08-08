@@ -1,4 +1,5 @@
 etc
+lib/systemd
 usr/bin
 usr/lib/*/lxc/lxc-*
 usr/sbin/*
@@ -6,6 +7,8 @@ usr/share/doc
 usr/share/lxc/config
 usr/share/lxc/hooks
 usr/share/lxc/lxc.functions
+usr/share/lxc/lxc.net
+usr/share/lxc/selinux
 usr/share/man
 var/cache/lxc
 var/lib/lxc
