@@ -1,3 +1,2 @@
 /usr/lib/*/lua/*
 /usr/share/lua/*
-debian/local.daily/alt_getopt.lua usr/share/lua/5.2/

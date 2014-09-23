@@ -61,10 +61,6 @@ override_dh_install:
 	mkdir -p debian/lxc-tests/usr/bin
 	mv debian/lxc/usr/bin/lxc-test-* debian/lxc-tests/usr/bin/
 
-	# move lxc-top
-	mkdir -p debian/lua-lxc/usr/bin
-	mv debian/lxc/usr/bin/lxc-top debian/lua-lxc/usr/bin/
-
 override_dh_fixperms:
 	dh_fixperms
 	chmod u+s debian/lxc/usr/lib/${DEB_HOST_MULTIARCH}/lxc/lxc-user-nic
