@@ -88,6 +88,7 @@ static int config_network_ipv6_gateway(const char *, const char *, struct lxc_co
 static int config_cap_drop(const char *, const char *, struct lxc_conf *);
 static int config_cap_keep(const char *, const char *, struct lxc_conf *);
 static int config_console(const char *, const char *, struct lxc_conf *);
+static int config_console_logfile(const char *, const char *, struct lxc_conf *);
 static int config_seccomp(const char *, const char *, struct lxc_conf *);
 static int config_includefile(const char *, const char *, struct lxc_conf *);
 static int config_network_nic(const char *, const char *, struct lxc_conf *);
@@ -142,6 +143,7 @@ static struct lxc_config_t config[] = {
 	{ "lxc.network.",             config_network_nic          },
 	{ "lxc.cap.drop",             config_cap_drop             },
 	{ "lxc.cap.keep",             config_cap_keep             },
+	{ "lxc.console.logfile",      config_console_logfile      },
 	{ "lxc.console",              config_console              },
 	{ "lxc.seccomp",              config_seccomp              },
 	{ "lxc.include",              config_includefile          },
@@ -595,6 +597,10 @@ static int config_network_veth_pair(const char *key, const char *value,
 	if (!netdev)
 		return -1;
 
+	if (netdev->type != LXC_NET_VETH) {
+		ERROR("Invalid veth pair for a non-veth netdev");
+		return -1;
+	}
 	return network_ifname(&netdev->priv.veth_attr.pair, value);
 }
 
@@ -607,6 +613,10 @@ static int config_network_macvlan_mode(const char *key, const char *value,
 	if (!netdev)
 		return -1;
 
+	if (netdev->type != LXC_NET_MACVLAN) {
+		ERROR("Invalid macvlan.mode for a non-macvlan netdev");
+		return -1;
+	}
 	return macvlan_mode(&netdev->priv.macvlan_attr.mode, value);
 }
 
@@ -647,6 +657,10 @@ static int config_network_vlan_id(const char *key, const char *value,
 	if (!netdev)
 		return -1;
 
+	if (netdev->type != LXC_NET_VLAN) {
+		ERROR("Invalid vlan.id for a non-macvlan netdev");
+		return -1;
+	}
 	if (get_u16(&netdev->priv.vlan_attr.vid, value, 0))
 		return -1;
 
@@ -1552,6 +1566,12 @@ static int config_console(const char *key, const char *value,
 	return config_path_item(&lxc_conf->console.path, value);
 }
 
+static int config_console_logfile(const char *key, const char *value,
+			  struct lxc_conf *lxc_conf)
+{
+	return config_path_item(&lxc_conf->console.log_path, value);
+}
+
 static int config_includefile(const char *key, const char *value,
 			  struct lxc_conf *lxc_conf)
 {
@@ -2081,15 +2101,15 @@ static int lxc_get_item_nic(struct lxc_conf *c, char *retv, int inlen,
 		if (netdev->ipv6_gateway_auto) {
 			strprint(retv, inlen, "auto");
 		} else if (netdev->ipv6_gateway) {
-			char buf[INET_ADDRSTRLEN];
-			inet_ntop(AF_INET, netdev->ipv6_gateway, buf, sizeof(buf));
+			char buf[INET6_ADDRSTRLEN];
+			inet_ntop(AF_INET6, netdev->ipv6_gateway, buf, sizeof(buf));
 			strprint(retv, inlen, "%s", buf);
 		}
 	} else if (strcmp(p1, "ipv6") == 0) {
 		struct lxc_list *it2;
 		lxc_list_for_each(it2, &netdev->ipv6) {
-			struct lxc_inetdev *i = it2->elem;
-			char buf[INET_ADDRSTRLEN];
+			struct lxc_inet6dev *i = it2->elem;
+			char buf[INET6_ADDRSTRLEN];
 			inet_ntop(AF_INET6, &i->addr, buf, sizeof(buf));
 			strprint(retv, inlen, "%s\n", buf);
 		}
@@ -2148,6 +2168,8 @@ int lxc_get_config_item(struct lxc_conf *c, const char *key, char *retv,
 		return lxc_get_cgroup_entry(c, retv, inlen, key + 11);
 	else if (strcmp(key, "lxc.utsname") == 0)
 		v = c->utsname ? c->utsname->nodename : NULL;
+	else if (strcmp(key, "lxc.console.logfile") == 0)
+		v = c->console.log_path;
 	else if (strcmp(key, "lxc.console") == 0)
 		v = c->console.path;
 	else if (strcmp(key, "lxc.rootfs.mount") == 0)
@@ -2398,6 +2420,8 @@ void write_config(FILE *fout, struct lxc_conf *c)
 	}
 	if (c->console.path)
 		fprintf(fout, "lxc.console = %s\n", c->console.path);
+	if (c->console.log_path)
+		fprintf(fout, "lxc.console.logfile = %s\n", c->console.log_path);
 	if (c->rootfs.path)
 		fprintf(fout, "lxc.rootfs = %s\n", c->rootfs.path);
 	if (c->rootfs.mount && strcmp(c->rootfs.mount, LXCROOTFSMOUNT) != 0)

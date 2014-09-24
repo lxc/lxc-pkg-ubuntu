@@ -144,19 +144,20 @@ init_lxc_OBJECTS = $(am_init_lxc_OBJECTS)
 init_lxc_LDADD = $(LDADD)
 init_lxc_DEPENDENCIES = liblxc.so
 am__liblxc_so_SOURCES_DIST = arguments.c arguments.h bdev.c bdev.h \
-	commands.c commands.h start.c start.h execute.c monitor.c \
-	monitor.h console.c freezer.c error.h error.c parse.c parse.h \
-	cgfs.c cgroup.c cgroup.h lxc.h utils.c utils.h sync.c sync.h \
-	namespace.h namespace.c conf.c conf.h confile.c confile.h \
-	list.h state.c state.h log.c log.h attach.c attach.h network.c \
-	network.h nl.c nl.h rtnl.c rtnl.h genl.c genl.h caps.c caps.h \
-	lxcseccomp.h mainloop.c mainloop.h af_unix.c af_unix.h \
-	lxcutmp.c lxcutmp.h lxclock.h lxclock.c lxccontainer.c \
-	lxccontainer.h version.h lsm/nop.c lsm/lsm.h lsm/lsm.c \
-	lsm/apparmor.c lsm/selinux.c cgmanager.c ../include/ifaddrs.c \
-	../include/ifaddrs.h ../include/openpty.c ../include/openpty.h \
-	../include/lxcmntent.c ../include/lxcmntent.h \
-	../include/getline.c ../include/getline.h seccomp.c
+	lxc-btrfs.h commands.c commands.h start.c start.h execute.c \
+	monitor.c monitor.h console.c freezer.c error.h error.c \
+	parse.c parse.h cgfs.c cgroup.c cgroup.h lxc.h utils.c utils.h \
+	sync.c sync.h namespace.h namespace.c conf.c conf.h confile.c \
+	confile.h list.h state.c state.h log.c log.h attach.c attach.h \
+	network.c network.h nl.c nl.h rtnl.c rtnl.h genl.c genl.h \
+	caps.c caps.h lxcseccomp.h mainloop.c mainloop.h af_unix.c \
+	af_unix.h lxcutmp.c lxcutmp.h lxclock.h lxclock.c \
+	lxccontainer.c lxccontainer.h version.h lsm/nop.c lsm/lsm.h \
+	lsm/lsm.c lsm/apparmor.c lsm/selinux.c cgmanager.c \
+	../include/ifaddrs.c ../include/ifaddrs.h ../include/openpty.c \
+	../include/openpty.h ../include/lxcmntent.c \
+	../include/lxcmntent.h ../include/getline.c \
+	../include/getline.h seccomp.c
 am__dirstamp = $(am__leading_dot)dirstamp
 @ENABLE_APPARMOR_TRUE@am__objects_1 =  \
 @ENABLE_APPARMOR_TRUE@	lsm/liblxc_so-apparmor.$(OBJEXT)
@@ -373,8 +374,8 @@ am__can_run_installinfo = \
     *) (install-info --version) >/dev/null 2>&1;; \
   esac
 am__noinst_HEADERS_DIST = arguments.h attach.h bdev.h caps.h cgroup.h \
-	conf.h console.h error.h list.h log.h lxc.h lxclock.h \
-	monitor.h namespace.h start.h state.h utils.h \
+	conf.h console.h error.h list.h log.h lxc.h lxc-btrfs.h \
+	lxclock.h monitor.h namespace.h start.h state.h utils.h \
 	../include/ifaddrs.h ../include/openpty.h \
 	../include/lxcmntent.h ../include/getline.h
 HEADERS = $(noinst_HEADERS) $(pkginclude_HEADERS)
@@ -456,7 +457,6 @@ LXCROOTFSMOUNT = @LXCROOTFSMOUNT@
 LXCTEMPLATECONFIG = @LXCTEMPLATECONFIG@
 LXCTEMPLATEDIR = @LXCTEMPLATEDIR@
 LXC_DEFAULT_CONFIG = @LXC_DEFAULT_CONFIG@
-LXC_DISTRO_CONF = @LXC_DISTRO_CONF@
 LXC_GENERATE_DATE = @LXC_GENERATE_DATE@
 LXC_GLOBAL_CONF = @LXC_GLOBAL_CONF@
 LXC_USERNIC_CONF = @LXC_USERNIC_CONF@
@@ -566,16 +566,16 @@ pkginclude_HEADERS = \
 	version.h
 
 noinst_HEADERS = arguments.h attach.h bdev.h caps.h cgroup.h conf.h \
-	console.h error.h list.h log.h lxc.h lxclock.h monitor.h \
-	namespace.h start.h state.h utils.h $(am__append_1) \
+	console.h error.h list.h log.h lxc.h lxc-btrfs.h lxclock.h \
+	monitor.h namespace.h start.h state.h utils.h $(am__append_1) \
 	$(am__append_2)
 sodir = $(libdir)
 LSM_SOURCES = lsm/nop.c lsm/lsm.h lsm/lsm.c $(am__append_3) \
 	$(am__append_4)
-liblxc_so_SOURCES = arguments.c arguments.h bdev.c bdev.h commands.c \
-	commands.h start.c start.h execute.c monitor.c monitor.h \
-	console.c freezer.c error.h error.c parse.c parse.h cgfs.c \
-	cgroup.c cgroup.h lxc.h utils.c utils.h sync.c sync.h \
+liblxc_so_SOURCES = arguments.c arguments.h bdev.c bdev.h lxc-btrfs.h \
+	commands.c commands.h start.c start.h execute.c monitor.c \
+	monitor.h console.c freezer.c error.h error.c parse.c parse.h \
+	cgfs.c cgroup.c cgroup.h lxc.h utils.c utils.h sync.c sync.h \
 	namespace.h namespace.c conf.c conf.h confile.c confile.h \
 	list.h state.c state.h log.c log.h attach.c attach.h network.c \
 	network.h nl.c nl.h rtnl.c rtnl.h genl.c genl.h caps.c caps.h \

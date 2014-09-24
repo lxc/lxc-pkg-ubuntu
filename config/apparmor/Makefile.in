@@ -167,7 +167,6 @@ LXCROOTFSMOUNT = @LXCROOTFSMOUNT@
 LXCTEMPLATECONFIG = @LXCTEMPLATECONFIG@
 LXCTEMPLATEDIR = @LXCTEMPLATEDIR@
 LXC_DEFAULT_CONFIG = @LXC_DEFAULT_CONFIG@
-LXC_DISTRO_CONF = @LXC_DISTRO_CONF@
 LXC_GENERATE_DATE = @LXC_GENERATE_DATE@
 LXC_GLOBAL_CONF = @LXC_GLOBAL_CONF@
 LXC_USERNIC_CONF = @LXC_USERNIC_CONF@
@@ -388,8 +387,8 @@ distclean-generic:
 maintainer-clean-generic:
 	@echo "This command is intended for maintainers to use"
 	@echo "it deletes files that may require special tools to rebuild."
-@ENABLE_APPARMOR_FALSE@install-data-local:
 @ENABLE_APPARMOR_FALSE@uninstall-local:
+@ENABLE_APPARMOR_FALSE@install-data-local:
 clean: clean-am
 
 clean-am: clean-generic mostlyclean-am

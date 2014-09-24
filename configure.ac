@@ -3,7 +3,7 @@
 
 m4_define([lxc_version_major], 1)
 m4_define([lxc_version_minor], 0)
-m4_define([lxc_version_micro], 5)
+m4_define([lxc_version_micro], 6)
 m4_define([lxc_version_beta], [])
 
 m4_define([lxc_version_base], [lxc_version_major.lxc_version_minor.lxc_version_micro])
@@ -59,7 +59,7 @@ if test "z$with_distro" = "z"; then
 	with_distro="unknown"
 fi
 case $with_distro in
-	ubuntu)
+	ubuntu|raspbian)
 		distroconf=default.conf.ubuntu
 		;;
 	redhat|centos|fedora|oracle|oracleserver)
@@ -70,8 +70,10 @@ case $with_distro in
 		;;
 esac
 AC_MSG_RESULT([$with_distro])
-AM_CONDITIONAL([HAVE_DEBIAN], [test x"$with_distro" = "xdebian" -o x"$with_distro" = "xubuntu"])
+AM_CONDITIONAL([HAVE_DEBIAN], [test x"$with_distro" = "xdebian" -o x"$with_distro" = "xubuntu" -o x"$with_distro" = "xraspbian"])
 AM_CONDITIONAL([DISTRO_UBUNTU], [test "x$with_distro" = "xubuntu"])
+
+AC_CONFIG_LINKS([config/etc/default.conf:config/etc/${distroconf}])
 
 # Check for init system type
 AC_MSG_CHECKING([for init system type])
@@ -88,7 +90,7 @@ case "$with_init_script" in
 			redhat|centos|oracle|oracleserver)
 				init_script=sysvinit
 				;;
-			debian)
+			debian|raspbian)
 				init_script=upstart,systemd
 				;;
 			ubuntu)
@@ -488,7 +490,6 @@ AS_AC_EXPAND(LXC_DEFAULT_CONFIG, "$sysconfdir/lxc/default.conf")
 AS_AC_EXPAND(DATADIR, "$datadir")
 AS_AC_EXPAND(LOCALSTATEDIR, "$localstatedir")
 AS_AC_EXPAND(DOCDIR, "$docdir")
-AS_AC_EXPAND(LXC_DISTRO_CONF, "$distroconf")
 AS_AC_EXPAND(LXC_GENERATE_DATE, "$(date)")
 AS_AC_EXPAND(LXCPATH, "$with_config_path")
 AS_AC_EXPAND(LXC_GLOBAL_CONF, "$with_global_conf")
@@ -537,6 +538,7 @@ AC_CHECK_FUNCS([setns pivot_root sethostname unshare rand_r confstr faccessat])
 # Check for some functions
 AC_CHECK_LIB(pthread, main)
 AC_CHECK_FUNCS(pthread_atfork)
+AC_CHECK_FUNCS(statvfs)
 AC_CHECK_LIB(util, openpty)
 AC_CHECK_FUNCS([openpty hasmntopt setmntent endmntent utmpxname])
 AC_CHECK_FUNCS([getline],
@@ -571,6 +573,7 @@ AC_CONFIG_FILES([
 
 	config/Makefile
 	config/apparmor/Makefile
+	config/selinux/Makefile
 	config/bash/Makefile
 	config/bash/lxc
 	config/init/Makefile
@@ -716,6 +719,7 @@ AC_CONFIG_FILES([
 	src/lxc/lxc.functions
 	src/lxc/version.h
 	src/python-lxc/Makefile
+	src/python-lxc/setup.py
 
 	src/lua-lxc/Makefile
 

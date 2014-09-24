@@ -203,7 +203,7 @@ restart:
 		if (match_fd(fd))
 			continue;
 
-		if (conf->close_all_fds) {
+		if (conf == NULL || conf->close_all_fds) {
 			close(fd);
 			closedir(dir);
 			INFO("closed inherited fd %d", fd);
@@ -477,6 +477,7 @@ static void lxc_fini(const char *name, struct lxc_handler *handler)
 
 	lxc_console_delete(&handler->conf->console);
 	lxc_delete_tty(&handler->conf->tty_info);
+	lxc_delete_autodev(handler);
 	close(handler->conf->maincmd_fd);
 	handler->conf->maincmd_fd = -1;
 	free(handler->name);
@@ -547,7 +548,10 @@ static int must_drop_cap_sys_boot(struct lxc_conf *conf)
 	pid = clone(container_reboot_supported, stack, flags, &cmd);
 #endif
 	if (pid < 0) {
-		SYSERROR("failed to clone");
+		if (flags & CLONE_NEWUSER)
+			ERROR("failed to clone (%#x): %s (includes CLONE_NEWUSER)", flags, strerror(errno));
+		else
+			ERROR("failed to clone (%#x): %s", flags, strerror(errno));
 		return -1;
 	}
 	if (wait(&status) < 0) {
@@ -1122,6 +1126,7 @@ int __lxc_start(const char *name, struct lxc_conf *conf,
 		handler->pinfd = -1;
 	}
 
+	lxc_monitor_send_exit_code(name, status, handler->lxcpath);
 	err =  lxc_error_set_and_log(handler->pid, status);
 out_fini:
 	lxc_delete_network(handler);

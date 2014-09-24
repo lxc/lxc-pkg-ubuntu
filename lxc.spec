@@ -45,7 +45,7 @@ BuildRequires: systemd-units
 %endif
 
 Name: lxc
-Version: 1.0.5
+Version: 1.0.6
 Release: %{?beta_rel:0.1.%{beta_rel}}%{?!beta_rel:%{norm_rel}}%{?dist}
 URL: http://linuxcontainers.org
 Source: http://linuxcontainers.org/downloads/%{name}-%{version}%{?beta_dot}.tar.gz
