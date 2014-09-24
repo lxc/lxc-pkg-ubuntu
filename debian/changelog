@@ -1,3 +1,10 @@
+lxc (1.0.6-0ubuntu0.1) trusty; urgency=medium
+
+  * New upstream bugfix release. (MRE tracking bug: LP: #1373619)
+    - Changelog at: https://linuxcontainers.org/news/
+
+ -- Stéphane Graber <stgraber@ubuntu.com>  Wed, 24 Sep 2014 16:48:10 -0400
+
 lxc (1.0.5-0ubuntu0.1) trusty; urgency=medium
 
   * New upstream bugfix release. (MRE tracking bug: LP: #1341638)
