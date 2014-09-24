@@ -38,6 +38,10 @@
 typedef void * scmp_filter_ctx;
 #endif
 
+/* worth moving to configure.ac? */
+#define subuidfile "/etc/subuid"
+#define subgidfile "/etc/subgid"
+
 enum {
 	LXC_NET_EMPTY,
 	LXC_NET_VETH,
@@ -373,6 +377,7 @@ extern int lxc_clear_automounts(struct lxc_conf *c);
 extern int lxc_clear_hooks(struct lxc_conf *c, const char *key);
 extern int lxc_clear_idmaps(struct lxc_conf *c);
 extern int lxc_clear_groups(struct lxc_conf *c);
+extern int lxc_delete_autodev(struct lxc_handler *handler);
 
 extern int do_rootfs_setup(struct lxc_conf *conf, const char *name,
 			   const char *lxcpath);
@@ -394,4 +399,5 @@ extern int userns_exec_1(struct lxc_conf *conf, int (*fn)(void *), void *data);
 extern int parse_mntopts(const char *mntopts, unsigned long *mntflags,
 			 char **mntdata);
 extern void tmp_proc_unmount(struct lxc_conf *lxc_conf);
+extern void suggest_default_idmap(void);
 #endif

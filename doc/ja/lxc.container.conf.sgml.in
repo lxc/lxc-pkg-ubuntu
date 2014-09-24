@@ -352,14 +352,16 @@ by KATOH Yasufumi <karma at jazz.email.ne.jp>
 	      by <command>lxc</command>, but if you wish to handle
 	      this name yourself, you can tell <command>lxc</command>
 	      to set a specific name with
-	      the <option>lxc.network.veth.pair</option> option.
+	      the <option>lxc.network.veth.pair</option> option (except for
+	      unprivileged containers where this option is ignored for security
+	      reasons).
               -->
               <option>veth:</option> 一方がコンテナに、もう一方が <option>lxc.network.link</option> で指定されるブリッジにアタッチされる、ピアネットワークデバイスを作成します。
               もし、ブリッジが指定されていない場合、veth ペアデバイスは作成されますが、ブリッジにはアタッチされません。
               ブリッジはシステムで事前に設定する必要があります。
               さもなければ、<command>lxc</command> はコンテナ外のいかなる設定も扱うことはできないでしょう。
               デフォルトでは、<command>lxc</command> はコンテナの外部に属するネットワークデバイスに対する名前を決定し、<command>lxc</command> はこの名前を使います。
-              しかし、もしこの名前を自分で指定したい場合、<option>lxc.network.veth.pair</option> オプションを使って名前を設定し、lxc に対して指定をすることができます。
+              しかし、もしこの名前を自分で指定したい場合、<option>lxc.network.veth.pair</option> オプションを使って名前を設定し、lxc に対して指定をすることができます (非特権コンテナの場合をのぞきます。セキュリティ上の理由からこのオプションは無視されます)。
 	    </para>
 
 	    <para>
@@ -742,18 +744,32 @@ by KATOH Yasufumi <karma at jazz.email.ne.jp>
       <variablelist>
 	<varlistentry>
 	  <term>
-	    <option>lxc.console</option>
+	    <option>lxc.console.logfile</option>
 	  </term>
 	  <listitem>
 	    <para>
               <!--
 	      Specify a path to a file where the console output will
-	      be written. The keyword 'none' will simply disable the
-	      console. This is dangerous once if have a rootfs with a
+	      be written.
+              -->
+              コンソール出力を書き込むファイルのパスを指定します。
+	    </para>
+	  </listitem>
+	</varlistentry>
+	<varlistentry>
+	  <term>
+	    <option>lxc.console</option>
+	  </term>
+	  <listitem>
+	    <para>
+              <!--
+	      Specify a path to a device to which the console will be
+	      attached.  The keyword 'none' will simply disable the
+	      console.  This is dangerous once if have a rootfs with a
 	      console device file where the application can write, the
 	      messages will fall in the host.
               -->
-              コンソールの出力が書かれるファイルのパスを指定します。'none' というキーワードは、単純にコンソールを無効にします。
+              コンソールを割り当てるデバイスのパスを指定します。'none' というキーワードは、単純にコンソールを無効にします。
               この設定は、アプリケーションが書き込む事ができるコンソールデバイスファイルが rootfs に存在する場合、メッセージがホスト側に出力されるので危険です。
 	    </para>
 	  </listitem>
@@ -1252,7 +1268,7 @@ proc proc proc nodev,noexec,nosuid 0 0
 	      specified, the container shares its root file system
 	      with the host.
               -->
-              コンテナのルートファイルシステムになるディレクトリを指定します。
+              コンテナのルートファイルシステムを指定します。
               この値はイメージファイル、ディレクトリ、ブロックデバイスのどれかを取ることができます。
               もし指定されない場合、コンテナはホストとルートファイルシステムを共有します。
 	    </para>
@@ -1463,9 +1479,12 @@ proc proc proc nodev,noexec,nosuid 0 0
 	container should be run can be specified in the container
 	configuration.  The default is <command>unconfined_t</command>,
 	which means that lxc will not attempt to change contexts.
+	See @DATADIR@/lxc/selinux/lxc.te for an example policy and more
+	information.
         -->
         lxc が SELinux サポートでコンパイルされ、インストールされている場合で、ホストで SELinux が有効な場合、コンテナが従って動くべき SELinux コンテキストは、コンテナの設定で指定することが可能です。
         デフォルトは <command>unconfined_t</command> であり、これは lxc がコンテキストを変えないという意味になります。
+        ポリシーの例と追加の情報は @DATADIR@/lxc/selinux/lxc.te ファイルを参照してください。
       </para>
       <variablelist>
 	<varlistentry>
@@ -1480,7 +1499,7 @@ proc proc proc nodev,noexec,nosuid 0 0
               -->
               コンテナが従うべき SELinux コンテキストを指定するか、<command>unconfined_t</command> を指定します。例えば以下のように設定します。
 	    </para>
-	    <programlisting>lxc.se_context = unconfined_u:unconfined_r:lxc_t:s0-s0:c0.c1023</programlisting>
+	    <programlisting>lxc.se_context = system_u:system_r:lxc_t:s0:c22</programlisting>
 	  </listitem>
 	</varlistentry>
       </variablelist>

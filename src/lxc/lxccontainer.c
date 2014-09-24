@@ -630,6 +630,7 @@ static bool lxcapi_start(struct lxc_container *c, int useinit, char * const argv
 			SYSERROR("Error chdir()ing to /.");
 			return false;
 		}
+		lxc_check_inherited(conf, -1);
 		close(0);
 		close(1);
 		close(2);
@@ -737,6 +738,31 @@ static bool lxcapi_stop(struct lxc_container *c)
 	return ret == 0;
 }
 
+static int do_create_container_dir(const char *path, struct lxc_conf *conf)
+{
+	int ret = -1, lasterr;
+	char *p = alloca(strlen(path)+1);
+	mode_t mask = umask(0002);
+	ret = mkdir(path, 0770);
+	lasterr = errno;
+	umask(mask);
+	errno = lasterr;
+	if (ret) {
+		if (errno == EEXIST)
+			ret = 0;
+		else {
+			SYSERROR("failed to create container path %s", path);
+			return -1;
+		}
+	}
+	strcpy(p, path);
+	if (!lxc_list_empty(&conf->id_map) && chown_mapped_root(p, conf) != 0) {
+		ERROR("Failed to chown container dir");
+		ret = -1;
+	}
+	return ret;
+}
+
 /*
  * create the standard expected container dir
  */
@@ -754,13 +780,7 @@ static bool create_container_dir(struct lxc_container *c)
 		free(s);
 		return false;
 	}
-	ret = mkdir(s, 0755);
-	if (ret) {
-		if (errno == EEXIST)
-			ret = 0;
-		else
-			SYSERROR("failed to create container path for %s", c->name);
-	}
+	ret = do_create_container_dir(s, c->lxc_conf);
 	free(s);
 	return ret == 0;
 }
@@ -809,6 +829,7 @@ static struct bdev *do_bdev_create(struct lxc_container *c, const char *type,
 	if (geteuid() != 0 || (c->lxc_conf && !lxc_list_empty(&c->lxc_conf->id_map))) {
 		if (chown_mapped_root(bdev->dest, c->lxc_conf) < 0) {
 			ERROR("Error chowning %s to container root", bdev->dest);
+			suggest_default_idmap();
 			bdev_put(bdev);
 			return NULL;
 		}
@@ -2616,17 +2637,15 @@ sudo lxc-clone -o o1 -n n1 -s -L|-fssize fssize -v|--vgname vgname \
 only rootfs gets converted (copied/snapshotted) on clone.
 */
 
-static int create_file_dirname(char *path)
+static int create_file_dirname(char *path, struct lxc_conf *conf)
 {
 	char *p = strrchr(path, '/');
-	int ret;
+	int ret = -1;
 
 	if (!p)
 		return -1;
 	*p = '\0';
-	ret = mkdir(path, 0755);
-	if (ret && errno != EEXIST)
-		SYSERROR("creating container path %s", path);
+        ret = do_create_container_dir(path, conf);
 	*p = '/';
 	return ret;
 }
@@ -2639,7 +2658,6 @@ static struct lxc_container *lxcapi_clone(struct lxc_container *c, const char *n
 	struct lxc_container *c2 = NULL;
 	char newpath[MAXPATHLEN];
 	int ret, storage_copied = 0;
-	const char *n, *l;
 	char *origroot = NULL;
 	struct clone_update_data data;
 	FILE *fout;
@@ -2657,9 +2675,11 @@ static struct lxc_container *lxcapi_clone(struct lxc_container *c, const char *n
 	}
 
 	// Make sure the container doesn't yet exist.
-	n = newname ? newname : c->name;
-	l = lxcpath ? lxcpath : c->get_config_path(c);
-	ret = snprintf(newpath, MAXPATHLEN, "%s/%s/config", l, n);
+	if (!newname)
+		newname = c->name;
+	if (!lxcpath)
+		lxcpath = c->get_config_path(c);
+	ret = snprintf(newpath, MAXPATHLEN, "%s/%s/config", lxcpath, newname);
 	if (ret < 0 || ret >= MAXPATHLEN) {
 		SYSERROR("clone: failed making config pathname");
 		goto out;
@@ -2669,7 +2689,7 @@ static struct lxc_container *lxcapi_clone(struct lxc_container *c, const char *n
 		goto out;
 	}
 
-	ret = create_file_dirname(newpath);
+	ret = create_file_dirname(newpath, c->lxc_conf);
 	if (ret < 0 && errno != EEXIST) {
 		ERROR("Error creating container dir for %s", newpath);
 		goto out;
@@ -2689,7 +2709,7 @@ static struct lxc_container *lxcapi_clone(struct lxc_container *c, const char *n
 	fclose(fout);
 	c->lxc_conf->rootfs.path = origroot;
 
-	sprintf(newpath, "%s/%s/rootfs", l, n);
+	sprintf(newpath, "%s/%s/rootfs", lxcpath, newname);
 	if (mkdir(newpath, 0755) < 0) {
 		SYSERROR("error creating %s", newpath);
 		goto out;
@@ -2702,9 +2722,10 @@ static struct lxc_container *lxcapi_clone(struct lxc_container *c, const char *n
 		}
 	}
 
-	c2 = lxc_container_new(n, l);
+	c2 = lxc_container_new(newname, lxcpath);
 	if (!c2) {
-		ERROR("clone: failed to create new container (%s %s)", n, l);
+		ERROR("clone: failed to create new container (%s %s)", newname,
+				lxcpath);
 		goto out;
 	}
 
@@ -2862,6 +2883,12 @@ static int lxcapi_snapshot(struct lxc_container *c, const char *commentfile)
 
 	if (!c || !lxcapi_is_defined(c))
 		return -1;
+
+	if (!bdev_can_backup(c->lxc_conf)) {
+		ERROR("%s's backing store cannot be backed up.", c->name);
+		ERROR("Your container must use another backing store type.");
+		return -1;
+	}
 
 	// /var/lib/lxc -> /var/lib/lxcsnaps \0
 	ret = snprintf(snappath, MAXPATHLEN, "%ssnaps/%s", c->config_path, c->name);
@@ -3544,6 +3571,7 @@ int list_active_containers(const char *lxcpath, char ***nret,
 	char **ct_name = NULL;
 	size_t len = 0;
 	struct lxc_container *c;
+	bool is_hashed;
 
 	if (!lxcpath)
 		lxcpath = lxc_global_config_value("lxc.lxcpath");
@@ -3559,6 +3587,7 @@ int list_active_containers(const char *lxcpath, char ***nret,
 		return -1;
 
 	while (getline(&line, &len, f) != -1) {
+
 		char *p = strrchr(line, ' '), *p2;
 		if (!p)
 			continue;
@@ -3566,9 +3595,17 @@ int list_active_containers(const char *lxcpath, char ***nret,
 		if (*p != 0x40)
 			continue;
 		p++;
-		if (strncmp(p, lxcpath, lxcpath_len) != 0)
+
+		is_hashed = false;
+		if (strncmp(p, lxcpath, lxcpath_len) == 0) {
+			p += lxcpath_len;
+		} else if (strncmp(p, "lxc/", 4) == 0) {
+			p += 4;
+			is_hashed = true;
+		} else {
 			continue;
-		p += lxcpath_len;
+		}
+
 		while (*p == '/')
 			p++;
 
@@ -3577,6 +3614,12 @@ int list_active_containers(const char *lxcpath, char ***nret,
 		if (!p2 || strncmp(p2, "/command", 8) != 0)
 			continue;
 		*p2 = '\0';
+
+		if (is_hashed) {
+			if (strncmp(lxcpath, lxc_cmd_get_lxcpath(p), lxcpath_len) != 0)
+				continue;
+			p = lxc_cmd_get_name(p);
+		}
 
 		if (array_contains(&ct_name, p, ct_name_cnt))
 			continue;
