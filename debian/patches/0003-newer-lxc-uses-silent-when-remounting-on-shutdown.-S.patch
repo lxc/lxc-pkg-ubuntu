@@ -1,0 +1,22 @@
+From 2d53c18e7b8679adecd80e46b0d4fcd93c8a8075 Mon Sep 17 00:00:00 2001
+From: Jamie Strandboge <jamie@canonical.com>
+Date: Mon, 29 Sep 2014 12:36:02 -0400
+Subject: newer lxc uses 'silent' when remounting on shutdown. Silence that
+
+ denial too
+---
+ config/apparmor/abstractions/container-base | 1 +
+ 1 file changed, 1 insertion(+)
+
+diff --git a/config/apparmor/abstractions/container-base b/config/apparmor/abstractions/container-base
+index d783c95..7556b5a 100644
+--- a/config/apparmor/abstractions/container-base
++++ b/config/apparmor/abstractions/container-base
+@@ -11,6 +11,7 @@
+ 
+   # ignore DENIED message on / remount
+   deny mount options=(ro, remount) -> /,
++  deny mount options=(ro, remount, silent) -> /,
+ 
+   # allow tmpfs mounts everywhere
+   mount fstype=tmpfs,
