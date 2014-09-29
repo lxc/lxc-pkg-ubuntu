@@ -1,3 +1,10 @@
+lxc (1.1.0~alpha1-0ubuntu3) utopic; urgency=medium
+
+  * No-change rebuild to get dbgsyms for all binaries onto
+    ddebs.ubuntu.com
+
+ -- Steve Langasek <steve.langasek@ubuntu.com>  Thu, 24 Jul 2014 12:20:43 -0700
+
 lxc (1.1.0~alpha1-0ubuntu2) utopic; urgency=medium
 
   * d/p/0001-lxc-test-unpriv-usernic.in-make-sure-to-chgrp-as-wel.patch:
