@@ -1,3 +1,10 @@
+lxc (1.1.0~alpha1-0ubuntu4) utopic; urgency=medium
+
+  * d/p/0003-apparmor-also-deny-silent-remount.patch: newer lxc uses 'silent'
+    when remounting on shutdown. Silence that denial too
+
+ -- Jamie Strandboge <jamie@ubuntu.com>  Thu, 04 Sep 2014 15:24:15 -0500
+
 lxc (1.1.0~alpha1-0ubuntu3) utopic; urgency=medium
 
   * No-change rebuild to get dbgsyms for all binaries onto
