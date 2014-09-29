@@ -1,0 +1,98 @@
+#!/usr/bin/make -f
+export DEB_BUILD_HARDENING = 1
+
+DEB_DH_INSTALLINIT_ARGS = --upstart-only
+
+SHELL := sh -e
+
+DEB_HOST_MULTIARCH ?= $(shell dpkg-architecture -qDEB_HOST_MULTIARCH)
+
+PY3V := $(filter-out $(shell py3versions -vd),$(shell py3versions -vr))
+
+%:
+	dh ${@} --with autotools_dev --with autoreconf,python3
+
+override_dh_auto_configure:
+	dh_auto_configure -- --libdir=\$${prefix}/lib/$(DEB_HOST_MULTIARCH) \
+		--libexecdir=\$${prefix}/lib/$(DEB_HOST_MULTIARCH) \
+		--with-rootfs-path=\$${prefix}/lib/$(DEB_HOST_MULTIARCH)/lxc \
+		--enable-python $(shell dpkg-buildflags --export=configure) \
+		--enable-doc --disable-rpath --enable-apparmor --enable-selinux \
+		--disable-lua --enable-tests --enable-cgmanager --with-distro=ubuntu
+
+override_dh_auto_build:
+	dh_auto_build
+	set -e; cd src/python-lxc && for pv in $(PY3V); do \
+	  CFLAGS="$$(python$$pv-config --includes) -I ../../src -L../../src/lxc/" python$$pv setup.py build; \
+	done
+
+override_dh_auto_install:
+	dh_auto_install
+	set -e; cd src/python-lxc && for pv in $(PY3V); do \
+	  CFLAGS="$$(python$$pv-config --includes) -I ../../src -L../../src/lxc/" python$$pv setup.py install --root=$(CURDIR)/debian/tmp --install-layout=deb; \
+	done
+
+override_dh_install:
+	if dpkg --compare-versions "$(shell grep DISTRIB_RELEASE /etc/lsb-release | cut -d= -f2)" lt "13.10"; then \
+		sed -i "s/^\( *\)\(dbus.*,\)/\\1#\\2/g" debian/tmp/etc/apparmor.d/abstractions/lxc/container-base; \
+		sed -i "s/^\( *\)\(dbus.*,\)/\\1#\\2/g" debian/tmp/etc/apparmor.d/abstractions/lxc/start-container; \
+	fi
+	if dpkg --compare-versions "$(shell grep DISTRIB_RELEASE /etc/lsb-release | cut -d= -f2)" lt "14.04"; then \
+		sed -i "s/^\( *\)\(signal.*,\)/\\1#\\2/g" debian/tmp/etc/apparmor.d/abstractions/lxc/container-base; \
+		sed -i "s/^\( *\)\(signal.*,\)/\\1#\\2/g" debian/tmp/etc/apparmor.d/abstractions/lxc/start-container; \
+		sed -i "s/^\( *\)\(ptrace.*,\)/\\1#\\2/g" debian/tmp/etc/apparmor.d/abstractions/lxc/container-base; \
+		sed -i "s/^\( *\)\(ptrace.*,\)/\\1#\\2/g" debian/tmp/etc/apparmor.d/abstractions/lxc/start-container; \
+	fi
+	if dpkg --compare-versions "$(shell grep DISTRIB_RELEASE /etc/lsb-release | cut -d= -f2)" lt "14.10"; then \
+		sed -i "s/^\( *\)\(unix.*,\)/\\1#\\2/g" debian/tmp/etc/apparmor.d/abstractions/lxc/container-base; \
+		sed -i "s/^\( *\)\(unix.*,\)/\\1#\\2/g" debian/tmp/etc/apparmor.d/abstractions/lxc/start-container; \
+	fi
+	if [ -x /usr/bin/dh_apparmor ]; then \
+		dh_apparmor -p lxc --profile-name=usr.bin.lxc-start; \
+	fi
+
+	# copy apport hook
+	mkdir -p debian/lxc/usr/share/apport/package-hooks
+	cp debian/lxc.apport debian/lxc/usr/share/apport/package-hooks/source_lxc.py
+
+	# copy dnsmasq configuration
+	mkdir -p debian/lxc/etc/dnsmasq.d-available
+	cp debian/lxc.dnsmasq debian/lxc/etc/dnsmasq.d-available/lxc
+
+	dh_install --fail-missing
+
+	# move the tests
+	mkdir -p debian/lxc-tests/usr/bin
+	mv debian/lxc/usr/bin/lxc-test-* debian/lxc-tests/usr/bin/
+
+override_dh_fixperms:
+	dh_fixperms
+	chmod u+s debian/lxc/usr/lib/${DEB_HOST_MULTIARCH}/lxc/lxc-user-nic
+
+override_dh_builddeb:
+	# prevent system users from using setuid-root binaries under /var/lib/lxc
+	chmod 700 debian/lxc/var/lib/lxc
+	chmod 700 debian/lxc/var/cache/lxc
+	dh_builddeb
+
+override_dh_installinit:
+	cp debian/lxc/etc/init/lxc.conf debian/lxc.upstart
+	cp debian/lxc/etc/init/lxc-instance.conf debian/lxc.lxc-instance.upstart
+	cp debian/lxc/etc/init/lxc-net.conf debian/lxc.lxc-net.upstart
+	dh_installinit --no-restart-on-upgrade --name=lxc
+	dh_installinit --no-restart-on-upgrade --name=lxc-net
+	dh_installinit --no-start --no-restart-on-upgrade --name=lxc-instance
+
+override_dh_strip:
+	dh_strip --dbg-package=lxc-dbg
+
+override_dh_gencontrol:
+	if dpkg --compare-versions "$(shell grep DISTRIB_RELEASE /etc/lsb-release | cut -d= -f2)" ge "14.10"; then \
+		dh_gencontrol -- -V'lxc:Depends=apparmor (>= 2.8.96~2652-0ubuntu1)'; \
+	elif dpkg --compare-versions "$(shell grep DISTRIB_RELEASE /etc/lsb-release | cut -d= -f2)" ge "14.04"; then \
+		dh_gencontrol -- -V'lxc:Depends=apparmor (>= 2.8.95~2430-0ubuntu4)'; \
+	elif dpkg --compare-versions "$(shell grep DISTRIB_RELEASE /etc/lsb-release | cut -d= -f2)" ge "13.10"; then \
+		dh_gencontrol -- -V'lxc:Depends=apparmor (>= 2.8.0-0ubuntu25)'; \
+	else \
+		dh_gencontrol -- -V'lxc:Depends=apparmor'; \
+	fi
