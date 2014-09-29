@@ -1,3 +1,18 @@
+lxc (1.1.0~alpha1-0ubuntu5) utopic; urgency=medium
+
+  * d/p/0003-apparmor-also-deny-silent-remount.patch: update to also patch
+    container-base.in
+  * d/p/0004-apparmor-signal-ptrace-unix-mediation.patch: refine signal and
+    ptrace rules and add unix rules for container enforcement (LP: #1373555)
+  * debian/rules:
+    - don't delete the dbus, ptrace and signal lines, but instead comment them
+      out. This is more consistent with the comment in the policy and lets
+      people see what the policy would be
+    - adjust for unix rules
+    - adjust versioned depends
+
+ -- Jamie Strandboge <jamie@ubuntu.com>  Fri, 26 Sep 2014 10:59:21 -0500
+
 lxc (1.1.0~alpha1-0ubuntu4) utopic; urgency=medium
 
   * d/p/0003-apparmor-also-deny-silent-remount.patch: newer lxc uses 'silent'

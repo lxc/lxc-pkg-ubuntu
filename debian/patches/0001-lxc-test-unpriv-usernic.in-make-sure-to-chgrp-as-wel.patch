@@ -1,7 +1,7 @@
-From dd9963b39514933cc96c938996ffba6565bcf2e8 Mon Sep 17 00:00:00 2001
+From 79d88b03ed31a729bc0f4a0f8a8be506d25fd470 Mon Sep 17 00:00:00 2001
 From: Serge Hallyn <serge.hallyn@ubuntu.com>
 Date: Thu, 17 Jul 2014 16:02:06 -0500
-Subject: lxc-test-{unpriv,usernic.in}: make sure to chgrp as well
+Subject: [PATCH 1/2] lxc-test-{unpriv,usernic.in}: make sure to chgrp as well
 
 These tests are failing on new kernels because the container root is
 not privileged over the directories, since privilege no requires
@@ -14,7 +14,7 @@ Signed-off-by: Serge Hallyn <serge.hallyn@ubuntu.com>
  2 files changed, 6 insertions(+), 6 deletions(-)
 
 diff --git a/src/tests/lxc-test-unpriv b/src/tests/lxc-test-unpriv
-index 5e06e23..cb63482 100755
+index 5ab7524..f5ab535 100755
 --- a/src/tests/lxc-test-unpriv
 +++ b/src/tests/lxc-test-unpriv
 @@ -84,10 +84,10 @@ lxc.network.link = lxcbr0
@@ -68,3 +68,6 @@ index ad11f0a..395c453 100755
  
  # Create two test bridges
  brctl addbr usernic-br0
+-- 
+1.9.1
+
