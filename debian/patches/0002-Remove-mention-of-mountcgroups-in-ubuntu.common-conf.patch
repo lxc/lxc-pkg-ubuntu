@@ -1,7 +1,7 @@
-From ed0ef61a774d3ba50d7eaed4964f6b860dcc4337 Mon Sep 17 00:00:00 2001
+From da065d3308b81e443ba575ab63bbec7ccd7031ae Mon Sep 17 00:00:00 2001
 From: Serge Hallyn <serge.hallyn@ubuntu.com>
 Date: Thu, 17 Jul 2014 09:05:35 -0500
-Subject: [PATCH 2/2] Remove mention of mountcgroups in ubuntu.common config
+Subject: Remove mention of mountcgroups in ubuntu.common config
 
 That mount hook predates the lxc.mount.auto = cgroup option.  So mention
 that instead.
@@ -27,6 +27,3 @@ index 631b4bb..19a6a67 100644
  
  # Uncomment the following line to autodetect squid-deb-proxy configuration on the
  # host and forward it to the guest at start time.
--- 
-1.9.1
-

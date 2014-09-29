@@ -1,4 +1,4 @@
 0001-lxc-test-unpriv-usernic.in-make-sure-to-chgrp-as-wel.patch
 0002-Remove-mention-of-mountcgroups-in-ubuntu.common-conf.patch
-0003-apparmor-also-deny-silent-remount.patch
-0004-apparmor-signal-ptrace-unix-mediation.patch
+0003-newer-lxc-uses-silent-when-remounting-on-shutdown.-S.patch
+0004-restrict-signal-and-ptrace-for-processes-running-und.patch

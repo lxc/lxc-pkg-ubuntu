@@ -1,12 +1,19 @@
-Author: Jamie Strandboge <jamie@canonical.com>
-Description: restrict signal and ptrace for processes running under the
+From f61717e9d4375852a83ef84813c2fde1ccb5c04d Mon Sep 17 00:00:00 2001
+From: Jamie Strandboge <jamie@canonical.com>
+Date: Mon, 29 Sep 2014 12:36:10 -0400
+Subject: restrict signal and ptrace for processes running under the
+
  container profile. Rules based on AppArmor base abstraction. Add unix rules
  for processes running under the container profile.
+---
+ config/apparmor/abstractions/container-base    | 42 +++++++++++++++++++++++---
+ config/apparmor/abstractions/container-base.in | 42 +++++++++++++++++++++++---
+ 2 files changed, 76 insertions(+), 8 deletions(-)
 
-Index: lxc-1.1.0~alpha1/config/apparmor/abstractions/container-base.in
-===================================================================
---- lxc-1.1.0~alpha1.orig/config/apparmor/abstractions/container-base.in
-+++ lxc-1.1.0~alpha1/config/apparmor/abstractions/container-base.in
+diff --git a/config/apparmor/abstractions/container-base b/config/apparmor/abstractions/container-base
+index 7556b5a..2d5fd7a 100644
+--- a/config/apparmor/abstractions/container-base
++++ b/config/apparmor/abstractions/container-base
 @@ -3,11 +3,45 @@
    file,
    umount,
@@ -57,10 +64,10 @@ Index: lxc-1.1.0~alpha1/config/apparmor/abstractions/container-base.in
  
    # ignore DENIED message on / remount
    deny mount options=(ro, remount) -> /,
-Index: lxc-1.1.0~alpha1/config/apparmor/abstractions/container-base
-===================================================================
---- lxc-1.1.0~alpha1.orig/config/apparmor/abstractions/container-base
-+++ lxc-1.1.0~alpha1/config/apparmor/abstractions/container-base
+diff --git a/config/apparmor/abstractions/container-base.in b/config/apparmor/abstractions/container-base.in
+index 096d35b..2065735 100644
+--- a/config/apparmor/abstractions/container-base.in
++++ b/config/apparmor/abstractions/container-base.in
 @@ -3,11 +3,45 @@
    file,
    umount,
