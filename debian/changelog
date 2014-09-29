@@ -1,0 +1,3301 @@
+lxc (1.1.0~alpha1-0ubuntu4) utopic; urgency=medium
+
+  * d/p/0003-apparmor-also-deny-silent-remount.patch: newer lxc uses 'silent'
+    when remounting on shutdown. Silence that denial too
+
+ -- Jamie Strandboge <jamie@ubuntu.com>  Thu, 04 Sep 2014 15:24:15 -0500
+
+lxc (1.1.0~alpha1-0ubuntu3) utopic; urgency=medium
+
+  * No-change rebuild to get dbgsyms for all binaries onto
+    ddebs.ubuntu.com
+
+ -- Steve Langasek <steve.langasek@ubuntu.com>  Thu, 24 Jul 2014 12:20:43 -0700
+
+lxc (1.1.0~alpha1-0ubuntu2) utopic; urgency=medium
+
+  * d/p/0001-lxc-test-unpriv-usernic.in-make-sure-to-chgrp-as-wel.patch:
+    Fix test failures in jenkins.
+  * d/p/0002-Remove-mention-of-mountcgroups-in-ubuntu.common-conf.patch:
+    Fix the comment in the ubuntu common config about how to support nesting.
+    (LP: #1342960)
+
+ -- Serge Hallyn <serge.hallyn@ubuntu.com>  Thu, 17 Jul 2014 16:42:46 -0500
+
+lxc (1.1.0~alpha1-0ubuntu1) utopic; urgency=medium
+
+  * New upstream release (1.1.0~alpha1)
+  * Enable ppc64el adt as we now have ppc64el images available for download.
+
+ -- Stéphane Graber <stgraber@ubuntu.com>  Mon, 07 Jul 2014 15:44:27 -0400
+
+lxc (1.0.4-0ubuntu2) utopic; urgency=medium
+
+  * Cherry-pick upstream commits to fix testsuite under adt:
+    - tests: Avoid the download template when possible
+    - tests: Don't fail when HOME isn't defined
+    - tests: apparmor: Always end with a newline
+
+ -- Stéphane Graber <stgraber@ubuntu.com>  Sat, 14 Jun 2014 16:07:18 -0400
+
+lxc (1.0.4-0ubuntu1) utopic; urgency=medium
+
+  * New upstream bugfix release.
+    - Drop all existing patches (all applied upstream).
+  * Depend on either cgmanager or cgroup-lite and recommend cgmanager.
+    This should ensure systems get cgmanager by default even if cgroup-lite
+    is already installed, yet makes it possible for the user to remove
+    cgmanager if they really want to.
+  * Remove hardcoded dependency on apparmor, instead generate it from
+    rules so that the source package can be backported without changes (the
+    right apparmor version will be picked up based on the release number).
+
+ -- Stéphane Graber <stgraber@ubuntu.com>  Fri, 13 Jun 2014 15:09:04 -0400
+
+lxc (1.0.3-0ubuntu5build1) utopic; urgency=medium
+
+  * no-change rebuild to pick up /etc/init.d/ files.
+
+ -- Serge Hallyn <serge.hallyn@ubuntu.com>  Thu, 29 May 2014 11:59:18 -0500
+
+lxc (1.0.3-0ubuntu5) utopic; urgency=medium
+
+  * Cherry-pick upstream commit to fix lxc-attach on 3.15 kernels.
+
+ -- Stéphane Graber <stgraber@ubuntu.com>  Mon, 26 May 2014 07:51:29 +0200
+
+lxc (1.0.3-0ubuntu4) utopic; urgency=medium
+
+  * Do not start lxc-instance in postinst without any instance specified,
+    as that is an invalid request.
+
+ -- Dimitri John Ledkov <xnox@ubuntu.com>  Thu, 15 May 2014 15:18:33 +0100
+
+lxc (1.0.3-0ubuntu3) trusty; urgency=medium
+
+  * Add a dependency on the new apparmor to make sure we have the new
+    parser around before we attempt to load a profile requiring the new
+    stanza support. (LP: #1304167)
+
+ -- Stéphane Graber <stgraber@ubuntu.com>  Mon, 14 Apr 2014 10:10:40 -0400
+
+lxc (1.0.3-0ubuntu2) trusty; urgency=medium
+
+  * Cherry-pick upstream fix for cgmanager integration. (LP: #1303649)
+
+ -- Stéphane Graber <stgraber@ubuntu.com>  Fri, 11 Apr 2014 12:17:41 -0400
+
+lxc (1.0.3-0ubuntu1) trusty; urgency=medium
+
+  * New upstream bugfix release.
+  * Drop debian/patches/apparmor-signal-ptrace.patch, now upstream.
+
+ -- Stéphane Graber <stgraber@ubuntu.com>  Tue, 08 Apr 2014 19:32:40 -0400
+
+lxc (1.0.2-0ubuntu2) trusty; urgency=medium
+
+  * updates for AppArmor signal and ptrace mediation (LP: #1298611)
+    - debian/patches/apparmor-signal-ptrace.patch: add signal and ptrace rules
+      to abstractions/container-base and abstractions/start-container
+    - debian/rules: remove signal and ptrace rules for Ubuntu releases earlier
+      than 14.04 LTS
+
+ -- Jamie Strandboge <jamie@ubuntu.com>  Thu, 03 Apr 2014 07:06:56 -0500
+
+lxc (1.0.2-0ubuntu1) trusty; urgency=medium
+
+  * New upstream bugfix release.
+  * Update packaging from daily branch.
+    - Build-depend on libcgmanager-dev
+    - Build-depend on libseccomp-dev for armhf too
+    - Move rsync dependency from lxc to liblxc1
+    - Stop recommending cgroup-lite | cgroup-bin (replace by cgmanager)
+    - Stop recommending libcap2-bin (lxc-setcap was dropped ages ago)
+    - Stop recommending openssl from lxc (only used by templates)
+    - Move uidmap recommend from lxc to liblxc1
+    - Recommend busybox-static for lxc-templates
+    - Add cgmanager as a dependency of liblxc1
+    - Enable cgmanager support in LXC (LP: #1279048)
+    - Drop cgroup-lite test suite dependency.
+    - Update testsuite runner to work inside an unprivileged container.
+    - Update testsuite runner to work in the LXC CI environment.
+
+ -- Stéphane Graber <stgraber@ubuntu.com>  Thu, 27 Mar 2014 23:18:11 -0400
+
+lxc (1.0.1-0ubuntu1) trusty; urgency=medium
+
+  * New upstream bugfix release. (LP: #1246094, LP: #1277466)
+    Changelog at: https://linuxcontainers.org/news
+  * Add xz-utils to lxc-templates' dependencies.
+
+ -- Stéphane Graber <stgraber@ubuntu.com>  Fri, 07 Mar 2014 12:18:28 -0500
+
+lxc (1.0.0-0ubuntu4) trusty; urgency=medium
+
+  * Tweak autopkgtest proxy detection to hopefully detect the right
+    proxy on the armhf testers...
+
+ -- Stéphane Graber <stgraber@ubuntu.com>  Sat, 22 Feb 2014 00:28:50 -0500
+
+lxc (1.0.0-0ubuntu3) trusty; urgency=medium
+
+  * Add debootstrap to autopkgtest dependencies.
+
+ -- Stéphane Graber <stgraber@ubuntu.com>  Fri, 21 Feb 2014 22:24:03 -0500
+
+lxc (1.0.0-0ubuntu2) trusty; urgency=medium
+
+  * Update autopkgtest script to detect:
+    - ppc64el
+    - running in a container
+    - running on an older kernel
+
+ -- Stéphane Graber <stgraber@ubuntu.com>  Fri, 21 Feb 2014 20:16:44 -0500
+
+lxc (1.0.0-0ubuntu1) trusty; urgency=medium
+
+  * New upstream release (1.0.0).
+  * Replace liblxc0 by liblxc1.
+
+ -- Stéphane Graber <stgraber@ubuntu.com>  Thu, 20 Feb 2014 13:53:18 -0500
+
+lxc (1.0.0~rc4-0ubuntu1) trusty; urgency=medium
+
+  * New upstream release (1.0.0~rc4).
+
+ -- Stéphane Graber <stgraber@ubuntu.com>  Wed, 19 Feb 2014 15:04:25 -0500
+
+lxc (1.0.0~rc3-0ubuntu1) trusty; urgency=medium
+
+  * New upstream release (1.0.0~rc3).
+
+ -- Stéphane Graber <stgraber@ubuntu.com>  Mon, 17 Feb 2014 22:16:17 -0500
+
+lxc (1.0.0~rc1-0ubuntu2) trusty; urgency=medium
+
+  * Re-add adt proxy workaround, it should have been fixed in adt but
+    apparently it's not, so keep hardcoding the right values for now.
+
+ -- Stéphane Graber <stgraber@ubuntu.com>  Thu, 13 Feb 2014 23:55:59 -0500
+
+lxc (1.0.0~rc1-0ubuntu1) trusty; urgency=medium
+
+  * New upstream release (1.0.0~rc1).
+  * Drop dont_crash_log_init.patch: upstreamed
+  * Drop adt proxy workaround (fixed in adt).
+  * Make lxc-templates arch:any since unfortunately lxc-sshd hardcodes
+    some paths...
+
+ -- Stéphane Graber <stgraber@ubuntu.com>  Thu, 13 Feb 2014 18:58:51 -0500
+
+lxc (1.0.0~beta4-0ubuntu2) trusty; urgency=medium
+
+  * debian/patches/dont_crash_log_init.patch: don't crash if no name is passed
+    to lxc_log_init(), such as is the case with lxc-autostart. (LP: #1277450)
+
+ -- Mathieu Trudel-Lapierre <mathieu-tl@ubuntu.com>  Fri, 07 Feb 2014 07:06:50 -0500
+
+lxc (1.0.0~beta4-0ubuntu1) trusty; urgency=medium
+
+  * New upstream release (1.0.0~beta4). (LP: #1273769)
+  * Move uidmap from Depends to Recommends.
+  * Drop duplicate python3 cflags (LP: #1272948)
+  * Tweak adt to use a proxy server.
+
+ -- Stéphane Graber <stgraber@ubuntu.com>  Thu, 06 Feb 2014 19:32:23 -0500
+
+lxc (1.0.0~beta3-0ubuntu1) trusty; urgency=medium
+
+  * New upstream release (1.0.0~beta3).
+  * Drop Build-conflict and instead pass --disable-lua.
+  * Update autopkgtests to dynamically run all upstream tests.
+  * Create /etc/lxc/lxc-usernet if missing.
+  * Apparmor profiles and upstart jobs are now upstream (drop from packaging).
+  * Bash completetion is now upstream.
+  * Update lintian overrides.
+  * DEPRECATED: lxc-aa-custom-profile has been dropped, instead use the
+    examples in the default configuration file.
+  * DEPRECATED: lxc-list has been dropped. Use "lxc-ls -f" instead.
+  * DEPRECATED: lxc-halt has been dropped. Use "lxc-stop" instead.
+
+ -- Stéphane Graber <stgraber@ubuntu.com>  Mon, 27 Jan 2014 14:40:48 +0000
+
+lxc (1.0.0~beta2-0ubuntu2) trusty; urgency=medium
+
+  * Build python3 extension for all supported python versions. LP: #127236.
+  * Build-conflict with lua5.2*, the packaging is not ready for it.
+
+ -- Matthias Klose <doko@ubuntu.com>  Sun, 26 Jan 2014 09:57:03 +0100
+
+lxc (1.0.0~beta2-0ubuntu1) trusty; urgency=medium
+
+  * New upstream release (1.0.0~beta2).
+  * Removed patches (no remaining):
+    - 0000-add-autostart.patch
+    - 0001-fix-lxc-usernsexec-regression.patch
+  * Update packaging for upstream's implementation of autostart.
+  * Allow dbus in lxc-start apparmor profile (needed by the avahi hook).
+
+ -- Stéphane Graber <stgraber@ubuntu.com>  Wed, 15 Jan 2014 20:22:45 -0500
+
+lxc (1.0.0~beta1-0ubuntu3) trusty; urgency=medium
+
+  * Add lxc-container-with-mounting apparmor profile.
+  * Add iptables rules to always allow DHCP and DNS from the containers
+    to the host.
+
+ -- Stéphane Graber <stgraber@ubuntu.com>  Wed, 01 Jan 2014 14:37:49 +0100
+
+lxc (1.0.0~beta1-0ubuntu2) trusty; urgency=medium
+
+  * d/p/0001-fix-lxc-usernsexec-regression.patch: fix a regression breaking
+    lxc-usernsexec and, through that, all unprivileged container use.
+
+ -- Serge Hallyn <serge.hallyn@ubuntu.com>  Thu, 19 Dec 2013 14:04:58 -0600
+
+lxc (1.0.0~beta1-0ubuntu1) trusty; urgency=medium
+
+  * New upstream release (1.0.0~beta1).
+  * Removed patches:
+    - 0001-lxcapi_clone-set-the-right-environment-variable-for-.patch
+    - 0002-don-t-fail-lxc-init-if-we-couldn-t-mount-proc.patch
+
+ -- Stéphane Graber <stgraber@ubuntu.com>  Tue, 17 Dec 2013 15:52:17 -0500
+
+lxc (1.0.0~alpha3-0ubuntu8) trusty; urgency=low
+
+  * Add iptables rule to fix checksum of udp packets for dhcp  (LP: #930962)
+
+ -- Serge Hallyn <serge.hallyn@ubuntu.com>  Tue, 10 Dec 2013 11:27:09 -0600
+
+lxc (1.0.0~alpha3-0ubuntu7) trusty; urgency=low
+
+  * Add a lxc-default-with-mounting profile which allows the container to
+    mount block filesystems.  (LP: #1257389)
+
+ -- Serge Hallyn <serge.hallyn@ubuntu.com>  Mon, 09 Dec 2013 13:19:31 -0600
+
+lxc (1.0.0~alpha3-0ubuntu6) trusty; urgency=low
+
+  * lxc-net: detect whether iptables -w flag is supported, so that backports
+    won't be broken.
+
+ -- Serge Hallyn <serge.hallyn@ubuntu.com>  Mon, 02 Dec 2013 21:06:47 -0600
+
+lxc (1.0.0~alpha3-0ubuntu5) trusty; urgency=low
+
+  * Add -w to iptables calls in lxc-net (LP: #1257117)
+
+ -- Serge Hallyn <serge.hallyn@ubuntu.com>  Mon, 02 Dec 2013 17:49:28 -0600
+
+lxc (1.0.0~alpha3-0ubuntu4) trusty; urgency=low
+
+  * Build-depend on libgnutls-dev for template checksuming.
+
+ -- Stéphane Graber <stgraber@ubuntu.com>  Fri, 29 Nov 2013 20:16:56 -0500
+
+lxc (1.0.0~alpha3-0ubuntu3) trusty; urgency=low
+
+  * d/p/0002-don-t-fail-lxc-init-if-we-couldn-t-mount-proc.patch: fix
+    failure to run lxc-init when lxc.cap.drop=sys_admin.  (LP: #1253669)
+
+ -- Serge Hallyn <serge.hallyn@ubuntu.com>  Fri, 22 Nov 2013 15:57:59 -0600
+
+lxc (1.0.0~alpha3-0ubuntu2) trusty; urgency=low
+
+  * Cherry-pick fix for lxc-clone hook script environment variable.
+    0001-lxcapi_clone-set-the-right-environment-variable-for-.patch
+    (LP: #1253573)
+
+ -- Stéphane Graber <stgraber@ubuntu.com>  Thu, 21 Nov 2013 10:29:45 -0500
+
+lxc (1.0.0~alpha3-0ubuntu1) trusty; urgency=low
+
+  * New upstream release (1.0.0~alpha3).
+  * Removed patches:
+    - 0001-debian-template-set-hwaddr
+    - 0002-lxc-start-if-we-pass-in-a-config-file-then-don-t-use.patch
+    - get_rid_of_lxcpath_anon_idea.patch
+
+ -- Stéphane Graber <stgraber@ubuntu.com>  Fri, 15 Nov 2013 16:31:01 -0500
+
+lxc (1.0.0~alpha2-0ubuntu6) trusty; urgency=low
+
+  * d/p/0002-lxc-start-if-we-pass-in-a-config-file-then-don-t-use.patch
+    fix lxc-start -with -f option to not use multiple configuration
+    files (LP: #1251352)
+
+ -- Serge Hallyn <serge.hallyn@ubuntu.com>  Thu, 14 Nov 2013 14:19:02 -0600
+
+lxc (1.0.0~alpha2-0ubuntu5) trusty; urgency=low
+
+  [ Serge Hallyn] 
+  * debian/rules and debian/lxc.postinst: set /var/lib/lxc and /var/cache/lxc
+    to be perms 700.  That prevents unprivileged users from running setuid-root
+    applications.  Install that way by default, and for any previous versions,
+    update the permissions.  After this version, respect the user's choice.
+    (LP: #1244635)
+
+  [ Stéphane Graber ]
+  * Allow lxc.conf to start even if LXC_AUTO=false so that other jobs
+    can depend on it. Also make sure we always load our apparmor profiles.
+    (LP: #1227937)
+
+ -- Stéphane Graber <stgraber@ubuntu.com>  Tue, 29 Oct 2013 12:15:21 -0400
+
+lxc (1.0.0~alpha2-0ubuntu4) trusty; urgency=low
+
+  * get_rid_of_lxcpath_anon_idea.patch: allow lxc-stop and lxc-attach to
+    work more easily with containers started with a custom config (-f).
+    (LP: #1244301)
+
+ -- Serge Hallyn <serge.hallyn@ubuntu.com>  Thu, 24 Oct 2013 11:55:06 -0500
+
+lxc (1.0.0~alpha2-0ubuntu3) trusty; urgency=low
+
+  * Fix syntax error in upstart job.
+
+ -- Stéphane Graber <stgraber@ubuntu.com>  Mon, 21 Oct 2013 18:51:36 -0400
+
+lxc (1.0.0~alpha2-0ubuntu2) trusty; urgency=low
+
+  * Set lxcpath in lxc-instance, that should make the containers visible
+    in lxc-ls and other tools again. (LP: #1242074)
+
+ -- Stéphane Graber <stgraber@ubuntu.com>  Mon, 21 Oct 2013 15:27:05 -0400
+
+lxc (1.0.0~alpha2-0ubuntu1) trusty; urgency=low
+
+  * New upstream release (1.0.0~alpha2).
+  * Removed patches:
+    - 0002-pin_rootfs-be-quiet-and-don-t-fail-container-start.patch
+    - 0003-move-monitor-fifo-and-monitor-sock-to-run.patch
+    - 0004-hash-lxcname-for-use-in-monitor-unix-socket-sun_path.patch
+    - 0005-ignore-ability-to-init-lxc-monitord.log.patch
+    - 0006-add-pstore-to-container-fstab.patch
+    - 0007-apparmor.c-drop-newline-when-reading-current-profile.patch
+    - 0008-Fix-crasher-in-get_ips.patch
+    - 0009-lxc-ubuntu-cloud-pass-numeric-owner-and-p-to-untar.patch
+    - 0010-lxc-ubuntu-cloud-Cope-with-spaces-in-paths.patch
+    - 0011-ubuntu-cloud-prep-hook-fix-debug-helper-to-not-inapp.patch
+  * Change website to new URL (http://linuxcontainers.org).
+  * Build with the test binaries and introduce a new lxc-tests package.
+  * Don't build any of the binary packages on !linux.
+  * Enable SELinux support.
+  * Add watch file.
+
+ -- Stéphane Graber <stgraber@ubuntu.com>  Mon, 21 Oct 2013 09:17:18 -0400
+
+lxc (1.0.0~alpha1-0ubuntu11) saucy; urgency=low
+
+  * Deny any kind of access to /sys/kernel/security/** as the containers
+    have no reason to read that and it's been causing dbus-daemon to think
+    it can integrate with apparmor.
+
+ -- Stéphane Graber <stgraber@ubuntu.com>  Thu, 10 Oct 2013 12:58:54 -0400
+
+lxc (1.0.0~alpha1-0ubuntu10) saucy; urgency=low
+
+  [ Serge Hallyn ]
+  * Cherrypicking bugfix from upstream
+    - 0011-ubuntu-cloud-prep-hook-fix-debug-helper-to-not-inapp.patch
+
+  [ Stéphane Graber ]
+  * On saucy and higher, add "dbus," to the container-base profile.
+    (done that way as LXC is backported down to 12.04)
+
+ -- Stéphane Graber <stgraber@ubuntu.com>  Wed, 09 Oct 2013 14:04:23 -0400
+
+lxc (1.0.0~alpha1-0ubuntu9) saucy; urgency=low
+
+  * Update patch with current upstream version (LP: #1236726)
+    - 0009-lxc-ubuntu-cloud-pass-numeric-owner-and-p-to-untar.patch
+  * Cherrypicking bugfix from upstream
+    - 0010-lxc-ubuntu-cloud-Cope-with-spaces-in-paths.patch
+
+ -- Stéphane Graber <stgraber@ubuntu.com>  Tue, 08 Oct 2013 11:11:33 -0400
+
+lxc (1.0.0~alpha1-0ubuntu8) saucy; urgency=low
+
+  * Add a recommends on uuid-runtime to lxc-templates as the
+    ubuntu-cloud template uses uuidgen.
+
+ -- Stéphane Graber <stgraber@ubuntu.com>  Mon, 07 Oct 2013 17:35:56 -0400
+
+lxc (1.0.0~alpha1-0ubuntu7) saucy; urgency=low
+
+  * Cherrypicking bugfix from upstream (LP: #1236577)
+    - 0009-lxc-ubuntu-cloud-pass-numeric-owner-and-p-to-untar.patch
+
+ -- Serge Hallyn <serge.hallyn@ubuntu.com>  Mon, 07 Oct 2013 16:17:27 -0500
+
+lxc (1.0.0~alpha1-0ubuntu6) saucy; urgency=low
+
+  * Cherrypicking bugfix from upstream
+    - 0008-Fix-crasher-in-get_ips.patch
+      (Fixes lxc-list on Ubuntu Touch amongst other cases)
+
+ -- Stéphane Graber <stgraber@ubuntu.com>  Sun, 29 Sep 2013 20:52:53 -0400
+
+lxc (1.0.0~alpha1-0ubuntu5) saucy; urgency=low
+
+  * Cherrypicking bugfix from upstream (LP: #1227313)
+    - 0007-apparmor.c-drop-newline-when-reading-current-profile.patch
+
+ -- Serge Hallyn <serge.hallyn@ubuntu.com>  Fri, 27 Sep 2013 15:14:24 -0500
+
+lxc (1.0.0~alpha1-0ubuntu4) saucy; urgency=low
+
+  * modify 0006-add-pstore-to-container-fstab.patch: make pstore mount
+    optional.
+
+ -- Serge Hallyn <serge.hallyn@ubuntu.com>  Mon, 16 Sep 2013 11:50:05 -0500
+
+lxc (1.0.0~alpha1-0ubuntu3) saucy; urgency=low
+
+  * Cherrypick bugfix from upstream
+    (pre-mount pstore to avoid mountall hanging at boot time):
+    - 0006-add-pstore-to-container-fstab.patch
+
+ -- Stéphane Graber <stgraber@ubuntu.com>  Fri, 13 Sep 2013 16:57:29 -0400
+
+lxc (1.0.0~alpha1-0ubuntu2) saucy; urgency=low
+
+  * Add allow-stderr to autopkgtst restrictions as the Ubuntu template
+    uses policy-rc.d to disable some daemons and that causes a message to
+    be printed on stderr when the service tries to start.
+
+ -- Stéphane Graber <stgraber@ubuntu.com>  Thu, 12 Sep 2013 13:57:17 -0400
+
+lxc (1.0.0~alpha1-0ubuntu1) saucy; urgency=low
+
+  * New upstream release (LP: #1218426)
+    - A very long list of bugfixes, including:
+      (LP: #1081786, LP: #1029777, LP: #987770, LP: #1212290, LP: #1199146,
+       LP: #1124526, LP: #1014916, LP: #1212414, LP: #1168526, LP: #1135871)
+  * Removed patches:
+    - transition/00-redirect-lxc-halt.patch
+    - 0001-fix-race-with-fast-init
+    - 0002-lxc-functions-safe-in-dash
+    - 0003-python-module-fixes
+    - 0004-lxc-ps-handle-cgroup-collisions.patch
+    - 0005-cgroup-prevent-DOS-when-a-hierachy-is-mounted-multip.patch
+    - 0006-lxc-clone-fix-lvm-blockdev-usage
+    - 0007-lxc.conf.doc
+    - 0008-ignore-rootfs-pin-fail.patch
+    - 0009-conf.c-if-we-don-t-specify-a-rootfs-we-still-need-pr.patch
+    - conf.c-always-strdup-rootfs.mount
+    - 0011-cgroup-hook-handle-stricter-kernel
+    - 0012-add-kernel-filesystems-to-fstab
+    - 0013-ubuntu-cloud-fix-hostid
+    - 0014-lxc-apparmor-null-terminate-buffer
+    - 0015-fix-ipv6-pton
+  * Refreshed patches:
+    - transition/00-redirect-lxc-list.patch
+    - 0000-add-autostart.patch
+    - 0001-debian-template-set-hwaddr
+  * New patches (fix regression when /var/lib/lxc is read-only):
+    - 0002-pin_rootfs-be-quiet-and-don-t-fail-container-start.patch
+    - 0003-move-monitor-fifo-and-monitor-sock-to-run.patch
+    - 0004-hash-lxcname-for-use-in-monitor-unix-socket-sun_path.patch
+    - 0005-ignore-ability-to-init-lxc-monitord.log.patch
+  * Updated debian/copyright to reflect reality.
+  * Fix lxc-template's short description.
+  * Replace the cloud-utils recommends by cloud-image-utils | cloud-utils
+    to use the new saucy package and still allow for easy backports.
+    (LP: #1224545)
+
+ -- Stéphane Graber <stgraber@ubuntu.com>  Thu, 12 Sep 2013 12:45:05 -0400
+
+lxc (0.9.0-0ubuntu23) saucy; urgency=low
+
+  * 0014-lxc-apparmor-null-terminate-buffer: make sure a value we fread is
+    null-terminated (LP: #1215386)
+  * 0015-fix-ipv6-pton: call inet_pton on the value without the netmask.
+    (LP: #1215391)
+
+ -- Serge Hallyn <serge.hallyn@ubuntu.com>  Fri, 23 Aug 2013 11:39:55 -0500
+
+lxc (0.9.0-0ubuntu22) saucy; urgency=low
+
+  * ubuntu-cloud: fix typo keeping --hostid from working (LP: #1197357)
+
+ -- Serge Hallyn <serge.hallyn@ubuntu.com>  Thu, 15 Aug 2013 14:40:58 -0500
+
+lxc (0.9.0-0ubuntu21) saucy; urgency=low
+
+  * Fix autopkgtest failure by unsetting TMPDIR in the test.
+
+ -- Stéphane Graber <stgraber@ubuntu.com>  Fri, 09 Aug 2013 16:30:47 +0200
+
+lxc (0.9.0-0ubuntu20) saucy; urgency=low
+
+  * Build-depend on hardening-wrapper to meet MIR security requirements.
+    This is done instead of using the new dpkg-buildflags as those are a pain
+    to get to work when building both binaries and libraries when using -PIE.
+
+ -- Stéphane Graber <stgraber@ubuntu.com>  Fri, 09 Aug 2013 14:33:59 +0200
+
+lxc (0.9.0-0ubuntu19) saucy; urgency=low
+
+  * Add variable in /etc/default/lxc-net to optionally resolve .lxc on
+    lxcbr0.
+
+ -- Serge Hallyn <serge.hallyn@ubuntu.com>  Tue, 06 Aug 2013 09:03:59 -0500
+
+lxc (0.9.0-0ubuntu18) saucy; urgency=low
+
+  * 0012-add-kernel-filesystems-to-fstab: saucy containers will fail to start
+    unless security, debug, and connections are pre-mounted.
+
+ -- Serge Hallyn <serge.hallyn@ubuntu.com>  Thu, 25 Jul 2013 22:01:02 -0500
+
+lxc (0.9.0-0ubuntu17) saucy; urgency=low
+
+  * 0011-cgroup-hook-handle-stricter-kernel: fix the mountcgroups hook in the
+    face of new restrictions imposed by the kernel on devices cgroups.
+    (LP: #1196518)
+
+ -- Serge Hallyn <serge.hallyn@ubuntu.com>  Fri, 05 Jul 2013 20:44:57 +0200
+
+lxc (0.9.0-0ubuntu16) saucy; urgency=low
+
+  * conf.c-always-strdup-rootfs.mount: prevent segfault when using
+    lxc.rootfs.mount.
+
+ -- Serge Hallyn <serge.hallyn@ubuntu.com>  Mon, 01 Jul 2013 15:29:17 -0500
+
+lxc (0.9.0-0ubuntu15) saucy; urgency=low
+
+  * lxc-net: support an optional dnsmasq configuration file.
+  * 0010-debian-template-set-hwaddr: set persistent macaddr when creating a
+    debian container (LP: #1080681)
+  * lxc.apport: add /etc/lxc/{dnsmasq,default,lxc}.conf and
+    /etc/default/lxc{,-net}.conf
+
+ -- Serge Hallyn <serge.hallyn@ubuntu.com>  Tue, 11 Jun 2013 07:47:32 -0500
+
+lxc (0.9.0-0ubuntu14) saucy; urgency=low
+
+  * 0009-conf.c-if-we-don-t-specify-a-rootfs-we-still-need-pr.patch: if
+    apparmor is enabled and no rootfs was specified, then re-mount /proc
+    so that we can write the requested apparmor profile under /proc/1.
+    (LP: #1188501)
+
+ -- Serge Hallyn <serge.hallyn@ubuntu.com>  Mon, 10 Jun 2013 09:27:32 -0500
+
+lxc (0.9.0-0ubuntu13) saucy; urgency=low
+
+  * 0008-ignore-rootfs-pin-fail.patch: don't refuse to start a container
+    on readonly fs.
+
+ -- Serge Hallyn <serge.hallyn@ubuntu.com>  Wed, 05 Jun 2013 21:35:40 +0200
+
+lxc (0.9.0-0ubuntu12) saucy; urgency=low
+
+  * 0007-lxc.conf.doc: Fill in missing sections in lxc.conf(5) manual
+    page (LP: 1182085)
+
+ -- Serge Hallyn <serge.hallyn@ubuntu.com>  Tue, 28 May 2013 13:23:57 -0500
+
+lxc (0.9.0-0ubuntu11) saucy; urgency=low
+
+  * lxc-net: deal with the fact that some kernels may not have the needed
+    network bridge support.
+
+ -- Stéphane Graber <stgraber@ubuntu.com>  Tue, 28 May 2013 10:52:22 -0400
+
+lxc (0.9.0-0ubuntu10) saucy; urgency=low
+
+  * Rebuild-only upload (LP: #1183807)
+
+ -- Serge Hallyn <serge.hallyn@ubuntu.com>  Fri, 24 May 2013 10:51:44 -0500
+
+lxc (0.9.0-0ubuntu9) saucy; urgency=low
+
+  * 0006-lxc-clone-fix-lvm-blockdev-usage: fix use of wrong pathnames for both
+    block devices and mount targets in the LVM case.  (LP: #1183354)
+
+ -- Serge Hallyn <serge.hallyn@ubuntu.com>  Thu, 23 May 2013 14:22:38 -0500
+
+lxc (0.9.0-0ubuntu8) saucy; urgency=low
+
+  [ James Hunt ]
+  * Add basic DEP-8 tests to ensure a container can be created, started,
+    stopped and cloned.
+
+ -- James Hunt <james.hunt@ubuntu.com>  Tue, 21 May 2013 14:44:12 +0100
+
+lxc (0.9.0-0ubuntu7) saucy; urgency=low
+
+  * 0005-cgroup-prevent-DOS-when-a-hierachy-is-mounted-multip.patch: prevent
+    DOS when a cgroup hierarchy is mounted multiple times  (LP: #1176287)
+
+ -- Serge Hallyn <serge.hallyn@ubuntu.com>  Wed, 15 May 2013 22:19:59 +0000
+
+lxc (0.9.0-0ubuntu6) saucy; urgency=low
+
+  * debian/lxc.default, debian/lxc.preinst: calculate an open 10.0.x.0 network
+    for lxcbr0 to use at package install time.  This allows easier package
+    installion when nested.
+
+ -- Serge Hallyn <serge.hallyn@ubuntu.com>  Tue, 14 May 2013 14:34:51 -0500
+
+lxc (0.9.0-0ubuntu5) saucy; urgency=low
+
+  * push 0004-lxc-ps-handle-cgroup-collisions.patch from upstream to handle
+    the case where $container's cgroup is
+    /sys/fs/cgroup/$cgroup/lxc/$container-1.
+
+ -- Serge Hallyn <serge.hallyn@ubuntu.com>  Wed, 08 May 2013 16:02:44 -0500
+
+lxc (0.9.0-0ubuntu4) saucy; urgency=low
+
+  * Fix lxc-list crashing when passed --nesting with nested containers.
+    (LP: #1177408)
+  * Fix lxc-ls to show nested containers when using alternate lxcpath.
+    (LP: #1177412)
+  * Fix python3 API bug leading to parameter corruption in create and start.
+    (LP: #1177400)
+
+ -- Stéphane Graber <stgraber@ubuntu.com>  Tue, 07 May 2013 10:48:40 -0400
+
+lxc (0.9.0-0ubuntu3) raring; urgency=low
+
+  * 0003-python-module-fixes: Cherry pick python module bugfixes from upstream.
+  * Update deprecation warning for lxc-halt and lxc-list, moving the
+    deprecation from 0.9 to 1.0.
+
+ -- Stéphane Graber <stgraber@ubuntu.com>  Thu, 18 Apr 2013 22:29:39 +0200
+
+lxc (0.9.0-0ubuntu2) raring; urgency=low
+
+  * 0002-lxc-functions-safe-in-dash: stop lxc-clone from silently failing.
+    (LP: #1166870)
+
+ -- Serge Hallyn <serge.hallyn@ubuntu.com>  Tue, 09 Apr 2013 12:38:02 -0500
+
+lxc (0.9.0-0ubuntu1) raring; urgency=low
+
+  * New upstream release (0.9.0) (LP: #1166286)
+    - New features
+        (fixing a regression for 0.8/0.9alpha who relied on --keep-env)
+      + lxc-attach: Add --clear-env and --keep-env to lxc-attach
+      + lxc-clone: Support 'permanent ephemeral' containers
+      + lxc-start-ephemeral: Implement -n to match manpage
+    - Bugfix
+      + automake: Fix 'make clean'
+      + automake: Fix missing files with "make dist"
+      + core: API shouldn't be calling create for already defined containers or
+        destroy for non defined ones
+      + core: Build fixes for ia64
+      + core: Make lxc.functions return the default lxcpath if
+        /etc/lxc/lxc.conf doesn't provide one
+      + core: Properly cleanup network devices if pinning root filesystem
+        din't work
+      + core: rcfile shouldn't be recorded in lxc_conf if the attempt to load a
+        config file fails
+      + core: Set all mounts to MS_SLAVE when starting a container without
+        a rootfs
+      + core: Use $localstatedir/log/lxc for default log path
+      + git: Updated gitignore (for lxc-ls)
+      + lxc-attach: Set container=lxc in the environment
+      + lxc-create: require absolute path for non-standard templates
+      + lxc-shutdown  Make all processes exit before timeout if shutdown works
+      + lxc-shutdown: Properly handle timeout case
+      + manpage: Fixed typo in the main LXC manpage
+      + python: Fix runtime failure on armhf
+      + ubuntu template: Tweak architecture support (to match what's supported)
+  * Removed 0002-fix-armhf-python-failure, merged upstream.
+
+ -- Stéphane Graber <stgraber@ubuntu.com>  Mon, 08 Apr 2013 12:19:32 -0400
+
+lxc (0.9.0~rc1-0ubuntu3) raring; urgency=low
+
+  * Add code to postinst to fix any double-migration of /etc/dnsmasq.
+    (LP: #1157332)
+
+ -- Stéphane Graber <stgraber@ubuntu.com>  Wed, 27 Mar 2013 16:51:11 -0400
+
+lxc (0.9.0~rc1-0ubuntu2) raring; urgency=low
+
+  * Fix python3-lxc on armhf (LP: #1159817).
+
+ -- Stéphane Graber <stgraber@ubuntu.com>  Tue, 26 Mar 2013 11:21:46 -0400
+
+lxc (0.9.0~rc1-0ubuntu1) raring; urgency=low
+
+  * New upstream release (0.9.0~rc1)
+    - New features
+      * alpine: template now supports bridges auto-detect and setting hwaddr
+      * archlinux: update template to use lxc.stopsignal and lxc.kmsg
+      * core: Add example hooks from Ubuntu package
+      * core: Add --lxcpath (-P) option to all the tools
+      * core: attach: now also changes the apparmor profile
+      * core: attach: try to detect the user shell when attaching
+      * core: config: add lxc.kmsg (defaults to old enabled behaviour)
+      * core: config: add lxc.stopsignal (defaults to old SIGKILL behaviour)
+      * core: lxc-ls: Implement support for nested containers
+      * core: New exported API function, get_version
+      * lenny: Remove deprecated template
+      * lxc-ps: New '--host' option
+      * opensuse: update template to support 12.2 and 12.3
+    - Bugfixes
+      * core: Add missing config.h includes.
+      * core: af_unix: make sure to keep useful errno
+      * core: attach: fixed lxc-attach to deal with user namespaces
+      * core: attach: free result before potentially strduping a second time.
+      * core: c api -> createl: correctly handle 0 template args
+      * core: commands.c: sanity check to not write too-long cgroup path name
+      * core: ensure clock_gettime symbol is found
+      * core: Fix typos identified by lintian
+      * core: fix writing multiple uidmap ranges
+      * core: give a hint if old cgroup can't be moved
+      * core: improved README
+      * core: lxc_id_mapping: don't try to write mappings if there are none
+      * core: make [ug]id map ordering consistent with /proc/<nr>/[ug]id_map
+      * core: only INFO rcfile if asprintf successfully allocates it
+      * core: Remove redundant clearenv call
+      * core: Replace deprecated AM_CONFIG_HEADER
+      * core: rootfs pin: fix two bugs
+      * core: try to set clone_children when setting up cgroups
+      * core: Use AC_SEARCH_LIBS instead of hardcoded lists
+      * core: userns: handle delayed write errors at fclose
+      * legacy: only output appropriate directories/containers in lxc-ls
+      * lxc-ubuntu{-cloud}: Config layout tweaking
+      * opensuse: fix template to better work with lxc-clone, support shutdown,
+      * oracle: template fixes for older releases
+      * python: Drop use of hardcoded @LXCPATH@
+      * rpm: include hook files and tests in make dist
+        various code improvements
+  * Remove example hooks from packaging as they have now been upstreamed.
+  * Update apparmor profile to allow for lxc-create to work for nested
+    precise containers.
+
+ -- Stéphane Graber <stgraber@ubuntu.com>  Tue, 19 Mar 2013 11:32:44 -0400
+
+lxc (0.9.0~alpha3-0ubuntu3) raring; urgency=low
+
+  * 0001-fix-race-with-fast-init: Before starting lxc_mainloop, check whether
+    lxc-init has already exited.  If it has, return immediately to reap it.
+    (LP: #1134923) (LP: #1144873)
+
+ -- Serge Hallyn <serge.hallyn@ubuntu.com>  Mon, 11 Mar 2013 10:14:39 -0500
+
+lxc (0.9.0~alpha3-0ubuntu2) raring; urgency=low
+
+  * Remove hardcoded --enable-seccomp from debian/rules as seccomp isn't
+    present on armhf and powerpc, leading to FTBFS on those two architectures.
+
+ -- Stéphane Graber <stgraber@ubuntu.com>  Mon, 18 Feb 2013 19:01:38 -0500
+
+lxc (0.9.0~alpha3-0ubuntu1) raring; urgency=low
+
+  * New upstream release (0.9.0~alpha3)
+  * NOTE: We took the opportunity of this new upstream release bringing
+    its lot of significant changes to reduce the amount of custom code that's
+    shipped in the packages and hasn't been submitted upstream.
+    If you strongly feel about any of those, please submit a cleaned up version
+    to upstream LXC for inclusion.
+
+    The following tools/templates have been dropped:
+      - lxc-debconf (upstream ships lxc-debian and lxc-lenny)
+      - lxc (use the lxc-* commands directly)
+      - lxc-backup (was just a wrapper on rsync using hardcoded paths)
+      - lxc-restore (was just a wrapper on rsync using hardcoded paths)
+
+    And the following are provided through compatibility symlinks and will be
+    dropped in final 0.9:
+      - lxc-list (equivalent of lxc-ls --fancy)
+      - lxc-halt (replaced by lxc-shutdown)
+
+    This release also deprecates the following tools as they were considered
+    mostly broken and the user namespace support makes them mostly useless:
+      - lxc-setcap
+      - lxc-setuid
+
+  * The following patches were included upstream:
+    - 0013-lxc-create-use-default-config.patch
+    - 0030-ubuntu-template-fail.patch
+    - 0031-ubuntu-template-resolvconf.patch
+    - 0044-lxc-destroy-rm-autos
+    - 0045-fix-other-templates
+    - 0046-lxc-clone-change-hwaddr
+    - 0047-bindhome-check-shell
+    - 0049-ubuntu-template-sudo-and-cleanup
+    - 0050-clone-lvm-sizes
+    - 0052-ubuntu-bind-user-conflict
+    - 0053-lxc-start-pin-rootfs
+    - 0054-ubuntu-debug
+    - 0055-ubuntu-handle-badgrp
+    - 0056-dont-watch-utmp
+    - 0057-update-manpages
+    - 0058-fixup-ubuntu-cloud
+    - 0059-reenable-daily-cloudimg
+    - 0060-lxc-shutdown
+    - 0061-lxc-start-apparmor
+    - 0062-templates-relative-paths
+    - 0063-check-apparmor-enabled
+    - 0064-apparmor-mount-proc
+    - 0065-fix-bindhome-relpath
+    - 0066-confile-typo
+    - 0067-templates-lxc-profile
+    - 0068-fix-lxc-config-layout
+    - 0069-ubuntu-cloud-fix
+    - 0070-templates-rmdir-dev-shm
+    - 0071-ubuntu-cloud-fix-image-extraction
+    - 0072-lxc-shutdown-help
+    - 0073-lxc-destroy-waits-before-destroy
+    - 0074-lxc-execute-find-init
+    - 0075-lxc-ls-bash
+    - 0076-fix-sprintfs
+    - 0077-execute-without-rootfs
+    - 0078-lxc-clone-quote-line
+    - 0079-quantal-support
+    - 0080-drop-maverick
+    - 0081-fix-multiarch-install
+    - 0082-umount-old-proc
+    - 0083-ubuntu-simplify-template
+    - 0084-lxc-ubuntu-drop-duplicate-code.patch
+    - 0085-pivot-dir
+    - 0086-lxc-unshare-zero-args
+    - 0087-lxc-ls-dash
+    - 0088-ubuntu-template-flock
+    - 0089-lxc-netstat-exec
+    - 0090-lxc-ubuntu-use-dpkg-add-architecture
+    - 0091-introduce-container-hooks.patch
+    - 0092-clone-no-dhclient.conf-update-when-not-hardcoded
+    - 0093-lxc-clone-copy-fstab
+    - 0094-fix-dev-shm-check
+    - 0095-lxc-clone-change-uuid-on-xfs.patch
+    - 0096-lxc-wait-add-timeout.patch
+    - 0097-seccomp
+    - 0098-config-file-includes
+    - 0099-cleanup-after-template-help
+    - 0100-template-cleanup-cache
+    - 0101-template-empty-apt-cache
+    - 0102-lxc-start-d-check-privs
+    - 0103-make-rootfs-location-optional
+    - 0104-add-option-to-lxc-attach-to-select-ns
+    - 0105-lxc-attach-add-R-option
+    - 01-lxc-directories.patch
+    - 0200-liblxc
+    - 0201-fix-mkdir-race
+    - 0202-make-api-start-reliable
+    - 0203-python-lxc
+    - 0204-ubuntu-cloud-userdata-path
+    - 0205-lxc-ls-manpage-document-two-lines
+    - 0206-lxc-wait-initialize-timeout
+    - 0207-ubuntu-cloud-fixes.patch
+    - 0208-fix-getitem-utsname-segv
+    - 0209-reload-conf-after-create
+    - 0210-fix-debian-templates
+    - 0211-add-hooks-to-manpage
+    - 0213-add-premount-hook.patch
+    - 0214-give-pclose-errno
+    - 0215-lxc-clone-name-arg
+    - 0216-hook-kmsg-to-console
+    - 0217-lxc-clone-fix-fstab
+    - 0218-api-shutdown-fix-doublestop
+    - 0219-python-module-improvements
+    - 0220-getitem-per-hook-type
+    - 0221-make-nonflush-upgrades-robust
+    - 0222-debian-dhcp3-package
+    - 0223-ubuntu-template-user-msg
+    - 0225-ubuntu-cloud-numeric-owner
+    - 0226-add-lxc-autodev
+    - 0227-ubuntu-cloud-parsing
+    - 0228-ignore-kmsg-setup-failure
+    - 0229-lxc-clone-mount-fix
+    - 0230-autodev-makedev-console
+    - 02-lxc-distclean.patch
+    - 03-lxc-configuration-path.patch
+    - 04-lxc-create-template-name.patch
+    - 05-doc-ip-address.patch
+    - 06-bash.patch
+    - 07-lxc-netstat.patch
+    - 08-lxc-debconf.patch
+    - 09-lxc-create-trap-name.patch
+    - 10-lxc-clone-trap-name.patch
+    - 11-lxc-console-escape.patch
+    - 12-lxc-create-rootfs.patch
+    - compilecleanups/0001-replace-HOOK-define-with-proper-code.patch
+    - compilecleanups/0002-add-prototype-for-clone-2-as-per-manpage.patch
+    - compilecleanups/0003-check-chdir-return-value.patch
+    - compilecleanups/0004-Fix-passing-non-const-char-in-for-const-char.patch
+    - compilecleanups/0005-return-nonvoid
+    - compilecleanups/0006-unused-var
+    - compilecleanups/0007-tests-check-return-values
+    - seccompapi/0001-seccomp-free-conf-seccomp-filename-char.patch
+    - seccompapi/0002-README-fix-typo-in-example-script.patch
+    - seccompapi/0003-support-new-libseccomp-api.patch
+
+  * New patches:
+    - transition/00-redirect-lxc-halt.patch: Show warning when lxc-halt is
+      called as lxc-shutdown now replaces it.
+    - transition/01-redirect-lxc-list.patch: Show warning when lxc-list is
+      called as lxc-ls now replaces it. Default to --fancy in this mode.
+    - 0000-add-autostart.patch: Add autostart support to lxc-destroy and
+      lxc-ls.
+
+  * Disable the test binaries, those are only useful in the dailies.
+  * Drop lxc.manpages, all the needed manpages are now upstream.
+  * Transition /etc/lxc/lxc.conf to /etc/lxc/default.conf.
+  * Drop debian/*.in as they didn't contain any variable anymore.
+  * Drop outdated sysvinit script. We use upstart and don't intend to maintain
+    the sysvinit script in Ubuntu.
+  * Drop lxc.config and po/*. We've never used debconf for lxc in Ubuntu.
+  * Fix some bugs in the ecryptfs hook.
+
+ -- Stéphane Graber <stgraber@ubuntu.com>  Mon, 18 Feb 2013 18:25:18 -0500
+
+lxc (0.8.0~rc1-4ubuntu50) raring; urgency=low
+
+  * Create /etc/dnsmasq.d when missing.
+
+ -- Stéphane Graber <stgraber@ubuntu.com>  Fri, 08 Feb 2013 16:25:44 -0500
+
+lxc (0.8.0~rc1-4ubuntu49) raring; urgency=low
+
+  * Don't directly write/remove /etc/dnsmasq.d/lxc as that's causing problems
+    when removing and reinstalling lxc.
+    Instead have dnsmasq ship /etc/dnsmasq.d-available/lxc and create/remove
+    a symlink in /etc/dnsmasq.d/. (LP: #1113821)
+
+ -- Stéphane Graber <stgraber@ubuntu.com>  Wed, 06 Feb 2013 16:13:18 -0500
+
+lxc (0.8.0~rc1-4ubuntu48) raring; urgency=low
+
+  * debian/patches/seccompapi/: update the seccomp usage to handle the
+    >= 1.0.0 libseccomp api.
+
+ -- Serge Hallyn <serge.hallyn@ubuntu.com>  Tue, 11 Dec 2012 12:46:08 -0600
+
+lxc (0.8.0~rc1-4ubuntu47) raring; urgency=low
+
+  * 0230-autodev-makedev-console: Run MAKEDEV(console) before creating
+    consoles in the container.  This is to make up for the fact that
+    userspace (i.e. mountall) won't be doing so, since it otherwise
+    would overwrite the consoles set up by lxc.  (LP: #1075717)
+
+ -- Serge Hallyn <serge.hallyn@ubuntu.com>  Wed, 28 Nov 2012 16:08:37 -0600
+
+lxc (0.8.0~rc1-4ubuntu46) raring; urgency=low
+
+  * 0229-lxc-clone-mount-fix: fix wrong handling of lxc.mount entries in
+    lxc-clone.  (LP: #1084089)
+  * debian/apparmor/abstractions-lxc-container-base: deny read/write under
+    /sys/firmware/efi/efivars.
+
+ -- Serge Hallyn <serge.hallyn@ubuntu.com>  Wed, 28 Nov 2012 11:04:17 -0600
+
+lxc (0.8.0~rc1-4ubuntu45) raring; urgency=low
+
+  [ Stéphane Graber ]
+  * Allow the container to mount efivars on /sys/firmware/efi/efivars.
+    efivars is automatically mounted by mountall on UEFI systems, failure to
+    do so leads to a complete boot failured.
+  * Allow mounts and pivot_roots under /usr/lib/lxc/root/ for compatibility
+    with nested precise lxc hosts (quantal -> precise -> containers).
+
+  [ Serge Hallyn ]
+  * update 0227-ubuntu-cloud-parsing to catch a doc typo stgraber had found
+    in the upstream review.
+  * 0228-ignore-kmsg-setup-failure: ignore failure to set up kmsg, since that
+    is not critical.
+
+  [ Christian Kampka ]
+  * Have upstart run lxc instances (LP: #1049908)
+
+ -- Serge Hallyn <serge.hallyn@ubuntu.com>  Tue, 27 Nov 2012 22:52:10 -0600
+
+lxc (0.8.0~rc1-4ubuntu44) raring; urgency=low
+
+  [ Scott Moser ]
+  * 0225-ubuntu-cloud-numeric-owner: use --numeric-owner when extracting root
+    filesystems with tar (LP: #1066084)
+
+  [ Serge Hallyn ]
+  * Remove 0224-ubuntu-templates-devtmpfs  (LP: #1070914)
+  * 0226-add-lxc-autodev: implement automatic mount and populate of /dev.
+  * 0227-ubuntu-cloud-parsing: fix some option parsing bugs in ubuntu-cloud
+    template (LP: #1076031)
+
+ -- Serge Hallyn <serge.hallyn@ubuntu.com>  Mon, 26 Nov 2012 10:11:00 -0600
+
+lxc (0.8.0~rc1-4ubuntu43) raring; urgency=low
+
+  * Fix debian/lxc.install.in to drop /var/lib/lxc/{cache|packages|templates}
+    as they've been moved to the new lxc-templates package.
+  * Bump Breaks/Replaces/Depends/Recommends versions to ubuntu43.
+
+ -- Stéphane Graber <stgraber@ubuntu.com>  Tue, 13 Nov 2012 12:09:30 -0500
+
+lxc (0.8.0~rc1-4ubuntu42) raring; urgency=low
+
+  * Add --dhcp-authoritative and --dhcp-leasefile options to lxc-net's dnsmasq.
+    This should help LXC keep IPs consistent accross reboots.
+  * Wrap-and-sort debian/control and debian/lxc.install
+  * Split templates out of the lxc binary package into a new lxc-templates
+    package. Have python3-lxc and lxc recommend the new package and have it
+    depend on lxc as a few templates use the command line tools.
+  * Move template related Depends/Recommends/Suggests to the new lxc-templates
+    package.
+
+ -- Stéphane Graber <stgraber@ubuntu.com>  Mon, 12 Nov 2012 17:28:12 -0500
+
+lxc (0.8.0~rc1-4ubuntu41) raring; urgency=low
+
+  * Rebuild to drop python3.2 extension.
+
+ -- Matthias Klose <doko@ubuntu.com>  Thu, 08 Nov 2012 11:15:42 +0000
+
+lxc (0.8.0~rc1-4ubuntu40) raring; urgency=low
+
+  * Add the multiarch include path for python3.3.
+  * Use dpkg-buildflags.
+
+ -- Matthias Klose <doko@ubuntu.com>  Thu, 25 Oct 2012 19:34:54 +0200
+
+lxc (0.8.0~rc1-4ubuntu37) quantal; urgency=low
+
+  * update 0222-debian-dhcp3-package: use dhcp3-client, not server!
+  * 0224-ubuntu-templates-devtmpfs: mount devtmpfs in ubuntu containers.
+    (LP: #1060404)
+
+ -- Serge Hallyn <serge.hallyn@ubuntu.com>  Thu, 04 Oct 2012 12:06:02 -0500
+
+lxc (0.8.0~rc1-4ubuntu36) quantal; urgency=low
+
+  * 0222-debian-dhcp3-package: fix install of debian testing containers.
+    (LP: #1052972)
+  * 0223-ubuntu-template-user-msg: don't say default user is ubuntu when
+    it isn't.  (LP: #1052315)
+
+ -- Serge Hallyn <serge.hallyn@ubuntu.com>  Wed, 19 Sep 2012 11:58:53 -0500
+
+lxc (0.8.0~rc1-4ubuntu35) quantal; urgency=low
+
+  * 0220-getitem-per-hook-type: support clear_item for specific hooks.
+    (LP: #1050719)
+  * 0221-make-nonflush-upgrades-robust: be more robust about out of date
+    container caches.  (LP: #942862)
+
+ -- Serge Hallyn <serge.hallyn@ubuntu.com>  Fri, 14 Sep 2012 11:45:46 -0500
+
+lxc (0.8.0~rc1-4ubuntu34) quantal; urgency=low
+
+  [ Serge Hallyn ]
+  * 0214-give-pclose-errno: help debug pclose failures when lxc runs scripts.
+  * 0215-lxc-clone-name-arg: fix incorrect checking for --name argument.
+    (LP: #1049914)
+  * 0216-hook-kmsg-to-console: link /dev/kmsg to /dev/console so init log
+    messages can be seen.  (LP: #1049926)
+  * 0217-lxc-clone-fix-fstab: fix check for lxc.mount in lxc-clone
+    (LP: #1049987)
+  * 0218-api-shutdown-fix-doublestop: don't call c->stop() when already
+    stopped (LP: #1050001)
+  * Update lxc-start-container apparmor abstraction to allow ecryptfs mounts
+    from the pre-mount script.  Remove the instruction to add that line from
+    the example hook.
+  * Update lxc-start-container apparmor abstraction to allow mounts to paths
+    under /var/lib/lxc/$container/, so that pre-mount hooks can stage mounts
+    there.  Also update the mountecryptfs example premount hook to use that.
+    (LP: #1050469)
+  * debian/rules: remove parsing of apparmor.in files.
+
+  [ Stéphane Graber ]
+  * Update lxc-start-container apparmor abstraction to allow aufs and overlayfs
+    mounts from the pre-mount scripts. This is required by some hooks and will
+    be needed by the new lxc-start-ephemeral.
+  * Remove multi-arch path in lxc-start-container apparmor abstraction and
+    instead just allow /usr/lib/*/lxc/ so nested containers running on a
+    different architecture don't get blocked by apparmor.
+  * Cherry-pick python-lxc fixes from upstream:
+    - Minor PEP-8 syntax fix
+    - Return an exception when getting Container instance as non-root
+    - Automatically convert any state string passed to wait() to its uppercase
+      equivalent.
+    - Replace test.py by a full example of the API.
+    - Remove zombie handler function from C module as it's no longer required
+      and causes weird bugs when used with the hooks.
+
+  [ William Grant ]
+  * lxc-start-ephemeral: exit with the command's status, not always 0.
+    (LP: #1050351)
+
+ -- Serge Hallyn <serge.hallyn@ubuntu.com>  Thu, 13 Sep 2012 12:02:45 -0500
+
+lxc (0.8.0~rc1-4ubuntu33) quantal; urgency=low
+
+  [ Serge Hallyn ]
+  * 0206-lxc-wait-initialize-timeout: initialize timeout to -1 so lxc-wait
+    will, by default, wait for the container to enter the requested state.
+  * debian/patches/compilecleanups/* - fix compile time warnings.
+  * lxc.lxc-net.upstart: tell iptables not to masquerate packets between
+    containers.  (LP: #1045947)
+  * 0208-fix-getitem-utsname-segv: fix seg fault when doing get_item(utsname)
+    on newly created container.
+  * 0209-reload-conf-after-create: add ability to free a lxc_conf.  Use that
+    after calling Container->Create() to completely reload the newly created
+    config.
+  * 0211-add-hooks-to-manpage: document lxc.hook in the lxc.conf manpage.
+  * 0212-lxc-destroy-rm-symlink: If rootfs is a symbolic link to a directory,
+    remove it.  (LP: #1046117)
+  * 0213-add-premount-hook.patch: add a premount hook to support encrypted
+    filesystems.  (LP: #1043052)
+
+  [ Scott Moser ]
+  * 0207-ubuntu-cloud-fixes.patch: cleanups to lxc-ubuntu-cloud.in
+    fix for quantal images that do not have user 'ubuntu' present
+    (LP: #1045955)
+
+  [ Rex Tsai ]
+  * 0210-fix-debian-templates: Fix lxc-shutdown/lxc-restart in Debian
+    containers and fix lxc.utsname for lenny containers.
+    (LP: #1046684, LP: #1046696)
+
+  [ Stéphane Graber ]
+  * lxc.lxc-net.upstart: Make the iptables call more consistent (LP: #1045947)
+
+ -- Serge Hallyn <serge.hallyn@ubuntu.com>  Thu, 30 Aug 2012 11:32:06 -0500
+
+lxc (0.8.0~rc1-4ubuntu32) quantal; urgency=low
+
+  * 0204-ubuntu-cloud-userdata-path: Fix broken behavior when a relative
+    path is passed into '--userdata' argument.  (LP: #1043582)
+  * 0205-lxc-ls-manpage-document-two-lines: Document the default two-line
+    output format of lxc-ls.  (LP: #1043018)
+  * lxc-start-ephemeral: support fedora and centos  (LP: #1042431)
+
+ -- Serge Hallyn <serge.hallyn@ubuntu.com>  Thu, 30 Aug 2012 10:05:06 -0500
+
+lxc (0.8.0~rc1-4ubuntu31) quantal; urgency=low
+
+  * Previous upload had documentation turned off, making it FTBFS on i386,
+    this was a leftover change from a test build, revert that bit.
+
+ -- Stéphane Graber <stgraber@ubuntu.com>  Tue, 28 Aug 2012 06:07:05 -0400
+
+lxc (0.8.0~rc1-4ubuntu30) quantal; urgency=low
+
+  * Fix long description's spelling of Python.
+  * Make python-lxc a patch against the upstream tree and integrate with
+    autotools instead of maintaining in debian/python-lxc.
+    Resulting binary package has been checked to be identical, this is to
+    done to make it easier to push upstream.
+
+ -- Stéphane Graber <stgraber@ubuntu.com>  Tue, 28 Aug 2012 05:55:05 -0400
+
+lxc (0.8.0~rc1-4ubuntu29) quantal; urgency=low
+
+  [ Serge Hallyn ]
+  * fix lxcapi_start to not return true when it container failed to start.
+  * 0201-fix-mkdir-race: don't raise error if mkdir fails with EEXIST.
+  * 0202-make-api-start-reliable: have daemonized start through the api
+    wait until the container is RUNNING before returning true.  If a 5
+    second timeout is hit before the container is RUNNING, return false.
+
+  [ Stéphane Graber ]
+  * python-lxc: in get_ips() if timeout is 1 don't wait one second before
+    returning.
+  * python-lxc: Add import time warning that the API isn't yet stable and
+    so may change at any point in the future.
+
+ -- Stéphane Graber <stgraber@ubuntu.com>  Sat, 25 Aug 2012 12:44:17 -0400
+
+lxc (0.8.0~rc1-4ubuntu28) quantal; urgency=low
+
+  [ Stéphane Graber ]
+  * Merge liblxc changes:
+    - Build-depend on automake as autogen.sh is now run at build time.
+    - Introduce new liblxc0 binary package
+    - Make lxc to depend on liblxc0
+    - Move library to the new binary package
+    - Change libdir to be the public multi-arch path
+    - Build with --disable-rpath
+    - Move all the test binaries to a lxc-test-* namespace
+  * Merge python3-lxc changes:
+    - Introduce new python3-lxc binary package
+    - Update debian/rules to build the python3 code
+  * Update lxc-start-ephemeral:
+    - Replace tabs by 4 spaces, fix indentation
+    - Fix code to work properly as non-root (calling sudo where needed)
+
+  [ Serge Hallyn ]
+  * confile.c: support hooks in save_config().
+  * conf.h: Add array of hook names
+
+ -- Stéphane Graber <stgraber@ubuntu.com>  Wed, 22 Aug 2012 11:50:51 -0400
+
+lxc (0.8.0~rc1-4ubuntu27) quantal; urgency=low
+
+  * Add patches from mailing list to support per-namespace attach with
+    lxc-attach.
+    - 0104-add-option-to-lxc-attach-to-select-ns
+    - 0105-lxc-attach-add-R-option
+
+ -- Serge Hallyn <serge.hallyn@ubuntu.com>  Tue, 21 Aug 2012 16:10:08 -0500
+
+lxc (0.8.0~rc1-4ubuntu26) quantal; urgency=low
+
+  * 0100-template-cleanup-cache: clean up template cache if interrupted
+    during build. (LP: #1037331)
+  * 0101-template-empty-apt-cache: do an apt-cache clean after creating
+    a new cache.  (LP: #1037626)
+  * 0102-lxc-start-d-check-privs: exit early (with failure) if starting a
+    daemonized container with insufficient privilege.  (LP: #918327)
+  * 0103-make-rootfs-location-optional: allow custom location for a
+    container rootfs to be specified.  (LP: #1019398)
+
+ -- Serge Hallyn <serge.hallyn@ubuntu.com>  Fri, 17 Aug 2012 09:44:02 -0500
+
+lxc (0.8.0~rc1-4ubuntu25) quantal; urgency=low
+
+  * debian/control: only depend on libseccomp-dev on i386 and amd64, and
+    switch to upstream-submitted seccomp patch (LP: #1037701)
+  * debian/rules: add '--with autoreconf' to force recreation of
+    configure from configure.ac
+  * 0099-cleanup-after-template-help: don't leave a partially created
+    container when -h is passed after '--'.  (LP: #1031043)
+
+ -- Serge Hallyn <serge.hallyn@ubuntu.com>  Thu, 16 Aug 2012 17:03:07 -0500
+
+lxc (0.8.0~rc1-4ubuntu24) quantal; urgency=low
+
+  * lxc-start-ephemeral: use unionfs only for the rootfs itself
+    (LP: #959352)
+  * allow config files to include other config files.
+
+ -- Serge Hallyn <serge.hallyn@ubuntu.com>  Tue, 14 Aug 2012 13:11:24 +0000
+
+lxc (0.8.0~rc1-4ubuntu23) quantal; urgency=low
+
+  * fix FTBFS
+    - add libseccomp to build-deps
+    - add autoreconf to build-deps to regenerate Makefile.in at build time.
+
+ -- Serge Hallyn <serge.hallyn@ubuntu.com>  Wed, 08 Aug 2012 18:11:21 -0500
+
+lxc (0.8.0~rc1-4ubuntu22) quantal; urgency=low
+
+  [ Stéphane Graber ]
+  * Fix call to echo in lxc-start-ephemeral that was literally showing
+    '$LXC_BASE' instead of the variable's value.
+
+  [ Serge Hallyn ]
+  * Introduce support for seccomp.
+
+ -- Serge Hallyn <serge.hallyn@ubuntu.com>  Wed, 08 Aug 2012 10:43:06 -0500
+
+lxc (0.8.0~rc1-4ubuntu21) quantal; urgency=low
+
+  [ Stéphane Graber ]
+  * Fix lxc-ubuntu and lxc-ubuntu-cloud to fix the /dev/shm workaround to only
+    trigger when /dev/shm is not a symlink. (LP: #974584)
+
+  [ Serge Hallyn ]
+  * lxc.lxc-net.upstart: replace the check for USE_LXC_BRIDGE (which could be
+    changed from true to false after starting lxc-net) with one for the
+    existence /var/run/lxc.  (LP: #1019290)
+  * 0095-lxc-clone-change-uuid-on-xfs.patch: give each cloned xfs-backed
+    lvm partition a unique uuid so they can be mounted simultaneously.
+    (LP: #1013549)
+  * 0096-lxc-wait-add-timeout.patch: patch submitted upstream to add a timeout
+    option to lxc-wait.  (LP: #1020179)
+
+ -- Serge Hallyn <serge.hallyn@ubuntu.com>  Thu, 26 Jul 2012 17:40:36 +0000
+
+lxc (0.8.0~rc1-4ubuntu20) quantal; urgency=low
+
+  [ Stéphane Graber ]
+  * debian/apparmor/lxc-default-with-nesting: allow mounting /proc and /sys
+    so containers can be created.
+
+  [ Serge Hallyn ]
+  * 0093-lxc-clone-copy-fstab: fix updating of lxc.mount entries in lxc-clone
+
+ -- Serge Hallyn <serge.hallyn@ubuntu.com>  Fri, 20 Jul 2012 09:38:35 -0500
+
+lxc (0.8.0~rc1-4ubuntu19) quantal; urgency=low
+
+  * Move /etc/apparmor.d/abstractions/lxc-* to /etc/apparmor.d/abstractions/lxc/
+    - Rename lxc-container-default to container-base
+    - Rename lxc-start-container to start-container
+    - Update references
+  * Allow write access to /proc/sys/kernel/shm* as these are namespaced (IPC).
+
+ -- Stéphane Graber <stgraber@ubuntu.com>  Thu, 05 Jul 2012 12:02:19 -0400
+
+lxc (0.8.0~rc1-4ubuntu18) quantal; urgency=low
+
+  * Patch lxc-clone to stop messing with dhclient.conf when it contains a
+    placeholder (<hostname> or gethostname()). Fixes cases where dpkg will
+    prompt for modified config file on upgrade.
+
+ -- Stéphane Graber <stgraber@ubuntu.com>  Tue, 03 Jul 2012 17:57:27 -0400
+
+lxc (0.8.0~rc1-4ubuntu17) quantal-proposed; urgency=low
+
+  [ Stéphane Graber ]
+  * 0090-lxc-ubuntu-use-dpkg-add-architecture: Update lxc-ubuntu
+    template to use "dpkg --add-architecture" in containers running
+    dpkg >= 1.16.2. (LP: #1017862)
+
+  [ Serge Hallyn ]
+  * 0091-introduce-container-hooks.patch: introduce container hooks at several
+    points in the container life-cycle.
+  * Add copyright statement to lxc-aa-custom-profile
+  * Add debian/hooks/mountcgroups as an example (installed under
+    /usr/share/lxc/hooks)
+
+ -- Serge Hallyn <serge.hallyn@ubuntu.com>  Tue, 26 Jun 2012 13:04:01 -0500
+
+lxc (0.8.0~rc1-4ubuntu16) quantal; urgency=low
+
+  * Update debian/local/lxc-list to only list every container once
+    and to support both the Debian and Ubuntu way of marking a container
+    as auto-started.
+  * Depend on adduser as it's being used in postinst.
+  * Fix lintian-overrides syntax and silence no-debconf-templates.
+  * Only run dh_apparmor against the lxc package.
+  * Don't override /var/log/lxc as 700, there's no good reason for that.
+
+ -- Stéphane Graber <stgraber@ubuntu.com>  Mon, 25 Jun 2012 15:00:01 -0400
+
+lxc (0.8.0~rc1-4ubuntu15) quantal; urgency=low
+
+  [ Serge Hallyn ]
+  * Add 'lxc-aa-custom-profile' command to make it easier to start using a
+    cusom profile for a container.
+
+  [ Stéphane Graber ]
+  * Update apparmor profiles to fix nesting:
+    - Allow fstype=cgroup mounts for lxc-default-with-nesting
+    - Only prevent mounting devpts for lxc-default and not
+      in lxc-default-with-nesting as it's required to spawn containers.
+
+ -- Stéphane Graber <stgraber@ubuntu.com>  Mon, 25 Jun 2012 01:34:12 -0400
+
+lxc (0.8.0~rc1-4ubuntu14) quantal; urgency=low
+
+  * Apparmor profile update:
+    - Move lxc-start profile content to abstractions/lxc-start-container
+    - Move lxc-default profile content to abstractions/lxc/container-default
+    - Include the abstractions
+    - Update lxc-default-with-nesting to include both abstractions
+    - Allow fstype=fuse.*, for all containers
+
+ -- Stéphane Graber <stgraber@ubuntu.com>  Tue, 19 Jun 2012 15:13:23 +0000
+
+lxc (0.8.0~rc1-4ubuntu13) quantal; urgency=low
+
+  * 0086-lxc-unshare-zero-args: fix lxc-unshare segfaulting when no command
+    is given (LP: #1011603)
+  * 0087-lxc-ls-dash: fix lxc-ls for containers whose names start with a
+    dash  (LP: #1006332)
+  * 0088-ubuntu-template-flock: don't fail when flock is busy, just wait,
+    so concurrent lxc-creates don't break.  (LP: #1007483)
+  * 0089-lxc-netstat-exec: fix lxc-netstat errors (LP: #1011739)
+
+ -- Serge Hallyn <serge.hallyn@ubuntu.com>  Mon, 11 Jun 2012 15:46:25 +0000
+
+lxc (0.8.0~rc1-4ubuntu12) quantal; urgency=low
+
+  * Fix broken logic in lxc-ubuntu template where lxc.devttydir would be
+    set to 'lxc' only for releases that don't support it. (LP: #1007493)
+
+ -- Stéphane Graber <stgraber@ubuntu.com>  Fri, 01 Jun 2012 11:57:44 -0400
+
+lxc (0.8.0~rc1-4ubuntu11) quantal; urgency=low
+
+  * add apport hook
+
+ -- Serge Hallyn <serge.hallyn@ubuntu.com>  Fri, 01 Jun 2012 08:13:03 -0500
+
+lxc (0.8.0~rc1-4ubuntu10) quantal; urgency=low
+
+  [ Serge Hallyn ]
+  * 0084-lxc-ubuntu-drop-duplicate-code.patch: drop some duplicate code from
+    the ubuntu template. (LP: #1004118)
+  * 0085-pivot-dir: use a directory other than /mnt to put the pivot_root
+    old dir into (LP: #986385)
+
+  [ Stéphane Graber ]
+  * Ship /etc/dnsmasq.d/lxc to configure an eventual system wide
+    dnsmasq daemon not to listen on the LXC bridge interface. (LP: #928524)
+  * Drop rm calls from postrm for apparmor rules, these were in the purge
+    target so didn't really serve any purpose.
+
+ -- Stéphane Graber <stgraber@ubuntu.com>  Tue, 29 May 2012 16:56:25 -0400
+
+lxc (0.8.0~rc1-4ubuntu9) quantal; urgency=low
+
+  * debian/lxc-net.upstart: don't put '()' after call to cleanup.
+    (LP: #1000174)
+
+ -- Serge Hallyn <serge.hallyn@ubuntu.com>  Mon, 21 May 2012 08:26:25 -0700
+
+lxc (0.8.0~rc1-4ubuntu8) quantal; urgency=low
+
+  * Update lxc-ubuntu:
+    - Update list of extra packages for debootstrap to only include vim
+      and ssh. The others were only relevant when we were still using the
+      minbase variant. (LP: #996839)
+    - Drop any hardcoded Ubuntu version check and replace by feature
+      checks instead.
+    - Format lxc-ubuntu to consistently use 4-spaces indent instead of
+      mixed spaces/tabs.
+    - Update default /etc/network/interfaces to include the header.
+    - Update default /etc/hosts to match that of a regular Ubuntu system.
+    - Drop support for end-of-life releases (gutsy on sparc).
+    - Make sure /etc/resolv.conf is valid before running any apt command.
+    - Update template help message for release and arch parameters.
+    - Switch default Ubuntu version from lucid to precise.
+  * Update lxc-start-ephemeral:
+    - Remove lxc-ip and replace it by a call to "ip netns" until we have
+      an extended lxc-attach we can use for that.
+    - Fix a race in lxc-start-ephemeral where the container isn't yet
+      running when trying to get its IPs.
+    - Update a few calls so that lxc-start-ephemeral can be called as a
+      user (ensure consistent usage of sudo across the script).
+  * Add new lxc-default-with-nesting apparmor profile, allowing nested
+    containers.
+
+ -- Stéphane Graber <stgraber@ubuntu.com>  Fri, 18 May 2012 19:05:44 -0400
+
+lxc (0.8.0~rc1-4ubuntu7) quantal; urgency=low
+
+  [ Francesco Banconi ]
+  * Introduced lxc-ip: retrieve the ip addresses of a container.
+  * lxc-start-ephemeral: use lxc-ip to ssh to the container (LP: #994752).
+
+ -- Serge Hallyn <serge.hallyn@ubuntu.com>  Wed, 16 May 2012 10:46:21 -0500
+
+lxc (0.8.0~rc1-4ubuntu6) quantal; urgency=low
+
+  * debian/control: add apparmor to lxc Depends (LP: #997681)
+  * debian/local/lxc-start-ephemeral: quote $line so its contents don't get
+    expanded (LP: #997687)
+
+ -- Serge Hallyn <serge.hallyn@ubuntu.com>  Thu, 10 May 2012 09:04:29 -0700
+
+lxc (0.8.0~rc1-4ubuntu5) quantal; urgency=low
+
+  * 0082-umount-old-proc: fix proc auto-mount.  If /proc is already mounted,
+    make sure that /proc/self points to 1, since we are container init.
+    Otherwise, assume proc is an old one, and umount it and remount our own.
+    If we keep the old proc mounted, apparmor transitions will by tried for
+    wrong task and fail.  Also move check for whether apparmor is enabled so
+    that it is called by lxc-execute.  (LP: #993706)
+  * update 0074-lxc-execute-find-init to look for lxc-init in
+    LXCINITDIR/lxc/lxc-init
+  * debian/control: add cloud-utils to lxc Recommends, as lxc-ubuntu-cloud
+    needs it.  (LP: 995361)
+  * debian/lxc.upstart: load apparmor profiles before auto-starting containers.
+    (LP: #989853)
+  * pop 06-bash.patch and 0075-lxc-ls-bash.  lxc-clone also has bashims, just
+    stick to using bash until upstream is also converted (so we are safe
+    against patches).
+
+ -- Serge Hallyn <serge.hallyn@ubuntu.com>  Mon, 07 May 2012 21:22:26 +0000
+
+lxc (0.8.0~rc1-4ubuntu4) quantal; urgency=low
+
+  * Fix Ubuntu template to install the host architecture of the required
+    mutli-arch packages (when using qemu-user-static) instead of hardcoded
+    "amd64" version.
+
+ -- Stéphane Graber <stgraber@ubuntu.com>  Fri, 04 May 2012 23:21:22 -0400
+
+lxc (0.8.0~rc1-4ubuntu3) quantal; urgency=low
+
+  * Add support for quantal in lxc-ubuntu and lxc-ubuntucloud
+  * Drop support for maverick in lxc-ubuntu and lxc-ubuntucloud
+
+ -- Stéphane Graber <stgraber@ubuntu.com>  Wed, 02 May 2012 21:28:11 -0400
+
+lxc (0.8.0~rc1-4ubuntu2) quantal; urgency=low
+
+  * lxc-clone: put quotes around $line to avoid expansion (LP: #993515)
+
+ -- Serge Hallyn <serge.hallyn@ubuntu.com>  Wed, 02 May 2012 15:23:52 -0500
+
+lxc (0.8.0~rc1-4ubuntu1) quantal; urgency=low
+
+  * Merge from unstable.  Remaining changes:
+    - control:
+      - update maintainer
+      - Build-Depends: add dh-apparmor and libapparmor-dev
+      - lxc Depends: add bridge-utils, dnsmasq-base, iptables, rsync
+      - lxc Recommends: add cgroup-lite | cgroup-bin, openssl
+      - lxc Suggests: add btrfs-tools, lvm2, qemu-user-static
+      - lxc Conflicts: remove (cgroup-bin)
+    - Add lxc-start-ephemeral and lxc-wait to debian/local
+    - apparmor:
+      - add lxc.apparmor, lxc-containers.apparmor,
+        lxc-default.apparmor, and new lxc.apparmor.in
+    - add debian/lxc.conf (default container creation config file)
+    - debian/lxc.install.in:
+      * add lxc-start-ephemeral
+      * add debian/lxc.conf
+      * skip lxc-debconf*
+      * skip lxc-ls (Use upstream's)
+    - debian/lxc*.install.in: use '*', not @DEB_HOST_MULTIARCH@
+    - Use our own completely different lxc.postinst and lxc.postrm
+    - remove lxc.templates
+    - debian/rules:
+      * add DEB_DH_INSTALLINIT_ARGS = --upstart-only
+      * don't do debconf stuff
+      * add debian/*.apparmor.in to files processed under
+        override_dh_auto_clean
+      * don't comment out ubuntu or busybox templates
+      * do apparmor stuff and install our own lxc-wait under override_dh_install
+      * install our upstart scripts in override_dh_installinit
+    - add lxc.default, lxc.lxc-net.upstart, lxc.upstart under
+      debian/
+
+  * patches kept:
+    - 0013-lxc-create-use-default-config.patch (needed manual rebase)
+    - 0030-ubuntu-template-fail.patch
+    - 0031-ubuntu-template-resolvconf.patch
+    - 0044-lxc-destroy-rm-autos
+    - debian/patches/0045-fix-other-templates
+    - debian/patches/0046-lxc-clone-change-hwaddr
+    - debian/patches/0047-bindhome-check-shell
+    - debian/patches/0049-ubuntu-template-sudo-and-cleanup
+    - debian/patches/0050-clone-lvm-sizes
+    - debian/patches/0052-ubuntu-bind-user-conflict
+    - debian/patches/0053-lxc-start-pin-rootfs
+    - debian/patches/0054-ubuntu-debug
+    - debian/patches/0055-ubuntu-handle-badgrp
+    - debian/patches/0056-dont-watch-utmp
+    - debian/patches/0057-update-manpages
+    - debian/patches/0058-fixup-ubuntu-cloud
+    - debian/patches/0059-reenable-daily-cloudimg
+    - debian/patches/0060-lxc-shutdown
+    - debian/patches/0061-lxc-start-apparmor
+    - debian/patches/0062-templates-relative-paths
+    - debian/patches/0063-check-apparmor-enabled
+    - debian/patches/0064-apparmor-mount-proc
+    - debian/patches/0065-fix-bindhome-relpath
+    - debian/patches/0066-confile-typo
+    - debian/patches/0067-templates-lxc-profile
+    - debian/patches/0068-fix-lxc-config-layout 
+    - debian/patches/0069-ubuntu-cloud-fix
+    - debian/patches/0070-templates-rmdir-dev-shm
+    - debian/patches/0071-ubuntu-cloud-fix-image-extraction
+    - debian/patches/0072-lxc-shutdown-help
+    - debian/patches/0073-lxc-destroy-waits-before-destroy
+    - mark all patches which have been forwarded as such, refresh all
+  * 0074-lxc-execute-find-init: lxc-init had moved.  Introduce a function in
+    lxc-execute to go find it.  Otherwise lxc-execute for any older releases
+    will fail.
+  * 0075-lxc-ls-bash: lxc-ls needs bash, not sh
+  * add debian/lxc.apparmor.in so DEB_HOST_MULTIARCH can be expanded
+  * 0076-fix-sprintfs:  - check return values for all sprintfs and snprintfs
+    which could overflow (LP: #988918)
+  * 0077-execute-without-rootfs: let lxc-execute succeed with no rootfs
+    (LP: #981955)
+
+ -- Serge Hallyn <serge.hallyn@ubuntu.com>  Thu, 26 Apr 2012 15:18:35 -0500
+
+lxc (0.8.0~rc1-4) unstable; urgency=low
+
+  * Correcting spelling typo in debconf templates (Closes: #663547).
+  * Adding updated French debconf translations from Christian Perrier
+    <bubulle@debian.org> (Closes: #663546).
+  * Moving architecture independent files from /usr/lib/*/lxc to
+    /usr/share/lxc (Closes: #664160).
+  * Correcting multiarch conditional typo in rules.
+  * Creating lxc directories in a dangling symlink proof way in order to
+    respect sysadmins decisions for temporary incomplete deployments.
+  * Adding patch to avoid messing with rootfs directory creation in lxc-
+    create where its not required (Closes: #664159).
+  * Adding updated Spanish debconf translations from Camaleón
+    <noelamac@gmail.com> (Closes: #665366).
+  * Adding updated Russian debconf translations from Yuri Kozlov
+    <yuray@komyakino.ru> (Closes: #665370).
+  * Also setting libexedir via configure argument which in turn will set
+    lxcinitdir properly on multiarch (Closes: #664764).
+
+ -- Daniel Baumann <daniel.baumann@progress-technologies.net>  Tue, 10 Apr 2012 20:04:36 +0200
+
+lxc (0.8.0~rc1-3) unstable; urgency=low
+
+  * Adding pre-depends to multiarch-support (Closes: #663274).
+  * Updating lintian overrides.
+
+ -- Daniel Baumann <daniel.baumann@progress-technologies.net>  Sat, 10 Mar 2012 09:51:28 +0100
+
+lxc (0.8.0~rc1-2) unstable; urgency=low
+
+  * Helping to migrate lxc-shutdown debconf setting for alternative on
+    upgrades from 0.7.5 to 0.8.0.
+
+ -- Daniel Baumann <daniel.baumann@progress-technologies.net>  Fri, 09 Mar 2012 15:27:21 +0100
+
+lxc (0.8.0~rc1-1) unstable; urgency=low
+
+  * Adding updated Spanish debconf translations from Camaleón
+    <noelamac@gmail.com> (Closes: #658362).
+  * Adding patch from Ivan Vilata i Balaguer <ivan@selidor.net> to allow
+    the escape prefix to escape itself in lxc-console (Closes: #659011).
+  * Adding late host command in addition to late command in lxc-debconf.
+  * Setting default action for lxc shutdown to halt as it's almost
+    always safe and better for data integrity (e.g. some database
+    servers need a regular sysvinit shutdown).
+  * Replacing configuration variable in /etc/default/lxc for default
+    shutdown method with a alternative /usr/bin/lxc-shutdown, pointing
+    to either /usr/bin/lxc-halt or /usr/bin/lxc-stop.
+  * Updating todo file.
+  * Disabling numbered backups for the time being in lxc-backup and lxc-
+    restore, they are for simple prototyping only anyway.
+  * Adding Dutch debconf translations from Jeroen Schot <schot@a-
+    eskwadraat.nl> (Closes: #659694).
+  * Merging upstream version 0.8.0~rc1.
+  * Rediffing lxc-libdir.patch.
+  * Rediffing lxc-configuration-path.patch.
+  * Rediffing bash.patch.
+  * Rediffing lxc-debconf.patch.
+  * Rediffing lxc-create-trap-name.patch.
+  * Rediffing lxc-clone-trap-name.patch.
+  * Removing currently unsupported lxc-ubuntu until lxc-debconf also
+    supports ubuntu (Closes: #660764).
+  * Updating packaging for multiarch.
+  * Updating to standards version 3.9.3.
+  * Updating copyright file machine-readable format version 1.0.
+
+ -- Daniel Baumann <daniel.baumann@progress-technologies.net>  Fri, 09 Mar 2012 13:05:03 +0100
+
+lxc (0.7.5-24) unstable; urgency=low
+
+  * Switching to cdn.archive.progress-linux.org in lxc-debconf as
+    default mirror for progress.
+
+ -- Daniel Baumann <daniel.baumann@progress-technologies.net>  Fri, 03 Feb 2012 22:23:00 +0100
+
+lxc (0.7.5-23) unstable; urgency=low
+
+  * Also listing frozen containers in lxc-list.
+  * Adding example entry about translations in apt.conf of progress mode
+    in lxc-debconf.
+  * Not upgrading users /etc/default/lxc file and leave any unused cruft
+    in there to rot (Closes: #657654).
+
+ -- Daniel Baumann <daniel.baumann@progress-technologies.net>  Fri, 27 Jan 2012 21:38:14 +0100
+
+lxc (0.7.5-22) unstable; urgency=low
+
+  * Handling dangling symlinks to config files in init script.
+  * Correcting wrong preseed file reference when checking for tzdata in
+    lxc-debconf.
+  * Using noninteractive frontend and critical priority for tzdata
+    reconfiguration in lxc-debconf.
+
+ -- Daniel Baumann <daniel.baumann@progress-linux.org>  Tue, 24 Jan 2012 12:17:31 +0100
+
+lxc (0.7.5-21) unstable; urgency=low
+
+  * Disabling console log by default in lxc-debconf again, might confuse
+    users too much.
+  * Automatically creating directories specified in mount entries in
+    lxc-debconf.
+
+ -- Daniel Baumann <daniel.baumann@progress-technologies.net>  Mon, 23 Jan 2012 11:19:56 +0100
+
+lxc (0.7.5-20) unstable; urgency=low
+
+  * Correcting and simplyfing creation of lxc directories in /etc.
+  * Enabling console log file in default config of lxc-debconf.
+  * Allowing to use a global cache from /usr/lib/lxc/cache rather than
+    local ones only in /var/lib/cache.
+  * Updating bash.patch to cover lxc-checkconfig more extensively in
+    getting rid of bashisms, thanks to Philipp Matthias Hahn
+    <pmhahn@debian.org> (Closes: #655902).
+  * Allowing system cache to be an unpacked directory too, not just
+    tarballs only.
+  * Updating to debhelper version 9.
+  * Updating todo file.
+
+ -- Daniel Baumann <daniel.baumann@progress-technologies.net>  Sat, 21 Jan 2012 17:32:18 +0100
+
+lxc (0.7.5-19) unstable; urgency=low
+
+  * Updating lintian overrides.
+  * Calling apt-get clean after upgrading caches in lxc-debconf.
+  * Using systems apt cache in lxc-debconf.
+  * Correcting s/parent-archives-areas/parent-archive-areas/ typo in
+    lxc-debconf (Closes: #655176).
+  * Renaming lxc-create.patch to lxc-create-template-name.patch.
+  * Adding patch to correct signal names in lxc-create trap (Closes:
+    #655173).
+  * Adding patch to correct signal names in lxc-clone trap.
+
+ -- Daniel Baumann <daniel.baumann@progress-technologies.net>  Mon, 09 Jan 2012 16:13:39 +0100
+
+lxc (0.7.5-18) unstable; urgency=low
+
+  * Updating lxc-debconf example preseed files.
+  * Updating lxc bash completion.
+  * Avoid using debconf frontend names with capital letter in lxc-
+    debconf.
+  * Adding 'automatic' mount entries for shared directories in lxc-
+    debconf only if no manual one has being preseeded.
+  * Correct wrong debconf handling for mount entries in lxc-debconf.
+  * Reconfigure tzdata when using preseeding in lxc-debconf.
+  * Updating year in copyright file.
+
+ -- Daniel Baumann <daniel.baumann@progress-technologies.net>  Sun, 08 Jan 2012 13:30:37 +0100
+
+lxc (0.7.5-17) unstable; urgency=low
+
+  * Adding updated French debconf templates from Christian Perrier
+    <bubulle@debian.org> (Closes: #653340).
+  * Replacing incomplete patch for fixing lxc-ls and ship an own and
+    simple lxc-ls instead.
+  * Removing sorting from lxc-list since lxc-ls now already provides
+    output sorted.
+  * Using stderr for error messages in local lxc commands.
+  * Adding support for preseedable mount entries in config for lxc-
+    debconf.
+  * Correcting incorrect defaults choices when asking for archive areas
+    in lxc-debconf.
+  * Adding support for fine graned archive control wrt/ security,
+    volatile, and backports in lxc-debconf.
+  * Shuffling stuff around to keep cache minimal and allow archive
+    selection to be effective for postconfig in lxc-debconf.
+  * Correcting some defaults in lxc-debconf.
+  * Removing /etc/hostname prior postconfig in order to actually set the
+    hostname in postconfig in lxc-debconf.
+  * Also setting architecture in config of lxc-debconf even if container
+    is i386 and host is i386 too, to ensures that i386 containers on
+    i386 hosts can be moved to amd64 without needing to touch the config
+    file.
+  * Creating empty /etc/lxc/debconf directory.
+  * Correcting handling of debconf defaults for internal options in lxc-
+    debconf.
+  * Updating preseed example files.
+  * Updating todo file.
+
+ -- Daniel Baumann <daniel.baumann@progress-technologies.net>  Wed, 28 Dec 2011 08:10:28 +0100
+
+lxc (0.7.5-16) unstable; urgency=low
+
+  * Only looking in lxc-debconf for files in /etc/lxc/debconf if the
+    directory exists.
+  * Adding patch to avoid using bash in lxc commands.
+  * Adding patch to lxc-netstat to use -- as seperator, otherwise -n
+    from lxc-netstat collides with netstats -n option (Closes: #641251).
+  * Adding patch for lxc-create to not give vendor specific template
+    advice.
+  * Removing openssh-server from progress default package list in lxc-
+    debconf.
+  * Removing lenny support from lxc-debconf as lenny is going to be
+    unsupported really soon now.
+  * Avoid asking for security mirror and backports mirror for progress
+    and use normal mirror for it in lxc-debconf.
+  * Correcting wrong fallback defaults if user removes suggested value
+    in debconf question when asking parent mirrors in lxc-debconf.
+  * Simplyfing automatic fallback defaults for child security and child
+    backports mirror in lxc-debconf.
+  * Not including tap in lxc-debconf default config.
+  * Adding support for archive area selection in lxc-debconf.
+  * Adding updated Russian debconf templates from Yuri Kozlov
+    <yuray@komyakino.ru> (Closes: #652430).
+  * Adding patch to only list directories in lxc-ls (Closes: #629409).
+  * Regenerating debconf files.
+  * Adding preseed only option for capabilties dropping in lxc config
+    files of lxc-debconf.
+
+ -- Daniel Baumann <daniel.baumann@progress-technologies.net>  Mon, 26 Dec 2011 12:13:07 +0100
+
+lxc (0.7.5-15) unstable; urgency=low
+
+  * Adding updated bash completion for lxc from Gaé Lucas
+    <gaetanlcs@gmail.com> which now includes completion for the lxc
+    convenience wrapper.
+  * Replacing tabs with one whitespace in preseed examples for lxc-
+    debconf as there seems to be some problems with it otherwise.
+  * Avoid compressing preseed example files.
+  * Stopping to support both container configs with and without .conf
+    suffix in /etc/lxc/auto, in order to have unique configs they should
+    be named exactely like the container with no artificial suffix.
+  * Letting user choose from existing preseed files from
+    /etc/lxc/decbonf in lxc-debconf.
+  * Updating todo file.
+
+ -- Daniel Baumann <daniel.baumann@progress-technologies.net>  Mon, 12 Dec 2011 12:14:28 +0100
+
+lxc (0.7.5-14) unstable; urgency=low
+
+  * Adding quotes in some eval calls in lxc-debconf to make sure values
+    with whitespaces are treated correctly.
+  * Using LC_ALL=C when executing calls in chroot of lxc-debconf.
+  * Also including ftp_proxy and http_proxy in lxc-debconfs chroot
+    environment (Closes: #651477).
+  * Correcting copy/paste error in lxc-debconf when setting empty
+    default mac address.
+  * Updating preseed examples for lxc-debconf.
+  * Adding bash completion for lxc from Gaé Lucas <gaetanlcs@gmail.com>.
+  * Streamlining bash-completion file a bit.
+  * Correcting wrong auto variable in lxc-debconf.
+  * Simplyfing architecture detection in lxc-debconf which is always
+    running on debian based systems anyway.
+  * Adding support for creating i386 containers on amd64 in lxc-debconf
+    (Closes: #651616).
+  * Reorder entries to drop capabilities in default config of lxc-
+    debconf.
+  * Updating guessing for shared directories in default config of lxc-
+    debconf.
+  * Reorder entry for console log in default config of lxc-debconf.
+  * Updating preseeding examples for lxc-debconf.
+
+ -- Daniel Baumann <daniel.baumann@progress-technologies.net>  Sat, 10 Dec 2011 23:20:40 +0100
+
+lxc (0.7.5-13) unstable; urgency=low
+
+  [ Nik Lutz ]
+  * Correcting wrong variable for debconf preseed file in lxc-debconf.
+  * Reordering debconf handling to respect preseed files in lxc-debconf.
+  * Inserting preseeded bridge and mac in lxc config file for lxc-
+    debconf.
+  * Limiting network interface name to 12 characters in lxc-debconf.
+
+  [ Daniel Baumann ]
+  * Streamlining lxc-debconf a bit.
+  * Enabling access to /dev/tty, this is required for e.g. ssh-ing out
+    from the container in lxc-debconf.
+  * Prefering user specified preseed file from commandline option over
+    debconf question in lxc-debconf.
+  * Correcting typo in debconf field for the preseeding file in lxc-
+    debconf.
+  * Removing distribution switch from lxc-debconf, this can be either
+    preseeded or choosen through the debconf frontend.
+  * Adding preseed handling for internal options in lxc-debconf.
+  * Correcting option handling for internal options in lxc-debconf.
+  * Asking user for root password (with a random password as suggestion)
+    in lxc-debconf rather than unconditionally set the random one.
+  * Correct order for entirely non-interactive preseeding in lxc-
+    debconf.
+  * Adding debconf handling for mac and bridge when using multiple
+    interfaces in lxc-debconf.
+  * Adding preseed handling for veth name in lxc-debconf.
+  * Updating lxc-debconf example preseeding files.
+  * Using single hash for sources.list.d comments in lxc-debconf.
+  * Enabling comments for network devices in config for lxc-debconf.
+  * Adding support for mtu in in lxc-debconf.
+  * Adding updated Swedish debconf translations from Martin Bagge
+    <brother@bsnet.se> (Closes: #651346).
+  * Adding support for automatically adding symlinks to /etc/lxc/auto in
+    lxc-debconf.
+  * Adding stub manpage for lxc-debconf.
+  * Adding late command to supported preseeding options in lxc-debconf.
+  * Updating todo file.
+
+ -- Daniel Baumann <daniel.baumann@progress-technologies.net>  Thu, 08 Dec 2011 14:31:16 +0100
+
+lxc (0.7.5-12) unstable; urgency=low
+
+  * Updating preseeding examples for lxc-debconf.
+  * Using volatile only for lenny and squeeze in lxc-debconf.
+  * Avoid asking parent mirrors in debian mode of lxc-debconf.
+  * Allowing access to /dev/pts/* in lxc-debconf default config.
+  * Correcting yet another occurence of a wrong volatile default mirror
+    in lxc-debconf.
+  * If /dev/pts is granted, apparently, access to the tty devices nodes
+    is not longer necessary (Closes: #650399).
+  * Adding -n and --name option to lxc-halt to better integrate with the
+    rest of the lxc tools.
+
+ -- Daniel Baumann <daniel.baumann@progress-technologies.net>  Fri, 02 Dec 2011 07:16:07 +0100
+
+lxc (0.7.5-11) unstable; urgency=low
+
+  * Adding /dev/tun in default lxc config in lxc-debconf in ubuntu mode.
+  * Adding updated Czech debconf translations from Michal Simunek
+    <michal.simunek@gmail.com> (Closes: #649121).
+  * Updating /dev/console in default config of lxc-debconf.
+  * Adjust intending in default config for lxc-debconf.
+  * Correcting default tty number in default config of lxc-debconf.
+  * Correct late preseeding in lxc-debconf.
+  * Correcting backports handling for debian in lxc-debconf.
+  * Upgrading priority for lxc directory question from low to high to
+    give it visibility by default (Closes: #650147).
+  * Adding missing symlink for debian of lxc-debconf.
+  * Removing double preseed file variable writing in lxc-debconf.
+  * Avoid wrapping of db_substs calls in lxc-debconf, apparently it
+    fails on some shell configurations.
+  * Correcting wrong volatile default url for lenny in lxc-debconf.
+  * Correcting typo when upgrading system in lxc-debconf.
+
+ -- Daniel Baumann <daniel.baumann@progress-technologies.net>  Thu, 01 Dec 2011 06:41:32 +0100
+
+lxc (0.7.5-10) unstable; urgency=low
+
+  * Removing not really working busybox template (Closes: #649193).
+  * Adding preseed examples for lxc-debconf.
+  * Adding support for customizable volatile mirrors in lxc-debconf.
+  * Adding debconf handling for pre-chroot stuff in lxc-debconf by using
+    private temporary debconf db.
+  * Adding support for preseeding local repositories in lxc-debconf.
+  * Use distribution and mode specific list of extra packages in lxc-
+    debconf.
+  * Refactor system upgrade mechanism in lxc-debconf.
+  * Upgrading cache before copying it in lxc-debconf.
+  * Updating todo file.
+
+ -- Daniel Baumann <daniel.baumann@progress-technologies.net>  Tue, 29 Nov 2011 20:13:20 +0100
+
+lxc (0.7.5-9) unstable; urgency=low
+
+  * Splitting out linux-container package into own source package.
+
+ -- Daniel Baumann <daniel.baumann@progress-technologies.net>  Tue, 15 Nov 2011 22:10:17 +0100
+
+lxc (0.7.5-8) unstable; urgency=low
+
+  * Adding default comments in fstab when using lxc-debconf.
+  * Adding temporary dirty worarkound to avoid wrong matches as long as
+    preseed-files are manually parsed.
+  * Adding apt config for progress in lxc-debconf.
+  * Correcting check for daemontools in linux-container postinst.
+  * Adding upgrade and user-changes proof handling for /etc/inittab.
+  * Updating todo files.
+  * Adding config option to disable automatic installation of
+    recommended packages in lxc-debconf.
+
+ -- Daniel Baumann <daniel.baumann@progress-technologies.net>  Mon, 14 Nov 2011 17:45:27 +0100
+
+lxc (0.7.5-7) unstable; urgency=low
+
+  * Touching empty fstab in lxc-debconf.
+  * Correcting rm calls in lxc-debconf to actually match what is
+    intended to be removed.
+  * Shuffling dist-upgrade arround in lxc-debconf to be active in all
+    modes.
+
+ -- Daniel Baumann <daniel.baumann@progress-technologies.net>  Fri, 11 Nov 2011 18:53:39 +0100
+
+lxc (0.7.5-6) unstable; urgency=low
+
+  * Updating debian-config.patch to allow mknod calls in containers by
+    default.
+  * Updating debian-config.patch to allow accessing /dev/fuse by
+    default.
+  * Updating debian-config.patch to have devices by default better
+    commented and sorted.
+  * Updating debian-config.patch to also drop sys_module, mac_admin, and
+    mac_override capabilities by default.
+  * Listing local additions in lxc install file explicitly.
+  * Correcting syntax for db_input calls in linux-container config
+    script.
+  * Updating comments for debconf queries with strings that cannot be
+    empty.
+  * Setting debconf questions to unseen when the answer is read from
+    conffile.
+  * Applying some of the suggestions from the "reviewed" control file
+    from debian-l10n-english (Closes: #645850).
+  * Applying some of the suggestions from the "reviewed" templates file
+    from debian-l10n-english.
+  * Updating German debconf translations.
+  * Adding Czech debconf translations from Michal Simunek
+    <michal.simunek@gmail.com> (Closes: #647208).
+  * Adding Danish debconf translations from Joe Hansen
+    <joedalton2@yahoo.dk> (Closes: #646322).
+  * Improving wording on two strings in the German debconf translations,
+    thanks to Erik Pfannenstein <epfannenstein@gmx.de> (Closes:
+    #648059).
+  * Adding Spanish debconf translations from Camaleón
+    <noelamac@gmail.com> (Closes: #647612).
+  * Adding French debconf translations from Julien Patriarca
+    <patriarcaj@gmail.com> (Closes: #646696).
+  * Adding Portuguese debconf translations from Miguel Figueiredo
+    <elmig@debianpt.org> (Closes: #647957).
+  * Adding Russian debconf translations from Yuri Kozlov
+    <yuray@komyakino.ru> (Closes: #646419).
+  * Adding Swedish debconf translations from Martin Bagge
+    <brother@bsnet.se> (Closes: #647256).
+  * Adding Chinese (Simplified) debconf translations from syq
+    <wzssyqa@gmail.com>.
+  * Adding support for static network configuration in linux-container.
+  * Adding scripts to workaround broken squeeze release.
+  * Improving shell code in linux-container config and postinst files.
+  * Updating lxc-create patch to trim warning message when creating new
+    containers without previously existing configuration.
+  * Adding lxc-debconf template.
+  * Replacing upstreams debian template by using newly added debconf
+    template.
+  * Renumbering patches.
+  * Adding debconf handling in linux-container for number of consoles to
+    be run.
+  * Removing openssh-server host keys in cached chroot and recreate them
+    with linux-container.
+  * Reverting title suggestion by debian-l10n-english in debconf
+    templates and use a consistent version for both lxc and linux-
+    container.
+  * Updating todo files.
+
+ -- Daniel Baumann <daniel.baumann@progress-technologies.net>  Fri, 11 Nov 2011 15:49:51 +0100
+
+lxc (0.7.5-3ubuntu52) precise; urgency=low
+
+  [ Ben Howard ]
+  * Fixed image extraction for old releases (LP: #979996).
+
+  [ Timothy Chen ]
+  * 0072-lxc-shutdown-help: display usage when passed help. (LP: #980905)
+  * 0073-lxc-destroy-waits-before-destroy: lxc-shutdown waits for the
+    container to fully stop before it destroys it. (LP: #980902)
+
+ -- Serge Hallyn <serge.hallyn@ubuntu.com>  Mon, 16 Apr 2012 12:02:06 -0500
+
+lxc (0.7.5-3ubuntu51) precise; urgency=low
+
+  * 0070-templates-rmdir-dev-shm: in precise containers, rmdir $rootfs/dev/shm
+    and and create it as a symbolic link to /run/shm.  (LP: #974584)
+
+ -- Serge Hallyn <serge.hallyn@ubuntu.com>  Thu, 12 Apr 2012 09:54:22 -0500
+
+lxc (0.7.5-3ubuntu50) precise; urgency=low
+
+  [ Stéphane Graber ]
+  * Minor ubuntu template tweak to add missing space after lxc.network.hwaddr.
+
+  [ Ben Howard ]
+  * Fixed ubuntu-cloud template user-data handling (LP: 977376)
+
+ -- Ben Howard <ben.howard@canonical.com>  Mon, 09 Apr 2012 14:24:24 -0600
+
+lxc (0.7.5-3ubuntu49) precise; urgency=low
+
+  * debian/lxc-default.apparmor: add mediate_deleted flag (LP: #969299)
+
+ -- Serge Hallyn <serge.hallyn@ubuntu.com>  Mon, 02 Apr 2012 09:38:21 -0500
+
+lxc (0.7.5-3ubuntu48) precise; urgency=low
+
+  * debian/lxc-default.apparmor: explicitly silence warnings about attempting
+    to mount debugfs to /var/lib/ureadahead/debugfs/.
+  * 0066-confile-typo: fix typo
+  * debian/lxc.apparmor: allow transition to unconfined
+  * 0067-templates-lxc-profile: leave a comment in container configs we
+    create to show how to run it unconfined
+  * debian/lxc-containers.apparmor: move #include <tunables/global> from
+    debian/lxc-default.apparmor here to prevent policy loading errors when
+    more container profiles are defined (LP: #969228)
+  * debian/lxc-default.apparmor: remove obsolete FIXME comment
+
+ -- Serge Hallyn <serge.hallyn@ubuntu.com>  Fri, 30 Mar 2012 15:35:07 -0500
+
+lxc (0.7.5-3ubuntu47) precise; urgency=low
+
+  * 0065-fix-bindhome-relpath: use relative path as target for bind mount
+    in lxc-ubuntu template (LP: #968371)
+
+ -- Serge Hallyn <serge.hallyn@ubuntu.com>  Thu, 29 Mar 2012 22:04:30 +0000
+
+lxc (0.7.5-3ubuntu46) precise; urgency=low
+
+  * Allow mqueue to be mounted anywhere (LP: #968326)
+
+ -- Stéphane Graber <stgraber@ubuntu.com>  Thu, 29 Mar 2012 11:34:45 -0400
+
+lxc (0.7.5-3ubuntu45) precise; urgency=low
+
+  * 0064-apparmor-mount-proc: mount /proc if we need to before changing
+    apparmor profile (LP: #963388).  (Also fixes two bad error paths)
+  * lxc.postinst: use the right filename for loading profile
+
+ -- Serge Hallyn <serge.hallyn@ubuntu.com>  Sun, 25 Mar 2012 21:45:03 -0500
+
+lxc (0.7.5-3ubuntu44) precise; urgency=low
+
+  * debian/lxc.upstart and debian/lxc.postinst: Don't load policies if mount
+    restrictions not supported (LP: #961824)
+  * 0063-check-apparmor-enabled: don't try apparmor transition if aa is not
+    enabled or doesn't support mount mediation.  Also don't fail lxc-init
+    if container couldn't mount /proc and /sys.
+  * debian/lxc-default.apparmor: allow container to mount /proc and /sys.
+
+ -- Serge Hallyn <serge.hallyn@ubuntu.com>  Wed, 21 Mar 2012 21:33:08 -0500
+
+lxc (0.7.5-3ubuntu43) precise; urgency=low
+
+  * lxc.apparmor: allow all umount activity in lxc-start (LP: #961536)
+
+ -- Serge Hallyn <serge.hallyn@ubuntu.com>  Wed, 21 Mar 2012 14:49:14 -0500
+
+lxc (0.7.5-3ubuntu42) precise; urgency=low
+
+  * debian/lxc.postinst: don't try to run apparmor_parser if it doesn't
+    exist.
+
+ -- Serge Hallyn <serge.hallyn@ubuntu.com>  Wed, 21 Mar 2012 11:35:17 -0500
+
+lxc (0.7.5-3ubuntu41) precise; urgency=low
+
+  * add lxc-shutdown command:
+    - 0060-lxc-shutdown: add the command to the source
+    - debian/lxc.upstart: use lxc-shutdown to shut down containers cleanly
+    - debian/lxc.default: add LXC_SHUTDOWN_TIMEOUT (default 120s)
+  * support per-container apparmor policies:  (LP: #953453)
+    - 0061-lxc-start-apparmor: add lxc.aa_profile to config file.  If not
+      specified, lxc-default profile is used for container.  Otherwise, the
+      specified profile is used.
+      Note that per-container profiles must be named 'lxc-*'.
+    - split debian/lxc-default.apparmor from debian/lxc.apparmor.
+    - have /etc/apparmor.d/lxc-containers #include /etc/apparmor.d/lxc/*
+    - debian/lxc.postinst: load the new lxc-containers profiles
+    - debian/lxc.postrm: remove lxc-containers profiles
+    - debian/rules: make new etc/apparmor.d/lxc dir and copy lxc-default into it
+    - debian/control: add libapparmor-dev to build-depends
+    - debian/lxc.upstart: load apparmor per-container policies at pre-start.
+  * debian/lxc.apparmor: insert the stricter mount rules for lxc-start
+    (LP: #645625) (LP: #942934)
+  * debian/local/lxc-start-ephemeral: re-enable aufs option (LP: #960262)
+  * replace upstream lxc-wait with our own bash script (LP: #951181)
+    - debian/local/lxc-wait: the script
+    - debian/rules: copy the script into place
+  * 0062-templates-relative-paths: update templates to use relative paths,
+    and make lxc-start always accept /var/lib/lxc/CN/rootfs as target prefix,
+    to make lvm containers work.  (LP: #960860)
+
+ -- Serge Hallyn <serge.hallyn@ubuntu.com>  Wed, 21 Mar 2012 08:20:06 -0500
+
+lxc (0.7.5-3ubuntu40) precise; urgency=low
+
+  * Re-enable apparmor profile now that the userspace was fixed.
+    Some part of the profile are still disabled because of missing kernel
+    or userspace features, see the FIXMEs for these, hopefully fixed soon.
+
+ -- Stéphane Graber <stgraber@ubuntu.com>  Fri, 16 Mar 2012 19:58:43 -0400
+
+lxc (0.7.5-3ubuntu39) precise; urgency=low
+
+  * 0059-reenable-daily-cloudimg: let user specify daily cloud images.
+
+ -- Serge Hallyn <serge.hallyn@ubuntu.com>  Fri, 16 Mar 2012 09:54:43 -0500
+
+lxc (0.7.5-3ubuntu38) precise; urgency=low
+
+  * 0058-fixup-ubuntu-cloud:
+    - fix typo in check for $debug (LP: #955935)
+    - Download specified release, not always precise
+    - If cloudimg rootfs.tar.gz does not exist, create one from the base
+      cloudimg tar.gz.  (LP: #955938)
+    - Explicitly set ubuntu user's password.
+    - Switch from daily to released stream (per smoser's suggestion). 
+
+ -- Serge Hallyn <serge.hallyn@ubuntu.com>  Thu, 15 Mar 2012 17:57:10 -0500
+
+lxc (0.7.5-3ubuntu37) precise; urgency=low
+
+  [Serge Hallyn]
+  * 0057-update-manpages: update manual pages to reflect some new options.
+  [Gary Poster]
+  * lxc-start-ephemeral: fix broken use of '-- command' (LP: #954632)
+
+ -- Serge Hallyn <serge.hallyn@ubuntu.com>  Wed, 14 Mar 2012 10:52:44 -0500
+
+lxc (0.7.5-3ubuntu36) precise; urgency=low
+
+  [Gary Poster]
+  * debian/local/lxc-start-ephemeral: make ephemeral bind mounts use a tempfs
+    for the upper dir, not another overlayfs.  Otherwise writes/creates are
+    not allowed by overlayfs!
+
+ -- Serge Hallyn <serge.hallyn@ubuntu.com>  Mon, 12 Mar 2012 13:22:06 -0500
+
+lxc (0.7.5-3ubuntu35) precise; urgency=low
+
+  [Gary Poster]
+  * lxc-start-ephemeral: convert ephemeral approach to change all bound fstab
+    mounts; convert binding to also modify fstab
+  [Benji York]
+  * lxc-start-ephemeral: munge the fstab and comment out a flaky line
+  [Serge Hallyn]
+  * 0056-dont-watch-utmp: don't watch utmp if kernel supports container
+    reboot.  (LP: #948623)
+  * debian/control: add dh-apparmor to Build-Depends (LP: #948481)
+  * lxc-start-ephemeral: add '-d' option to daemonize.
+  * debian/lxc.upstart: don't run post-stop if LXC_AUTO=false (LP: #949362)
+
+ -- Serge Hallyn <serge.hallyn@ubuntu.com>  Mon, 12 Mar 2012 09:51:59 -0500
+
+lxc (0.7.5-3ubuntu34) precise; urgency=low
+
+  [Benji York]
+  * lxc-start-ephemeral: create unique MAC for each new 
+    ephemeral container (LP: #949956)
+
+ -- Scott Moser <smoser@ubuntu.com>  Thu, 08 Mar 2012 16:23:49 -0500
+
+lxc (0.7.5-3ubuntu33) precise; urgency=low
+
+  * Update apparmor profile to temporarily disable it.
+    This will be reverted once apparmor has been fixed. (LP: #947617)
+
+ -- Stéphane Graber <stgraber@ubuntu.com>  Tue, 06 Mar 2012 12:25:21 -0500
+
+lxc (0.7.5-3ubuntu32) precise; urgency=low
+
+  * add user (-u) and key (-S) to lxc-start-ephemeral.  (LP: #945183)
+
+ -- benji <benji.york@canonical.com>  Fri, 02 Mar 2012 17:20:46 -0500
+
+lxc (0.7.5-3ubuntu31) precise; urgency=low
+
+  * 0050-clone-lvm-sizes: make lxc-clone with lvm snapshots create a
+    snapshot of the same size as the original.  (LP: #939765)
+  * run our dnsmasq as user 'lxc-dnsmasq' (LP: #939774)
+    - add debian/lxc.postinst to create the user
+    - debian/lxc.lxc-net.upstart: run dnsmasq as lxc-dnsmasq user
+  * 0051-lxc-create-lvm-use-1G: bump lvm blockdev size to 1G (LP: #942338)
+  * 0052-ubuntu-bind-user-conflict: don't create 'ubuntu' user when a user
+    gets bound in.  (LP: #942144)
+  * 0053-lxc-start-pin-rootfs: don't let the container remount an underlying
+    shared fs readonly (LP: #942325)
+  * 0054-ubuntu-debug: add --debug option to ubuntu and ubuntu-cloud
+    templates (LP: #942847)
+  * 0055-ubuntu-handle-badgrp: fix the group handling to not assume a user's
+    group has the user's name.  (LP: #942850)
+
+ -- Serge Hallyn <serge.hallyn@ubuntu.com>  Tue, 28 Feb 2012 15:03:45 -0600
+
+lxc (0.7.5-3ubuntu30) precise; urgency=low
+
+  [ Serge Hallyn ]
+  * 0048-warn-if-container-started: If container startup fails because the
+    container is already running, give an error message to that effect.
+    (LP: #938765)
+
+  [ Stéphane Graber ]
+  * 0049-ubuntu-template-sudo-and-cleanup: Always make the user part of the
+    sudo group. This group has been around since at least 10.04 and is more
+    reliable than the admin group. Still add the user to the admin group
+    until 12.04 as some tool expect that. (LP: #938752)
+    Also fix a minor layout issue in the generate LXC config.
+
+ -- Stéphane Graber <stgraber@ubuntu.com>  Wed, 22 Feb 2012 12:33:32 -0500
+
+lxc (0.7.5-3ubuntu29) precise; urgency=low
+
+  * 0047-bindhome-check-shell:
+    - Make sure to install a bound user's shell in the container. (LP: #936762)
+    - Create bound user's group in the container.
+
+ -- Serge Hallyn <serge.hallyn@ubuntu.com>  Mon, 20 Feb 2012 14:31:05 -0600
+
+lxc (0.7.5-3ubuntu28) precise; urgency=low
+
+  * 0045-fix-other-templates: lots of template fixes.  Make sshd, debian,
+    fedoray, and busybox templates actually work.  Fix inconsistent --auth_key
+    vs --auth-key usage in ubuntu templates.
+  * 0046-lxc-clone-change-hwaddr - when cloning a container, give it a new
+    hwaddr.  (LP: #934256)
+
+ -- Serge Hallyn <serge.hallyn@ubuntu.com>  Fri, 17 Feb 2012 15:18:19 -0600
+
+lxc (0.7.5-3ubuntu27) precise; urgency=low
+
+  [ Graham Binns ]
+  * debian/local/lxc-start-ephemeral: retry ssh in case sshd was slow in
+    starting.  (LP: #933779)
+
+ -- Serge Hallyn <serge.hallyn@ubuntu.com>  Thu, 16 Feb 2012 16:47:03 -0600
+
+lxc (0.7.5-3ubuntu26) precise; urgency=low
+
+  [ Ben Howard ]
+  * 0043-tweak-templates.patch:
+    - Add a macaddr to configs created by ubuntu-cloud template
+    - Add ssh key injection, locales, and tarball specification support to
+      ubuntu-cloud template.
+
+  [ Serge Hallyn ]
+  * (also in 0043-tweak-templates.patch) Add a macaddr to configs created by
+    ubuntu template (LP: #931229) and allow an ssh key to be injected.
+  * debian/control: add openssl as Recommends as it's now used by the
+      templates.
+  * 0044-lxc-destroy-rm-autos: remove autostart symlinks when deleting a
+    container.  (LP: #930525)
+
+ -- Serge Hallyn <serge.hallyn@ubuntu.com>  Wed, 15 Feb 2012 23:33:12 -0600
+
+lxc (0.7.5-3ubuntu25) precise; urgency=low
+
+  * 0042-close-fds.patch: add a new --close-all-fds option.  Normally if
+    lxc-start is started with an open fd, it exits with failiure.  With
+    this option specified, the fds will be closed and startup will continue.
+    --daemon now implies --close-all-fds.  (LP: #931220)
+
+ -- Serge Hallyn <serge.hallyn@ubuntu.com>  Mon, 13 Feb 2012 14:03:25 -0600
+
+lxc (0.7.5-3ubuntu24) precise; urgency=low
+
+  [ Serge Hallyn ]
+  * 0040-consoles-into-devlxc.patch: move lxc's console and ttys into
+    /dev/lxc/, and create symlinks into /dev.  (LP: #927519)
+
+  [ Stéphane Graber ]
+  * 0041-ubuntu-template-user-and-tty:
+    + Use ubuntu/ubuntu by default instead of root/root
+    + Set devttydir to /dev/lxc on Precise
+    + Stop modifying dhclient.conf as the default behavior is identical.
+    + Stop removing tty[56].conf on Precise
+    + Do not modify /etc/udev/udev.conf on Precise
+    + Move information message about default login/password to the end
+      of the container cration so users can't miss it.
+
+ -- Stéphane Graber <stgraber@ubuntu.com>  Fri, 10 Feb 2012 17:09:15 -0500
+
+lxc (0.7.5-3ubuntu23) precise; urgency=low
+
+  * debian/lxc.upstart, debian/lxc.lxc-net.upstart, and debian/rules:
+    Upstartify lxc.
+  * remove debian/lxc.init
+
+ -- Serge Hallyn <serge.hallyn@ubuntu.com>  Fri, 10 Feb 2012 10:35:55 -0600
+
+lxc (0.7.5-3ubuntu22) precise; urgency=low
+
+  * debian/lxc.init:
+    - at setup_lxc_bridge, return early if ${LXC_BRIDGE) already exists.
+      (LP: #929514)
+    - switch 'ip link show' and 'brctl show' checks for /sys/class/net lookups.
+    - try to prevent destroying host network setup if /etc/default/lxc is
+      bad.  Set defaults for lxc network variables if unset.
+    - don't pass along variables as arguments if not needed.
+
+ -- Serge Hallyn <serge.hallyn@ubuntu.com>  Thu, 09 Feb 2012 10:22:20 -0600
+
+lxc (0.7.5-3ubuntu21) precise; urgency=low
+
+  * debian/lxc.init: Exit cleanly in undo_network(), to avoid the init.d
+    script and thus the package installation to fail if the network could not
+    be configured for LXC. (LP: #929382)
+
+ -- Martin Pitt <martin.pitt@ubuntu.com>  Thu, 09 Feb 2012 16:47:09 +0100
+
+lxc (0.7.5-3ubuntu20) precise; urgency=low
+
+  * Remove lxcguest package.  No longer needed in precise.
+  * ubuntu-cloud template: by default assume non-cloud environment, unless
+    '-- -C' option is given.  Otherwise containers started in a private
+    environment won't create ssh keys, etc.
+  * 0039-no-lxcguest-in-p-template: don't install the lxcguest package if
+    we are creating a precise (or higher) container.
+
+ -- Serge Hallyn <serge.hallyn@ubuntu.com>  Wed, 08 Feb 2012 14:46:43 -0600
+
+lxc (0.7.5-3ubuntu19) precise; urgency=low
+
+  * 0036-fix-reboot-detection - actually detect when our kernel supports
+    container reboot.
+  * 0037-silence-netstat-errors-in-lxcls - silence netstat warnings in
+    lxc-ls
+  * 0038-ubuntu-cloud-template - add a template to create containers based
+    on the ubuntu cloud images.
+
+ -- Serge Hallyn <serge.hallyn@ubuntu.com>  Tue, 07 Feb 2012 17:35:35 -0600
+
+lxc (0.7.5-3ubuntu18) precise; urgency=low
+
+  * lxcguest.lxcguest.upstart: emit the net-device-up IFACE=lo event, so
+    that any upstart jobs waiting on it (esp rc-sysinit before oneiric) will
+    proceed.  (LP: #924337)
+  * 0034-fix-lxc-execute-reboot.patch: fix bad handling of 'exit 0' for
+    lxc-execute introduced with the container reboot handling.  (LP: #927863)
+  * debian/lxcguest.lxcmount.upstart: add '--no-wait' to emit to make sure we
+    don't wait for the event to be processed.
+  * 0035-lxc-init-ignore-shm.patch: if lxc-init can't mount /dev/shm, don't
+    fail on account of that.  (LP: #927883)
+  * debian/lxc.init: if the network is already up, exit before setting the
+    trap EXIT.
+
+ -- Serge Hallyn <serge.hallyn@ubuntu.com>  Mon, 06 Feb 2012 17:37:37 -0600
+
+lxc (0.7.5-3ubuntu17) precise; urgency=low
+
+  [ Serge Hallyn ]
+  * 0032-start-check-caps.patch: exit early and with a clear error message
+    if lxc-start is run with insufficient permissions.  (LP: #925520)
+  * debian/lxc.init: if there is a failure during lxc network setup, clean
+    up and exit. (LP: #925511)
+
+  [ Stéphane Graber ]
+  * 0033-ubuntu-template-multiarch.patch: Add support for building
+    containers using qemu-user-static, using multi-arch to install some
+    packages of the host architecture so the container boots and works.
+  * Add qemu-user-static as a Suggest of lxc.
+
+ -- Stéphane Graber <stgraber@ubuntu.com>  Thu, 02 Feb 2012 19:06:19 -0500
+
+lxc (0.7.5-3ubuntu16) precise; urgency=low
+
+  * debian/lxc.apparmor: allow write under /sys/fs/cgroup  (LP: #924281)
+  * remove 0032-refuse-console.patch.  We'll need to fix the core of the
+    problem, likely in lxc-start.  But /dev/tty is ok for container to
+    access.
+
+ -- Serge Hallyn <serge.hallyn@ubuntu.com>  Tue, 31 Jan 2012 12:07:22 -0600
+
+lxc (0.7.5-3ubuntu15) precise; urgency=low
+
+  * 0032-refuse-console.patch: don't allow access to 5:0, which is the
+    host's /dev/console.
+  * debian/lxc.apparmor, debian/rules: install an apparmor profile for
+    lxc-start.
+
+ -- Serge Hallyn <serge.hallyn@ubuntu.com>  Fri, 27 Jan 2012 13:46:59 -0600
+
+lxc (0.7.5-3ubuntu14) precise; urgency=low
+
+  * debian/control: add btrfs-tools to lxc Suggests (LP: #942241)
+  * 0030-ubuntu-template-fail.patch: make lxc-ubuntu template fail on
+    error (LP: #922645)
+  * 0031-ubuntu-template-resolvconf.patch: handle /etc/resolv.conf being
+    a symlink as is now done by resolvconf by default. (LP: #922706)
+  * debian/lxcguest.lxcmount.upstart: emit mounted MOUNTPOINT=/run
+    to make resolvconf start. (LP: #922706)
+
+ -- Serge Hallyn <serge.hallyn@ubuntu.com>  Fri, 27 Jan 2012 11:13:26 -0600
+
+lxc (0.7.5-3ubuntu13) precise; urgency=low
+
+  * 0029-btrfs-clone-support.patch: add support for cloning via
+    btrfs snapshots (LP: #921921).
+
+ -- Scott Moser <smoser@ubuntu.com>  Thu, 26 Jan 2012 11:38:07 -0500
+
+lxc (0.7.5-3ubuntu12) precise; urgency=low
+
+  * If the kernel supports container reboot disambuation, then don't drop
+    CAP_SYS_BOOT, and (always) try to use it after the container exits.
+    (LP: #914676)
+  * 0027-fix-lxc-netstat.patch: fix lxc-netstat for new nested cgroup
+    handling (LP: #921732)
+  * 0028-recursively-rmdir-cgroups.patch: if the container has created
+    any cgroups (i.e. by starting libvirt), make sure to delete those.
+    (LP: #921808)
+
+ -- Serge Hallyn <serge.hallyn@ubuntu.com>  Wed, 25 Jan 2012 14:22:51 -0600
+
+lxc (0.7.5-3ubuntu11) precise; urgency=low
+
+  * 0025-lxc-ubuntu-drop-path-arg.patch: don't show '--path' argument in
+    help output, and replace --clean with --flush-cache.
+
+ -- Serge Hallyn <serge.hallyn@ubuntu.com>  Tue, 24 Jan 2012 13:10:42 -0600
+
+lxc (0.7.5-3ubuntu10) precise; urgency=low
+
+  * lxc-create: when --lvname is specified, use it for lvcreate instead of
+    the lvname.
+
+ -- Serge Hallyn <serge.hallyn@ubuntu.com>  Mon, 23 Jan 2012 17:24:53 -0600
+
+lxc (0.7.5-3ubuntu9) precise; urgency=low
+
+  * 0024-lxc-create-and-clone-fixes.patch:
+    - add lvm support to lxc-create
+    - better clean up on lxc-clone error
+  * debian/control:
+    - add rsync to lxc Depends, as templates use it.
+    - add lvm2 to lxc Suggests
+
+ -- Serge Hallyn <serge.hallyn@ubuntu.com>  Fri, 20 Jan 2012 14:34:54 -0600
+
+lxc (0.7.5-3ubuntu8) precise; urgency=low
+
+  [ Scott Moser ]
+  * update 0021-add-dev-full-to-whitelist.patch:
+    - add 10:228 (/dev/hpet) and 10:232 (/dev/kvm) to devices whitelist in the
+      ubuntu template (LP: #918946)
+
+  [ Serge Hallyn ]
+  * debian/lxc.init: don't bail if there is no default route.
+  * lxc-destroy (in 0022-fix-lxc-destroy-bugs.patch):
+    - don't delete a running container
+    - handle case where rootfs is not specififed in config (or config is 
+      corrupt or has been deleted) 
+    - fix broken detection of lvm backing store
+  * 0023-set-clone-children-earlier.patch: for cpuset in particular, the
+    clone_children flag must be set at cgroup root.  Otherwise we'll fail
+    to move $$ into /sys/fs/cgroup/cpuset/lxc/tasks.
+
+ -- Serge Hallyn <serge.hallyn@ubuntu.com>  Fri, 20 Jan 2012 10:56:32 -0600
+
+lxc (0.7.5-3ubuntu7) precise; urgency=low
+
+  * lxc-ubuntu template: add 1:7 (/dev/full) to whitelist (LP: #918946)
+
+ -- Serge Hallyn <serge.hallyn@ubuntu.com>  Thu, 19 Jan 2012 16:21:48 -0600
+
+lxc (0.7.5-3ubuntu6) precise; urgency=low
+
+  * debian/patches/0020-drop-cap-mac-admin.patch - to prevent containers
+    from loading apparmor policy.
+  * update 0016-nested-cgroups.patch:  create cgroup dirs 0755 so that
+    unprivileged users can read them (with lxc-ls).
+  * debian/local/lxc-start-ephemeral: support in-line commands (LP: #914169)
+
+ -- Serge Hallyn <serge.hallyn@ubuntu.com>  Tue, 17 Jan 2012 10:55:20 -0600
+
+lxc (0.7.5-3ubuntu5) precise; urgency=low
+
+  [ Robie Basak ]
+  * debian/patches/0015-ubuntu-templ-use-updates.patch: use ports.ubuntu.com
+    in sources.list for alternative architectures (LP: #820715).
+  * debian/patches/0015-ubuntu-templ-use-updates.patch: dist-upgrade in an
+    isolated environment to avoid leaving a bind mount behind (LP: #913877).
+  * debian/lxc.{default,init}: call ifconfig with explicit netmask
+    (LP: #913727).
+
+  [ Serge Hallyn ]
+  * debian/lxc.default: update the MIRROR example - using 'localhost'
+    fails for updates after the container has been started.
+  * debian/lxcguest.console.upstart: pass 'console' not '/dev/console' to
+    getty.  (LP: #913952)
+  * debian/patches/0015-ubuntu-templ-use-updates.patch: at post_process(),
+    copy host's /etc/resolv.conf (which may have changed) into chroot before
+    apt-get actions, and always do a apt-get update before installing lxcguest,
+    as the package version may have changed in the archive. (LP: #914155)
+  * 0016-nested-cgroups.patch: nest container cgroups under the host's
+    init cgroup.  (LP: #901482)
+  * 0017-pull-upstream-fedora-template.patch: move to the upstream
+    lxc-fedora template (LP: #881903)
+  * 0018-make-lxc-ps-search-proc.patch: work when cgroups are mounted with
+    '-n'.
+  * debian/patches/0019-fix-lxc-ls-nested-cgroups.patch: fix lxc-ls to
+    handle the support for nested cgroups.  (pull this into previous
+    commit msg before pushing)
+
+ -- Serge Hallyn <serge.hallyn@ubuntu.com>  Tue, 10 Jan 2012 18:51:45 +0000
+
+lxc (0.7.5-3ubuntu4) precise; urgency=low
+
+  * add a default bridge for lxc to use.  (LP: #801002)
+  * Add debian/lxc.conf, which gets installed as /etc/lxc/lxc.conf as a
+    sample, usable, default config.  (LP: #823862)
+  * Add precise to the list of distros
+  * Add -updates and -security to /etc/apt/sources.list after debootstrap
+    for container creation (LP: #820715)
+
+ -- Serge Hallyn <serge.hallyn@ubuntu.com>  Thu, 10 Nov 2011 16:00:44 -0600
+
+lxc (0.7.5-3ubuntu3) precise; urgency=low
+
+  * lxc-is-container needs to be in lxcguest, not in lxc
+
+ -- Stéphane Graber <stgraber@ubuntu.com>  Fri, 11 Nov 2011 10:42:31 -0500
+
+lxc (0.7.5-3ubuntu2) precise; urgency=low
+
+  * Remove auto-generated debian-changes-0.7.5-3ubuntu1.
+  * Cherry-pick Ubuntu template tweaks from upstream:
+    - Set a list of capabilities to drop
+    - Allow containers to create tap devices
+    - Allow mknod for any device
+    - Drop mac_override and mac_admin
+
+ -- Stéphane Graber <stgraber@ubuntu.com>  Thu, 10 Nov 2011 10:11:22 -0500
+
+lxc (0.7.5-3ubuntu1) precise; urgency=low
+
+  [ Serge Hallyn ]
+  * Merge from unstable.  Remaining changes:
+    - Add lxcguest package (contains lxc-is-container and upstart jobs)
+    - debian/control: add cgroup-lite | cgroup-bin Recommends to the lxc package
+    - debian/lxc.install - README gets (mis-)installed under --with-rootdir.
+    - remove debian/lxc.{pre,post}inst
+    - keep debian/lxc.default - removing the now obsolete RUN line, and
+      adding the new LXC_AUTO variable.
+    - keep all 000* patches
+      + 0001-monitor-support-quit.patch
+      + 0002-fix-personality-segfault.patch
+      + 0003-non-fatal-unsupported-personality.patch
+      + 0004-fix-ubuntu-template-only-install-essential.patch
+      + 0005-fix-sshd-template.patch
+      + 0006-fix-checkconfig.patch
+      + 0007-fix-lxc-clone-hostname.patch
+      + 0008-fix-bindhome-in-template.patch
+      + 0009-ubuntu-template-drop-resolvconf.patch
+
+  [ Stéphane Graber ]
+  * Merge from unstable.  Remaining changes:
+    - Remove debian/lxc.templates and debian/lxc.install as we kept our
+      default file and dropped debian's pre/post i:nst scripts. 
+    - Add lxc-start-ephemeral and lxc-is-container to debian/local
+
+ -- Stéphane Graber <stgraber@ubuntu.com>  Tue, 25 Oct 2011 16:13:32 -0400
+
+lxc (0.7.5-3) unstable; urgency=low
+
+  * Aborting early in initscript if lxc is not removed but not purged.
+  * Correcting typo in proc mount entry in the default config of the
+    debian template, thanks to Sylvain Collilieux
+    <Sylvain@Collilieux.net> (Closes: #643715).
+  * Correcting incomplete lxc command loop over all containers in
+    initscript, thanks to Biuro <biuro@ntsn.pl> (Closes: #643774).
+
+ -- Daniel Baumann <daniel.baumann@progress-technologies.net>  Fri, 30 Sep 2011 01:01:12 +0200
+
+lxc (0.7.5-2) unstable; urgency=low
+
+  * Do not bail out with usage message when invoking lxc-list via lxc
+    wrapper.
+  * Removing useless lenny template, using the debian template for lenny
+    is better.
+  * Building manpages explicitly (Closes: #639276).
+  * Updating lxc-info for changed output of lxc-info as of 0.7.5.
+  * Adding simple lxc-backup and lxc-restore scripts.
+  * Adding patch to use non-routed, private IPv4 address in
+    documentation examples (Closes: #571525).
+  * Removing destroy option from initscript, unlike destroy as used by
+    e.g. xen, it does wipe all data of a container, the initscript would
+    therefore remove all data of all containers at once which is way to
+    dangerous.
+  * Adding debconf handling for lxc/auto (Closes: #632848).
+  * Adding patch to improve debian default container config.
+  * Adding patch to keep creation of new containers without previously
+    existing configuration non-interactive.
+  * Listing auto information in lxc-list.
+  * Rewriting initscript.
+
+ -- Daniel Baumann <daniel.baumann@progress-technologies.net>  Wed, 21 Sep 2011 13:31:51 +0200
+
+lxc (0.7.5-1) unstable; urgency=low
+
+  [ Jonas Genannt ]
+  * Merging upstream version 0.7.5.
+
+  [ Daniel Baumann ]
+  * Removing fedora.patch, not needed anymore for updated fedora
+    template.
+  * Rediffing debian.patch.
+  * Rediffing debian2.patch.
+  * Renaming and renumbering patches.
+
+ -- Daniel Baumann <daniel.baumann@progress-technologies.net>  Mon, 22 Aug 2011 11:36:00 +0200
+
+lxc (0.7.5-0ubuntu10) precise; urgency=low
+
+  * debian/patches/0009-ubuntu-template-drop-resolvconf.patch:
+    Drop resolvconf from package list for oneiric containers.  It appears
+    to stop containers from getting a useful resolv.conf without doing
+    ifdown; ifup; and is apparently unwanted anyway. (LP: #880020)
+  * debian/lxcguest.lxcguest.upstart: mkdir /run/lock on boot
+    (LP: #880030)
+  * debian/fstab.lxc and debian/fstab.libvirt: mount tmpfs on /run/lock,
+    not /var/lock (as per new stock /lib/init/fstab).
+
+ -- Serge Hallyn <serge.hallyn@ubuntu.com>  Mon, 24 Oct 2011 11:45:53 -0500
+
+lxc (0.7.5-0ubuntu9) precise; urgency=low
+
+  * debian/patches/0008-fix-bindhome-in-template.patch: fix a bug in the
+    ubuntu template:  if the user specified with -b does not exist, a bad
+    container fstab was created, so that, with no warning or indication of
+    why, the container failed to start.  (LP: #879052)
+
+ -- Serge Hallyn <serge.hallyn@ubuntu.com>  Thu, 20 Oct 2011 14:51:37 -0500
+
+lxc (0.7.5-0ubuntu8) oneiric; urgency=low
+
+  * debian/patches/0007-fix-lxc-clone-hostname.patch: make sure $hostname
+    is defined before it is first used.  Reported by Benjamin Saller.
+    (LP: #850205)
+  * add missing ; at end of 'send hostname' in dhclient.conf (LP: #851274)
+
+ -- Serge Hallyn <serge.hallyn@ubuntu.com>  Wed, 14 Sep 2011 15:07:25 -0500
+
+lxc (0.7.5-0ubuntu7) oneiric; urgency=low
+
+  * Fix lxc-checkconfig to correctly detect support for clone_children, so
+    as not to erroneously report failure.  (LP: #827798)
+
+ -- Serge Hallyn <serge.hallyn@canonical.com>  Fri, 02 Sep 2011 17:59:07 +0000
+
+lxc (0.7.5-0ubuntu6) oneiric; urgency=low
+
+  * debian/rules: use --with-rootfs-path=/usr/lib/lxc/root.  (LP: #838410)
+  * debian/lxc.dirs: add usr/lib/lxc/root
+  * fix-sshd-template.patch:
+    - templates/lxc-sshd.in: add /run/shm to list of directories to create.
+      Technically /dev/shm needn't be there, as the config will overmount with
+      the host's /dev.
+    - Don't fail if we can't create /dev/mqueue.  It'll fail anyway (because
+      /dev is mounted read-only), and we don't really need it.  Without this
+      fix, lxc-init fails to run on ubuntu systems, as the host doesn't have
+      /dev/mqueue.
+
+ -- Serge Hallyn <serge.hallyn@ubuntu.com>  Thu, 01 Sep 2011 16:01:31 +0000
+
+lxc (0.7.5-0ubuntu5) oneiric; urgency=low
+
+  * Update Recommends to prefer cgroup-lite if available (LP: #829628)
+
+ -- Stéphane Graber <stgraber@ubuntu.com>  Thu, 25 Aug 2011 16:04:07 -0400
+
+lxc (0.7.5-0ubuntu4) oneiric; urgency=low
+
+  * Chery pick fix for Oneiric template (so ubuntu-minimal gets installed):
+    - 0004-fix-ubuntu-template-only-install-essential.patch
+
+ -- Stéphane Graber <stgraber@ubuntu.com>  Fri, 12 Aug 2011 15:50:02 -0400
+
+lxc (0.7.5-0ubuntu3) oneiric; urgency=low
+
+  * Update lxcguest not to remove /var/run but instead wipe its content.
+    That's needed since the transition to /run as /var/run is now a symlink.
+
+ -- Stéphane Graber <stgraber@ubuntu.com>  Fri, 12 Aug 2011 12:26:52 -0400
+
+lxc (0.7.5-0ubuntu2) oneiric; urgency=low
+
+  * Rename 0015-monitor-support-quit.patch to 0001-monitor-support-quit.patch
+  * Cherry pick two upstream commits (to fix LXC on ARM)
+    - personality-segfault.patch
+    - unsupported-personality.patch
+
+ -- Stéphane Graber <stgraber@ubuntu.com>  Fri, 12 Aug 2011 11:11:04 -0400
+
+lxc (0.7.5-0ubuntu1) oneiric; urgency=low
+
+  * New upstream release (0.7.5)
+  * Patches no longer needed
+    - diff-to-bcbd102cb
+  * Patches merged upstream
+    - 05-fedora.patch
+    - 0004-add-arm-to-supported-archs.patch
+    - 0005-dont-use-devpts-in-fstab
+    - 0006-templates-allow-fuse.patch
+    - 0007-bindhome-dont-add-groups.patch
+    - 0008-templates-add-ubuntu-keyring.patch
+    - 0009-fix-lxc-ps.patch
+    - 0010-fix-shutdown.patch
+    - 0011-fix-lxc-ls.patch
+    - 0012-fix-lxc-netstat.patch
+    - 0013-unshare-call-cgroup-create.patch
+    - 0014-lxc-ps-accept-n.patch
+    - 0016-fix-lxc-ps-typeo.patch 
+  * Remaining patches
+    - 01-libdir.patch
+    - 02-distclean.patch
+    - 03-module-init-tools.patch
+    - 04-configuration-path.patch
+    - 06-debian.patch
+    - 07-debian2.patch
+    - 0015-monitor-support-quit.patch
+
+  [ Serge Hallyn ]
+  * add overlayfs support to lxc-start-ephemeral.
+  * fix comment in debian/fstab.libvirt.
+  * lxcguest.console.upstart: Don't run in libvirt.  as libvirt will symlink
+    /dev/tty1 to /dev/pts/0, so /etc/init/tty1.conf will run a console.
+
+ -- Stéphane Graber <stgraber@ubuntu.com>  Thu, 11 Aug 2011 14:58:14 -0400
+
+lxc (0.7.4.2-4) unstable; urgency=low
+
+  * Updating todo file.
+  * Readding accidentally dropped patch to disable unneeded umountroot
+    initscript (Closes: #611972).
+  * Adding slightly modified patch from Sylvain Ferriol
+    <ferriol@gate.cnrs.fr> to correct locales generation in debian
+    template (Closes: #607273).
+  * Adding patch to set default runlevel in debian template to 2 instead
+    of 3.
+  * Adding patch to disable services in debian template upgrade proof
+    (Closes: #636851).
+
+ -- Daniel Baumann <daniel.baumann@progress-technologies.net>  Sun, 07 Aug 2011 11:12:30 +0200
+
+lxc (0.7.4.2-3ubuntu6) oneiric; urgency=low
+
+  * Add lxc-start-ephemeral by Robert Collins (LP: #807351)
+  * Add a --quit-on-stop arg to lxc-monitor for use by lxc-start-ephemeral.
+  * Modify lxcguest.conf to clear out /var/run (LP: #819621)
+  * Fix a bug in lxc-ps when cgroup-bin is not mounted.
+  * Modify lxc-ps to accept '-n name' and support '--' to separate options
+    for ps.  (LP: #820720)
+
+ -- Serge Hallyn <serge.hallyn@ubuntu.com>  Wed, 03 Aug 2011 19:48:11 -0500
+
+lxc (0.7.4.2-3ubuntu5) oneiric; urgency=low
+
+  * debian/patches/0011-fix-lxc-ls.patch: 
+    debian/patches/0012-fix-lxc-netstat.patch: 
+    The cgroup mounts created by cgroup-bin do not show up in /etc/mtab.
+    lxc-ls and lxc-netstat, as lxc-ps before, assume that /etc/mtab is
+    symlinked to /proc/mounts. (LP: #819319)
+  * debian/patches/0013-unshare-call-cgroup-create.patch:
+    Don't spit out an error when there is no cgroup to remove because the
+    ns cgroup is not mounted. (LP: #819319)
+
+ -- Serge Hallyn <serge.hallyn@ubuntu.com>  Mon, 01 Aug 2011 09:28:02 -0500
+
+lxc (0.7.4.2-3ubuntu4) oneiric; urgency=low
+
+  * debian/patches/0010-fix-shutdown.patch:  If /var/run is a symlink to /run
+    in the container, then opening /proc/<pid>/root/var/run/utmp will end up
+    opening the host's utmp.  Therefore the hack detecting shutdown through
+    utmp fails.  (LP: #817565)
+
+ -- Serge Hallyn <serge.hallyn@ubuntu.com>  Thu, 28 Jul 2011 12:24:46 -0500
+
+lxc (0.7.4.2-3ubuntu3) oneiric; urgency=low
+
+  * debian/patches/0009-fix-lxc-ps.patch: make lxc-ps work when cgroup-bin
+    is installed.  (LP: #817606)
+
+ -- Serge Hallyn <serge.hallyn@ubuntu.com>  Thu, 28 Jul 2011 11:34:23 -0500
+
+lxc (0.7.4.2-3ubuntu2) oneiric; urgency=low
+
+  * add ubuntu-keyring to list of packages for oneiric.  (LP: #817233)
+
+ -- Serge Hallyn <serge.hallyn@ubuntu.com>  Wed, 27 Jul 2011 15:19:05 -0700
+
+lxc (0.7.4.2-3ubuntu1) oneiric; urgency=low
+
+  * Merge from Debian (0.7.4.2-3)  (LP: #812892)
+    - patches: import debian's patches 02-07
+      * 06 needed to be ported due to changes upstream
+    - debian/lxc.manpages: switch to Debian version
+    - debian/lxc.TODO
+    - switch README.Debian for lxc.README.Debian from debian package
+    - remove debian/watch and debian/gbp.conf
+    - bump debian/compat
+    - copy debian/copyright from debian package
+    - copy debian/source/options
+    - debian/control: increased debhelper version to >= 8.
+
+  * Remaining changes:
+    - keep debian/patches/diff-to-bcbd102cb to bump to upstream git HEAD
+    - keep ubuntu patches 0004-0006, which are pending acceptance upstream.
+    - keep lxcguest package (not in debian):
+      * debian/control: define package
+      * debian/fstab.lxc and debian/fstab.libvirt
+      * debian/lxcguest.console.upstart
+      * debian/lxcguest.lxcguest.upstart
+      * debian/lxcguest.lxcmount.upstart
+      * debian/lxcguest.install
+      * debian/lxc-is-container: keep Ubuntu-specific script
+    - debian/local: a new set of scripts, NOT yet merged from Debian.
+    - debian/lxc.default: keep example MIRROR
+    - lxc-dev package (not in Ubuntu):
+      * skip debian/control entry
+      * skip debian/lxc-dev.install
+    - debian/lxc.dirs:
+      * keep Ubuntu-specific entries:
+        * usr/share/lintian/overrides
+        * usr/share/doc/lxc/examples
+    - debian/lxc.docs: only in Ubuntu
+    - debian/lxc.install: keep Ubuntu version
+    - debian/rules: keep old version (new debian version is lovely but
+      fails to build Ubuntu package.
+
+  * debian/patches/0007-bindhome-dont-add-groups.patch: when binding a user
+    into container, don't auto-insert his groups from the host into the
+    container (LP: #813403).
+
+ -- Serge Hallyn <serge.hallyn@ubuntu.com>  Fri, 22 Jul 2011 11:47:41 -0500
+
+lxc (0.7.4.2-3) unstable; urgency=low
+
+  * Adding patch to remove double check for configuration path in lxc-
+    create (Closes: #633996).
+  * Adding patch to remove dubious fstab entries in fedora template,
+    thanks to Michael Biebl <biebl@debian.org> (see #633053).
+  * Adding adapted patch from upstream to correct architecture setting
+    in debian template (Closes: #622626).
+  * Adding note in README.Debian about kernel crashes for >> 2.6.36 when
+    using two bridges.
+  * Updating section for lxc-dev.
+  * Adding patch to extend architecture static fallback list for powerpc
+    in debian template.
+
+ -- Daniel Baumann <daniel.baumann@progress-technologies.net>  Fri, 22 Jul 2011 17:40:22 +0200
+
+lxc (0.7.4.2-2) unstable; urgency=low
+
+  * Splitting out development files to lxc-dev.
+  * Adding debug package.
+  * Switching architecture fields to linux-any.
+
+ -- Daniel Baumann <daniel.baumann@progress-technologies.net>  Fri, 15 Jul 2011 14:20:57 +0200
+
+lxc (0.7.4.2-1) unstable; urgency=low
+
+  * Taking over lxc together with Jonas, Guido is MIA.
+  * Removing useless whitespaces at EOL and EOF.
+  * Removing vcs field.
+  * Removing git-buildpackage conffile.
+  * Removing watch file.
+  * Updating to standards version 3.9.2.
+  * Moving from cdbs to debhelper version 8.
+  * Removing pre-squeeze version from libcap-dev build-depends.
+  * Sorting depends field.
+  * Adding debootstrap to recommends.
+  * Rewrite copyright file in machine-interpretable format.
+  * Prefixing debhelper files with package name.
+  * Removing lxc.docs, currently the references files do not contain
+    useful information.
+  * Adding options file for dpkg source format.
+  * Rediffing libdir patch.
+  * Adding lxc wrapper script.
+  * Adding lxc-list script.
+  * Simplyfing manpages debhelper file.
+  * Adding patch to avoid FTBFS when building twice in a row (Closes:
+    #615485).
+  * Rewriting README.Debian (Closes: #618928).
+  * Sorting debhelper dirs file.
+  * Including examples from upstream documentation.
+  * Adding patch for debian template to also disable module-init-tools
+    initscript.
+  * Removing superfluous section field.
+  * Adding todo file.
+
+ -- Daniel Baumann <daniel.baumann@progress-technologies.net>  Wed, 13 Jul 2011 01:36:32 +0200
+
+lxc (0.7.4.2-0.3ubuntu4) oneiric; urgency=low
+
+  * introduce lxc-is-container script and 'lxcguest' upstart job which both
+    detect (the script exploiting the upstart job) whether we are in a
+    container.  (LP: #813075)
+
+ -- Serge Hallyn <serge.hallyn@ubuntu.com>  Tue, 19 Jul 2011 15:16:49 -0500
+
+lxc (0.7.4.2-0.3ubuntu3) oneiric; urgency=low
+
+  * Clean up packaging
+    - remove 0002-disable-debian-checkroot-script.patch: it is wrong.
+    - remove 0003-squeeze-missing-tty.patch: it is redundant.
+    - diff-to-bcbd102cb: mark forwarded as not-needed
+    - 0004-add-arm-to-supported-archs.patch: Add author and description.
+    - 0004-0006: mark forwarded as yes
+    - Not renumbering 0004-0006 as that is more confusing, and they
+      will hopefully go away with 0.7.5.
+    - remove dh_install calls from rules
+    - rename lxc.overrides to lxc.lintian-overrides and remove rules entry
+      to do so
+    - remove commented out include of /usr/share/cdbs/1/rules/dpatch.mk
+
+ -- Serge Hallyn <serge.hallyn@ubuntu.com>  Tue, 12 Jul 2011 13:08:26 -0500
+
+lxc (0.7.4.2-0.3ubuntu2) oneiric; urgency=low
+
+  * Add a Recommend on cgroup-bin (LP: #800456)
+
+ -- Stéphane Graber <stgraber@ubuntu.com>  Thu, 07 Jul 2011 22:49:46 +0200
+
+lxc (0.7.4.2-0.3ubuntu1) oneiric; urgency=low
+
+  * Sync upstream 0.7.4.2
+  * Add diff up to git head.
+    - Fix interaction with cgroups-bin (LP: #784093)
+    - Fix arch support to create i386 containers on amd64 (LP: #798476)
+    - Support a bind-mounted $HOME with template (LP: #800482)
+  * add debootstrap to Recommends (LP: #803745)
+  * debian/patchs updates:
+    - refresh 0002-disable-debian-checkroot-script.patch
+    - drop:
+      * 0004-add-ubuntu-mirrors.patch
+      * 0005-add-netbase-to-templates.patch
+      * 0006-fix-template-syntax-error.patch
+      * 0007-natty-template-install-lxcguest.patch
+      * 0010-templates-use-dpkg.patch
+    - renamed and updated:
+      * 0008-add-arm-to-supported-archs.patch to
+        0004-add-arm-to-supported-archs.patch
+      * 0009-templates-dont-use-devpts-in-fstab to
+        0005-dont-use-devpts-in-fstab
+      * 0011-templates-allow-fuse.patch to
+        0006-templates-allow-fuse.patch
+  * remove unused debian/lxc-start.sh
+  * include autoreconf.mk to force Makefile.in to be rebuilt
+  * Remaining changes over debian:
+    - add lxcguest package
+    - debian/control
+      * keep docbook-utils in Build-Depends
+    - lxc.default: add commented example MIRROR
+
+ -- Serge Hallyn <serge.hallyn@ubuntu.com>  Thu, 07 Jul 2011 13:53:52 -0500
+
+lxc (0.7.4.2-0.3) unstable; urgency=low
+
+  * Non-maintainer upload.
+  * Correct previous changelog entry (the upload was to unstable directly,
+    not to delayed/3).
+  * Handle symlinks in /etc/lxc/auto.
+  * Correct wrong variable in lxc.init that made it look in the wrong location
+    for auto started containers (Closes: #632849).
+  * Correct spelling typo in README.Debian.
+
+ -- Daniel Baumann <daniel.baumann@progress-technologies.net>  Wed, 06 Jul 2011 15:11:37 +0200
+
+lxc (0.7.4.2-0.2) unstable; urgency=low
+
+  * Non-maintainer upload.
+  * Handle empty /etc/lxc/auto (Closes: #632648).
+
+ -- Daniel Baumann <daniel.baumann@progress-technologies.net>  Tue, 05 Jul 2011 05:58:59 +0200
+
+lxc (0.7.4.2-0.1) unstable; urgency=low
+
+  [ Daniel Baumann ]
+  * Non-maintainer upload (delayed/3).
+  * Correcting patch to disable debian checkroot script (Closes:
+    #600456).
+  * Adding patch to set default suite to squeeze in debian template
+    (Closes: #600456).
+  * Adding patch to correct include argument when calling debootstrap in
+    debian template (Closes: #607275).
+  * Adding patch to correct charset argument when calling locale-gen in
+    debian template (Closes: #607273).
+  * Adding patch to disable unneeded umountroot initscript (Closes:
+    #611972).
+  * Merging upstream version 0.7.4.2 (Closes: #617934, #627636).
+  * Rediffing fix-too-deep-lib-dir.patch.
+  * Removing disable-debian-checkroot-script.patch, included upstream.
+  * Removing squeeze-missing-tty.patch, included upstream.
+  * Removing restore-lxc.mount-lxc.mount.entry-functionality.patch,
+    included upstream.
+  * Removing Make-debian-mirror-configurable-and-default-to-cdn.patch,
+    included upstream.
+  * Removing Setting-default-suite-to-squeeze-in-debian-template.patch,
+    included upstream.
+  * Removing Correcting-include-argument-when-calling-debootstrap-in-
+    debian-template.patch, included upstream.
+  * Removing Correcting-charset-argument-when-calling-locale-gen-in-
+    debian-template.patch, included upstream.
+  * Removing Adding-patch-to-disable-unneeded-umountroot-
+    initscript.patch, included upstream.
+  * Don't stop containers on upgrade (Closes: #626163).
+
+  [ Jonas Genannt ]
+  * Add an /etc/lxc/auto directory (Closes: #611920).
+
+  [ Daniel Baumann ]
+  * Simplify usage of basename in initscript.
+
+ -- Daniel Baumann <daniel.baumann@progress-technologies.net>  Mon, 27 Jun 2011 15:04:11 +0200
+
+lxc (0.7.4-0ubuntu11) oneiric; urgency=low
+
+  * Allow containers to access /dev/fuse (LP: #800886)
+
+ -- Serge Hallyn <serge.hallyn@ubuntu.com>  Wed, 22 Jun 2011 16:06:23 -0500
+
+lxc (0.7.4-0ubuntu10) oneiric; urgency=low
+
+  * Import patch from stgraber to use dpkg to decide arch in lxc templates.
+    This is necessary for templates to work on arm.
+
+ -- Serge Hallyn <serge.hallyn@ubuntu.com>  Fri, 27 May 2011 13:38:19 -0400
+
+lxc (0.7.4-0ubuntu9) oneiric; urgency=low
+
+  * lxcguest: Recognize 'LIBVIRT_LXC_UUID' in place of 'container=libvirt'
+    as proving that upstart is running in a container.
+
+ -- Serge Hallyn <serge.hallyn@ubuntu.com>  Mon, 16 May 2011 14:03:52 -0500
+
+lxc (0.7.4-0ubuntu8) oneiric; urgency=low
+
+  * debian/patches/0009-templates-dont-use-devpts-in-fstab: remove devpts
+    entry from $confdir/container/fstab, as it is not needed, and can
+    cause the host devpts mount options to change, because it happens
+    before lxc has done a mount -o newinstance.  (LP: #607636)
+
+ -- Serge Hallyn <serge.hallyn@ubuntu.com>  Fri, 06 May 2011 12:08:07 -0500
+
+lxc (0.7.4-0ubuntu7) natty; urgency=low
+
+  * lxcguest: for libvirt containers, offer console on /dev/pts/0 rather
+    than /dev/console.
+  * lxcguest: offer alternate jobs for libvirt-lxc.  Libvirt-lxc doesn't watch
+    guest's utmp (doesn't support clean shutdown at all) so it can safely
+    mount its own /var/run and such.  Hopefully this can go away after lxc
+    supports clean shutdown/reboot without the utmp-watching hack.
+    (LP: #757752)
+  * debian/fstab.lxc: comment out all entries.  /sys gets mounted anyway,
+    and we need to not overmount /var because otherwise the container parent
+    won't see utmp, can't see the container is shutdown, and won't kill
+    the init.  Note that when expected kernel functionality to help clean up
+    container reboot and shutdown comes, these can be uncommented.
+    (LP: #754655)
+
+ -- Serge Hallyn <serge.hallyn@ubuntu.com>  Fri, 08 Apr 2011 09:02:48 -0500
+
+lxc (0.7.4-0ubuntu5) natty; urgency=low
+
+  * Add ARM to list of supported archs - LP: #745884
+
+ -- Marcin Juszkiewicz <marcin.juszkiewicz@linaro.org>  Wed, 06 Apr 2011 16:49:15 +0200
+
+lxc (0.7.4-0ubuntu4) natty; urgency=low
+
+  * Add lxcguest to the list of packages installed by the natty template.
+    (LP: #745907)
+  * Since lxcguest will be installed, don't install our own console.conf,
+    and don't clear out /lib/init/fstab.
+
+ -- Serge Hallyn <serge.hallyn@ubuntu.com>  Fri, 01 Apr 2011 08:50:36 -0500
+
+lxc (0.7.4-0ubuntu3) natty; urgency=low
+
+  * Fix an error in the syntax in the ubuntu templates - they were using
+    upstart job syntax which is not valid in bash for including the
+    /etc/default files. (LP: #742770)
+  * debian/lxc.default: Comment out the example defines so as not to cause
+    trouble, and fix the default MIRROR.
+
+ -- Serge Hallyn <serge.hallyn@ubuntu.com>  Fri, 25 Mar 2011 15:55:05 -0500
+
+lxc (0.7.4-0ubuntu2) natty; urgency=low
+
+  * Fix an error in the syntax in the ubuntu templates - they were using
+    upstart job syntax which is not valid in bash for including the
+    /etc/default files. (LP: #742770)
+  * Now that the /etc/default file is actually sourced, comment out
+    the example defines.
+
+ -- Serge Hallyn <serge.hallyn@ubuntu.com>  Fri, 25 Mar 2011 15:55:05 -0500
+
+lxc (0.7.4-0ubuntu2) natty; urgency=low
+
+  * lxc-natty.in: Adding package "netbase" to debootstrap (LP: #740167)
+
+ -- Ahmed Kamal <kim0@ubuntu.com>  Tue, 22 Mar 2011 18:47:29 +0200
+
+lxc (0.7.4-0ubuntu1) natty; urgency=low
+
+  * New upstream version.
+  * Refreshed patches, dropped 0005-env.patch since it was already
+    accepted upstream.
+
+ -- Chuck Short <zulcss@ubuntu.com>  Thu, 10 Mar 2011 07:25:34 -0500
+
+lxc (0.7.3.1-0ubuntu1) natty; urgency=low
+
+  * Base on new upstream git tree with new maverick and natty templates,
+    and able to run without ns cgroup.
+  * Send a 'container=lxc' variable to upstart.  The upstream git has
+    the same patch, though this tree has it as a quilt patch.
+  * Add lxcguest package which converts a system into one which can
+    boot upstart both as a container and a (kvm or bare-metal) host.
+  * Add a MIRROR default in /etc/default/lxc, and use that in the
+    debootstrap command in the lucid, maverick and natty templates.
+  * Remove 0004-restore-lxc.mount-lxc.mount.entry-functionality.patch
+    which prevents containers from starting.
+
+ -- Serge Hallyn <serge.hallyn@ubuntu.com>  Sun, 23 Jan 2011 17:28:55 -0600
+
+lxc (0.7.3-1) unstable; urgency=low
+
+  * New upstream version (closes: #602631)
+    - Support for specifying debian suite (closes: #600459)
+    - Support for declaring a different architecture (closes: #597875)
+  * Fix restart init.d action sequence (closes: #597998)
+  * Move too-deep /usr/lib/lxc/lxc path to a proper patch
+  * Disable checkroot script in debian template (closes: #601001)
+  * Create missing tty devices under squeeze (closes: #600466)
+  * Restore bindmount functionality in newer kernels (closes: #604475)
+  * Make debian mirror configurable (closes: #601422)
+  * Default to cdn.debian.net as a debian mirror (closes: #600464)
+
+ -- Guido Trotter <ultrotter@debian.org>  Mon, 06 Dec 2010 16:24:31 +0100
+
+lxc (0.7.2-1) unstable; urgency=low
+
+  * New upstream version
+  * Convert libcap dependency to versioned (closes: #571527)
+  * Bump up standards version to 3.9.0
+  * Fix too-deep /usr/lib/lxc/lxc path (closes: #587847)
+  * Add init script (closes: #573830)
+    Thanks to Przemysław Knycz <pknycz@kolnet.eu> for the base example
+  * Bump up standards version (3.9.1)
+
+ -- Guido Trotter <ultrotter@debian.org>  Wed, 04 Aug 2010 13:23:42 -0400
+
+lxc (0.7.1-1) unstable; urgency=low
+
+  * New upstream version
+  * Convert to quilt format
+  * Use pristine-tar option in git-buildpackage
+  * lxc-$distro scripts (debian, fedora, sshd, ubuntu, busybox) are now
+    shipped under /usr/lib/lxc/lxc/templates/
+  * Bump up standards version
+
+ -- Guido Trotter <ultrotter@debian.org>  Mon, 28 Jun 2010 10:15:48 +0100
+
+lxc (0.6.5-1) unstable; urgency=low
+
+  * New upstream version (closes: #566771)
+
+ -- Guido Trotter <ultrotter@debian.org>  Mon, 25 Jan 2010 15:39:38 +0000
+
+lxc (0.6.4-2) unstable; urgency=low
+
+  * Ship the /var/lib/lxc directory (closes: #565519)
+
+ -- Guido Trotter <ultrotter@debian.org>  Sat, 16 Jan 2010 16:57:00 +0000
+
+lxc (0.6.4-1) unstable; urgency=low
+
+  [ Stéphane Graber ]
+  * Upgrade standards-version to 3.8.3
+  * Drop the copy of etc/* from rules as "etc" is no longer in the tarball
+
+  [ Guido Trotter ]
+  * New Upstream Version
+  * Update libcap2-dev dependency to libcap-dev
+  * Install upstream-built man pages via debian/lxc.manpages
+  * Drop unneeded docbook-utils build dependency
+
+ -- Guido Trotter <ultrotter@debian.org>  Sun, 10 Jan 2010 10:40:21 +0100
+
+lxc (0.6.3-2) unstable; urgency=low
+
+  * Fix spelling error in README.Debian
+  * Move .gbp.conf to debian/gbp.conf
+
+ -- Guido Trotter <ultrotter@debian.org>  Sun, 26 Jul 2009 12:06:18 +0200
+
+lxc (0.6.3-1) unstable; urgency=low
+
+  * New Upstream Version
+  * Remove duplicate build-dependency on autotools-dev
+  * Build depend on linux-libc-dev
+  * Disable checking of netlink headers from configure
+    (currently fails under sid)
+  * Upgrade standards-version to 3.8.2
+
+ -- Guido Trotter <ultrotter@debian.org>  Sat, 25 Jul 2009 12:24:30 +0200
+
+lxc (0.6.2-2) unstable; urgency=low
+
+  * Add the vcs entry in debian/control
+  * Update README.Debian mentioning lxc-checkconfig
+  * Update README.Debian mentioning the cgroups file system (closes: #532886)
+    (Thanks to Daniel Pittman for that issue and a suggested fix)
+
+ -- Guido Trotter <ultrotter@debian.org>  Fri, 12 Jun 2009 15:27:43 +0100
+
+lxc (0.6.2-1) unstable; urgency=low
+
+  * New upstream release
+
+ -- Guido Trotter <ultrotter@debian.org>  Wed, 29 Apr 2009 17:49:13 +0100
+
+lxc (0.6.1-1) unstable; urgency=low
+
+  * Initial release (Closes: #519408)
+  * Move a few scripts to "examples"
+
+ -- Guido Trotter <ultrotter@debian.org>  Fri, 27 Mar 2009 19:45:45 +0000
+
