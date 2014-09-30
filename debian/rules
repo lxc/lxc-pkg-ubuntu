@@ -34,14 +34,18 @@ override_dh_auto_install:
 
 override_dh_install:
 	if dpkg --compare-versions "$(shell grep DISTRIB_RELEASE /etc/lsb-release | cut -d= -f2)" lt "13.10"; then \
-		sed -i "/dbus,/d" debian/tmp/etc/apparmor.d/abstractions/lxc/container-base; \
-		sed -i "/dbus,/d" debian/tmp/etc/apparmor.d/abstractions/lxc/start-container; \
+		sed -i "s/^\( *\)\(dbus.*,\)/\\1#\\2/g" debian/tmp/etc/apparmor.d/abstractions/lxc/container-base; \
+		sed -i "s/^\( *\)\(dbus.*,\)/\\1#\\2/g" debian/tmp/etc/apparmor.d/abstractions/lxc/start-container; \
 	fi
 	if dpkg --compare-versions "$(shell grep DISTRIB_RELEASE /etc/lsb-release | cut -d= -f2)" lt "14.04"; then \
-		sed -i "/signal,/d" debian/tmp/etc/apparmor.d/abstractions/lxc/container-base; \
-		sed -i "/signal,/d" debian/tmp/etc/apparmor.d/abstractions/lxc/start-container; \
-		sed -i "/ptrace,/d" debian/tmp/etc/apparmor.d/abstractions/lxc/container-base; \
-		sed -i "/ptrace,/d" debian/tmp/etc/apparmor.d/abstractions/lxc/start-container; \
+		sed -i "s/^\( *\)\(signal.*,\)/\\1#\\2/g" debian/tmp/etc/apparmor.d/abstractions/lxc/container-base; \
+		sed -i "s/^\( *\)\(signal.*,\)/\\1#\\2/g" debian/tmp/etc/apparmor.d/abstractions/lxc/start-container; \
+		sed -i "s/^\( *\)\(ptrace.*,\)/\\1#\\2/g" debian/tmp/etc/apparmor.d/abstractions/lxc/container-base; \
+		sed -i "s/^\( *\)\(ptrace.*,\)/\\1#\\2/g" debian/tmp/etc/apparmor.d/abstractions/lxc/start-container; \
+	fi
+	if dpkg --compare-versions "$(shell grep DISTRIB_RELEASE /etc/lsb-release | cut -d= -f2)" lt "14.10"; then \
+		sed -i "s/^\( *\)\(unix.*,\)/\\1#\\2/g" debian/tmp/etc/apparmor.d/abstractions/lxc/container-base; \
+		sed -i "s/^\( *\)\(unix.*,\)/\\1#\\2/g" debian/tmp/etc/apparmor.d/abstractions/lxc/start-container; \
 	fi
 	if [ -x /usr/bin/dh_apparmor ]; then \
 		dh_apparmor -p lxc --profile-name=usr.bin.lxc-start; \
@@ -83,7 +87,9 @@ override_dh_strip:
 	dh_strip --dbg-package=lxc-dbg
 
 override_dh_gencontrol:
-	if dpkg --compare-versions "$(shell grep DISTRIB_RELEASE /etc/lsb-release | cut -d= -f2)" ge "14.04"; then \
+	if dpkg --compare-versions "$(shell grep DISTRIB_RELEASE /etc/lsb-release | cut -d= -f2)" ge "14.10"; then \
+		dh_gencontrol -- -V'lxc:Depends=apparmor (>= 2.8.96~2652-0ubuntu1)'; \
+	elif dpkg --compare-versions "$(shell grep DISTRIB_RELEASE /etc/lsb-release | cut -d= -f2)" ge "14.04"; then \
 		dh_gencontrol -- -V'lxc:Depends=apparmor (>= 2.8.95~2430-0ubuntu4)'; \
 	elif dpkg --compare-versions "$(shell grep DISTRIB_RELEASE /etc/lsb-release | cut -d= -f2)" ge "13.10"; then \
 		dh_gencontrol -- -V'lxc:Depends=apparmor (>= 2.8.0-0ubuntu25)'; \
