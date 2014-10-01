@@ -63,7 +63,7 @@ try_mksubvolume()
     path=$1
     [ -d $path ] && return 0
     mkdir -p $(dirname $path)
-    if is_btrfs $(dirname $path); then
+    if which btrfs >/dev/null 2>&1 && is_btrfs $(dirname $path); then
         btrfs subvolume create $path
     else
         mkdir -p $path
@@ -74,7 +74,7 @@ try_rmsubvolume()
 {
     path=$1
     [ -d $path ] || return 0
-    if is_btrfs_subvolume $path; then
+    if which btrfs >/dev/null 2>&1 && is_btrfs_subvolume $path; then
         btrfs subvolume delete $path
     else
         rm -rf $path
@@ -406,7 +406,7 @@ copy_ubuntu()
     # make a local copy of the miniubuntu
     echo "Copying rootfs to $rootfs ..."
     try_mksubvolume $rootfs
-    if is_btrfs_subvolume $cache/rootfs-$arch && is_btrfs_subvolume $rootfs; then
+    if which btrfs >/dev/null 2>&1 && is_btrfs_subvolume $cache/rootfs-$arch && is_btrfs_subvolume $rootfs; then
       realrootfs=$(dirname $config)/rootfs
       [ "$rootfs" = "$realrootfs" ] || umount $rootfs || return 1
       btrfs subvolume delete $realrootfs || return 1
@@ -620,7 +620,7 @@ EOF
     # get bind mounted to the host's /run/shm.  So try to rmdir
     # it, and in case that fails move it out of the way.
     # NOTE: This can only be removed once 12.04 goes out of support
-    if [ ! -L $rootfs/dev/shm ] && [ -d $rootfs/run/shm ] && [ -e $rootfs/dev/shm ]; then
+    if [ ! -L $rootfs/dev/shm ] && [ -e $rootfs/dev/shm ]; then
         rmdir $rootfs/dev/shm 2>/dev/null || mv $rootfs/dev/shm $rootfs/dev/shm.bak
         ln -s /run/shm $rootfs/dev/shm
     fi
@@ -673,6 +673,7 @@ usage()
 $1 -h|--help [-a|--arch] [-b|--bindhome <user>] [-d|--debug]
    [-F | --flush-cache] [-r|--release <release>] [ -S | --auth-key <keyfile>]
    [--rootfs <rootfs>] [--packages <packages>] [-u|--user <user>] [--password <password>]
+   [--mirror <url>] [--security-mirror <url>]
 release: the ubuntu release (e.g. precise): defaults to host release on ubuntu, otherwise uses latest LTS
 bindhome: bind <user>'s home into the container
           The ubuntu user will not be created, and <user> will have
@@ -680,6 +681,7 @@ bindhome: bind <user>'s home into the container
 arch: the container architecture (e.g. amd64): defaults to host arch
 auth-key: SSH Public key file to inject into container
 packages: list of packages to add comma separated
+mirror,security-mirror: mirror for download and /etc/apt/sources.list
 EOF
     return 0
 }

@@ -102,7 +102,13 @@ host_triplet = @host@
 @ENABLE_TESTS_TRUE@	lxc-test-attach$(EXEEXT) \
 @ENABLE_TESTS_TRUE@	lxc-test-device-add-remove$(EXEEXT) \
 @ENABLE_TESTS_TRUE@	lxc-test-apparmor$(EXEEXT)
-@DISTRO_UBUNTU_TRUE@@ENABLE_TESTS_TRUE@am__append_3 = lxc-test-usernic lxc-test-ubuntu lxc-test-unpriv
+@DISTRO_UBUNTU_TRUE@@ENABLE_TESTS_TRUE@am__append_3 = \
+@DISTRO_UBUNTU_TRUE@@ENABLE_TESTS_TRUE@	lxc-test-apparmor-mount \
+@DISTRO_UBUNTU_TRUE@@ENABLE_TESTS_TRUE@	lxc-test-checkpoint-restore \
+@DISTRO_UBUNTU_TRUE@@ENABLE_TESTS_TRUE@	lxc-test-ubuntu \
+@DISTRO_UBUNTU_TRUE@@ENABLE_TESTS_TRUE@	lxc-test-unpriv \
+@DISTRO_UBUNTU_TRUE@@ENABLE_TESTS_TRUE@	lxc-test-usernic
+
 subdir = src/tests
 DIST_COMMON = $(srcdir)/Makefile.in $(srcdir)/Makefile.am \
 	$(srcdir)/lxc-test-usernic.in $(top_srcdir)/config/depcomp
@@ -414,7 +420,7 @@ LXCROOTFSMOUNT = @LXCROOTFSMOUNT@
 LXCTEMPLATECONFIG = @LXCTEMPLATECONFIG@
 LXCTEMPLATEDIR = @LXCTEMPLATEDIR@
 LXC_DEFAULT_CONFIG = @LXC_DEFAULT_CONFIG@
-LXC_DISTRO_CONF = @LXC_DISTRO_CONF@
+LXC_DISTRO_SYSCONF = @LXC_DISTRO_SYSCONF@
 LXC_GENERATE_DATE = @LXC_GENERATE_DATE@
 LXC_GLOBAL_CONF = @LXC_GLOBAL_CONF@
 LXC_USERNIC_CONF = @LXC_USERNIC_CONF@
@@ -461,6 +467,7 @@ SET_MAKE = @SET_MAKE@
 SHELL = @SHELL@
 STRIP = @STRIP@
 SYSCONFDIR = @SYSCONFDIR@
+SYSTEMD_UNIT_DIR = @SYSTEMD_UNIT_DIR@
 VERSION = @VERSION@
 abs_builddir = @abs_builddir@
 abs_srcdir = @abs_srcdir@
@@ -548,7 +555,8 @@ top_srcdir = @top_srcdir@
 @ENABLE_TESTS_TRUE@	-DLXC_DEFAULT_CONFIG=\"$(LXC_DEFAULT_CONFIG)\" \
 @ENABLE_TESTS_TRUE@	-DRUNTIME_PATH=\"$(RUNTIME_PATH)\" \
 @ENABLE_TESTS_TRUE@	$(am__append_1) $(am__append_2)
-@ENABLE_TESTS_TRUE@bin_SCRIPTS = lxc-test-autostart $(am__append_3)
+@ENABLE_TESTS_TRUE@bin_SCRIPTS = lxc-test-autostart \
+@ENABLE_TESTS_TRUE@	lxc-test-cloneconfig $(am__append_3)
 EXTRA_DIST = \
 	cgpath.c \
 	clonetest.c \
@@ -564,6 +572,9 @@ EXTRA_DIST = \
 	locktests.c \
 	lxcpath.c \
 	lxc-test-autostart \
+	lxc-test-apparmor-mount \
+	lxc-test-checkpoint-restore \
+	lxc-test-cloneconfig \
 	lxc-test-ubuntu \
 	lxc-test-unpriv \
 	lxc-test-usernic \

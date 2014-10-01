@@ -32,7 +32,13 @@
 #include <inttypes.h>
 #include <sys/wait.h>
 #include <sys/syscall.h>
+#include <sys/types.h>
+#include <pwd.h>
+#include <grp.h>
 #include <time.h>
+#ifdef HAVE_STATVFS
+#include <sys/statvfs.h>
+#endif
 
 #if HAVE_PTY_H
 #include <pty.h>
@@ -284,6 +290,9 @@ static struct caps_opt caps_opt[] = {
 #else
 static struct caps_opt caps_opt[] = {};
 #endif
+
+const char *dev_base_path = "/dev/.lxc";
+const char *dev_user_path = "/dev/.lxc/user";
 
 static int run_buffer(char *buffer)
 {
@@ -682,6 +691,43 @@ int pin_rootfs(const char *rootfs)
 	return fd;
 }
 
+/*
+ * If we are asking to remount something, make sure that any
+ * NOEXEC etc are honored.
+ */
+static unsigned long add_required_remount_flags(const char *s, const char *d,
+		unsigned long flags)
+{
+#ifdef HAVE_STATVFS
+	struct statvfs sb;
+	unsigned long required_flags = 0;
+
+	if (!(flags & MS_REMOUNT))
+		return flags;
+
+	if (!s)
+		s = d;
+
+	if (!s)
+		return flags;
+	if (statvfs(s, &sb) < 0)
+		return flags;
+
+	if (sb.f_flag & MS_NOSUID)
+		required_flags |= MS_NOSUID;
+	if (sb.f_flag & MS_NODEV)
+		required_flags |= MS_NODEV;
+	if (sb.f_flag & MS_RDONLY)
+		required_flags |= MS_RDONLY;
+	if (sb.f_flag & MS_NOEXEC)
+		required_flags |= MS_NOEXEC;
+
+	return flags | required_flags;
+#else
+	return flags;
+#endif
+}
+
 static int lxc_mount_auto_mounts(struct lxc_conf *conf, int flags, struct lxc_handler *handler)
 {
 	int r;
@@ -722,6 +768,7 @@ static int lxc_mount_auto_mounts(struct lxc_conf *conf, int flags, struct lxc_ha
 			char *source = NULL;
 			char *destination = NULL;
 			int saved_errno;
+			unsigned long mflags;
 
 			if (default_mounts[i].source) {
 				/* will act like strdup if %r is not present */
@@ -742,10 +789,12 @@ static int lxc_mount_auto_mounts(struct lxc_conf *conf, int flags, struct lxc_ha
 					return -1;
 				}
 			}
-			r = mount(source, destination, default_mounts[i].fstype, default_mounts[i].flags, default_mounts[i].options);
+			mflags = add_required_remount_flags(source, destination,
+					default_mounts[i].flags);
+			r = mount(source, destination, default_mounts[i].fstype, mflags, default_mounts[i].options);
 			saved_errno = errno;
 			if (r < 0)
-				SYSERROR("error mounting %s on %s", source, destination);
+				SYSERROR("error mounting %s on %s flags %lu", source, destination, mflags);
 			free(source);
 			free(destination);
 			if (r < 0) {
@@ -976,199 +1025,66 @@ static int setup_tty(const struct lxc_rootfs *rootfs,
 	return 0;
 }
 
-static int setup_rootfs_pivot_root_cb(char *buffer, void *data)
-{
-	struct lxc_list	*mountlist, *listentry, *iterator;
-	char *pivotdir, *mountpoint, *mountentry, *saveptr = NULL;
-	int found;
-	void **cbparm;
-
-	mountentry = buffer;
-	cbparm = (void **)data;
-
-	mountlist = cbparm[0];
-	pivotdir  = cbparm[1];
-
-	/* parse entry, first field is mountname, ignore */
-	mountpoint = strtok_r(mountentry, " ", &saveptr);
-	if (!mountpoint)
-		return -1;
-
-	/* second field is mountpoint */
-	mountpoint = strtok_r(NULL, " ", &saveptr);
-	if (!mountpoint)
-		return -1;
-
-	/* only consider mountpoints below old root fs */
-	if (strncmp(mountpoint, pivotdir, strlen(pivotdir)))
-		return 0;
-
-	/* filter duplicate mountpoints */
-	found = 0;
-	lxc_list_for_each(iterator, mountlist) {
-		if (!strcmp(iterator->elem, mountpoint)) {
-			found = 1;
-			break;
-		}
-	}
-	if (found)
-		return 0;
-
-	/* add entry to list */
-	listentry = malloc(sizeof(*listentry));
-	if (!listentry) {
-		SYSERROR("malloc for mountpoint listentry failed");
-		return -1;
-	}
-
-	listentry->elem = strdup(mountpoint);
-	if (!listentry->elem) {
-		SYSERROR("strdup failed");
-		free(listentry);
-		return -1;
-	}
-	lxc_list_add_tail(mountlist, listentry);
-
-	return 0;
-}
-
-static int umount_oldrootfs(const char *oldrootfs)
-{
-	char path[MAXPATHLEN];
-	void *cbparm[2];
-	struct lxc_list mountlist, *iterator, *next;
-	int ok, still_mounted, last_still_mounted;
-	int rc;
-
-	/* read and parse /proc/mounts in old root fs */
-	lxc_list_init(&mountlist);
-
-	/* oldrootfs is on the top tree directory now */
-	rc = snprintf(path, sizeof(path), "/%s", oldrootfs);
-	if (rc >= sizeof(path)) {
-		ERROR("rootfs name too long");
-		return -1;
-	}
-	cbparm[0] = &mountlist;
-
-	cbparm[1] = strdup(path);
-	if (!cbparm[1]) {
-		SYSERROR("strdup failed");
-		return -1;
-	}
-
-	rc = snprintf(path, sizeof(path), "%s/proc/mounts", oldrootfs);
-	if (rc >= sizeof(path)) {
-		ERROR("container proc/mounts name too long");
-		return -1;
-	}
-
-	ok = lxc_file_for_each_line(path,
-				    setup_rootfs_pivot_root_cb, &cbparm);
-	if (ok < 0) {
-		SYSERROR("failed to read or parse mount list '%s'", path);
-		return -1;
-	}
-
-	/* umount filesystems until none left or list no longer shrinks */
-	still_mounted = 0;
-	do {
-		last_still_mounted = still_mounted;
-		still_mounted = 0;
-
-		lxc_list_for_each_safe(iterator, &mountlist, next) {
-
-			/* umount normally */
-			if (!umount(iterator->elem)) {
-				DEBUG("umounted '%s'", (char *)iterator->elem);
-				lxc_list_del(iterator);
-				continue;
-			}
-
-			still_mounted++;
-		}
-
-	} while (still_mounted > 0 && still_mounted != last_still_mounted);
-
-
-	lxc_list_for_each(iterator, &mountlist) {
-
-		/* let's try a lazy umount */
-		if (!umount2(iterator->elem, MNT_DETACH)) {
-			INFO("lazy unmount of '%s'", (char *)iterator->elem);
-			continue;
-		}
-
-		/* be more brutal (nfs) */
-		if (!umount2(iterator->elem, MNT_FORCE)) {
-			INFO("forced unmount of '%s'", (char *)iterator->elem);
-			continue;
-		}
-
-		WARN("failed to unmount '%s'", (char *)iterator->elem);
-	}
-
-	return 0;
-}
 
 static int setup_rootfs_pivot_root(const char *rootfs, const char *pivotdir)
 {
-	char path[MAXPATHLEN];
-	int remove_pivotdir = 0;
-	int rc;
+	int oldroot = -1, newroot = -1;
+
+	oldroot = open("/", O_DIRECTORY | O_RDONLY);
+	if (oldroot < 0) {
+		SYSERROR("Error opening old-/ for fchdir");
+		return -1;
+	}
+	newroot = open(rootfs, O_DIRECTORY | O_RDONLY);
+	if (newroot < 0) {
+		SYSERROR("Error opening new-/ for fchdir");
+		goto fail;
+	}
 
 	/* change into new root fs */
-	if (chdir(rootfs)) {
+	if (fchdir(newroot)) {
 		SYSERROR("can't chdir to new rootfs '%s'", rootfs);
-		return -1;
+		goto fail;
 	}
-
-	if (!pivotdir)
-		pivotdir = "lxc_putold";
-
-	/* compute the full path to pivotdir under rootfs */
-	rc = snprintf(path, sizeof(path), "%s/%s", rootfs, pivotdir);
-	if (rc >= sizeof(path)) {
-		ERROR("pivot dir name too long");
-		return -1;
-	}
-
-	if (access(path, F_OK)) {
-
-		if (mkdir_p(path, 0755) < 0) {
-			SYSERROR("failed to create pivotdir '%s'", path);
-			return -1;
-		}
-
-		remove_pivotdir = 1;
-		DEBUG("created '%s' directory", path);
-	}
-
-	DEBUG("mountpoint for old rootfs is '%s'", path);
 
 	/* pivot_root into our new root fs */
-	if (pivot_root(".", path)) {
+	if (pivot_root(".", ".")) {
 		SYSERROR("pivot_root syscall failed");
-		return -1;
+		goto fail;
 	}
 
-	if (chdir("/")) {
-		SYSERROR("can't chdir to / after pivot_root");
-		return -1;
+	/*
+	 * at this point the old-root is mounted on top of our new-root
+	 * To unmounted it we must not be chdir'd into it, so escape back
+	 * to old-root
+	 */
+	if (fchdir(oldroot) < 0) {
+		SYSERROR("Error entering oldroot");
+		goto fail;
 	}
+	if (umount2(".", MNT_DETACH) < 0) {
+		SYSERROR("Error detaching old root");
+		goto fail;
+	}
+
+	if (fchdir(newroot) < 0) {
+		SYSERROR("Error re-entering newroot");
+		goto fail;
+	}
+
+	close(oldroot);
+	close(newroot);
 
 	DEBUG("pivot_root syscall to '%s' successful", rootfs);
 
-	/* we switch from absolute path to relative path */
-	if (umount_oldrootfs(pivotdir))
-		return -1;
-
-	/* remove temporary mount point, we don't consider the removing
-	 * as fatal */
-	if (remove_pivotdir && rmdir(pivotdir))
-		WARN("can't remove mountpoint '%s': %m", pivotdir);
-
 	return 0;
+
+fail:
+	if (oldroot != -1)
+		close(oldroot);
+	if (newroot != -1)
+		close(newroot);
+	return -1;
 }
 
 /*
@@ -1256,13 +1172,11 @@ static char *mk_devtmpfs(const char *name, char *path, const char *lxcpath)
 	struct stat s;
 	char tmp_path[MAXPATHLEN];
 	char fstype[MAX_FSTYPE_LEN];
-	char *base_path = "/dev/.lxc";
-	char *user_path = "/dev/.lxc/user";
 	uint64_t hash;
 
-	if ( 0 != access(base_path, F_OK) || 0 != stat(base_path, &s) || 0 == S_ISDIR(s.st_mode) ) {
+	if ( 0 != access(dev_base_path, F_OK) || 0 != stat(dev_base_path, &s) || 0 == S_ISDIR(s.st_mode) ) {
 		/* This is just making /dev/.lxc it better work or we're done */
-		ret = mkdir(base_path, S_IRWXU | S_IRGRP | S_IXGRP | S_IROTH | S_IXOTH);
+		ret = mkdir(dev_base_path, S_IRWXU | S_IRGRP | S_IXGRP | S_IROTH | S_IXOTH);
 		if ( ret ) {
 			SYSERROR( "Unable to create /dev/.lxc for autodev" );
 			return NULL;
@@ -1296,19 +1210,19 @@ static char *mk_devtmpfs(const char *name, char *path, const char *lxcpath)
 		}
 	}
 
-	if ( 0 != access(user_path, F_OK) || 0 != stat(user_path, &s) || 0 == S_ISDIR(s.st_mode) ) {
+	if ( 0 != access(dev_user_path, F_OK) || 0 != stat(dev_user_path, &s) || 0 == S_ISDIR(s.st_mode) ) {
 		/*
 		 * This is making /dev/.lxc/user path for non-priv users.
 		 * If this doesn't work, we'll have to fall back in the
 		 * case of non-priv users.  It's mode 1777 like /tmp.
 		 */
-		ret = mkdir(user_path, S_IRWXU | S_IRWXG | S_IRWXO | S_ISVTX);
+		ret = mkdir(dev_user_path, S_IRWXU | S_IRWXG | S_IRWXO | S_ISVTX);
 		if ( ret ) {
 			/* Issue an error but don't fail yet! */
 			ERROR("Unable to create /dev/.lxc/user");
 		}
 		/* Umask tends to screw us up here */
-		chmod(user_path, S_IRWXU | S_IRWXG | S_IRWXO | S_ISVTX);
+		chmod(dev_user_path, S_IRWXU | S_IRWXG | S_IRWXO | S_ISVTX);
 	}
 
 	/*
@@ -1323,18 +1237,18 @@ static char *mk_devtmpfs(const char *name, char *path, const char *lxcpath)
 
 	hash = fnv_64a_buf(tmp_path, ret, FNV1A_64_INIT);
 
-	ret = snprintf(tmp_path, MAXPATHLEN, "%s/%s.%016" PRIx64, base_path, name, hash);
+	ret = snprintf(tmp_path, MAXPATHLEN, "%s/%s.%016" PRIx64, dev_base_path, name, hash);
 	if (ret < 0 || ret >= MAXPATHLEN)
 		return NULL;
 
 	if ( 0 != access(tmp_path, F_OK) || 0 != stat(tmp_path, &s) || 0 == S_ISDIR(s.st_mode) ) {
 		ret = mkdir(tmp_path, S_IRWXU | S_IRGRP | S_IXGRP | S_IROTH | S_IXOTH);
 		if ( ret ) {
-			/* Something must have failed with the base_path...
-			 * Maybe unpriv user.  Try user_path now... */
+			/* Something must have failed with the dev_base_path...
+			 * Maybe unpriv user.  Try dev_user_path now... */
 			INFO("Setup in /dev/.lxc failed.  Trying /dev/.lxc/user." );
 
-			ret = snprintf(tmp_path, MAXPATHLEN, "%s/%s.%016" PRIx64, user_path, name, hash);
+			ret = snprintf(tmp_path, MAXPATHLEN, "%s/%s.%016" PRIx64, dev_user_path, name, hash);
 			if (ret < 0 || ret >= MAXPATHLEN)
 				return NULL;
 
@@ -1351,7 +1265,6 @@ static char *mk_devtmpfs(const char *name, char *path, const char *lxcpath)
 	strcpy( path, tmp_path );
 	return path;
 }
-
 
 /*
  * Do we want to add options for max size of /dev and a file to
@@ -1479,6 +1392,64 @@ static int setup_autodev(const char *root)
 }
 
 /*
+ * Locate allocated devtmpfs mount and purge it.
+ * path lookup mostly taken from mk_devtmpfs
+ */
+int lxc_delete_autodev(struct lxc_handler *handler)
+{
+	int ret;
+	struct stat s;
+	struct lxc_conf *lxc_conf = handler->conf;
+	const char *name = handler->name;
+	const char *lxcpath = handler->lxcpath;
+	char tmp_path[MAXPATHLEN];
+	uint64_t hash;
+
+	if ( lxc_conf->autodev <= 0 )
+		return 0;
+
+	/* don't clean on reboot */
+	if ( lxc_conf->reboot == 1 )
+		return 0;
+
+	/*
+	 * Use the same logic as mk_devtmpfs to compute candidate
+	 * path for cleanup.
+	 */
+
+	ret = snprintf(tmp_path, MAXPATHLEN, "%s/%s", lxcpath, name);
+	if (ret < 0 || ret >= MAXPATHLEN)
+		return -1;
+
+	hash = fnv_64a_buf(tmp_path, ret, FNV1A_64_INIT);
+
+	/* Probe /dev/.lxc/<container name>.<hash> */
+	ret = snprintf(tmp_path, MAXPATHLEN, "%s/%s.%016" PRIx64, dev_base_path, name, hash);
+	if (ret < 0 || ret >= MAXPATHLEN)
+		return -1;
+
+	if ( 0 != access(tmp_path, F_OK) || 0 != stat(tmp_path, &s) || 0 == S_ISDIR(s.st_mode) ) {
+		/* Probe /dev/.lxc/user/<container name>.<hash> */
+		ret = snprintf(tmp_path, MAXPATHLEN, "%s/%s.%016" PRIx64, dev_user_path, name, hash);
+		if (ret < 0 || ret >= MAXPATHLEN)
+			return -1;
+
+		if ( 0 != access(tmp_path, F_OK) || 0 != stat(tmp_path, &s) || 0 == S_ISDIR(s.st_mode) ) {
+			WARN("Failed to locate autodev /dev/.lxc and /dev/.lxc/user." );
+			return -1;
+		}
+	}
+
+	/* Do the cleanup */
+	INFO("Cleaning %s", tmp_path );
+	if ( 0 != lxc_rmdir_onedev(tmp_path, NULL) ) {
+		ERROR("Failed to cleanup autodev" );
+	}
+
+	return 0;
+}
+
+/*
  * I'll forgive you for asking whether all of this is needed :)  The
  * answer is yes.
  * pivot_root will fail if the new root, the put_old dir, or the parent
@@ -1600,6 +1571,13 @@ static int setup_pts(int pts)
 	if (!access("/dev/pts/ptmx", F_OK) && umount("/dev/pts")) {
 		SYSERROR("failed to umount 'dev/pts'");
 		return -1;
+	}
+
+	if (mkdir("/dev/pts", 0755)) {
+		if ( errno != EEXIST ) {
+		    SYSERROR("failed to create '/dev/pts'");
+		    return -1;
+		}
 	}
 
 	if (mount("devpts", "/dev/pts", "devpts", MS_MGC_VAL,
@@ -1859,10 +1837,39 @@ int parse_mntopts(const char *mntopts, unsigned long *mntflags,
 	return 0;
 }
 
+static void null_endofword(char *word)
+{
+	while (*word && *word != ' ' && *word != '\t')
+		word++;
+	*word = '\0';
+}
+
+/*
+ * skip @nfields spaces in @src
+ */
+static char *get_field(char *src, int nfields)
+{
+	char *p = src;
+	int i;
+
+	for (i = 0; i < nfields; i++) {
+		while (*p && *p != ' ' && *p != '\t')
+			p++;
+		if (!*p)
+			break;
+		p++;
+	}
+	return p;
+}
+
 static int mount_entry(const char *fsname, const char *target,
 		       const char *fstype, unsigned long mountflags,
 		       const char *data, int optional)
 {
+#ifdef HAVE_STATVFS
+	struct statvfs sb;
+#endif
+
 	if (mount(fsname, target, fstype, mountflags & ~MS_REMOUNT, data)) {
 		if (optional) {
 			INFO("failed to mount '%s' on '%s' (optional): %s", fsname,
@@ -1876,9 +1883,36 @@ static int mount_entry(const char *fsname, const char *target,
 	}
 
 	if ((mountflags & MS_REMOUNT) || (mountflags & MS_BIND)) {
-
 		DEBUG("remounting %s on %s to respect bind or remount options",
-		      fsname, target);
+		      fsname ? fsname : "(none)", target ? target : "(none)");
+
+#ifdef HAVE_STATVFS
+		if (statvfs(fsname, &sb) == 0) {
+			unsigned long required_flags = 0;
+			if (sb.f_flag & MS_NOSUID)
+				required_flags |= MS_NOSUID;
+			if (sb.f_flag & MS_NODEV)
+				required_flags |= MS_NODEV;
+			if (sb.f_flag & MS_RDONLY)
+				required_flags |= MS_RDONLY;
+			if (sb.f_flag & MS_NOEXEC)
+				required_flags |= MS_NOEXEC;
+			DEBUG("(at remount) flags for %s was %lu, required extra flags are %lu", fsname, sb.f_flag, required_flags);
+			/*
+			 * If this was a bind mount request, and required_flags
+			 * does not have any flags which are not already in
+			 * mountflags, then skip the remount
+			 */
+			if (!(mountflags & MS_REMOUNT)) {
+				if (!(required_flags & ~mountflags)) {
+					DEBUG("mountflags already was %lu, skipping remount",
+						mountflags);
+					goto skipremount;
+				}
+			}
+			mountflags |= required_flags;
+		}
+#endif
 
 		if (mount(fsname, target, fstype,
 			  mountflags | MS_REMOUNT, data)) {
@@ -1895,6 +1929,9 @@ static int mount_entry(const char *fsname, const char *target,
 		}
 	}
 
+#ifdef HAVE_STATVFS
+skipremount:
+#endif
 	DEBUG("mounted '%s' on '%s', type '%s'", fsname, target, fstype);
 
 	return 0;
@@ -2701,6 +2738,7 @@ struct lxc_conf *lxc_conf_init(void)
 	lxc_list_init(&new->id_map);
 	lxc_list_init(&new->includes);
 	lxc_list_init(&new->aliens);
+	lxc_list_init(&new->environment);
 	for (i=0; i<NUM_LXC_HOOKS; i++)
 		lxc_list_init(&new->hooks[i]);
 	lxc_list_init(&new->groups);
@@ -3258,18 +3296,16 @@ int lxc_map_ids(struct lxc_list *idmap, pid_t pid)
 	enum idtype type;
 	char *buf = NULL, *pos, *cmdpath = NULL;
 
+	/*
+	 * If newuidmap exists, that is, if shadow is handing out subuid
+	 * ranges, then insist that root also reserve ranges in subuid.  This
+	 * will protected it by preventing another user from being handed the
+	 * range by shadow.
+	 */
 	cmdpath = on_path("newuidmap", NULL);
 	if (cmdpath) {
 		use_shadow = 1;
 		free(cmdpath);
-	}
-
-	if (!use_shadow) {
-		cmdpath = on_path("newgidmap", NULL);
-		if (cmdpath) {
-			use_shadow = 1;
-			free(cmdpath);
-		}
 	}
 
 	if (!use_shadow && geteuid()) {
@@ -3819,31 +3855,6 @@ void tmp_proc_unmount(struct lxc_conf *lxc_conf)
 	}
 }
 
-static void null_endofword(char *word)
-{
-	while (*word && *word != ' ' && *word != '\t')
-		word++;
-	*word = '\0';
-}
-
-/*
- * skip @nfields spaces in @src
- */
-static char *get_field(char *src, int nfields)
-{
-	char *p = src;
-	int i;
-
-	for (i = 0; i < nfields; i++) {
-		while (*p && *p != ' ' && *p != '\t')
-			p++;
-		if (!*p)
-			break;
-		p++;
-	}
-	return p;
-}
-
 static void remount_all_slave(void)
 {
 	/* walk /proc/mounts and change any shared entries to slave */
@@ -4375,6 +4386,19 @@ int lxc_clear_groups(struct lxc_conf *c)
 	return 0;
 }
 
+int lxc_clear_environment(struct lxc_conf *c)
+{
+	struct lxc_list *it,*next;
+
+	lxc_list_for_each_safe(it, &c->environment, next) {
+		lxc_list_del(it);
+		free(it->elem);
+		free(it);
+	}
+	return 0;
+}
+
+
 int lxc_clear_mount_entries(struct lxc_conf *c)
 {
 	struct lxc_list *it,*next;
@@ -4458,6 +4482,8 @@ void lxc_conf_free(struct lxc_conf *conf)
 {
 	if (!conf)
 		return;
+	if (conf->console.log_path)
+		free(conf->console.log_path);
 	if (conf->console.path)
 		free(conf->console.path);
 	if (conf->rootfs.mount)
@@ -4478,6 +4504,7 @@ void lxc_conf_free(struct lxc_conf *conf)
 		free(conf->fstab);
 	if (conf->rcfile)
 		free(conf->rcfile);
+	free(conf->unexpanded_config);
 	lxc_clear_config_network(conf);
 	if (conf->lsm_aa_profile)
 		free(conf->lsm_aa_profile);
@@ -4494,6 +4521,7 @@ void lxc_conf_free(struct lxc_conf *conf)
 	lxc_clear_groups(conf);
 	lxc_clear_includes(conf);
 	lxc_clear_aliens(conf);
+	lxc_clear_environment(conf);
 	free(conf);
 }
 
@@ -4654,4 +4682,123 @@ err:
 		close(p[0]);
 	close(p[1]);
 	return -1;
+}
+
+/* not thread-safe, do not use from api without first forking */
+static char* getuname(void)
+{
+	struct passwd *result;
+
+	result = getpwuid(geteuid());
+	if (!result)
+		return NULL;
+
+	return strdup(result->pw_name);
+}
+
+/* not thread-safe, do not use from api without first forking */
+static char *getgname(void)
+{
+	struct group *result;
+
+	result = getgrgid(getegid());
+	if (!result)
+		return NULL;
+
+	return strdup(result->gr_name);
+}
+
+/* not thread-safe, do not use from api without first forking */
+void suggest_default_idmap(void)
+{
+	FILE *f;
+	unsigned int uid = 0, urange = 0, gid = 0, grange = 0;
+	char *line = NULL;
+	char *uname, *gname;
+	size_t len = 0;
+
+	if (!(uname = getuname()))
+		return;
+
+	if (!(gname = getgname())) {
+		free(uname);
+		return;
+	}
+
+	f = fopen(subuidfile, "r");
+	if (!f) {
+		ERROR("Your system is not configured with subuids");
+		free(gname);
+		free(uname);
+		return;
+	}
+	while (getline(&line, &len, f) != -1) {
+		char *p = strchr(line, ':'), *p2;
+		if (*line == '#')
+			continue;
+		if (!p)
+			continue;
+		*p = '\0';
+		p++;
+		if (strcmp(line, uname))
+			continue;
+		p2 = strchr(p, ':');
+		if (!p2)
+			continue;
+		*p2 = '\0';
+		p2++;
+		if (!*p2)
+			continue;
+		uid = atoi(p);
+		urange = atoi(p2);
+	}
+	fclose(f);
+
+	f = fopen(subuidfile, "r");
+	if (!f) {
+		ERROR("Your system is not configured with subgids");
+		free(gname);
+		free(uname);
+		return;
+	}
+	while (getline(&line, &len, f) != -1) {
+		char *p = strchr(line, ':'), *p2;
+		if (*line == '#')
+			continue;
+		if (!p)
+			continue;
+		*p = '\0';
+		p++;
+		if (strcmp(line, uname))
+			continue;
+		p2 = strchr(p, ':');
+		if (!p2)
+			continue;
+		*p2 = '\0';
+		p2++;
+		if (!*p2)
+			continue;
+		gid = atoi(p);
+		grange = atoi(p2);
+	}
+	fclose(f);
+
+	if (line)
+		free(line);
+
+	if (!urange || !grange) {
+		ERROR("You do not have subuids or subgids allocated");
+		ERROR("Unprivileged containers require subuids and subgids");
+		return;
+	}
+
+	ERROR("You must either run as root, or define uid mappings");
+	ERROR("To pass uid mappings to lxc-create, you could create");
+	ERROR("~/.config/lxc/default.conf:");
+	ERROR("lxc.include = %s", LXC_DEFAULT_CONFIG);
+	ERROR("lxc.id_map = u 0 %u %u", uid, urange);
+	ERROR("lxc.id_map = g 0 %u %u", gid, grange);
+
+	free(gname);
+	free(uname);
 }

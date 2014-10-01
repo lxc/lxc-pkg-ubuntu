@@ -4,7 +4,7 @@
 m4_define([lxc_version_major], 1)
 m4_define([lxc_version_minor], 1)
 m4_define([lxc_version_micro], 0)
-m4_define([lxc_version_beta], [alpha1])
+m4_define([lxc_version_beta], [alpha2])
 
 m4_define([lxc_version_base], [lxc_version_major.lxc_version_minor.lxc_version_micro])
 m4_define([lxc_version],
@@ -59,19 +59,24 @@ if test "z$with_distro" = "z"; then
 	with_distro="unknown"
 fi
 case $with_distro in
-	ubuntu)
-		distroconf=default.conf.ubuntu
+	ubuntu|raspbian)
+		distroconf=default.conf.lxcbr
+		distrosysconf="$sysconfdir/default"
 		;;
-	redhat|centos|fedora|oracle|oracleserver)
-		distroconf=default.conf.libvirt
+	redhat|centos|fedora|oracle|oracleserver|suse|opensuse*)
+		distroconf=default.conf.lxcbr
+		distrosysconf="$sysconfdir/sysconfig"
 		;;
 	*)
 		distroconf=default.conf.unknown
+		distrosysconf="$sysconfdir/default"
 		;;
 esac
 AC_MSG_RESULT([$with_distro])
-AM_CONDITIONAL([HAVE_DEBIAN], [test x"$with_distro" = "xdebian" -o x"$with_distro" = "xubuntu"])
+AM_CONDITIONAL([HAVE_DEBIAN], [test x"$with_distro" = "xdebian" -o x"$with_distro" = "xubuntu" -o x"$with_distro" = "xraspbian"])
 AM_CONDITIONAL([DISTRO_UBUNTU], [test "x$with_distro" = "xubuntu"])
+
+AC_CONFIG_LINKS([config/etc/default.conf:config/etc/${distroconf}])
 
 # Check for init system type
 AC_MSG_CHECKING([for init system type])
@@ -82,17 +87,17 @@ AC_ARG_WITH([init-script],
 case "$with_init_script" in
 	distro)
 		case $with_distro in
-			fedora)
+			fedora|opensuse*)
 				init_script=systemd
 				;;
 			redhat|centos|oracle|oracleserver)
 				init_script=sysvinit
 				;;
-			debian)
+			debian|raspbian)
 				init_script=upstart,systemd
 				;;
 			ubuntu)
-				init_script=upstart
+				init_script=upstart,systemd
 				;;
 			*)
 				echo -n "Linux distribution init system unknown."
@@ -121,6 +126,18 @@ AM_CONDITIONAL([INIT_SCRIPT_SYSV], [echo "$init_script" |grep -q "sysvinit"])
 AM_CONDITIONAL([INIT_SCRIPT_SYSTEMD], [echo "$init_script" |grep -q "systemd"])
 AM_CONDITIONAL([INIT_SCRIPT_UPSTART], [echo "$init_script" |grep -q "upstart"])
 AC_MSG_RESULT($init_script)
+
+# systemd unit dir
+AC_ARG_WITH([systemdsystemunitdir],
+            AS_HELP_STRING([--with-systemdsystemunitdir=DIR], [Directory for systemd service files]),
+            [],
+            [with_systemdsystemunitdir=$($PKG_CONFIG --variable=systemdsystemunitdir systemd)])
+if test -z "$with_systemdsystemunitdir"; then
+  with_systemdsystemunitdir=/lib/systemd/system
+fi
+if test "x$with_systemdsystemunitdir" != "xno"; then
+  AC_SUBST([SYSTEMD_UNIT_DIR], [$with_systemdsystemunitdir])
+fi
 
 # Allow disabling rpath
 AC_ARG_ENABLE([rpath],
@@ -501,12 +518,12 @@ AS_AC_EXPAND(LXC_DEFAULT_CONFIG, "$sysconfdir/lxc/default.conf")
 AS_AC_EXPAND(DATADIR, "$datadir")
 AS_AC_EXPAND(LOCALSTATEDIR, "$localstatedir")
 AS_AC_EXPAND(DOCDIR, "$docdir")
-AS_AC_EXPAND(LXC_DISTRO_CONF, "$distroconf")
 AS_AC_EXPAND(LXC_GENERATE_DATE, "$(date)")
 AS_AC_EXPAND(LXCPATH, "$with_config_path")
 AS_AC_EXPAND(LXC_GLOBAL_CONF, "$with_global_conf")
 AS_AC_EXPAND(LXC_USERNIC_CONF, "$with_usernic_conf")
 AS_AC_EXPAND(LXC_USERNIC_DB, "$with_usernic_db")
+AS_AC_EXPAND(LXC_DISTRO_SYSCONF, "$distrosysconf")
 AS_AC_EXPAND(LXCROOTFSMOUNT, "$with_rootfs_path")
 AS_AC_EXPAND(LXCTEMPLATEDIR, "$datadir/lxc/templates")
 AS_AC_EXPAND(LXCTEMPLATECONFIG, "$datadir/lxc/config")
@@ -550,6 +567,7 @@ AC_CHECK_FUNCS([setns pivot_root sethostname unshare rand_r confstr faccessat])
 # Check for some functions
 AC_CHECK_LIB(pthread, main)
 AC_CHECK_FUNCS(pthread_atfork)
+AC_CHECK_FUNCS(statvfs)
 AC_CHECK_LIB(util, openpty)
 AC_CHECK_FUNCS([openpty hasmntopt setmntent endmntent utmpxname])
 AC_CHECK_FUNCS([getline],
@@ -584,13 +602,20 @@ AC_CONFIG_FILES([
 
 	config/Makefile
 	config/apparmor/Makefile
+	config/selinux/Makefile
 	config/bash/Makefile
 	config/bash/lxc
 	config/init/Makefile
-	config/init/sysvinit/Makefile
-	config/init/sysvinit/lxc
+	config/init/common/Makefile
+	config/init/common/lxc-containers
+	config/init/common/lxc-net
 	config/init/systemd/Makefile
 	config/init/systemd/lxc.service
+	config/init/systemd/lxc-net.service
+	config/init/sysvinit/Makefile
+	config/init/sysvinit/lxc-containers
+	config/init/sysvinit/lxc-net
+	config/init/upstart/lxc-net.conf
 	config/init/upstart/Makefile
 	config/etc/Makefile
 	config/templates/Makefile
@@ -620,6 +645,8 @@ AC_CONFIG_FILES([
 	config/templates/ubuntu.userns.conf
 	config/templates/userns.conf
 	config/yum/Makefile
+	config/sysconfig/Makefile
+	config/sysconfig/lxc
 
 	doc/Makefile
 	doc/api/Makefile
@@ -628,6 +655,7 @@ AC_CONFIG_FILES([
 	doc/lxc-autostart.sgml
 	doc/lxc-cgroup.sgml
 	doc/lxc-checkconfig.sgml
+	doc/lxc-checkpoint.sgml
 	doc/lxc-clone.sgml
 	doc/lxc-config.sgml
 	doc/lxc-console.sgml
@@ -675,6 +703,7 @@ AC_CONFIG_FILES([
 	doc/ja/lxc-autostart.sgml
 	doc/ja/lxc-cgroup.sgml
 	doc/ja/lxc-checkconfig.sgml
+	doc/ja/lxc-checkpoint.sgml
 	doc/ja/lxc-clone.sgml
 	doc/ja/lxc-config.sgml
 	doc/ja/lxc-console.sgml
@@ -735,6 +764,7 @@ AC_CONFIG_FILES([
 	src/lxc/lxc.functions
 	src/lxc/version.h
 	src/python-lxc/Makefile
+	src/python-lxc/setup.py
 
 	src/lua-lxc/Makefile
 

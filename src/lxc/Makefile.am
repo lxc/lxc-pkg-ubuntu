@@ -15,6 +15,7 @@ noinst_HEADERS = \
 	list.h \
 	log.h \
 	lxc.h \
+	lxc-btrfs.h \
 	lxclock.h \
 	monitor.h \
 	namespace.h \
@@ -53,7 +54,7 @@ endif
 
 liblxc_so_SOURCES = \
 	arguments.c arguments.h \
-	bdev.c bdev.h \
+	bdev.c bdev.h lxc-btrfs.h \
 	commands.c commands.h \
 	start.c start.h \
 	execute.c \
@@ -164,7 +165,8 @@ bin_SCRIPTS = lxc-checkconfig
 EXTRA_DIST = \
 	lxc-device \
 	lxc-ls \
-	lxc-top
+	lxc-restore-net \
+	lxc-top.lua
 
 if ENABLE_PYTHON
 bin_SCRIPTS += lxc-device
@@ -174,14 +176,11 @@ else
 bin_SCRIPTS += legacy/lxc-ls
 endif
 
-if ENABLE_LUA
-bin_SCRIPTS += lxc-top
-endif
-
 bin_PROGRAMS = \
 	lxc-attach \
 	lxc-autostart \
 	lxc-cgroup \
+	lxc-checkpoint \
 	lxc-clone \
 	lxc-config \
 	lxc-console \
@@ -194,6 +193,7 @@ bin_PROGRAMS = \
 	lxc-snapshot \
 	lxc-start \
 	lxc-stop \
+	lxc-top \
 	lxc-unfreeze \
 	lxc-unshare \
 	lxc-usernsexec \
@@ -203,6 +203,8 @@ sbin_PROGRAMS = init.lxc
 pkglibexec_PROGRAMS = \
 	lxc-monitord \
 	lxc-user-nic
+pkglibexec_SCRIPTS = \
+	lxc-restore-net
 
 AM_LDFLAGS = -Wl,-E
 if ENABLE_RPATH
@@ -225,6 +227,7 @@ lxc_monitord_SOURCES = lxc_monitord.c
 lxc_clone_SOURCES = lxc_clone.c
 lxc_start_SOURCES = lxc_start.c
 lxc_stop_SOURCES = lxc_stop.c
+lxc_top_SOURCES = lxc_top.c
 lxc_unfreeze_SOURCES = lxc_unfreeze.c
 lxc_unshare_SOURCES = lxc_unshare.c
 lxc_wait_SOURCES = lxc_wait.c
@@ -232,6 +235,7 @@ lxc_create_SOURCES = lxc_create.c
 lxc_snapshot_SOURCES = lxc_snapshot.c
 lxc_usernsexec_SOURCES = lxc_usernsexec.c
 lxc_user_nic_SOURCES = lxc_user_nic.c network.c network.h
+lxc_checkpoint_SOURCES = lxc_checkpoint.c
 
 if HAVE_STATIC_LIBCAP
 sbin_PROGRAMS += init.lxc.static
