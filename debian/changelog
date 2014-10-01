@@ -1,3 +1,20 @@
+lxc (1.1.0~alpha2-0ubuntu1) utopic; urgency=medium
+
+  * New upstream release (1.1.0~alpha2) (LP: #1376437)
+    - Fixes systemd support of lxc-net. (LP: #1312532)
+    - Introduces support for Openvswitch bridges
+    - Fixes running unprivilged containers on recent kernels
+    - Various other bugfixes (LP: #1349918, LP: #1353734, LP: #1354375,
+                              LP: #1307215, LP: #1346815, LP: #1271000,
+                              LP: #1372878)
+  * WARNING: This release changes the default behavior of lxc-start to
+    daemonized. If you do need it to stick to the foreground, please pass it
+    -F or --foreground. The new -F option has also been pushed to the
+    stable 1.0 branch so that scripts can be made to work regardless of
+    default behavior.
+
+ -- Stéphane Graber <stgraber@ubuntu.com>  Wed, 01 Oct 2014 17:55:02 -0400
+
 lxc (1.1.0~alpha1-0ubuntu5) utopic; urgency=medium
 
   * d/p/0003-apparmor-also-deny-silent-remount.patch: update to also patch
