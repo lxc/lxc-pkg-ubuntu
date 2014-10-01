@@ -79,7 +79,7 @@ build_triplet = @build@
 host_triplet = @host@
 subdir = config/init/sysvinit
 DIST_COMMON = $(srcdir)/Makefile.in $(srcdir)/Makefile.am \
-	$(srcdir)/lxc.in
+	$(srcdir)/lxc-containers.in $(srcdir)/lxc-net.in
 ACLOCAL_M4 = $(top_srcdir)/aclocal.m4
 am__aclocal_m4_deps = $(top_srcdir)/config/acinclude.m4 \
 	$(top_srcdir)/config/tls.m4 $(top_srcdir)/configure.ac
@@ -87,7 +87,7 @@ am__configure_deps = $(am__aclocal_m4_deps) $(CONFIGURE_DEPENDENCIES) \
 	$(ACLOCAL_M4)
 mkinstalldirs = $(install_sh) -d
 CONFIG_HEADER = $(top_builddir)/src/config.h
-CONFIG_CLEAN_FILES = lxc
+CONFIG_CLEAN_FILES = lxc-containers lxc-net
 CONFIG_CLEAN_VPATH_FILES =
 AM_V_P = $(am__v_P_@AM_V@)
 am__v_P_ = $(am__v_P_@AM_DEFAULT_V@)
@@ -168,7 +168,7 @@ LXCROOTFSMOUNT = @LXCROOTFSMOUNT@
 LXCTEMPLATECONFIG = @LXCTEMPLATECONFIG@
 LXCTEMPLATEDIR = @LXCTEMPLATEDIR@
 LXC_DEFAULT_CONFIG = @LXC_DEFAULT_CONFIG@
-LXC_DISTRO_CONF = @LXC_DISTRO_CONF@
+LXC_DISTRO_SYSCONF = @LXC_DISTRO_SYSCONF@
 LXC_GENERATE_DATE = @LXC_GENERATE_DATE@
 LXC_GLOBAL_CONF = @LXC_GLOBAL_CONF@
 LXC_USERNIC_CONF = @LXC_USERNIC_CONF@
@@ -215,6 +215,7 @@ SET_MAKE = @SET_MAKE@
 SHELL = @SHELL@
 STRIP = @STRIP@
 SYSCONFDIR = @SYSCONFDIR@
+SYSTEMD_UNIT_DIR = @SYSTEMD_UNIT_DIR@
 VERSION = @VERSION@
 abs_builddir = @abs_builddir@
 abs_srcdir = @abs_srcdir@
@@ -272,7 +273,12 @@ target_alias = @target_alias@
 top_build_prefix = @top_build_prefix@
 top_builddir = @top_builddir@
 top_srcdir = @top_srcdir@
-EXTRA_DIST = lxc
+EXTRA_DIST = lxc-containers.in lxc-net.in
+@HAVE_DEBIAN_FALSE@@INIT_SCRIPT_SYSV_TRUE@initdir = "rc.d/init.d"
+
+# If we're installing for sysv init, install the helper scripts
+# directly to the rc directory under the appropriate name.
+@HAVE_DEBIAN_TRUE@@INIT_SCRIPT_SYSV_TRUE@initdir = "init.d"
 all: all-am
 
 .SUFFIXES:
@@ -306,7 +312,9 @@ $(top_srcdir)/configure:  $(am__configure_deps)
 $(ACLOCAL_M4):  $(am__aclocal_m4_deps)
 	cd $(top_builddir) && $(MAKE) $(AM_MAKEFLAGS) am--refresh
 $(am__aclocal_m4_deps):
-lxc: $(top_builddir)/config.status $(srcdir)/lxc.in
+lxc-containers: $(top_builddir)/config.status $(srcdir)/lxc-containers.in
+	cd $(top_builddir) && $(SHELL) ./config.status $(subdir)/$@
+lxc-net: $(top_builddir)/config.status $(srcdir)/lxc-net.in
 	cd $(top_builddir) && $(SHELL) ./config.status $(subdir)/$@
 tags TAGS:
 
@@ -461,13 +469,15 @@ uninstall-am: uninstall-local
 	pdf-am ps ps-am tags-am uninstall uninstall-am uninstall-local
 
 
-@INIT_SCRIPT_SYSV_TRUE@install-sysvinit: lxc
-@INIT_SCRIPT_SYSV_TRUE@	$(MKDIR_P) $(DESTDIR)$(sysconfdir)/rc.d/init.d
-@INIT_SCRIPT_SYSV_TRUE@	$(INSTALL_SCRIPT) lxc $(DESTDIR)$(sysconfdir)/rc.d/init.d/lxc
+@INIT_SCRIPT_SYSV_TRUE@install-sysvinit: lxc-containers lxc-net
+@INIT_SCRIPT_SYSV_TRUE@	$(MKDIR_P) $(DESTDIR)$(sysconfdir)/$(initdir)
+@INIT_SCRIPT_SYSV_TRUE@	$(INSTALL_SCRIPT) lxc-containers $(DESTDIR)$(sysconfdir)/$(initdir)/lxc
+@INIT_SCRIPT_SYSV_TRUE@	$(INSTALL_SCRIPT) lxc-net $(DESTDIR)$(sysconfdir)/$(initdir)/lxc-net
 
 @INIT_SCRIPT_SYSV_TRUE@uninstall-sysvinit:
-@INIT_SCRIPT_SYSV_TRUE@	rm -f $(DESTDIR)$(sysconfdir)/rc.d/init.d/lxc
-@INIT_SCRIPT_SYSV_TRUE@	rmdir $(DESTDIR)$(sysconfdir)/rc.d/init.d || :
+@INIT_SCRIPT_SYSV_TRUE@	rm -f $(DESTDIR)$(sysconfdir)/$(initdir)/lxc
+@INIT_SCRIPT_SYSV_TRUE@	rm -f $(DESTDIR)$(sysconfdir)/$(initdir)/lxc-net
+@INIT_SCRIPT_SYSV_TRUE@	rmdir $(DESTDIR)$(sysconfdir)/$(initdir) || :
 
 @INIT_SCRIPT_SYSV_TRUE@install-data-local: install-sysvinit
 @INIT_SCRIPT_SYSV_TRUE@uninstall-local: uninstall-sysvinit

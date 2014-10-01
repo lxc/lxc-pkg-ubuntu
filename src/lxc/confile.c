@@ -36,6 +36,7 @@
 #include <arpa/inet.h>
 #include <netinet/in.h>
 #include <net/if.h>
+#include <time.h>
 
 #include "parse.h"
 #include "config.h"
@@ -58,6 +59,7 @@ static int config_tty(const char *, const char *, struct lxc_conf *);
 static int config_ttydir(const char *, const char *, struct lxc_conf *);
 static int config_kmsg(const char *, const char *, struct lxc_conf *);
 static int config_lsm_aa_profile(const char *, const char *, struct lxc_conf *);
+static int config_lsm_aa_incomplete(const char *, const char *, struct lxc_conf *);
 static int config_lsm_se_context(const char *, const char *, struct lxc_conf *);
 static int config_cgroup(const char *, const char *, struct lxc_conf *);
 static int config_idmap(const char *, const char *, struct lxc_conf *);
@@ -70,6 +72,7 @@ static int config_rootfs_options(const char *, const char *, struct lxc_conf *);
 static int config_pivotdir(const char *, const char *, struct lxc_conf *);
 static int config_utsname(const char *, const char *, struct lxc_conf *);
 static int config_hook(const char *, const char *, struct lxc_conf *lxc_conf);
+static int config_network(const char *, const char *, struct lxc_conf *);
 static int config_network_type(const char *, const char *, struct lxc_conf *);
 static int config_network_flags(const char *, const char *, struct lxc_conf *);
 static int config_network_link(const char *, const char *, struct lxc_conf *);
@@ -88,6 +91,7 @@ static int config_network_ipv6_gateway(const char *, const char *, struct lxc_co
 static int config_cap_drop(const char *, const char *, struct lxc_conf *);
 static int config_cap_keep(const char *, const char *, struct lxc_conf *);
 static int config_console(const char *, const char *, struct lxc_conf *);
+static int config_console_logfile(const char *, const char *, struct lxc_conf *);
 static int config_seccomp(const char *, const char *, struct lxc_conf *);
 static int config_includefile(const char *, const char *, struct lxc_conf *);
 static int config_network_nic(const char *, const char *, struct lxc_conf *);
@@ -96,6 +100,7 @@ static int config_haltsignal(const char *, const char *, struct lxc_conf *);
 static int config_stopsignal(const char *, const char *, struct lxc_conf *);
 static int config_start(const char *, const char *, struct lxc_conf *);
 static int config_group(const char *, const char *, struct lxc_conf *);
+static int config_environment(const char *, const char *, struct lxc_conf *);
 
 static struct lxc_config_t config[] = {
 
@@ -105,6 +110,7 @@ static struct lxc_config_t config[] = {
 	{ "lxc.devttydir",            config_ttydir               },
 	{ "lxc.kmsg",                 config_kmsg                 },
 	{ "lxc.aa_profile",           config_lsm_aa_profile       },
+	{ "lxc.aa_allow_incomplete",  config_lsm_aa_incomplete    },
 	{ "lxc.se_context",           config_lsm_se_context       },
 	{ "lxc.cgroup",               config_cgroup               },
 	{ "lxc.id_map",               config_idmap                },
@@ -123,6 +129,7 @@ static struct lxc_config_t config[] = {
 	{ "lxc.hook.start",           config_hook                 },
 	{ "lxc.hook.post-stop",       config_hook                 },
 	{ "lxc.hook.clone",           config_hook                 },
+	{ "lxc.hook",                 config_hook                 },
 	{ "lxc.network.type",         config_network_type         },
 	{ "lxc.network.flags",        config_network_flags        },
 	{ "lxc.network.link",         config_network_link         },
@@ -140,8 +147,10 @@ static struct lxc_config_t config[] = {
 	{ "lxc.network.ipv6",         config_network_ipv6         },
 	/* config_network_nic must come after all other 'lxc.network.*' entries */
 	{ "lxc.network.",             config_network_nic          },
+	{ "lxc.network",              config_network              },
 	{ "lxc.cap.drop",             config_cap_drop             },
 	{ "lxc.cap.keep",             config_cap_keep             },
+	{ "lxc.console.logfile",      config_console_logfile      },
 	{ "lxc.console",              config_console              },
 	{ "lxc.seccomp",              config_seccomp              },
 	{ "lxc.include",              config_includefile          },
@@ -152,6 +161,7 @@ static struct lxc_config_t config[] = {
 	{ "lxc.start.delay",          config_start                },
 	{ "lxc.start.order",          config_start                },
 	{ "lxc.group",                config_group                },
+	{ "lxc.environment",          config_environment          },
 };
 
 struct signame {
@@ -301,6 +311,17 @@ static int config_network_nic(const char *key, const char *value,
 out:
 	free(copy);
 	return ret;
+}
+
+static int config_network(const char *key, const char *value,
+		struct lxc_conf *lxc_conf)
+{
+	if (value && strlen(value)) {
+		ERROR("lxc.network must not have a value");
+		return -1;
+	}
+
+	return lxc_clear_config_network(lxc_conf);
 }
 
 static int macvlan_mode(int *valuep, const char *value);
@@ -595,6 +616,10 @@ static int config_network_veth_pair(const char *key, const char *value,
 	if (!netdev)
 		return -1;
 
+	if (netdev->type != LXC_NET_VETH) {
+		ERROR("Invalid veth pair for a non-veth netdev");
+		return -1;
+	}
 	return network_ifname(&netdev->priv.veth_attr.pair, value);
 }
 
@@ -607,6 +632,10 @@ static int config_network_macvlan_mode(const char *key, const char *value,
 	if (!netdev)
 		return -1;
 
+	if (netdev->type != LXC_NET_MACVLAN) {
+		ERROR("Invalid macvlan.mode for a non-macvlan netdev");
+		return -1;
+	}
 	return macvlan_mode(&netdev->priv.macvlan_attr.mode, value);
 }
 
@@ -647,6 +676,10 @@ static int config_network_vlan_id(const char *key, const char *value,
 	if (!netdev)
 		return -1;
 
+	if (netdev->type != LXC_NET_VLAN) {
+		ERROR("Invalid vlan.id for a non-macvlan netdev");
+		return -1;
+	}
 	if (get_u16(&netdev->priv.vlan_attr.vid, value, 0))
 		return -1;
 
@@ -940,6 +973,10 @@ static int config_hook(const char *key, const char *value,
 	if (!value || strlen(value) == 0)
 		return lxc_clear_hooks(lxc_conf, key);
 
+	if (strcmp(key, "lxc.hook") == 0) {
+		ERROR("lxc.hook cannot take a value");
+		return -1;
+	}
 	copy = strdup(value);
 	if (!copy) {
 		SYSERROR("failed to dup string '%s'", value);
@@ -1052,6 +1089,33 @@ static int config_group(const char *key, const char *value,
 	return ret;
 }
 
+static int config_environment(const char *key, const char *value,
+                              struct lxc_conf *lxc_conf)
+{
+	struct lxc_list *list_item = NULL;
+
+	if (!strlen(value))
+		return lxc_clear_environment(lxc_conf);
+
+	list_item = malloc(sizeof(*list_item));
+	if (!list_item)
+		goto freak_out;
+
+	list_item->elem = strdup(value);
+
+	if (!list_item->elem)
+		goto freak_out;
+
+	lxc_list_add_tail(&lxc_conf->environment, list_item);
+
+	return 0;
+
+freak_out:
+	if (list_item) free(list_item);
+
+	return -1;
+}
+
 static int config_tty(const char *key, const char *value,
 		      struct lxc_conf *lxc_conf)
 {
@@ -1082,6 +1146,16 @@ static int config_lsm_aa_profile(const char *key, const char *value,
 				 struct lxc_conf *lxc_conf)
 {
 	return config_string_item(&lxc_conf->lsm_aa_profile, value);
+}
+
+static int config_lsm_aa_incomplete(const char *key, const char *value,
+				 struct lxc_conf *lxc_conf)
+{
+	int v = atoi(value);
+
+	lxc_conf->lsm_aa_allow_incomplete = v == 1 ? 1 : 0;
+
+	return 0;
 }
 
 static int config_lsm_se_context(const char *key, const char *value,
@@ -1159,16 +1233,6 @@ static int rt_sig_num(const char *signame)
 	if (sig_n > SIGRTMAX || sig_n < SIGRTMIN)
 		return -1;
 	return sig_n;
-}
-
-static const char *sig_name(int signum) {
-	int n;
-
-	for (n = 0; n < sizeof(signames) / sizeof((signames)[0]); n++) {
-		if (signum == signames[n].num)
-			return signames[n].name;
-	}
-	return NULL;
 }
 
 static int sig_parse(const char *signame) {
@@ -1555,34 +1619,38 @@ static int config_console(const char *key, const char *value,
 	return config_path_item(&lxc_conf->console.path, value);
 }
 
-static int add_include_file(const char *fname, struct lxc_conf *lxc_conf)
+static int config_console_logfile(const char *key, const char *value,
+			  struct lxc_conf *lxc_conf)
 {
-	struct lxc_list *list;
-	char *v;
-	int len = strlen(fname);
+	return config_path_item(&lxc_conf->console.log_path, value);
+}
 
-	list = malloc(sizeof(*list));
-	if (!list)
-		return -1;
-	lxc_list_init(list);
-	v = malloc(len+1);
-	if (!v) {
-		free(list);
-		return -1;
+int append_unexp_config_line(const char *line, struct lxc_conf *conf)
+{
+	size_t len = conf->unexpanded_len, linelen = strlen(line);
+
+	while (conf->unexpanded_alloced <= len + linelen + 2) {
+		char *tmp = realloc(conf->unexpanded_config, conf->unexpanded_alloced + 1024);
+		if (!tmp)
+			return -1;
+		if (!conf->unexpanded_config)
+			*tmp = '\0';
+		conf->unexpanded_config = tmp;
+		conf->unexpanded_alloced += 1024;
 	}
-	strncpy(v, fname, len);
-	v[len] = '\0';
-	list->elem = v;
-	lxc_list_add_tail(&lxc_conf->includes, list);
+	strcat(conf->unexpanded_config, line);
+	conf->unexpanded_len += linelen;
+	if (line[linelen-1] != '\n') {
+		strcat(conf->unexpanded_config, "\n");
+		conf->unexpanded_len++;
+	}
 	return 0;
 }
 
 static int config_includefile(const char *key, const char *value,
 			  struct lxc_conf *lxc_conf)
 {
-	if (lxc_conf->unexpanded)
-		return add_include_file(value, lxc_conf);
-	return lxc_config_read(value, lxc_conf, NULL);
+	return lxc_config_read(value, lxc_conf, true);
 }
 
 static int config_rootfs(const char *key, const char *value,
@@ -1606,6 +1674,7 @@ static int config_rootfs_options(const char *key, const char *value,
 static int config_pivotdir(const char *key, const char *value,
 			   struct lxc_conf *lxc_conf)
 {
+	WARN("lxc.pivotdir is ignored.  It will soon become an error.");
 	return config_path_item(&lxc_conf->rootfs.pivot, value);
 }
 
@@ -1635,30 +1704,10 @@ static int config_utsname(const char *key, const char *value,
 	return 0;
 }
 
-static int store_martian_option(char *line, void *data)
-{
-	struct lxc_conf *conf = data;
-	char *str;
-	struct lxc_list *list;
-	size_t len = strlen(line);
-
-	if (!conf->unexpanded)
-		return 0;
-	list = malloc(sizeof(*list));
-	if (!list)
-		return -1;
-	lxc_list_init(list);
-	str = malloc(len+1);
-	if (!str) {
-		free(list);
-		return -1;
-	}
-	strncpy(str, line, len);
-	str[len] = '\0';
-	list->elem = str;
-	lxc_list_add_tail(&conf->aliens, list);
-	return 0;
-}
+struct parse_line_conf {
+	struct lxc_conf *conf;
+	bool from_include;
+};
 
 static int parse_line(char *buffer, void *data)
 {
@@ -1668,6 +1717,7 @@ static int parse_line(char *buffer, void *data)
 	char *key;
 	char *value;
 	int ret = 0;
+	struct parse_line_conf *plc = data;
 
 	if (lxc_is_line_empty(buffer))
 		return 0;
@@ -1682,17 +1732,19 @@ static int parse_line(char *buffer, void *data)
 		return -1;
 	}
 
+	if (!plc->from_include)
+		if ((ret = append_unexp_config_line(line, plc->conf)))
+			goto out;
+
 	line += lxc_char_left_gc(line, strlen(line));
 
 	/* ignore comments */
 	if (line[0] == '#')
 		goto out;
 
-	/* martian option - save it in the unexpanded config only */
-	if (strncmp(line, "lxc.", 4)) {
-		ret = store_martian_option(line, data);
+	/* martian option - don't add it to the config itself */
+	if (strncmp(line, "lxc.", 4))
 		goto out;
-	}
 
 	ret = -1;
 
@@ -1717,7 +1769,7 @@ static int parse_line(char *buffer, void *data)
 		goto out;
 	}
 
-	ret = config->cb(key, value, data);
+	ret = config->cb(key, value, plc->conf);
 
 out:
 	free(linep);
@@ -1726,30 +1778,30 @@ out:
 
 static int lxc_config_readline(char *buffer, struct lxc_conf *conf)
 {
-	return parse_line(buffer, conf);
+	struct parse_line_conf c;
+
+	c.conf = conf;
+	c.from_include = false;
+
+	return parse_line(buffer, &c);
 }
 
-int lxc_config_read(const char *file, struct lxc_conf *conf, struct lxc_conf *unexp_conf)
+int lxc_config_read(const char *file, struct lxc_conf *conf, bool from_include)
 {
-	int ret;
+	struct parse_line_conf c;
+
+	c.conf = conf;
+	c.from_include = from_include;
 
 	if( access(file, R_OK) == -1 ) {
 		return -1;
 	}
-	/* Catch only the top level config file name in the structure */
-	if( ! conf->rcfile ) {
-		conf->rcfile = strdup( file );
-	}
-	ret = lxc_file_for_each_line(file, parse_line, conf);
-	if (ret)
-		return ret;
-	if (!unexp_conf)
-		return 0;
-	if (!unexp_conf->rcfile) {
-		unexp_conf->rcfile = strdup( file );
-	}
 
-	return lxc_file_for_each_line(file, parse_line, unexp_conf);
+	/* Catch only the top level config file name in the structure */
+	if( ! conf->rcfile )
+		conf->rcfile = strdup( file );
+
+	return lxc_file_for_each_line(file, parse_line, &c);
 }
 
 int lxc_config_define_add(struct lxc_list *defines, char* arg)
@@ -1970,6 +2022,22 @@ static int lxc_get_item_groups(struct lxc_conf *c, char *retv, int inlen)
 	return fulllen;
 }
 
+static int lxc_get_item_environment(struct lxc_conf *c, char *retv, int inlen)
+{
+	int len, fulllen = 0;
+	struct lxc_list *it;
+
+	if (!retv)
+		inlen = 0;
+	else
+		memset(retv, 0, inlen);
+
+	lxc_list_for_each(it, &c->environment) {
+		strprint(retv, inlen, "%s\n", (char *)it->elem);
+	}
+	return fulllen;
+}
+
 static int lxc_get_item_cap_drop(struct lxc_conf *c, char *retv, int inlen)
 {
 	int len, fulllen = 0;
@@ -2142,23 +2210,23 @@ static int lxc_get_item_nic(struct lxc_conf *c, char *retv, int inlen,
 			struct lxc_inetdev *i = it2->elem;
 			char buf[INET_ADDRSTRLEN];
 			inet_ntop(AF_INET, &i->addr, buf, sizeof(buf));
-			strprint(retv, inlen, "%s\n", buf);
+			strprint(retv, inlen, "%s/%d\n", buf, i->prefix);
 		}
 	} else if (strcmp(p1, "ipv6_gateway") == 0) {
 		if (netdev->ipv6_gateway_auto) {
 			strprint(retv, inlen, "auto");
 		} else if (netdev->ipv6_gateway) {
-			char buf[INET_ADDRSTRLEN];
-			inet_ntop(AF_INET, netdev->ipv6_gateway, buf, sizeof(buf));
+			char buf[INET6_ADDRSTRLEN];
+			inet_ntop(AF_INET6, netdev->ipv6_gateway, buf, sizeof(buf));
 			strprint(retv, inlen, "%s", buf);
 		}
 	} else if (strcmp(p1, "ipv6") == 0) {
 		struct lxc_list *it2;
 		lxc_list_for_each(it2, &netdev->ipv6) {
-			struct lxc_inetdev *i = it2->elem;
-			char buf[INET_ADDRSTRLEN];
+			struct lxc_inet6dev *i = it2->elem;
+			char buf[INET6_ADDRSTRLEN];
 			inet_ntop(AF_INET6, &i->addr, buf, sizeof(buf));
-			strprint(retv, inlen, "%s\n", buf);
+			strprint(retv, inlen, "%s/%d\n", buf, i->prefix);
 		}
 	}
 	return fulllen;
@@ -2203,6 +2271,8 @@ int lxc_get_config_item(struct lxc_conf *c, const char *key, char *retv,
 		return lxc_get_arch_entry(c, retv, inlen);
 	else if (strcmp(key, "lxc.aa_profile") == 0)
 		v = c->lsm_aa_profile;
+	else if (strcmp(key, "lxc.aa_allow_incomplete") == 0)
+		return lxc_get_conf_int(c, retv, inlen, c->lsm_aa_allow_incomplete);
 	else if (strcmp(key, "lxc.se_context") == 0)
 		v = c->lsm_se_context;
 	else if (strcmp(key, "lxc.logfile") == 0)
@@ -2215,6 +2285,8 @@ int lxc_get_config_item(struct lxc_conf *c, const char *key, char *retv,
 		return lxc_get_cgroup_entry(c, retv, inlen, key + 11);
 	else if (strcmp(key, "lxc.utsname") == 0)
 		v = c->utsname ? c->utsname->nodename : NULL;
+	else if (strcmp(key, "lxc.console.logfile") == 0)
+		v = c->console.log_path;
 	else if (strcmp(key, "lxc.console") == 0)
 		v = c->console.path;
 	else if (strcmp(key, "lxc.rootfs.mount") == 0)
@@ -2245,6 +2317,8 @@ int lxc_get_config_item(struct lxc_conf *c, const char *key, char *retv,
 		return lxc_get_item_groups(c, retv, inlen);
 	else if (strcmp(key, "lxc.seccomp") == 0)
 		v = c->seccomp;
+	else if (strcmp(key, "lxc.environment") == 0)
+		return lxc_get_item_environment(c, retv, inlen);
 	else return -1;
 
 	if (!v)
@@ -2278,6 +2352,8 @@ int lxc_clear_config_item(struct lxc_conf *c, const char *key)
 		lxc_seccomp_free(c);
 		return 0;
 	}
+	else if (strncmp(key, "lxc.environment", 15) == 0)
+		return lxc_clear_environment(c);
 
 	return -1;
 }
@@ -2287,208 +2363,231 @@ int lxc_clear_config_item(struct lxc_conf *c, const char *key)
  */
 void write_config(FILE *fout, struct lxc_conf *c)
 {
+	size_t len = c->unexpanded_len;
+	int ret;
+
+	if (!len)
+		return;
+	ret = fwrite(c->unexpanded_config, 1, len, fout);
+	if (ret != len)
+		SYSERROR("Error writing configuration file");
+}
+
+bool do_append_unexp_config_line(struct lxc_conf *conf, const char *key, const char *v)
+{
+	int ret;
+	size_t len = strlen(key) + strlen(v) + 4;
+	char *tmp = alloca(len);
+
+	ret = snprintf(tmp, len, "%s = %s", key, v);
+	if (ret < 0 || ret >= len)
+		return false;
+
+	/* Save the line verbatim into unexpanded_conf */
+	if (append_unexp_config_line(tmp, conf))
+		return false;
+
+	return true;
+}
+
+void clear_unexp_config_line(struct lxc_conf *conf, const char *key, bool rm_subkeys)
+{
+	char *lstart = conf->unexpanded_config, *lend;
+
+	if (!conf->unexpanded_config)
+		return;
+	while (*lstart) {
+		lend = strchr(lstart, '\n');
+		char v;
+		if (!lend)
+			lend = lstart + strlen(lstart);
+		else
+			lend++;
+		if (strncmp(lstart, key, strlen(key)) != 0) {
+			lstart = lend;
+			continue;
+		}
+		if (!rm_subkeys) {
+			v = lstart[strlen(key)];
+			if (!isspace(v) && v != '=') {
+				lstart = lend;
+				continue;
+			}
+		}
+		conf->unexpanded_len -= (lend - lstart);
+		if (*lend == '\0') {
+			*lstart = '\0';
+			return;
+		}
+		memmove(lstart, lend, strlen(lend)+1);
+	}
+}
+
+bool clone_update_unexp_hooks(struct lxc_conf *conf, const char *oldpath,
+	const char *newpath, const char *oldname, const char *newname)
+{
+	const char *key = "lxc.hook";
+	int ret;
+	char *lstart = conf->unexpanded_config, *lend, *p;
+	size_t newdirlen = strlen(newpath) + strlen(newname) + 1;
+	size_t olddirlen = strlen(oldpath) + strlen(oldname) + 1;
+	char *olddir = alloca(olddirlen + 1);
+	char *newdir = alloca(newdirlen + 1);
+
+	ret = snprintf(olddir, olddirlen+1, "%s/%s", oldpath, oldname);
+	if (ret < 0 || ret >= olddirlen+1) {
+		ERROR("Bug in %s", __func__);
+		return false;
+	}
+	ret = snprintf(newdir, newdirlen+1, "%s/%s", newpath, newname);
+	if (ret < 0 || ret >= newdirlen+1) {
+		ERROR("Bug in %s", __func__);
+		return false;
+	}
+	if (!conf->unexpanded_config)
+		return true;
+	while (*lstart) {
+		lend = strchr(lstart, '\n');
+		if (!lend)
+			lend = lstart + strlen(lstart);
+		else
+			lend++;
+		if (strncmp(lstart, key, strlen(key)) != 0) {
+			lstart = lend;
+			continue;
+		}
+		p = strchr(lstart+strlen(key), '=');
+		if (!p) {
+			lstart = lend;
+			continue;
+		}
+		p++;
+		while (isblank(*p))
+			p++;
+		if (!*p)
+			return true;
+		if (strncmp(p, olddir, strlen(olddir)) != 0) {
+			lstart = lend;
+			continue;
+		}
+		/* replace the olddir with newdir */
+		if (olddirlen >= newdirlen) {
+			size_t diff = olddirlen - newdirlen;
+			memcpy(p, newdir, newdirlen);
+			if (olddirlen != newdirlen) {
+				memmove(lend-diff, lend, strlen(lend)+1);
+				lend -= diff;
+				conf->unexpanded_len -= diff;
+			}
+			lstart = lend;
+		} else {
+			char *new;
+			size_t diff = newdirlen - olddirlen;
+			size_t oldlen = conf->unexpanded_len;
+			size_t newlen = oldlen + diff;
+			size_t poffset = p - conf->unexpanded_config;
+			new = realloc(conf->unexpanded_config, newlen);
+			if (!new) {
+				ERROR("Out of memory");
+				return false;
+			}
+			conf->unexpanded_len = newlen;
+			new[newlen-1] = '\0';
+			lend = new + (lend - conf->unexpanded_config);
+			/* move over the remainder, /$hookname\n$rest */
+			memmove(new+poffset+newdirlen,
+					new+poffset+olddirlen,
+					oldlen-poffset-olddirlen);
+			conf->unexpanded_config = new;
+			memcpy(new+poffset, newdir, newdirlen);
+			lstart = lend + diff;
+		}
+	}
+	return true;
+}
+
+#define DO(cmd) { \
+	if (!(cmd)) { \
+		ERROR("Error writing to new config"); \
+		return false; \
+	} \
+}
+
+static void new_hwaddr(char *hwaddr)
+{
+	FILE *f;
+	f = fopen("/dev/urandom", "r");
+	if (f) {
+		unsigned int seed;
+		int ret = fread(&seed, sizeof(seed), 1, f);
+		if (ret != 1)
+			seed = time(NULL);
+		fclose(f);
+		srand(seed);
+	} else
+		srand(time(NULL));
+	snprintf(hwaddr, 18, "00:16:3e:%02x:%02x:%02x",
+			rand() % 255, rand() % 255, rand() % 255);
+}
+
+/*
+ * This is called only from clone.
+ * We wish to update all hwaddrs in the unexpanded config file.  We
+ * can't/don't want to update any which come from lxc.includes (there
+ * shouldn't be any).
+ * We can't just walk the c->lxc-conf->network list because that includes
+ * netifs from the include files.  So we update the ones which we find in
+ * the unexp config file, then find the original macaddr in the
+ * conf->network, and update that to the same value.
+ */
+bool network_new_hwaddrs(struct lxc_conf *conf)
+{
 	struct lxc_list *it;
-	int i;
-	const char *signame;
 
-	/* first write any includes */
-	lxc_list_for_each(it, &c->includes) {
-		fprintf(fout, "lxc.include = %s\n", (char *)it->elem);
-	}
+	const char *key = "lxc.network.hwaddr";
+	char *lstart = conf->unexpanded_config, *lend, *p, *p2;
 
-	/* now write any aliens */
-	lxc_list_for_each(it, &c->aliens) {
-		fprintf(fout, "%s\n", (char *)it->elem);
-	}
+	if (!conf->unexpanded_config)
+		return true;
+	while (*lstart) {
+		char newhwaddr[18], oldhwaddr[17];
+		lend = strchr(lstart, '\n');
+		if (!lend)
+			lend = lstart + strlen(lstart);
+		else
+			lend++;
+		if (strncmp(lstart, key, strlen(key)) != 0) {
+			lstart = lend;
+			continue;
+		}
+		p = strchr(lstart+strlen(key), '=');
+		if (!p) {
+			lstart = lend;
+			continue;
+		}
+		p++;
+		while (isblank(*p))
+			p++;
+		if (!*p)
+			return true;
+		p2 = p;
+		while (*p2 && !isblank(*p2) && *p2 != '\n')
+			p2++;
+		if (p2-p != 17) {
+			WARN("Bad hwaddr entry");
+			lstart = lend;
+			continue;
+		}
+		memcpy(oldhwaddr, p, 17);
+		new_hwaddr(newhwaddr);
+		memcpy(p, newhwaddr, 17);
+		lxc_list_for_each(it, &conf->network) {
+			struct lxc_netdev *n = it->elem;
+			if (n->hwaddr && memcmp(oldhwaddr, n->hwaddr, 17) == 0)
+				memcpy(n->hwaddr, newhwaddr, 17);
+		}
 
-	if (c->fstab)
-		fprintf(fout, "lxc.mount = %s\n", c->fstab);
-	lxc_list_for_each(it, &c->mount_list) {
-		fprintf(fout, "lxc.mount.entry = %s\n", (char *)it->elem);
+		lstart = lend;
 	}
-	if (c->auto_mounts & LXC_AUTO_ALL_MASK) {
-		fprintf(fout, "lxc.mount.auto =");
-		switch (c->auto_mounts & LXC_AUTO_PROC_MASK) {
-			case LXC_AUTO_PROC_MIXED:         fprintf(fout, " proc:mixed");        break;
-			case LXC_AUTO_PROC_RW:            fprintf(fout, " proc:rw");           break;
-			default: break;
-		}
-		switch (c->auto_mounts & LXC_AUTO_SYS_MASK) {
-			case LXC_AUTO_SYS_RO:             fprintf(fout, " sys:ro");            break;
-			case LXC_AUTO_SYS_RW:             fprintf(fout, " sys:rw");            break;
-			default: break;
-		}
-		switch (c->auto_mounts & LXC_AUTO_CGROUP_MASK) {
-			case LXC_AUTO_CGROUP_NOSPEC:      fprintf(fout, " cgroup");            break;
-			case LXC_AUTO_CGROUP_MIXED:       fprintf(fout, " cgroup:mixed");      break;
-			case LXC_AUTO_CGROUP_RO:          fprintf(fout, " cgroup:ro");         break;
-			case LXC_AUTO_CGROUP_RW:          fprintf(fout, " cgroup:rw");         break;
-			case LXC_AUTO_CGROUP_FULL_NOSPEC: fprintf(fout, " cgroup-full");       break;
-			case LXC_AUTO_CGROUP_FULL_MIXED:  fprintf(fout, " cgroup-full:mixed"); break;
-			case LXC_AUTO_CGROUP_FULL_RO:     fprintf(fout, " cgroup-full:ro");    break;
-			case LXC_AUTO_CGROUP_FULL_RW:     fprintf(fout, " cgroup-full:rw");    break;
-			default: break;
-		}
-		fprintf(fout, "\n");
-	}
-	if (c->tty)
-		fprintf(fout, "lxc.tty = %d\n", c->tty);
-	if (c->pts)
-		fprintf(fout, "lxc.pts = %d\n", c->pts);
-	if (c->ttydir)
-		fprintf(fout, "lxc.devttydir = %s\n", c->ttydir);
-	if (c->haltsignal) {
-		signame = sig_name(c->haltsignal);
-		if (signame == NULL) {
-			fprintf(fout, "lxc.haltsignal = %d\n", c->haltsignal);
-		} else {
-			fprintf(fout, "lxc.haltsignal = SIG%s\n", signame);
-		}
-	}
-	if (c->stopsignal) {
-		signame = sig_name(c->stopsignal);
-		if (signame == NULL) {
-			fprintf(fout, "lxc.stopsignal = %d\n", c->stopsignal);
-		} else {
-			fprintf(fout, "lxc.stopsignal = SIG%s\n", signame);
-		}
-	}
-	#if HAVE_SYS_PERSONALITY_H
-	switch(c->personality) {
-	case PER_LINUX32: fprintf(fout, "lxc.arch = i686\n"); break;
-	case PER_LINUX: fprintf(fout, "lxc.arch = x86_64\n"); break;
-	default: break;
-	}
-	#endif
-	if (c->lsm_aa_profile)
-		fprintf(fout, "lxc.aa_profile = %s\n", c->lsm_aa_profile);
-	if (c->lsm_se_context)
-		fprintf(fout, "lxc.se_context = %s\n", c->lsm_se_context);
-	if (c->seccomp)
-		fprintf(fout, "lxc.seccomp = %s\n", c->seccomp);
-	if (c->kmsg == 0)
-		fprintf(fout, "lxc.kmsg = 0\n");
-	if (c->autodev > 0)
-		fprintf(fout, "lxc.autodev = 1\n");
-	if (c->loglevel != LXC_LOG_PRIORITY_NOTSET)
-		fprintf(fout, "lxc.loglevel = %s\n", lxc_log_priority_to_string(c->loglevel));
-	if (c->logfile)
-		fprintf(fout, "lxc.logfile = %s\n", c->logfile);
-	lxc_list_for_each(it, &c->cgroup) {
-		struct lxc_cgroup *cg = it->elem;
-		fprintf(fout, "lxc.cgroup.%s = %s\n", cg->subsystem, cg->value);
-	}
-	if (c->utsname)
-		fprintf(fout, "lxc.utsname = %s\n", c->utsname->nodename);
-	lxc_list_for_each(it, &c->network) {
-		struct lxc_netdev *n = it->elem;
-		const char *t = lxc_net_type_to_str(n->type);
-		struct lxc_list *it2;
-		fprintf(fout, "lxc.network.type = %s\n", t ? t : "(invalid)");
-		if (n->flags & IFF_UP)
-			fprintf(fout, "lxc.network.flags = up\n");
-		if (n->link)
-			fprintf(fout, "lxc.network.link = %s\n", n->link);
-		if (n->name)
-			fprintf(fout, "lxc.network.name = %s\n", n->name);
-		if (n->type == LXC_NET_MACVLAN) {
-			const char *mode;
-			switch (n->priv.macvlan_attr.mode) {
-			case MACVLAN_MODE_PRIVATE: mode = "private"; break;
-			case MACVLAN_MODE_VEPA: mode = "vepa"; break;
-			case MACVLAN_MODE_BRIDGE: mode = "bridge"; break;
-			default: mode = "(invalid)"; break;
-			}
-			fprintf(fout, "lxc.network.macvlan.mode = %s\n", mode);
-		} else if (n->type == LXC_NET_VETH) {
-			if (n->priv.veth_attr.pair)
-				fprintf(fout, "lxc.network.veth.pair = %s\n",
-					n->priv.veth_attr.pair);
-		} else if (n->type == LXC_NET_VLAN) {
-			fprintf(fout, "lxc.network.vlan.id = %d\n", n->priv.vlan_attr.vid);
-		}
-		if (n->upscript)
-			fprintf(fout, "lxc.network.script.up = %s\n", n->upscript);
-		if (n->downscript)
-			fprintf(fout, "lxc.network.script.down = %s\n", n->downscript);
-		if (n->hwaddr)
-			fprintf(fout, "lxc.network.hwaddr = %s\n", n->hwaddr);
-		if (n->mtu)
-			fprintf(fout, "lxc.network.mtu = %s\n", n->mtu);
-		if (n->ipv4_gateway_auto)
-			fprintf(fout, "lxc.network.ipv4.gateway = auto\n");
-		else if (n->ipv4_gateway) {
-			char buf[INET_ADDRSTRLEN];
-			inet_ntop(AF_INET, n->ipv4_gateway, buf, sizeof(buf));
-			fprintf(fout, "lxc.network.ipv4.gateway = %s\n", buf);
-		}
-		lxc_list_for_each(it2, &n->ipv4) {
-			struct lxc_inetdev *i = it2->elem;
-			char buf[INET_ADDRSTRLEN];
-			inet_ntop(AF_INET, &i->addr, buf, sizeof(buf));
-			fprintf(fout, "lxc.network.ipv4 = %s", buf);
-
-			if (i->prefix)
-				fprintf(fout, "/%d", i->prefix);
-
-			if (i->bcast.s_addr != (i->addr.s_addr |
-			    htonl(INADDR_BROADCAST >>  i->prefix))) {
-
-				inet_ntop(AF_INET, &i->bcast, buf, sizeof(buf));
-				fprintf(fout, " %s\n", buf);
-			}
-			else
-				fprintf(fout, "\n");
-		}
-		if (n->ipv6_gateway_auto)
-			fprintf(fout, "lxc.network.ipv6.gateway = auto\n");
-		else if (n->ipv6_gateway) {
-			char buf[INET6_ADDRSTRLEN];
-			inet_ntop(AF_INET6, n->ipv6_gateway, buf, sizeof(buf));
-			fprintf(fout, "lxc.network.ipv6.gateway = %s\n", buf);
-		}
-		lxc_list_for_each(it2, &n->ipv6) {
-			struct lxc_inet6dev *i = it2->elem;
-			char buf[INET6_ADDRSTRLEN];
-			inet_ntop(AF_INET6, &i->addr, buf, sizeof(buf));
-			if (i->prefix)
-				fprintf(fout, "lxc.network.ipv6 = %s/%d\n",
-					buf, i->prefix);
-			else
-				fprintf(fout, "lxc.network.ipv6 = %s\n", buf);
-		}
-	}
-	lxc_list_for_each(it, &c->caps)
-		fprintf(fout, "lxc.cap.drop = %s\n", (char *)it->elem);
-	lxc_list_for_each(it, &c->keepcaps)
-		fprintf(fout, "lxc.cap.keep = %s\n", (char *)it->elem);
-	lxc_list_for_each(it, &c->id_map) {
-		struct id_map *idmap = it->elem;
-		fprintf(fout, "lxc.id_map = %c %lu %lu %lu\n",
-			idmap->idtype == ID_TYPE_UID ? 'u' : 'g', idmap->nsid,
-			idmap->hostid, idmap->range);
-	}
-	for (i=0; i<NUM_LXC_HOOKS; i++) {
-		lxc_list_for_each(it, &c->hooks[i])
-			fprintf(fout, "lxc.hook.%s = %s\n",
-				lxchook_names[i], (char *)it->elem);
-	}
-	if (c->console.path)
-		fprintf(fout, "lxc.console = %s\n", c->console.path);
-	if (c->rootfs.path)
-		fprintf(fout, "lxc.rootfs = %s\n", c->rootfs.path);
-	if (c->rootfs.mount && strcmp(c->rootfs.mount, LXCROOTFSMOUNT) != 0)
-		fprintf(fout, "lxc.rootfs.mount = %s\n", c->rootfs.mount);
-	if (c->rootfs.options)
-		fprintf(fout, "lxc.rootfs.options = %s\n", c->rootfs.options);
-	if (c->rootfs.pivot)
-		fprintf(fout, "lxc.pivotdir = %s\n", c->rootfs.pivot);
-	if (c->start_auto)
-		fprintf(fout, "lxc.start.auto = %d\n", c->start_auto);
-	if (c->start_delay)
-		fprintf(fout, "lxc.start.delay = %d\n", c->start_delay);
-	if (c->start_order)
-		fprintf(fout, "lxc.start.order = %d\n", c->start_order);
-	lxc_list_for_each(it, &c->groups)
-		fprintf(fout, "lxc.group = %s\n", (char *)it->elem);
+	return true;
 }

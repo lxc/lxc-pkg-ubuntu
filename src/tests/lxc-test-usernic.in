@@ -84,7 +84,11 @@ lxc.id_map = u 0 910000 10000
 lxc.id_map = g 0 910000 10000
 EOF
 
-if [ -e /sys/fs/cgroup/cgmanager/sock ]; then
+if which cgm >/dev/null 2>&1; then
+	cgm create all $TUSER
+	cgm chown all $TUSER $(id -u $TUSER) $(id -g $TUSER)
+	cgm movepid all $TUSER $$
+elif [ -e /sys/fs/cgroup/cgmanager/sock ]; then
 	for d in $(cut -d : -f 2 /proc/self/cgroup); do
 		dbus-send --print-reply --address=unix:path=/sys/fs/cgroup/cgmanager/sock \
 			--type=method_call /org/linuxcontainers/cgmanager org.linuxcontainers.cgmanager0_0.Create \
@@ -108,6 +112,13 @@ fi
 
 mkdir -p /run/user/$(id -u usernic-user)
 chown -R usernic-user: /run/user/$(id -u usernic-user) /home/usernic-user
+
+# Copy the download template cache if available
+run_cmd "mkdir -p /home/usernic-user/.cache/lxc"
+[ -d /var/cache/lxc/download ] && \
+    cp -R /var/cache/lxc/download /home/usernic-user/.cache/lxc && \
+    chown -R usernic-user: /home/usernic-user/.cache/lxc
+
 
 # Create two test bridges
 brctl addbr usernic-br0

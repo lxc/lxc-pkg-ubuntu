@@ -26,9 +26,11 @@
 #include <sys/stat.h>
 #include <sys/mount.h>
 #include <sys/apparmor.h>
+#include <sys/vfs.h>
 
 #include "log.h"
 #include "lsm/lsm.h"
+#include "conf.h"
 
 lxc_log_define(lxc_apparmor, lxc);
 
@@ -39,17 +41,48 @@ static int aa_enabled = 0;
 #define AA_MOUNT_RESTR "/sys/kernel/security/apparmor/features/mount/mask"
 #define AA_ENABLED_FILE "/sys/module/apparmor/parameters/enabled"
 
+static bool mount_feature_enabled(void)
+{
+	struct stat statbuf;
+	struct statfs sf;
+	int ret;
+	bool mountedsys = false, mountedk = false, bret = true;
+
+	ret = statfs("/sys", &sf);
+	if (ret < 0 || sf.f_type != 0x62656572) {
+		if (mount("sysfs", "/sys", "sysfs", 0, NULL) < 0) {
+			SYSERROR("Error mounting sysfs");
+			return false;
+		}
+		mountedsys = true;
+	}
+	if (stat("/sys/kernel/security/apparmor", &statbuf) < 0) {
+		if (mount("securityfs", "/sys/kernel/security", "securityfs", 0, NULL) < 0) {
+			SYSERROR("Error mounting securityfs");
+			if (mountedsys)
+				umount2("/sys", MNT_DETACH);
+			return false;
+		}
+		mountedk = true;
+	}
+	ret = stat(AA_MOUNT_RESTR, &statbuf);
+	if (ret != 0)
+		bret = false;
+
+	if (mountedk)
+		umount2("/sys/kernel/security", MNT_DETACH);
+	if (mountedsys)
+		umount2("/sys", MNT_DETACH);
+	return bret;
+}
+
 /* aa_getcon is not working right now.  Use our hand-rolled version below */
 static int apparmor_enabled(void)
 {
-	struct stat statbuf;
 	FILE *fin;
 	char e;
 	int ret;
 
-	ret = stat(AA_MOUNT_RESTR, &statbuf);
-	if (ret != 0)
-		return 0;
 	fin = fopen(AA_ENABLED_FILE, "r");
 	if (!fin)
 		return 0;
@@ -124,6 +157,7 @@ static int apparmor_am_unconfined(void)
  * apparmor_process_label_set: Set AppArmor process profile
  *
  * @label   : the profile to set
+ * @conf    : the container configuration to use @label is NULL
  * @default : use the default profile if label is NULL
  * @on_exec : this is ignored.  Apparmor profile will be changed immediately
  *
@@ -131,9 +165,11 @@ static int apparmor_am_unconfined(void)
  *
  * Notes: This relies on /proc being available.
  */
-static int apparmor_process_label_set(const char *label, int use_default,
-				      int on_exec)
+static int apparmor_process_label_set(const char *inlabel, struct lxc_conf *conf,
+				      int use_default, int on_exec)
 {
+	const char *label = inlabel ? inlabel : conf->lsm_aa_profile;
+
 	if (!aa_enabled)
 		return 0;
 
@@ -141,8 +177,19 @@ static int apparmor_process_label_set(const char *label, int use_default,
 		if (use_default)
 			label = AA_DEF_PROFILE;
 		else
-			return 0;
+			label = "unconfined";
 	}
+
+	if (!mount_feature_enabled() && strcmp(label, "unconfined") != 0) {
+		WARN("Incomplete AppArmor support in your kernel");
+		if (!conf->lsm_aa_allow_incomplete) {
+			ERROR("If you really want to start this container, set");
+			ERROR("lxc.aa_allow_incomplete = 1");
+			ERROR("in your container configuration file");
+			return -1;
+		}
+	}
+
 
 	if (strcmp(label, "unconfined") == 0 && apparmor_am_unconfined()) {
 		INFO("apparmor profile unchanged");

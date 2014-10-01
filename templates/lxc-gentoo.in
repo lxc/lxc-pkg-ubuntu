@@ -79,7 +79,7 @@ die()
 set_default_arch()
 {
     printf "### set_default_arch: default arch/variant autodetect...\n"
-    arch=$(arch)
+    arch=$(uname -m)
     if [[ $arch =~ i.86 ]]; then
         arch="x86"
         variant="x86"
@@ -166,12 +166,14 @@ cache_stage3()
         printf " => Got: %s\n" "${stage3_latest_tarball}"
 
         printf "Downloading/untarring the actual stage3 tarball...\n"
-        wget -O - "${stage3_baseurl}/${stage3_latest_tarball}" | tar -xjpf - -C "${partialfs}" \
+        wget -O - "${stage3_baseurl}/${stage3_latest_tarball}" \
+            | tar -xjpf - --numeric-owner -C "${partialfs}" \
             || die 6 "Error: unable to fetch or untar\n"
         printf " => extracted to: %s\n" "${partialfs}"
     else
         printf "Extracting the stage3 tarball...\n"
-        tar -xpf "${tarball}" -C "${partialfs}" || die 6 "unable to untar ${tarball} to ${partialfs}"
+        tar -xpf "${tarball}" --numeric-owner -C "${partialfs}" \
+            || die 6 "unable to untar ${tarball} to ${partialfs}"
     fi
 
     #check if it chroots
@@ -338,7 +340,9 @@ container_precheck()
 container_rootfs()
 {
     printf "#### container_rootfs(): copying rootfs %s from cache %s ...\n" "${rootfs}" "${cachefs}"
-    tar -c -f - -C "${cachefs}" . | tar -x -p -f - -C "${rootfs}" || die 1 "Error: cache copy to rootfs failed"
+    tar -c -f - --numeric-owner -C "${cachefs}" . \
+        | tar -x -p -f - --numeric-owner -C "${rootfs}" \
+        || die 1 "Error: cache copy to rootfs failed"
 
     printf "chroot test..."
     chroot "${rootfs}" /bin/true || die 1 "Error: 'chroot %s /bin/true' failed"
@@ -442,12 +446,18 @@ container_portage()
         fi
     fi
 
+    printf "trying to guess portage distfiles dir from host ...\n"
+    portage_distfiles_dir="$(portageq distdir 2>/dev/null)"
+    if [ ! -d "${portage_distfiles_dir}" ]; then
+	portage_distfiles_dir="${portage_dir}/distfiles"
+    fi
+
     # if we are here, we have shared portage_dir
     #ensure dir exists
     chroot "${rootfs}" mkdir ${portage_container}
         portage_mount="#container set with shared portage
 lxc.mount.entry=${portage_dir} ${portage_container/\//} none ro,bind 0 0
-lxc.mount.entry=${portage_dir}/distfiles ${portage_container/\//}/distfiles none rw,bind 0 0
+lxc.mount.entry=${portage_distfiles_dir} ${portage_container/\//}/distfiles none rw,bind 0 0
 #If you use eix, you should uncomment this
 #lxc.mount.entry=/var/cache/eix var/cache/eix none ro,bind 0 0"
     store_user_message "container has a shared portage from host's ${portage_dir} to ${portage_container/\//}"
@@ -472,7 +482,9 @@ container_private_portage()
     #called from container_portage() do not call directly from container_setup
     printf "# untaring private portage to %s from %s ... \n" "${rootfs}/${portage_container}" "${portage_cache}"
     mkdir -p "${rootfs}/${portage_container}"
-    execute_exclusively portage 60 tar -xp --strip-components 1 -C "${rootfs}/${portage_container}" -f "${portage_cache}" \
+    execute_exclusively portage 60 \
+        tar -xp --strip-components 1 -C "${rootfs}/${portage_container}" \
+        -f "${portage_cache}" --numeric-owner \
         || die 2 "Error: unable to extract the portage tree.\n"
     store_user_message "container has its own portage tree at ${portage_container}"
     printf "=> done\n"

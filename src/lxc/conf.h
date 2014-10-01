@@ -38,6 +38,10 @@
 typedef void * scmp_filter_ctx;
 #endif
 
+/* worth moving to configure.ac? */
+#define subuidfile "/etc/subuid"
+#define subgidfile "/etc/subgid"
+
 enum {
 	LXC_NET_EMPTY,
 	LXC_NET_VETH,
@@ -283,7 +287,6 @@ struct saved_nic {
 
 struct lxc_conf {
 	int is_execute;
-	bool unexpanded;
 	char *fstab;
 	int tty;
 	int pts;
@@ -308,6 +311,7 @@ struct lxc_conf {
 	struct lxc_list hooks[NUM_LXC_HOOKS];
 
 	char *lsm_aa_profile;
+	int lsm_aa_allow_incomplete;
 	char *lsm_se_context;
 	int tmp_umount_proc;
 	char *seccomp;  // filename with the seccomp rules
@@ -344,6 +348,14 @@ struct lxc_conf {
 	struct lxc_list includes;
 	/* config entries which are not "lxc.*" are aliens */
 	struct lxc_list aliens;
+
+	/* list of environment variables we'll add to the container when
+	 * started */
+	struct lxc_list environment;
+
+	/* text representation of the config file */
+	char *unexpanded_config;
+	size_t unexpanded_len, unexpanded_alloced;
 };
 
 int run_lxc_hooks(const char *name, char *hook, struct lxc_conf *conf,
@@ -379,6 +391,8 @@ extern int lxc_clear_automounts(struct lxc_conf *c);
 extern int lxc_clear_hooks(struct lxc_conf *c, const char *key);
 extern int lxc_clear_idmaps(struct lxc_conf *c);
 extern int lxc_clear_groups(struct lxc_conf *c);
+extern int lxc_clear_environment(struct lxc_conf *c);
+extern int lxc_delete_autodev(struct lxc_handler *handler);
 
 extern int do_rootfs_setup(struct lxc_conf *conf, const char *name,
 			   const char *lxcpath);
@@ -400,4 +414,5 @@ extern int userns_exec_1(struct lxc_conf *conf, int (*fn)(void *), void *data);
 extern int parse_mntopts(const char *mntopts, unsigned long *mntflags,
 			 char **mntdata);
 extern void tmp_proc_unmount(struct lxc_conf *lxc_conf);
+extern void suggest_default_idmap(void);
 #endif

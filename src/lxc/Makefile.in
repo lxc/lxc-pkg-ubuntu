@@ -107,19 +107,19 @@ so_PROGRAMS = liblxc.so$(EXEEXT)
 @ENABLE_PYTHON_TRUE@am__append_16 = lxc-device lxc-ls \
 @ENABLE_PYTHON_TRUE@	lxc-start-ephemeral
 @ENABLE_PYTHON_FALSE@am__append_17 = legacy/lxc-ls
-@ENABLE_LUA_TRUE@am__append_18 = lxc-top
 bin_PROGRAMS = lxc-attach$(EXEEXT) lxc-autostart$(EXEEXT) \
-	lxc-cgroup$(EXEEXT) lxc-clone$(EXEEXT) lxc-config$(EXEEXT) \
-	lxc-console$(EXEEXT) lxc-create$(EXEEXT) lxc-destroy$(EXEEXT) \
-	lxc-execute$(EXEEXT) lxc-freeze$(EXEEXT) lxc-info$(EXEEXT) \
-	lxc-monitor$(EXEEXT) lxc-snapshot$(EXEEXT) lxc-start$(EXEEXT) \
-	lxc-stop$(EXEEXT) lxc-unfreeze$(EXEEXT) lxc-unshare$(EXEEXT) \
+	lxc-cgroup$(EXEEXT) lxc-checkpoint$(EXEEXT) lxc-clone$(EXEEXT) \
+	lxc-config$(EXEEXT) lxc-console$(EXEEXT) lxc-create$(EXEEXT) \
+	lxc-destroy$(EXEEXT) lxc-execute$(EXEEXT) lxc-freeze$(EXEEXT) \
+	lxc-info$(EXEEXT) lxc-monitor$(EXEEXT) lxc-snapshot$(EXEEXT) \
+	lxc-start$(EXEEXT) lxc-stop$(EXEEXT) lxc-top$(EXEEXT) \
+	lxc-unfreeze$(EXEEXT) lxc-unshare$(EXEEXT) \
 	lxc-usernsexec$(EXEEXT) lxc-wait$(EXEEXT)
 sbin_PROGRAMS = init.lxc$(EXEEXT) $(am__EXEEXT_1)
 pkglibexec_PROGRAMS = lxc-monitord$(EXEEXT) lxc-user-nic$(EXEEXT)
-@ENABLE_RPATH_TRUE@am__append_19 = -Wl,-rpath -Wl,$(libdir)
-@HAVE_STATIC_LIBCAP_TRUE@am__append_20 = init.lxc.static
-@HAVE_FGETLN_TRUE@@HAVE_GETLINE_FALSE@@HAVE_STATIC_LIBCAP_TRUE@am__append_21 = ../include/getline.c
+@ENABLE_RPATH_TRUE@am__append_18 = -Wl,-rpath -Wl,$(libdir)
+@HAVE_STATIC_LIBCAP_TRUE@am__append_19 = init.lxc.static
+@HAVE_FGETLN_TRUE@@HAVE_GETLINE_FALSE@@HAVE_STATIC_LIBCAP_TRUE@am__append_20 = ../include/getline.c
 subdir = src/lxc
 DIST_COMMON = $(srcdir)/Makefile.in $(srcdir)/Makefile.am \
 	$(srcdir)/lxc-checkconfig.in $(srcdir)/lxc-ls.in \
@@ -138,7 +138,8 @@ CONFIG_CLEAN_FILES = lxc-checkconfig lxc-ls lxc-start-ephemeral \
 CONFIG_CLEAN_VPATH_FILES =
 am__installdirs = "$(DESTDIR)$(bindir)" "$(DESTDIR)$(pkglibexecdir)" \
 	"$(DESTDIR)$(sbindir)" "$(DESTDIR)$(sodir)" \
-	"$(DESTDIR)$(bindir)" "$(DESTDIR)$(pkgincludedir)"
+	"$(DESTDIR)$(bindir)" "$(DESTDIR)$(pkglibexecdir)" \
+	"$(DESTDIR)$(pkgincludedir)"
 @HAVE_STATIC_LIBCAP_TRUE@am__EXEEXT_1 = init.lxc.static$(EXEEXT)
 PROGRAMS = $(bin_PROGRAMS) $(pkglibexec_PROGRAMS) $(sbin_PROGRAMS) \
 	$(so_PROGRAMS)
@@ -159,19 +160,20 @@ init_lxc_static_DEPENDENCIES =
 init_lxc_static_LINK = $(CCLD) $(AM_CFLAGS) $(CFLAGS) \
 	$(init_lxc_static_LDFLAGS) $(LDFLAGS) -o $@
 am__liblxc_so_SOURCES_DIST = arguments.c arguments.h bdev.c bdev.h \
-	commands.c commands.h start.c start.h execute.c monitor.c \
-	monitor.h console.c freezer.c error.h error.c parse.c parse.h \
-	cgfs.c cgroup.c cgroup.h lxc.h utils.c utils.h sync.c sync.h \
-	namespace.h namespace.c conf.c conf.h confile.c confile.h \
-	list.h state.c state.h log.c log.h attach.c attach.h network.c \
-	network.h nl.c nl.h rtnl.c rtnl.h genl.c genl.h caps.c caps.h \
-	lxcseccomp.h mainloop.c mainloop.h af_unix.c af_unix.h \
-	lxcutmp.c lxcutmp.h lxclock.h lxclock.c lxccontainer.c \
-	lxccontainer.h version.h lsm/nop.c lsm/lsm.h lsm/lsm.c \
-	lsm/apparmor.c lsm/selinux.c cgmanager.c ../include/ifaddrs.c \
-	../include/ifaddrs.h ../include/openpty.c ../include/openpty.h \
-	../include/lxcmntent.c ../include/lxcmntent.h \
-	../include/getline.c ../include/getline.h seccomp.c
+	lxc-btrfs.h commands.c commands.h start.c start.h execute.c \
+	monitor.c monitor.h console.c freezer.c error.h error.c \
+	parse.c parse.h cgfs.c cgroup.c cgroup.h lxc.h utils.c utils.h \
+	sync.c sync.h namespace.h namespace.c conf.c conf.h confile.c \
+	confile.h list.h state.c state.h log.c log.h attach.c attach.h \
+	network.c network.h nl.c nl.h rtnl.c rtnl.h genl.c genl.h \
+	caps.c caps.h lxcseccomp.h mainloop.c mainloop.h af_unix.c \
+	af_unix.h lxcutmp.c lxcutmp.h lxclock.h lxclock.c \
+	lxccontainer.c lxccontainer.h version.h lsm/nop.c lsm/lsm.h \
+	lsm/lsm.c lsm/apparmor.c lsm/selinux.c cgmanager.c \
+	../include/ifaddrs.c ../include/ifaddrs.h ../include/openpty.c \
+	../include/openpty.h ../include/lxcmntent.c \
+	../include/lxcmntent.h ../include/getline.c \
+	../include/getline.h seccomp.c
 @ENABLE_APPARMOR_TRUE@am__objects_2 =  \
 @ENABLE_APPARMOR_TRUE@	lsm/liblxc_so-apparmor.$(OBJEXT)
 @ENABLE_SELINUX_TRUE@am__objects_3 = lsm/liblxc_so-selinux.$(OBJEXT)
@@ -225,6 +227,10 @@ am_lxc_cgroup_OBJECTS = lxc_cgroup.$(OBJEXT)
 lxc_cgroup_OBJECTS = $(am_lxc_cgroup_OBJECTS)
 lxc_cgroup_LDADD = $(LDADD)
 lxc_cgroup_DEPENDENCIES = liblxc.so
+am_lxc_checkpoint_OBJECTS = lxc_checkpoint.$(OBJEXT)
+lxc_checkpoint_OBJECTS = $(am_lxc_checkpoint_OBJECTS)
+lxc_checkpoint_LDADD = $(LDADD)
+lxc_checkpoint_DEPENDENCIES = liblxc.so
 am_lxc_clone_OBJECTS = lxc_clone.$(OBJEXT)
 lxc_clone_OBJECTS = $(am_lxc_clone_OBJECTS)
 lxc_clone_LDADD = $(LDADD)
@@ -277,6 +283,10 @@ am_lxc_stop_OBJECTS = lxc_stop.$(OBJEXT)
 lxc_stop_OBJECTS = $(am_lxc_stop_OBJECTS)
 lxc_stop_LDADD = $(LDADD)
 lxc_stop_DEPENDENCIES = liblxc.so
+am_lxc_top_OBJECTS = lxc_top.$(OBJEXT)
+lxc_top_OBJECTS = $(am_lxc_top_OBJECTS)
+lxc_top_LDADD = $(LDADD)
+lxc_top_DEPENDENCIES = liblxc.so
 am_lxc_unfreeze_OBJECTS = lxc_unfreeze.$(OBJEXT)
 lxc_unfreeze_OBJECTS = $(am_lxc_unfreeze_OBJECTS)
 lxc_unfreeze_LDADD = $(LDADD)
@@ -324,7 +334,7 @@ am__uninstall_files_from_dir = { \
     || { echo " ( cd '$$dir' && rm -f" $$files ")"; \
          $(am__cd) "$$dir" && rm -f $$files; }; \
   }
-SCRIPTS = $(bin_SCRIPTS)
+SCRIPTS = $(bin_SCRIPTS) $(pkglibexec_SCRIPTS)
 AM_V_P = $(am__v_P_@AM_V@)
 am__v_P_ = $(am__v_P_@AM_DEFAULT_V@)
 am__v_P_0 = false
@@ -360,35 +370,37 @@ am__v_CCLD_1 =
 SOURCES = $(init_lxc_SOURCES) $(init_lxc_static_SOURCES) \
 	$(liblxc_so_SOURCES) $(lxc_attach_SOURCES) \
 	$(lxc_autostart_SOURCES) $(lxc_cgroup_SOURCES) \
-	$(lxc_clone_SOURCES) $(lxc_config_SOURCES) \
-	$(lxc_console_SOURCES) $(lxc_create_SOURCES) \
-	$(lxc_destroy_SOURCES) $(lxc_execute_SOURCES) \
-	$(lxc_freeze_SOURCES) $(lxc_info_SOURCES) \
-	$(lxc_monitor_SOURCES) $(lxc_monitord_SOURCES) \
-	$(lxc_snapshot_SOURCES) $(lxc_start_SOURCES) \
-	$(lxc_stop_SOURCES) $(lxc_unfreeze_SOURCES) \
-	$(lxc_unshare_SOURCES) $(lxc_user_nic_SOURCES) \
-	$(lxc_usernsexec_SOURCES) $(lxc_wait_SOURCES)
+	$(lxc_checkpoint_SOURCES) $(lxc_clone_SOURCES) \
+	$(lxc_config_SOURCES) $(lxc_console_SOURCES) \
+	$(lxc_create_SOURCES) $(lxc_destroy_SOURCES) \
+	$(lxc_execute_SOURCES) $(lxc_freeze_SOURCES) \
+	$(lxc_info_SOURCES) $(lxc_monitor_SOURCES) \
+	$(lxc_monitord_SOURCES) $(lxc_snapshot_SOURCES) \
+	$(lxc_start_SOURCES) $(lxc_stop_SOURCES) $(lxc_top_SOURCES) \
+	$(lxc_unfreeze_SOURCES) $(lxc_unshare_SOURCES) \
+	$(lxc_user_nic_SOURCES) $(lxc_usernsexec_SOURCES) \
+	$(lxc_wait_SOURCES)
 DIST_SOURCES = $(init_lxc_SOURCES) $(am__init_lxc_static_SOURCES_DIST) \
 	$(am__liblxc_so_SOURCES_DIST) $(lxc_attach_SOURCES) \
 	$(lxc_autostart_SOURCES) $(lxc_cgroup_SOURCES) \
-	$(lxc_clone_SOURCES) $(lxc_config_SOURCES) \
-	$(lxc_console_SOURCES) $(lxc_create_SOURCES) \
-	$(lxc_destroy_SOURCES) $(lxc_execute_SOURCES) \
-	$(lxc_freeze_SOURCES) $(lxc_info_SOURCES) \
-	$(lxc_monitor_SOURCES) $(lxc_monitord_SOURCES) \
-	$(lxc_snapshot_SOURCES) $(lxc_start_SOURCES) \
-	$(lxc_stop_SOURCES) $(lxc_unfreeze_SOURCES) \
-	$(lxc_unshare_SOURCES) $(lxc_user_nic_SOURCES) \
-	$(lxc_usernsexec_SOURCES) $(lxc_wait_SOURCES)
+	$(lxc_checkpoint_SOURCES) $(lxc_clone_SOURCES) \
+	$(lxc_config_SOURCES) $(lxc_console_SOURCES) \
+	$(lxc_create_SOURCES) $(lxc_destroy_SOURCES) \
+	$(lxc_execute_SOURCES) $(lxc_freeze_SOURCES) \
+	$(lxc_info_SOURCES) $(lxc_monitor_SOURCES) \
+	$(lxc_monitord_SOURCES) $(lxc_snapshot_SOURCES) \
+	$(lxc_start_SOURCES) $(lxc_stop_SOURCES) $(lxc_top_SOURCES) \
+	$(lxc_unfreeze_SOURCES) $(lxc_unshare_SOURCES) \
+	$(lxc_user_nic_SOURCES) $(lxc_usernsexec_SOURCES) \
+	$(lxc_wait_SOURCES)
 am__can_run_installinfo = \
   case $$AM_UPDATE_INFO_DIR in \
     n|no|NO) false;; \
     *) (install-info --version) >/dev/null 2>&1;; \
   esac
 am__noinst_HEADERS_DIST = arguments.h attach.h bdev.h caps.h cgroup.h \
-	conf.h console.h error.h list.h log.h lxc.h lxclock.h \
-	monitor.h namespace.h start.h state.h utils.h \
+	conf.h console.h error.h list.h log.h lxc.h lxc-btrfs.h \
+	lxclock.h monitor.h namespace.h start.h state.h utils.h \
 	../include/ifaddrs.h ../include/openpty.h \
 	../include/lxcmntent.h ../include/getline.h
 HEADERS = $(noinst_HEADERS) $(pkginclude_HEADERS)
@@ -470,7 +482,7 @@ LXCROOTFSMOUNT = @LXCROOTFSMOUNT@
 LXCTEMPLATECONFIG = @LXCTEMPLATECONFIG@
 LXCTEMPLATEDIR = @LXCTEMPLATEDIR@
 LXC_DEFAULT_CONFIG = @LXC_DEFAULT_CONFIG@
-LXC_DISTRO_CONF = @LXC_DISTRO_CONF@
+LXC_DISTRO_SYSCONF = @LXC_DISTRO_SYSCONF@
 LXC_GENERATE_DATE = @LXC_GENERATE_DATE@
 LXC_GLOBAL_CONF = @LXC_GLOBAL_CONF@
 LXC_USERNIC_CONF = @LXC_USERNIC_CONF@
@@ -517,6 +529,7 @@ SET_MAKE = @SET_MAKE@
 SHELL = @SHELL@
 STRIP = @STRIP@
 SYSCONFDIR = @SYSCONFDIR@
+SYSTEMD_UNIT_DIR = @SYSTEMD_UNIT_DIR@
 VERSION = @VERSION@
 abs_builddir = @abs_builddir@
 abs_srcdir = @abs_srcdir@
@@ -580,16 +593,16 @@ pkginclude_HEADERS = \
 	version.h
 
 noinst_HEADERS = arguments.h attach.h bdev.h caps.h cgroup.h conf.h \
-	console.h error.h list.h log.h lxc.h lxclock.h monitor.h \
-	namespace.h start.h state.h utils.h $(am__append_1) \
+	console.h error.h list.h log.h lxc.h lxc-btrfs.h lxclock.h \
+	monitor.h namespace.h start.h state.h utils.h $(am__append_1) \
 	$(am__append_2)
 sodir = $(libdir)
 LSM_SOURCES = lsm/nop.c lsm/lsm.h lsm/lsm.c $(am__append_3) \
 	$(am__append_4)
-liblxc_so_SOURCES = arguments.c arguments.h bdev.c bdev.h commands.c \
-	commands.h start.c start.h execute.c monitor.c monitor.h \
-	console.c freezer.c error.h error.c parse.c parse.h cgfs.c \
-	cgroup.c cgroup.h lxc.h utils.c utils.h sync.c sync.h \
+liblxc_so_SOURCES = arguments.c arguments.h bdev.c bdev.h lxc-btrfs.h \
+	commands.c commands.h start.c start.h execute.c monitor.c \
+	monitor.h console.c freezer.c error.h error.c parse.c parse.h \
+	cgfs.c cgroup.c cgroup.h lxc.h utils.c utils.h sync.c sync.h \
 	namespace.h namespace.c conf.c conf.h confile.c confile.h \
 	list.h state.c state.h log.c log.h attach.c attach.h network.c \
 	network.h nl.c nl.h rtnl.c rtnl.h genl.c genl.h caps.c caps.h \
@@ -618,14 +631,17 @@ liblxc_so_LDFLAGS = \
 
 liblxc_so_LDADD = $(CAP_LIBS) $(APPARMOR_LIBS) $(SELINUX_LIBS) \
 	$(SECCOMP_LIBS) $(am__append_14)
-bin_SCRIPTS = lxc-checkconfig $(am__append_16) $(am__append_17) \
-	$(am__append_18)
+bin_SCRIPTS = lxc-checkconfig $(am__append_16) $(am__append_17)
 EXTRA_DIST = \
 	lxc-device \
 	lxc-ls \
-	lxc-top
+	lxc-restore-net \
+	lxc-top.lua
 
-AM_LDFLAGS = -Wl,-E $(am__append_19)
+pkglibexec_SCRIPTS = \
+	lxc-restore-net
+
+AM_LDFLAGS = -Wl,-E $(am__append_18)
 LDADD = liblxc.so @CAP_LIBS@ @APPARMOR_LIBS@ @SELINUX_LIBS@ @SECCOMP_LIBS@
 lxc_attach_SOURCES = lxc_attach.c
 lxc_autostart_SOURCES = lxc_autostart.c
@@ -642,6 +658,7 @@ lxc_monitord_SOURCES = lxc_monitord.c
 lxc_clone_SOURCES = lxc_clone.c
 lxc_start_SOURCES = lxc_start.c
 lxc_stop_SOURCES = lxc_stop.c
+lxc_top_SOURCES = lxc_top.c
 lxc_unfreeze_SOURCES = lxc_unfreeze.c
 lxc_unshare_SOURCES = lxc_unshare.c
 lxc_wait_SOURCES = lxc_wait.c
@@ -649,8 +666,9 @@ lxc_create_SOURCES = lxc_create.c
 lxc_snapshot_SOURCES = lxc_snapshot.c
 lxc_usernsexec_SOURCES = lxc_usernsexec.c
 lxc_user_nic_SOURCES = lxc_user_nic.c network.c network.h
+lxc_checkpoint_SOURCES = lxc_checkpoint.c
 @HAVE_STATIC_LIBCAP_TRUE@init_lxc_static_SOURCES = lxc_init.c error.c \
-@HAVE_STATIC_LIBCAP_TRUE@	log.c utils.c caps.c $(am__append_21)
+@HAVE_STATIC_LIBCAP_TRUE@	log.c utils.c caps.c $(am__append_20)
 @HAVE_STATIC_LIBCAP_TRUE@init_lxc_static_LDFLAGS = -static
 @HAVE_STATIC_LIBCAP_TRUE@init_lxc_static_LDADD = @CAP_LIBS@
 all: all-am
@@ -920,6 +938,10 @@ lxc-cgroup$(EXEEXT): $(lxc_cgroup_OBJECTS) $(lxc_cgroup_DEPENDENCIES) $(EXTRA_lx
 	@rm -f lxc-cgroup$(EXEEXT)
 	$(AM_V_CCLD)$(LINK) $(lxc_cgroup_OBJECTS) $(lxc_cgroup_LDADD) $(LIBS)
 
+lxc-checkpoint$(EXEEXT): $(lxc_checkpoint_OBJECTS) $(lxc_checkpoint_DEPENDENCIES) $(EXTRA_lxc_checkpoint_DEPENDENCIES) 
+	@rm -f lxc-checkpoint$(EXEEXT)
+	$(AM_V_CCLD)$(LINK) $(lxc_checkpoint_OBJECTS) $(lxc_checkpoint_LDADD) $(LIBS)
+
 lxc-clone$(EXEEXT): $(lxc_clone_OBJECTS) $(lxc_clone_DEPENDENCIES) $(EXTRA_lxc_clone_DEPENDENCIES) 
 	@rm -f lxc-clone$(EXEEXT)
 	$(AM_V_CCLD)$(LINK) $(lxc_clone_OBJECTS) $(lxc_clone_LDADD) $(LIBS)
@@ -971,6 +993,10 @@ lxc-start$(EXEEXT): $(lxc_start_OBJECTS) $(lxc_start_DEPENDENCIES) $(EXTRA_lxc_s
 lxc-stop$(EXEEXT): $(lxc_stop_OBJECTS) $(lxc_stop_DEPENDENCIES) $(EXTRA_lxc_stop_DEPENDENCIES) 
 	@rm -f lxc-stop$(EXEEXT)
 	$(AM_V_CCLD)$(LINK) $(lxc_stop_OBJECTS) $(lxc_stop_LDADD) $(LIBS)
+
+lxc-top$(EXEEXT): $(lxc_top_OBJECTS) $(lxc_top_DEPENDENCIES) $(EXTRA_lxc_top_DEPENDENCIES) 
+	@rm -f lxc-top$(EXEEXT)
+	$(AM_V_CCLD)$(LINK) $(lxc_top_OBJECTS) $(lxc_top_LDADD) $(LIBS)
 
 lxc-unfreeze$(EXEEXT): $(lxc_unfreeze_OBJECTS) $(lxc_unfreeze_DEPENDENCIES) $(EXTRA_lxc_unfreeze_DEPENDENCIES) 
 	@rm -f lxc-unfreeze$(EXEEXT)
@@ -1026,6 +1052,41 @@ uninstall-binSCRIPTS:
 	files=`for p in $$list; do echo "$$p"; done | \
 	       sed -e 's,.*/,,;$(transform)'`; \
 	dir='$(DESTDIR)$(bindir)'; $(am__uninstall_files_from_dir)
+install-pkglibexecSCRIPTS: $(pkglibexec_SCRIPTS)
+	@$(NORMAL_INSTALL)
+	@list='$(pkglibexec_SCRIPTS)'; test -n "$(pkglibexecdir)" || list=; \
+	if test -n "$$list"; then \
+	  echo " $(MKDIR_P) '$(DESTDIR)$(pkglibexecdir)'"; \
+	  $(MKDIR_P) "$(DESTDIR)$(pkglibexecdir)" || exit 1; \
+	fi; \
+	for p in $$list; do \
+	  if test -f "$$p"; then d=; else d="$(srcdir)/"; fi; \
+	  if test -f "$$d$$p"; then echo "$$d$$p"; echo "$$p"; else :; fi; \
+	done | \
+	sed -e 'p;s,.*/,,;n' \
+	    -e 'h;s|.*|.|' \
+	    -e 'p;x;s,.*/,,;$(transform)' | sed 'N;N;N;s,\n, ,g' | \
+	$(AWK) 'BEGIN { files["."] = ""; dirs["."] = 1; } \
+	  { d=$$3; if (dirs[d] != 1) { print "d", d; dirs[d] = 1 } \
+	    if ($$2 == $$4) { files[d] = files[d] " " $$1; \
+	      if (++n[d] == $(am__install_max)) { \
+		print "f", d, files[d]; n[d] = 0; files[d] = "" } } \
+	    else { print "f", d "/" $$4, $$1 } } \
+	  END { for (d in files) print "f", d, files[d] }' | \
+	while read type dir files; do \
+	     if test "$$dir" = .; then dir=; else dir=/$$dir; fi; \
+	     test -z "$$files" || { \
+	       echo " $(INSTALL_SCRIPT) $$files '$(DESTDIR)$(pkglibexecdir)$$dir'"; \
+	       $(INSTALL_SCRIPT) $$files "$(DESTDIR)$(pkglibexecdir)$$dir" || exit $$?; \
+	     } \
+	; done
+
+uninstall-pkglibexecSCRIPTS:
+	@$(NORMAL_UNINSTALL)
+	@list='$(pkglibexec_SCRIPTS)'; test -n "$(pkglibexecdir)" || exit 0; \
+	files=`for p in $$list; do echo "$$p"; done | \
+	       sed -e 's,.*/,,;$(transform)'`; \
+	dir='$(DESTDIR)$(pkglibexecdir)'; $(am__uninstall_files_from_dir)
 
 mostlyclean-compile:
 	-rm -f *.$(OBJEXT)
@@ -1078,6 +1139,7 @@ distclean-compile:
 @AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/lxc_attach.Po@am__quote@
 @AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/lxc_autostart.Po@am__quote@
 @AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/lxc_cgroup.Po@am__quote@
+@AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/lxc_checkpoint.Po@am__quote@
 @AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/lxc_clone.Po@am__quote@
 @AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/lxc_config.Po@am__quote@
 @AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/lxc_console.Po@am__quote@
@@ -1092,6 +1154,7 @@ distclean-compile:
 @AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/lxc_snapshot.Po@am__quote@
 @AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/lxc_start.Po@am__quote@
 @AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/lxc_stop.Po@am__quote@
+@AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/lxc_top.Po@am__quote@
 @AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/lxc_unfreeze.Po@am__quote@
 @AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/lxc_unshare.Po@am__quote@
 @AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/lxc_user_nic.Po@am__quote@
@@ -1787,7 +1850,7 @@ check-am: all-am
 check: check-am
 all-am: Makefile $(PROGRAMS) $(SCRIPTS) $(HEADERS)
 installdirs:
-	for dir in "$(DESTDIR)$(bindir)" "$(DESTDIR)$(pkglibexecdir)" "$(DESTDIR)$(sbindir)" "$(DESTDIR)$(sodir)" "$(DESTDIR)$(bindir)" "$(DESTDIR)$(pkgincludedir)"; do \
+	for dir in "$(DESTDIR)$(bindir)" "$(DESTDIR)$(pkglibexecdir)" "$(DESTDIR)$(sbindir)" "$(DESTDIR)$(sodir)" "$(DESTDIR)$(bindir)" "$(DESTDIR)$(pkglibexecdir)" "$(DESTDIR)$(pkgincludedir)"; do \
 	  test -z "$$dir" || $(MKDIR_P) "$$dir"; \
 	done
 install: install-am
@@ -1855,7 +1918,7 @@ install-dvi-am:
 
 install-exec-am: install-binPROGRAMS install-binSCRIPTS \
 	install-exec-local install-pkglibexecPROGRAMS \
-	install-sbinPROGRAMS
+	install-pkglibexecSCRIPTS install-sbinPROGRAMS
 	@$(NORMAL_INSTALL)
 	$(MAKE) $(AM_MAKEFLAGS) install-exec-hook
 install-html: install-html-am
@@ -1897,8 +1960,8 @@ ps-am:
 
 uninstall-am: uninstall-binPROGRAMS uninstall-binSCRIPTS \
 	uninstall-local uninstall-pkgincludeHEADERS \
-	uninstall-pkglibexecPROGRAMS uninstall-sbinPROGRAMS \
-	uninstall-soPROGRAMS
+	uninstall-pkglibexecPROGRAMS uninstall-pkglibexecSCRIPTS \
+	uninstall-sbinPROGRAMS uninstall-soPROGRAMS
 
 .MAKE: install-am install-exec-am install-strip
 
@@ -1913,13 +1976,14 @@ uninstall-am: uninstall-binPROGRAMS uninstall-binSCRIPTS \
 	install-exec-local install-html install-html-am install-info \
 	install-info-am install-man install-pdf install-pdf-am \
 	install-pkgincludeHEADERS install-pkglibexecPROGRAMS \
-	install-ps install-ps-am install-sbinPROGRAMS \
-	install-soPROGRAMS install-strip installcheck installcheck-am \
-	installdirs maintainer-clean maintainer-clean-generic \
-	mostlyclean mostlyclean-compile mostlyclean-generic pdf pdf-am \
-	ps ps-am tags tags-am uninstall uninstall-am \
-	uninstall-binPROGRAMS uninstall-binSCRIPTS uninstall-local \
-	uninstall-pkgincludeHEADERS uninstall-pkglibexecPROGRAMS \
+	install-pkglibexecSCRIPTS install-ps install-ps-am \
+	install-sbinPROGRAMS install-soPROGRAMS install-strip \
+	installcheck installcheck-am installdirs maintainer-clean \
+	maintainer-clean-generic mostlyclean mostlyclean-compile \
+	mostlyclean-generic pdf pdf-am ps ps-am tags tags-am uninstall \
+	uninstall-am uninstall-binPROGRAMS uninstall-binSCRIPTS \
+	uninstall-local uninstall-pkgincludeHEADERS \
+	uninstall-pkglibexecPROGRAMS uninstall-pkglibexecSCRIPTS \
 	uninstall-sbinPROGRAMS uninstall-soPROGRAMS
 
 

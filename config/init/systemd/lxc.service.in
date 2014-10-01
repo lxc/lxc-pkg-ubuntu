@@ -1,13 +1,15 @@
 [Unit]
 Description=LXC Container Initialization and Autoboot Code
 After=syslog.target network.target
+Wants=lxc-net.service
 
 [Service]
 Type=oneshot
 RemainAfterExit=yes
 ExecStartPre=@LIBEXECDIR@/lxc/lxc-devsetup
-ExecStart=@LIBEXECDIR@/lxc/lxc-autostart-helper start
-ExecStop=@LIBEXECDIR@/lxc/lxc-autostart-helper stop
+ExecStartPre=@LIBEXECDIR@/lxc/lxc-apparmor-load
+ExecStart=@LIBEXECDIR@/lxc/lxc-containers start
+ExecStop=@LIBEXECDIR@/lxc/lxc-containers stop
 # Environment=BOOTUP=serial
 # Environment=CONSOLETYPE=serial
 StandardOutput=syslog

@@ -203,7 +203,7 @@ restart:
 		if (match_fd(fd))
 			continue;
 
-		if (conf->close_all_fds) {
+		if (conf == NULL || conf->close_all_fds) {
 			close(fd);
 			closedir(dir);
 			INFO("closed inherited fd %d", fd);
@@ -300,14 +300,14 @@ static int signal_handler(int fd, uint32_t events, void *data,
 	return 1;
 }
 
-static int lxc_set_state(const char *name, struct lxc_handler *handler, lxc_state_t state)
+int lxc_set_state(const char *name, struct lxc_handler *handler, lxc_state_t state)
 {
 	handler->state = state;
 	lxc_monitor_send_state(name, state, handler->lxcpath);
 	return 0;
 }
 
-static int lxc_poll(const char *name, struct lxc_handler *handler)
+int lxc_poll(const char *name, struct lxc_handler *handler)
 {
 	int sigfd = handler->sigfd;
 	int pid = handler->pid;
@@ -460,7 +460,7 @@ out_free:
 	return NULL;
 }
 
-static void lxc_fini(const char *name, struct lxc_handler *handler)
+void lxc_fini(const char *name, struct lxc_handler *handler)
 {
 	/* The STOPPING state is there for future cleanup code
 	 * which can take awhile
@@ -477,6 +477,7 @@ static void lxc_fini(const char *name, struct lxc_handler *handler)
 
 	lxc_console_delete(&handler->conf->console);
 	lxc_delete_tty(&handler->conf->tty_info);
+	lxc_delete_autodev(handler);
 	close(handler->conf->maincmd_fd);
 	handler->conf->maincmd_fd = -1;
 	free(handler->name);
@@ -484,7 +485,7 @@ static void lxc_fini(const char *name, struct lxc_handler *handler)
 	free(handler);
 }
 
-static void lxc_abort(const char *name, struct lxc_handler *handler)
+void lxc_abort(const char *name, struct lxc_handler *handler)
 {
 	int ret, status;
 
@@ -547,7 +548,10 @@ static int must_drop_cap_sys_boot(struct lxc_conf *conf)
 	pid = clone(container_reboot_supported, stack, flags, &cmd);
 #endif
 	if (pid < 0) {
-		SYSERROR("failed to clone");
+		if (flags & CLONE_NEWUSER)
+			ERROR("failed to clone (%#x): %s (includes CLONE_NEWUSER)", flags, strerror(errno));
+		else
+			ERROR("failed to clone (%#x): %s", flags, strerror(errno));
 		return -1;
 	}
 	if (wait(&status) < 0) {
@@ -609,8 +613,8 @@ static int read_unpriv_netifindex(struct lxc_list *network)
 
 static int do_start(void *data)
 {
+	struct lxc_list *iterator;
 	struct lxc_handler *handler = data;
-	const char *lsm_label = NULL;
 
 	if (sigprocmask(SIG_SETMASK, &handler->oldmask, NULL)) {
 		SYSERROR("failed to set sigprocmask");
@@ -690,11 +694,7 @@ static int do_start(void *data)
 		return -1;
 
 	/* Set the label to change to when we exec(2) the container's init */
-	if (!strcmp(lsm_name(), "AppArmor"))
-		lsm_label = handler->conf->lsm_aa_profile;
-	else if (!strcmp(lsm_name(), "SELinux"))
-		lsm_label = handler->conf->lsm_se_context;
-	if (lsm_process_label_set(lsm_label, 1, 1) < 0)
+	if (lsm_process_label_set(NULL, handler->conf, 1, 1) < 0)
 		goto out_warn_father;
 
 	/* Some init's such as busybox will set sane tty settings on stdin,
@@ -727,8 +727,15 @@ static int do_start(void *data)
 		/* don't error out though */
 	}
 
+	lxc_list_for_each(iterator, &handler->conf->environment) {
+		if (putenv((char *)iterator->elem)) {
+			SYSERROR("failed to set environment variable '%s'", (char *)iterator->elem);
+			goto out_warn_father;
+		}
+	}
+
 	if (putenv("container=lxc")) {
-		SYSERROR("failed to set environment variable");
+		SYSERROR("failed to set environment variable 'container=lxc'");
 		goto out_warn_father;
 	}
 
@@ -1127,6 +1134,7 @@ int __lxc_start(const char *name, struct lxc_conf *conf,
 		handler->pinfd = -1;
 	}
 
+	lxc_monitor_send_exit_code(name, status, handler->lxcpath);
 	err =  lxc_error_set_and_log(handler->pid, status);
 out_fini:
 	lxc_delete_network(handler);

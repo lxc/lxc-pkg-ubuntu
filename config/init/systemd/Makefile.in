@@ -80,7 +80,7 @@ build_triplet = @build@
 host_triplet = @host@
 subdir = config/init/systemd
 DIST_COMMON = $(srcdir)/Makefile.in $(srcdir)/Makefile.am \
-	$(srcdir)/lxc.service.in
+	$(srcdir)/lxc.service.in $(srcdir)/lxc-net.service.in
 ACLOCAL_M4 = $(top_srcdir)/aclocal.m4
 am__aclocal_m4_deps = $(top_srcdir)/config/acinclude.m4 \
 	$(top_srcdir)/config/tls.m4 $(top_srcdir)/configure.ac
@@ -88,7 +88,7 @@ am__configure_deps = $(am__aclocal_m4_deps) $(CONFIGURE_DEPENDENCIES) \
 	$(ACLOCAL_M4)
 mkinstalldirs = $(install_sh) -d
 CONFIG_HEADER = $(top_builddir)/src/config.h
-CONFIG_CLEAN_FILES = lxc.service
+CONFIG_CLEAN_FILES = lxc.service lxc-net.service
 CONFIG_CLEAN_VPATH_FILES =
 am__vpath_adj_setup = srcdirstrip=`echo "$(srcdir)" | sed 's|.|.|g'`;
 am__vpath_adj = case $$p in \
@@ -198,7 +198,7 @@ LXCROOTFSMOUNT = @LXCROOTFSMOUNT@
 LXCTEMPLATECONFIG = @LXCTEMPLATECONFIG@
 LXCTEMPLATEDIR = @LXCTEMPLATEDIR@
 LXC_DEFAULT_CONFIG = @LXC_DEFAULT_CONFIG@
-LXC_DISTRO_CONF = @LXC_DISTRO_CONF@
+LXC_DISTRO_SYSCONF = @LXC_DISTRO_SYSCONF@
 LXC_GENERATE_DATE = @LXC_GENERATE_DATE@
 LXC_GLOBAL_CONF = @LXC_GLOBAL_CONF@
 LXC_USERNIC_CONF = @LXC_USERNIC_CONF@
@@ -245,6 +245,7 @@ SET_MAKE = @SET_MAKE@
 SHELL = @SHELL@
 STRIP = @STRIP@
 SYSCONFDIR = @SYSCONFDIR@
+SYSTEMD_UNIT_DIR = @SYSTEMD_UNIT_DIR@
 VERSION = @VERSION@
 abs_builddir = @abs_builddir@
 abs_srcdir = @abs_srcdir@
@@ -304,11 +305,12 @@ top_builddir = @top_builddir@
 top_srcdir = @top_srcdir@
 EXTRA_DIST = \
 	lxc-devsetup \
-	lxc.service
+	lxc-apparmor-load \
+	lxc.service.in \
+	lxc-net.service.in
 
-@INIT_SCRIPT_SYSTEMD_TRUE@SYSTEMD_UNIT_DIR = $(prefix)/lib/systemd/system
-@INIT_SCRIPT_SYSTEMD_TRUE@BUILT_SOURCES = lxc-autostart-helper
-@INIT_SCRIPT_SYSTEMD_TRUE@pkglibexec_SCRIPTS = lxc-devsetup lxc-autostart-helper
+@INIT_SCRIPT_SYSTEMD_TRUE@BUILT_SOURCES = lxc.service lxc-net.service
+@INIT_SCRIPT_SYSTEMD_TRUE@pkglibexec_SCRIPTS = lxc-devsetup lxc-apparmor-load
 all: $(BUILT_SOURCES)
 	$(MAKE) $(AM_MAKEFLAGS) all-am
 
@@ -344,6 +346,8 @@ $(ACLOCAL_M4):  $(am__aclocal_m4_deps)
 	cd $(top_builddir) && $(MAKE) $(AM_MAKEFLAGS) am--refresh
 $(am__aclocal_m4_deps):
 lxc.service: $(top_builddir)/config.status $(srcdir)/lxc.service.in
+	cd $(top_builddir) && $(SHELL) ./config.status $(subdir)/$@
+lxc-net.service: $(top_builddir)/config.status $(srcdir)/lxc-net.service.in
 	cd $(top_builddir) && $(SHELL) ./config.status $(subdir)/$@
 install-pkglibexecSCRIPTS: $(pkglibexec_SCRIPTS)
 	@$(NORMAL_INSTALL)
@@ -457,8 +461,8 @@ maintainer-clean-generic:
 	@echo "This command is intended for maintainers to use"
 	@echo "it deletes files that may require special tools to rebuild."
 	-test -z "$(BUILT_SOURCES)" || rm -f $(BUILT_SOURCES)
-@INIT_SCRIPT_SYSTEMD_FALSE@uninstall-local:
 @INIT_SCRIPT_SYSTEMD_FALSE@install-data-local:
+@INIT_SCRIPT_SYSTEMD_FALSE@uninstall-local:
 clean: clean-am
 
 clean-am: clean-generic mostlyclean-am
@@ -541,21 +545,13 @@ uninstall-am: uninstall-local uninstall-pkglibexecSCRIPTS
 	uninstall-pkglibexecSCRIPTS
 
 
-@INIT_SCRIPT_SYSTEMD_TRUE@lxc-autostart-helper: ../sysvinit/lxc.in $(top_builddir)/config.status
-@INIT_SCRIPT_SYSTEMD_TRUE@	$(AM_V_GEN)sed                                          \
-@INIT_SCRIPT_SYSTEMD_TRUE@	    -e 's|[@]SYSCONFDIR[@]|$(sysconfdir)|g'             \
-@INIT_SCRIPT_SYSTEMD_TRUE@	    -e 's|[@]LOCALSTATEDIR[@]|$(localstatedir)|g'       \
-@INIT_SCRIPT_SYSTEMD_TRUE@	    -e 's|[@]BINDIR[@]|$(bindir)|g'                     \
-@INIT_SCRIPT_SYSTEMD_TRUE@	    < $< > $@-t &&                                      \
-@INIT_SCRIPT_SYSTEMD_TRUE@	    chmod a+x $@-t &&                                   \
-@INIT_SCRIPT_SYSTEMD_TRUE@	    mv $@-t $@
-
-@INIT_SCRIPT_SYSTEMD_TRUE@install-systemd: lxc.service lxc-devsetup lxc-autostart-helper
+@INIT_SCRIPT_SYSTEMD_TRUE@install-systemd: lxc.service lxc-net.service lxc-devsetup lxc-apparmor-load
 @INIT_SCRIPT_SYSTEMD_TRUE@	$(MKDIR_P) $(DESTDIR)$(SYSTEMD_UNIT_DIR)
-@INIT_SCRIPT_SYSTEMD_TRUE@	$(INSTALL_DATA) lxc.service $(DESTDIR)$(SYSTEMD_UNIT_DIR)/
+@INIT_SCRIPT_SYSTEMD_TRUE@	$(INSTALL_DATA) lxc.service lxc-net.service $(DESTDIR)$(SYSTEMD_UNIT_DIR)/
 
 @INIT_SCRIPT_SYSTEMD_TRUE@uninstall-systemd:
 @INIT_SCRIPT_SYSTEMD_TRUE@	rm -f $(DESTDIR)$(SYSTEMD_UNIT_DIR)/lxc.service
+@INIT_SCRIPT_SYSTEMD_TRUE@	rm -f $(DESTDIR)$(SYSTEMD_UNIT_DIR)/lxc-net.service
 @INIT_SCRIPT_SYSTEMD_TRUE@	rmdir $(DESTDIR)$(SYSTEMD_UNIT_DIR) || :
 
 @INIT_SCRIPT_SYSTEMD_TRUE@install-data-local: install-systemd

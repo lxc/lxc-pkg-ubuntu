@@ -53,6 +53,7 @@
 
 #define CGM_SUPPORTS_GET_ABS 3
 #define CGM_SUPPORTS_NAMED 4
+#define CGM_SUPPORTS_MULT_CONTROLLERS 10
 
 #ifdef HAVE_CGMANAGER
 lxc_log_define(lxc_cgmanager, lxc);
@@ -114,7 +115,7 @@ static int32_t api_version;
 
 static struct cgroup_ops cgmanager_ops;
 static int nr_subsystems;
-static char **subsystems;
+static char **subsystems, **subsystems_inone;
 static bool dbus_threads_initialized = false;
 static void cull_user_controllers(void);
 
@@ -181,6 +182,11 @@ static bool cgm_dbus_connect(void)
 	return true;
 }
 
+static inline bool cgm_supports_multiple_controllers(void)
+{
+	return api_version >= CGM_SUPPORTS_MULT_CONTROLLERS;
+}
+
 static int send_creds(int sock, int rpid, int ruid, int rgid)
 {
 	struct msghdr msg = { 0 };
@@ -242,15 +248,19 @@ static bool lxc_cgmanager_escape(void)
 {
 	bool ret = true;
 	pid_t me = getpid();
+	char **slist = subsystems;
 	int i;
 
-	for (i = 0; i < nr_subsystems; i++) {
+	if (cgm_supports_multiple_controllers())
+		slist = subsystems_inone;
+
+	for (i = 0; slist[i]; i++) {
 		if (cgmanager_move_pid_abs_sync(NULL, cgroup_manager,
-					subsystems[i], "/", me) != 0) {
+					slist[i], "/", me) != 0) {
 			NihError *nerr;
 			nerr = nih_error_get();
 			ERROR("call to cgmanager_move_pid_abs_sync(%s) failed: %s",
-					subsystems[i], nerr->message);
+					slist[i], nerr->message);
 			nih_free(nerr);
 			ret = false;
 			break;
@@ -261,18 +271,15 @@ static bool lxc_cgmanager_escape(void)
 }
 
 struct chown_data {
-	const char *controller;
 	const char *cgroup_path;
 	uid_t origuid;
 };
 
 static int do_chown_cgroup(const char *controller, const char *cgroup_path,
-		uid_t origuid)
+		uid_t newuid)
 {
 	int sv[2] = {-1, -1}, optval = 1, ret = -1;
 	char buf[1];
-
-	uid_t caller_nsuid = get_ns_uid(origuid);
 
 	if (socketpair(AF_UNIX, SOCK_DGRAM, 0, sv) < 0) {
 		SYSERROR("Error creating socketpair");
@@ -321,7 +328,7 @@ static int do_chown_cgroup(const char *controller, const char *cgroup_path,
 		ERROR("Error getting reply from server over socketpair");
 		goto out;
 	}
-	if (send_creds(sv[0], getpid(), caller_nsuid, 0)) {
+	if (send_creds(sv[0], getpid(), newuid, 0)) {
 		SYSERROR("%s: Error sending pid over SCM_CREDENTIAL", __func__);
 		goto out;
 	}
@@ -343,6 +350,9 @@ out:
 static int chown_cgroup_wrapper(void *data)
 {
 	struct chown_data *arg = data;
+	char **slist = subsystems;
+	int i, ret = -1;
+	uid_t destuid;
 
 	if (setresgid(0,0,0) < 0)
 		SYSERROR("Failed to setgid to 0");
@@ -350,7 +360,27 @@ static int chown_cgroup_wrapper(void *data)
 		SYSERROR("Failed to setuid to 0");
 	if (setgroups(0, NULL) < 0)
 		SYSERROR("Failed to clear groups");
-	return do_chown_cgroup(arg->controller, arg->cgroup_path, arg->origuid);
+	cgm_dbus_disconnect();
+	if (!cgm_dbus_connect()) {
+		ERROR("Error connecting to cgroup manager");
+		return -1;
+	}
+	destuid = get_ns_uid(arg->origuid);
+
+	if (cgm_supports_multiple_controllers())
+		slist = subsystems_inone;
+
+	for (i = 0; slist[i]; i++) {
+		if (do_chown_cgroup(slist[i], arg->cgroup_path, destuid) < 0) {
+			ERROR("Failed to chown %s:%s to container root",
+				slist[i], arg->cgroup_path);
+			goto fail;
+		}
+	}
+	ret = 0;
+fail:
+	cgm_dbus_disconnect();
+	return ret;
 }
 
 /* Internal helper.  Must be called with the cgmanager dbus socket open */
@@ -369,31 +399,43 @@ static bool lxc_cgmanager_chmod(const char *controller,
 }
 
 /* Internal helper.  Must be called with the cgmanager dbus socket open */
-static bool chown_cgroup(const char *controller, const char *cgroup_path,
-			struct lxc_conf *conf)
+static bool chown_cgroup(const char *cgroup_path, struct lxc_conf *conf)
 {
 	struct chown_data data;
+	char **slist = subsystems;
+	int i;
 
 	if (lxc_list_empty(&conf->id_map))
 		/* If there's no mapping then we don't need to chown */
 		return true;
 
-	data.controller = controller;
 	data.cgroup_path = cgroup_path;
 	data.origuid = geteuid();
 
+	/* Unpriv users can't chown it themselves, so chown from
+	 * a child namespace mapping both our own and the target uid
+	 */
 	if (userns_exec_1(conf, chown_cgroup_wrapper, &data) < 0) {
 		ERROR("Error requesting cgroup chown in new namespace");
 		return false;
 	}
 
-	/* now chmod 775 the directory else the container cannot create cgroups */
-	if (!lxc_cgmanager_chmod(controller, cgroup_path, "", 0775))
-		return false;
-	if (!lxc_cgmanager_chmod(controller, cgroup_path, "tasks", 0775))
-		return false;
-	if (!lxc_cgmanager_chmod(controller, cgroup_path, "cgroup.procs", 0775))
-		return false;
+	/*
+	 * Now chmod 775 the directory else the container cannot create cgroups.
+	 * This can't be done in the child namespace because it only group-owns
+	 * the cgroup
+	 */
+	if (cgm_supports_multiple_controllers())
+		slist = subsystems_inone;
+
+	for (i = 0; slist[i]; i++) {
+		if (!lxc_cgmanager_chmod(slist[i], cgroup_path, "", 0775))
+			return false;
+		if (!lxc_cgmanager_chmod(slist[i], cgroup_path, "tasks", 0775))
+			return false;
+		if (!lxc_cgmanager_chmod(slist[i], cgroup_path, "cgroup.procs", 0775))
+			return false;
+	}
 
 	return true;
 }
@@ -457,6 +499,7 @@ err1:
 static void cgm_destroy(void *hdata)
 {
 	struct cgm_data *d = hdata;
+	char **slist = subsystems;
 	int i;
 
 	if (!d || !d->cgroup_path)
@@ -465,8 +508,11 @@ static void cgm_destroy(void *hdata)
 		ERROR("Error connecting to cgroup manager");
 		return;
 	}
-	for (i = 0; i < nr_subsystems; i++)
-		cgm_remove_cgroup(subsystems[i], d->cgroup_path);
+
+	if (cgm_supports_multiple_controllers())
+		slist = subsystems_inone;
+	for (i = 0; slist[i]; i++)
+		cgm_remove_cgroup(slist[i], d->cgroup_path);
 
 	free(d->name);
 	if (d->cgroup_path)
@@ -482,13 +528,18 @@ static void cgm_destroy(void *hdata)
 static inline void cleanup_cgroups(char *path)
 {
 	int i;
-	for (i = 0; i < nr_subsystems; i++)
-		cgm_remove_cgroup(subsystems[i], path);
+	char **slist = subsystems;
+
+	if (cgm_supports_multiple_controllers())
+		slist = subsystems_inone;
+	for (i = 0; slist[i]; i++)
+		cgm_remove_cgroup(slist[i], path);
 }
 
 static inline bool cgm_create(void *hdata)
 {
 	struct cgm_data *d = hdata;
+	char **slist = subsystems;
 	int i, index=0, baselen, ret;
 	int32_t existed;
 	char result[MAXPATHLEN], *tmp, *cgroup_path;
@@ -524,9 +575,13 @@ again:
 			goto bad;
 	}
 	existed = 0;
-	for (i = 0; i < nr_subsystems; i++) {
-		if (!lxc_cgmanager_create(subsystems[i], tmp, &existed)) {
-			ERROR("Error creating cgroup %s:%s", subsystems[i], result);
+
+	if (cgm_supports_multiple_controllers())
+		slist = subsystems_inone;
+
+	for (i = 0; slist[i]; i++) {
+		if (!lxc_cgmanager_create(slist[i], tmp, &existed)) {
+			ERROR("Error creating cgroup %s:%s", slist[i], result);
 			cleanup_cgroups(tmp);
 			goto bad;
 		}
@@ -544,7 +599,6 @@ again:
 	return true;
 
 next:
-	cleanup_cgroups(tmp);
 	index++;
 	goto again;
 bad:
@@ -585,10 +639,14 @@ static bool lxc_cgmanager_enter(pid_t pid, const char *controller,
 /* Internal helper, must be called with cgmanager dbus socket open */
 static bool do_cgm_enter(pid_t pid, const char *cgroup_path, bool abs)
 {
+	char **slist = subsystems;
 	int i;
 
-	for (i = 0; i < nr_subsystems; i++) {
-		if (!lxc_cgmanager_enter(pid, subsystems[i], cgroup_path, abs))
+	if (cgm_supports_multiple_controllers())
+		slist = subsystems_inone;
+
+	for (i = 0; slist[i]; i++) {
+		if (!lxc_cgmanager_enter(pid, slist[i], cgroup_path, abs))
 			return false;
 	}
 	return true;
@@ -794,32 +852,38 @@ static int cgm_get(const char *filename, char *value, size_t len, const char *na
 		close(p[1]);
 		return -1;
 	}
-	if (!pid)
+	if (!pid) // do_cgm_get exits
 		do_cgm_get(name, lxcpath, filename, p[1], len && value);
 	close(p[1]);
 	ret = read(p[0], &newlen, sizeof(newlen));
 	if (ret != sizeof(newlen)) {
 		close(p[0]);
-		return -1;
+		ret = -1;
+		goto out;
 	}
 	if (!len || !value) {
 		close(p[0]);
-		return newlen;
+		ret = newlen;
+		goto out;
 	}
 	memset(value, 0, len);
 	if (newlen < 0) { // child is reporting an error
 		close(p[0]);
-		return -1;
+		ret = -1;
+		goto out;
 	}
 	if (newlen == 0) { // empty read
 		close(p[0]);
-		return 0;
+		ret = 0;
+		goto out;
 	}
 	readlen = newlen > len ? len : newlen;
 	ret = read(p[0], value, readlen);
 	close(p[0]);
-	if (ret != readlen)
-		return -1;
+	if (ret != readlen) {
+		ret = -1;
+		goto out;
+	}
 	if (newlen >= len) {
 		value[len-1] = '\0';
 		newlen = len-1;
@@ -828,7 +892,11 @@ static int cgm_get(const char *filename, char *value, size_t len, const char *na
 		value[newlen++] = '\n';
 		value[newlen] = '\0';
 	}
-	return newlen;
+	ret = newlen;
+out:
+	if (wait_for_pid(pid))
+		WARN("do_cgm_get exited with error");
+	return ret;
 }
 
 static void do_cgm_set(const char *name, const char *lxcpath, const char *filename, const char *value, int outp)
@@ -920,11 +988,13 @@ static int cgm_set(const char *filename, const char *value, const char *name, co
 		close(p[0]);
 		return -1;
 	}
-	if (!pid)
+	if (!pid) // do_cgm_set exits
 		do_cgm_set(name, lxcpath, filename, value, p[1]);
 	close(p[1]);
 	ret = read(p[0], &v, sizeof(v));
 	close(p[0]);
+	if (wait_for_pid(pid))
+		WARN("do_cgm_set exited with error");
 	if (ret != sizeof(v) || !v)
 		return -1;
 	return 0;
@@ -963,6 +1033,12 @@ static bool collect_subsytems(void)
 	if (subsystems) // already initialized
 		return true;
 
+	subsystems_inone = malloc(2 * sizeof(char *));
+	if (!subsystems_inone)
+		return false;
+	subsystems_inone[0] = "all";
+	subsystems_inone[1] = NULL;
+
 	f = fopen_cloexec("/proc/self/cgroup", "r");
 	if (!f) {
 		f = fopen_cloexec("/proc/1/cgroup", "r");
@@ -989,12 +1065,13 @@ static bool collect_subsytems(void)
 		for (p = strtok_r(slist, ",", &saveptr);
 				p;
 				p = strtok_r(NULL, ",", &saveptr)) {
-			tmp = realloc(subsystems, (nr_subsystems+1)*sizeof(char *));
+			tmp = realloc(subsystems, (nr_subsystems+2)*sizeof(char *));
 			if (!tmp)
 				goto out_free;
 
 			subsystems = tmp;
 			tmp[nr_subsystems] = strdup(p);
+			tmp[nr_subsystems+1] = NULL;
 			if (!tmp[nr_subsystems])
 				goto out_free;
 			nr_subsystems++;
@@ -1122,7 +1199,6 @@ out:
 static bool cgm_chown(void *hdata, struct lxc_conf *conf)
 {
 	struct cgm_data *d = hdata;
-	int i;
 
 	if (!d || !d->cgroup_path)
 		return false;
@@ -1130,11 +1206,8 @@ static bool cgm_chown(void *hdata, struct lxc_conf *conf)
 		ERROR("Error connecting to cgroup manager");
 		return false;
 	}
-	for (i = 0; i < nr_subsystems; i++) {
-		if (!chown_cgroup(subsystems[i], d->cgroup_path, conf))
-			WARN("Failed to chown %s:%s to container root",
-				subsystems[i], d->cgroup_path);
-	}
+	if (!chown_cgroup(d->cgroup_path, conf))
+		WARN("Failed to chown %s to container root", d->cgroup_path);
 	cgm_dbus_disconnect();
 	return true;
 }
@@ -1240,6 +1313,7 @@ static struct cgroup_ops cgmanager_ops = {
 	.setup_limits = cgm_setup_limits,
 	.name = "cgmanager",
 	.chown = cgm_chown,
+	.parse_existing_cgroups = NULL,
 	.attach = cgm_attach,
 	.mount_cgroup = cgm_mount_cgroup,
 	.nrtasks = cgm_get_nrtasks,

@@ -86,12 +86,13 @@ subdir = doc/ja
 DIST_COMMON = $(srcdir)/Makefile.in $(srcdir)/Makefile.am \
 	$(srcdir)/lxc-attach.sgml.in $(srcdir)/lxc-autostart.sgml.in \
 	$(srcdir)/lxc-cgroup.sgml.in $(srcdir)/lxc-checkconfig.sgml.in \
-	$(srcdir)/lxc-clone.sgml.in $(srcdir)/lxc-config.sgml.in \
-	$(srcdir)/lxc-console.sgml.in $(srcdir)/lxc-create.sgml.in \
-	$(srcdir)/lxc-destroy.sgml.in $(srcdir)/lxc-device.sgml.in \
-	$(srcdir)/lxc-execute.sgml.in $(srcdir)/lxc-freeze.sgml.in \
-	$(srcdir)/lxc-info.sgml.in $(srcdir)/lxc-ls.sgml.in \
-	$(srcdir)/lxc-monitor.sgml.in $(srcdir)/lxc-snapshot.sgml.in \
+	$(srcdir)/lxc-checkpoint.sgml.in $(srcdir)/lxc-clone.sgml.in \
+	$(srcdir)/lxc-config.sgml.in $(srcdir)/lxc-console.sgml.in \
+	$(srcdir)/lxc-create.sgml.in $(srcdir)/lxc-destroy.sgml.in \
+	$(srcdir)/lxc-device.sgml.in $(srcdir)/lxc-execute.sgml.in \
+	$(srcdir)/lxc-freeze.sgml.in $(srcdir)/lxc-info.sgml.in \
+	$(srcdir)/lxc-ls.sgml.in $(srcdir)/lxc-monitor.sgml.in \
+	$(srcdir)/lxc-snapshot.sgml.in \
 	$(srcdir)/lxc-start-ephemeral.sgml.in \
 	$(srcdir)/lxc-start.sgml.in $(srcdir)/lxc-stop.sgml.in \
 	$(srcdir)/lxc-top.sgml.in $(srcdir)/lxc-unfreeze.sgml.in \
@@ -110,15 +111,16 @@ am__configure_deps = $(am__aclocal_m4_deps) $(CONFIGURE_DEPENDENCIES) \
 mkinstalldirs = $(install_sh) -d
 CONFIG_HEADER = $(top_builddir)/src/config.h
 CONFIG_CLEAN_FILES = lxc-attach.sgml lxc-autostart.sgml \
-	lxc-cgroup.sgml lxc-checkconfig.sgml lxc-clone.sgml \
-	lxc-config.sgml lxc-console.sgml lxc-create.sgml \
-	lxc-destroy.sgml lxc-device.sgml lxc-execute.sgml \
-	lxc-freeze.sgml lxc-info.sgml lxc-ls.sgml lxc-monitor.sgml \
-	lxc-snapshot.sgml lxc-start-ephemeral.sgml lxc-start.sgml \
-	lxc-stop.sgml lxc-top.sgml lxc-unfreeze.sgml lxc-unshare.sgml \
-	lxc-user-nic.sgml lxc-usernsexec.sgml lxc-wait.sgml \
-	lxc.conf.sgml lxc.container.conf.sgml lxc.system.conf.sgml \
-	lxc-usernet.sgml lxc.sgml common_options.sgml see_also.sgml
+	lxc-cgroup.sgml lxc-checkconfig.sgml lxc-checkpoint.sgml \
+	lxc-clone.sgml lxc-config.sgml lxc-console.sgml \
+	lxc-create.sgml lxc-destroy.sgml lxc-device.sgml \
+	lxc-execute.sgml lxc-freeze.sgml lxc-info.sgml lxc-ls.sgml \
+	lxc-monitor.sgml lxc-snapshot.sgml lxc-start-ephemeral.sgml \
+	lxc-start.sgml lxc-stop.sgml lxc-top.sgml lxc-unfreeze.sgml \
+	lxc-unshare.sgml lxc-user-nic.sgml lxc-usernsexec.sgml \
+	lxc-wait.sgml lxc.conf.sgml lxc.container.conf.sgml \
+	lxc.system.conf.sgml lxc-usernet.sgml lxc.sgml \
+	common_options.sgml see_also.sgml
 CONFIG_CLEAN_VPATH_FILES =
 AM_V_P = $(am__v_P_@AM_V@)
 am__v_P_ = $(am__v_P_@AM_DEFAULT_V@)
@@ -292,7 +294,7 @@ LXCROOTFSMOUNT = @LXCROOTFSMOUNT@
 LXCTEMPLATECONFIG = @LXCTEMPLATECONFIG@
 LXCTEMPLATEDIR = @LXCTEMPLATEDIR@
 LXC_DEFAULT_CONFIG = @LXC_DEFAULT_CONFIG@
-LXC_DISTRO_CONF = @LXC_DISTRO_CONF@
+LXC_DISTRO_SYSCONF = @LXC_DISTRO_SYSCONF@
 LXC_GENERATE_DATE = @LXC_GENERATE_DATE@
 LXC_GLOBAL_CONF = @LXC_GLOBAL_CONF@
 LXC_USERNIC_CONF = @LXC_USERNIC_CONF@
@@ -339,6 +341,7 @@ SET_MAKE = @SET_MAKE@
 SHELL = @SHELL@
 STRIP = @STRIP@
 SYSCONFDIR = @SYSCONFDIR@
+SYSTEMD_UNIT_DIR = @SYSTEMD_UNIT_DIR@
 VERSION = @VERSION@
 abs_builddir = @abs_builddir@
 abs_srcdir = @abs_srcdir@
@@ -403,11 +406,11 @@ EXTRA_DIST = \
 
 @ENABLE_DOCBOOK_TRUE@man_MANS = lxc-attach.1 lxc-autostart.1 \
 @ENABLE_DOCBOOK_TRUE@	lxc-cgroup.1 lxc-checkconfig.1 \
-@ENABLE_DOCBOOK_TRUE@	lxc-clone.1 lxc-config.1 lxc-console.1 \
-@ENABLE_DOCBOOK_TRUE@	lxc-create.1 lxc-destroy.1 lxc-execute.1 \
-@ENABLE_DOCBOOK_TRUE@	lxc-freeze.1 lxc-info.1 lxc-monitor.1 \
-@ENABLE_DOCBOOK_TRUE@	lxc-snapshot.1 lxc-start.1 lxc-stop.1 \
-@ENABLE_DOCBOOK_TRUE@	lxc-unfreeze.1 lxc-unshare.1 \
+@ENABLE_DOCBOOK_TRUE@	lxc-checkpoint.1 lxc-clone.1 lxc-config.1 \
+@ENABLE_DOCBOOK_TRUE@	lxc-console.1 lxc-create.1 lxc-destroy.1 \
+@ENABLE_DOCBOOK_TRUE@	lxc-execute.1 lxc-freeze.1 lxc-info.1 \
+@ENABLE_DOCBOOK_TRUE@	lxc-monitor.1 lxc-snapshot.1 lxc-start.1 \
+@ENABLE_DOCBOOK_TRUE@	lxc-stop.1 lxc-unfreeze.1 lxc-unshare.1 \
 @ENABLE_DOCBOOK_TRUE@	lxc-user-nic.1 lxc-usernsexec.1 \
 @ENABLE_DOCBOOK_TRUE@	lxc-wait.1 lxc.conf.5 \
 @ENABLE_DOCBOOK_TRUE@	lxc.container.conf.5 lxc.system.conf.5 \
@@ -453,6 +456,8 @@ lxc-autostart.sgml: $(top_builddir)/config.status $(srcdir)/lxc-autostart.sgml.i
 lxc-cgroup.sgml: $(top_builddir)/config.status $(srcdir)/lxc-cgroup.sgml.in
 	cd $(top_builddir) && $(SHELL) ./config.status $(subdir)/$@
 lxc-checkconfig.sgml: $(top_builddir)/config.status $(srcdir)/lxc-checkconfig.sgml.in
+	cd $(top_builddir) && $(SHELL) ./config.status $(subdir)/$@
+lxc-checkpoint.sgml: $(top_builddir)/config.status $(srcdir)/lxc-checkpoint.sgml.in
 	cd $(top_builddir) && $(SHELL) ./config.status $(subdir)/$@
 lxc-clone.sgml: $(top_builddir)/config.status $(srcdir)/lxc-clone.sgml.in
 	cd $(top_builddir) && $(SHELL) ./config.status $(subdir)/$@

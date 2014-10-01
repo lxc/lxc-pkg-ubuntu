@@ -49,10 +49,12 @@ static __thread char *log_fname = NULL;
  */
 static __thread int lxc_logfile_specified = 0;
 static __thread int lxc_loglevel_specified = 0;
+static __thread int lxc_quiet_specified = 0;
 #else
 int lxc_log_fd = -1;
 static char log_prefix[LXC_LOG_PREFIX_SIZE] = "lxc";
 static char *log_fname = NULL;
+static int lxc_quiet_specified = 0;
 /* command line values for logfile or logpriority should always override
  * values from the configuration file or defaults
  */
@@ -70,6 +72,7 @@ static int log_append_stderr(const struct lxc_log_appender *appender,
 		return 0;
 
 	fprintf(stderr, "%s: ", log_prefix);
+	fprintf(stderr, "%s: %s: %d ", event->locinfo->file, event->locinfo->func, event->locinfo->line);
 	vfprintf(stderr, event->fmt, *event->vap);
 	fprintf(stderr, "\n");
 	return 0;
@@ -88,12 +91,14 @@ static int log_append_logfile(const struct lxc_log_appender *appender,
 
 	ms = event->timestamp.tv_usec / 1000;
 	n = snprintf(buffer, sizeof(buffer),
-		     "%15s %10ld.%03d %-8s %s - ",
+		     "%15s %10ld.%03d %-8s %s - %s:%s:%d - ",
 		     log_prefix,
 		     event->timestamp.tv_sec,
 		     ms,
 		     lxc_log_priority_to_string(event->priority),
-		     event->category);
+		     event->category,
+		     event->locinfo->file, event->locinfo->func,
+		     event->locinfo->line);
 
 	n += vsnprintf(buffer + n, sizeof(buffer) - n, event->fmt,
 		       *event->vap);
@@ -316,10 +321,12 @@ extern int lxc_log_init(const char *name, const char *file,
 		lxc_priority = lxc_log_priority_to_int(priority);
 
 	lxc_log_category_lxc.priority = lxc_priority;
-	lxc_log_category_lxc.appender = &log_appender_logfile;
 
-	if (!quiet)
-		lxc_log_category_lxc.appender->next = &log_appender_stderr;
+	if (!lxc_quiet_specified) {
+		lxc_log_category_lxc.appender = &log_appender_logfile;
+		if (!quiet)
+			lxc_log_category_lxc.appender->next = &log_appender_stderr;
+	}
 
 	if (prefix)
 		lxc_log_set_prefix(prefix);
@@ -329,11 +336,6 @@ extern int lxc_log_init(const char *name, const char *file,
 			return 0;
 		ret = __lxc_log_set_file(file, 1);
 	} else {
-
-		/* For now, unprivileged containers have to set -l to get logging */
-		if (geteuid())
-			return 0;
-
 		/* if no name was specified, there nothing to do */
 		if (!name)
 			return 0;
@@ -343,8 +345,8 @@ extern int lxc_log_init(const char *name, const char *file,
 		if (!lxcpath)
 			lxcpath = LOGPATH;
 
-		/* try LOGPATH if lxcpath is the default */
-		if (strcmp(lxcpath, lxc_global_config_value("lxc.lxcpath")) == 0)
+		/* try LOGPATH if lxcpath is the default for the privileged containers */
+		if (!geteuid() && strcmp(lxcpath, lxc_global_config_value("lxc.lxcpath")) == 0)
 			ret = _lxc_log_set_file(name, NULL, 0);
 
 		/* try in lxcpath */
@@ -443,4 +445,6 @@ extern void lxc_log_options_no_override()
 
 	if (lxc_log_get_level() != LXC_LOG_PRIORITY_NOTSET)
 		lxc_loglevel_specified = 1;
+
+	lxc_quiet_specified = 1;
 }

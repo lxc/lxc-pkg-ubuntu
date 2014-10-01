@@ -48,6 +48,7 @@
 #include "nl.h"
 #include "network.h"
 #include "conf.h"
+#include "utils.h"
 
 #if HAVE_IFADDRS_H
 #include <ifaddrs.h>
@@ -1170,6 +1171,39 @@ int lxc_ipv6_dest_add(int ifindex, struct in6_addr *dest)
 	return ip_route_dest_add(AF_INET6, ifindex, dest);
 }
 
+static bool is_ovs_bridge(const char *bridge)
+{
+	char brdirname[22 + IFNAMSIZ + 1] = {0};
+	struct stat sb;
+
+	snprintf(brdirname, 22 +IFNAMSIZ + 1, "/sys/class/net/%s/bridge", bridge);
+	if (stat(brdirname, &sb) == -1 && errno == ENOENT)
+		return true;
+	return false;
+}
+
+static int attach_to_ovs_bridge(const char *bridge, const char *nic)
+{
+	pid_t pid;
+	char *cmd;
+
+	cmd = on_path("ovs-vsctl", NULL);
+	if (!cmd)
+		return -1;
+	free(cmd);
+
+	pid = fork();
+	if (pid < 0)
+		return -1;
+	if (pid > 0)
+		return wait_for_pid(pid);
+
+	if (execlp("ovs-vsctl", "ovs-vsctl", "add-port", bridge, nic, NULL))
+		exit(1);
+	// not reached
+	exit(1);
+}
+
 /*
  * There is a lxc_bridge_attach, but no need of a bridge detach
  * as automatically done by kernel when a netdev is deleted.
@@ -1185,6 +1219,9 @@ int lxc_bridge_attach(const char *bridge, const char *ifname)
 	index = if_nametoindex(ifname);
 	if (!index)
 		return -EINVAL;
+
+	if (is_ovs_bridge(bridge))
+		return attach_to_ovs_bridge(bridge, ifname);
 
 	fd = socket(AF_INET, SOCK_STREAM, 0);
 	if (fd < 0)
