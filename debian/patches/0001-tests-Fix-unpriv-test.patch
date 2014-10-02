@@ -1,0 +1,46 @@
+From b39aecd3bf5677cd5f392e1dd81be640a935d27f Mon Sep 17 00:00:00 2001
+From: =?UTF-8?q?St=C3=A9phane=20Graber?= <stgraber@ubuntu.com>
+Date: Thu, 2 Oct 2014 14:59:35 -0400
+Subject: tests: Fix unpriv test
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+Don't use $TUSER as it's not defined. Also don't include
+lxc-test-usernic in extra_DIST.
+
+Signed-off-by: Stéphane Graber <stgraber@ubuntu.com>
+---
+ src/tests/Makefile.am         | 1 -
+ src/tests/lxc-test-usernic.in | 6 +++---
+ 2 files changed, 3 insertions(+), 4 deletions(-)
+
+diff --git a/src/tests/Makefile.am b/src/tests/Makefile.am
+index 9840aa3..495f1cf 100644
+--- a/src/tests/Makefile.am
++++ b/src/tests/Makefile.am
+@@ -81,7 +81,6 @@ EXTRA_DIST = \
+ 	lxc-test-cloneconfig \
+ 	lxc-test-ubuntu \
+ 	lxc-test-unpriv \
+-	lxc-test-usernic \
+ 	may_control.c \
+ 	saveconfig.c \
+ 	shutdowntest.c \
+diff --git a/src/tests/lxc-test-usernic.in b/src/tests/lxc-test-usernic.in
+index 8d78fea..75dd984 100755
+--- a/src/tests/lxc-test-usernic.in
++++ b/src/tests/lxc-test-usernic.in
+@@ -85,9 +85,9 @@ lxc.id_map = g 0 910000 10000
+ EOF
+ 
+ if which cgm >/dev/null 2>&1; then
+-	cgm create all $TUSER
+-	cgm chown all $TUSER $(id -u $TUSER) $(id -g $TUSER)
+-	cgm movepid all $TUSER $$
++	cgm create all usernic-user
++	cgm chown all usernic-user $(id -u usernic-user) $(id -g usernic-user)
++	cgm movepid all usernic-user $$
+ elif [ -e /sys/fs/cgroup/cgmanager/sock ]; then
+ 	for d in $(cut -d : -f 2 /proc/self/cgroup); do
+ 		dbus-send --print-reply --address=unix:path=/sys/fs/cgroup/cgmanager/sock \
