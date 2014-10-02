@@ -1,3 +1,9 @@
+lxc (1.1.0~alpha2-0ubuntu2) utopic; urgency=medium
+
+  * Cherry-pick usptream bugfix for lxc-usernic test.
+
+ -- Stéphane Graber <stgraber@ubuntu.com>  Thu, 02 Oct 2014 15:01:56 -0400
+
 lxc (1.1.0~alpha2-0ubuntu1) utopic; urgency=medium
 
   * New upstream release (1.1.0~alpha2) (LP: #1376437)
