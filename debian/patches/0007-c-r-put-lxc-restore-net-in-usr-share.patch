@@ -1,0 +1,71 @@
+From aa432b9f0420c6fb598df298e84ea2a706fdeb65 Mon Sep 17 00:00:00 2001
+From: Tycho Andersen <tycho.andersen@canonical.com>
+Date: Wed, 22 Oct 2014 22:25:02 +0000
+Subject: c/r: put lxc-restore-net in /usr/share
+
+On restore, we pass criu a script to manage the network interfaces (i.e. the
+full path to lxc-restore-net), which we previously installed into
+/var/lib/<tuple>/lxc. However, this is also the directory that is the default
+for use in mounting the rootfs locally before pivot_root()ing. So, we mounted
+the rootfs and then happliy called criu, pointing it to this directory which
+didn't have lxc-restore-net any more, it just had the container's rootfs.
+Instead, we should put lxc-restore-net somewhere else, so that criu can still
+see it after the rootfs is mounted.
+
+Signed-off-by: Tycho Andersen <tycho.andersen@canonical.com>
+Acked-by: Serge E. Hallyn <serge.hallyn@ubuntu.com>
+---
+ configure.ac           | 3 +++
+ src/lxc/Makefile.am    | 5 +++--
+ src/lxc/lxccontainer.c | 2 +-
+ 3 files changed, 7 insertions(+), 3 deletions(-)
+
+diff --git a/configure.ac b/configure.ac
+index 806b4ff..5f9774b 100644
+--- a/configure.ac
++++ b/configure.ac
+@@ -533,6 +533,9 @@ AS_AC_EXPAND(LOGPATH, "$with_log_path")
+ AS_AC_EXPAND(RUNTIME_PATH, "$with_runtime_path")
+ AC_SUBST(DEFAULT_CGROUP_PATTERN, ["$with_cgroup_pattern"])
+ 
++# We need the install path so criu knows where to reference the hook scripts.
++AC_DEFINE_UNQUOTED([DATADIR], "$DATADIR", ["Prefix for shared files."])
++
+ # Check for some standard kernel headers
+ AC_CHECK_HEADERS([linux/unistd.h linux/netlink.h linux/genetlink.h],
+ 				[],
+diff --git a/src/lxc/Makefile.am b/src/lxc/Makefile.am
+index da3f78e..3c9834f 100644
+--- a/src/lxc/Makefile.am
++++ b/src/lxc/Makefile.am
+@@ -203,8 +203,6 @@ sbin_PROGRAMS = init.lxc
+ pkglibexec_PROGRAMS = \
+ 	lxc-monitord \
+ 	lxc-user-nic
+-pkglibexec_SCRIPTS = \
+-	lxc-restore-net
+ 
+ AM_LDFLAGS = -Wl,-E
+ if ENABLE_RPATH
+@@ -263,5 +261,8 @@ install-exec-local: install-soPROGRAMS
+ install-exec-hook:
+ 	chmod u+s $(DESTDIR)$(libexecdir)/lxc/lxc-user-nic
+ 
++install-data-local:
++	install -c -m 755 lxc-restore-net $(DESTDIR)$(datadir)/lxc
++
+ uninstall-local:
+ 	$(RM) $(DESTDIR)$(libdir)/liblxc.so*
+diff --git a/src/lxc/lxccontainer.c b/src/lxc/lxccontainer.c
+index 4f90f35..b5c6331 100644
+--- a/src/lxc/lxccontainer.c
++++ b/src/lxc/lxccontainer.c
+@@ -3574,7 +3574,7 @@ static void exec_criu(struct criu_opts *opts)
+ 	DECLARE_ARG("--force-irmap");
+ 	DECLARE_ARG("--manage-cgroups");
+ 	DECLARE_ARG("--action-script");
+-	DECLARE_ARG(LIBEXECDIR "/lxc/lxc-restore-net");
++	DECLARE_ARG(DATADIR "/lxc/lxc-restore-net");
+ 	DECLARE_ARG("-D");
+ 	DECLARE_ARG(opts->directory);
+ 	DECLARE_ARG("-o");
