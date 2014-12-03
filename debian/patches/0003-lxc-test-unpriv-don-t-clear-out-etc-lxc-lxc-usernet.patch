@@ -1,0 +1,23 @@
+From 6d58a1ec69f4d8e781183e599994868e4c7a9af2 Mon Sep 17 00:00:00 2001
+From: Serge Hallyn <serge.hallyn@ubuntu.com>
+Date: Wed, 8 Oct 2014 11:31:52 -0500
+Subject: lxc-test-unpriv: don't clear out /etc/lxc/lxc-usernet
+
+Signed-off-by: Serge Hallyn <serge.hallyn@ubuntu.com>
+---
+ src/tests/lxc-test-unpriv | 2 +-
+ 1 file changed, 1 insertion(+), 1 deletion(-)
+
+diff --git a/src/tests/lxc-test-unpriv b/src/tests/lxc-test-unpriv
+index 6235901..a27857c 100755
+--- a/src/tests/lxc-test-unpriv
++++ b/src/tests/lxc-test-unpriv
+@@ -73,7 +73,7 @@ deluser $TUSER && rm -Rf $HDIR || true
+ useradd $TUSER
+ 
+ mkdir -p $HDIR
+-echo "$TUSER veth lxcbr0 2" > /etc/lxc/lxc-usernet
++echo "$TUSER veth lxcbr0 2" >> /etc/lxc/lxc-usernet
+ sed -i '/^lxcunpriv:/d' /etc/subuid /etc/subgid
+ 
+ usermod -v 910000-919999 -w 910000-919999 $TUSER

@@ -1,1 +1,6 @@
 0001-tests-Fix-unpriv-test.patch
+0002-cgmanager-several-fixes.patch
+0003-lxc-test-unpriv-don-t-clear-out-etc-lxc-lxc-usernet.patch
+0004-fix-lxc.mount.auto-clearing.patch
+0005-lxc-test-unpriv-test-for-different-cgroups-per-subsy.patch
+0006-lxc-test-apparmor-mount-don-t-clear-out-etc-lxc-lxc-.patch
