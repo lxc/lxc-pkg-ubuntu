@@ -1,3 +1,10 @@
+lxc (1.1.0~alpha3-0ubuntu1) vivid; urgency=medium
+
+  * New upstream release (1.1.0~alpha3)
+    - Drop all patches, they are now all upstream.
+
+ -- Stéphane Graber <stgraber@ubuntu.com>  Wed, 03 Dec 2014 15:31:34 -0500
+
 lxc (1.1.0~alpha2-0ubuntu7) vivid; urgency=medium
 
   * Cherrypick 0010-apparmor-check-for-mount-feature-at-a-better-time.patch
