@@ -1,3 +1,10 @@
+lxc (1.1.0~alpha2-0ubuntu7) vivid; urgency=medium
+
+  * Cherrypick 0010-apparmor-check-for-mount-feature-at-a-better-time.patch
+    from upstream to fix startup failure with certain setups (LP: #1386840)
+
+ -- Serge Hallyn <serge.hallyn@ubuntu.com>  Tue, 11 Nov 2014 14:54:44 -0600
+
 lxc (1.1.0~alpha2-0ubuntu6) vivid; urgency=medium
 
   * 0009-attach-dont-ignore-sigint-sigkill-if-stdin-is-redirected: cherrypick
