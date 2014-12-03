@@ -98,18 +98,6 @@ for testbin in /usr/bin/lxc-test-*; do
             ignore "$STRING" && continue
     fi
 
-    # Skip some tests on archs not supported by lxc-download
-    if [ "$(dpkg --print-architecture)" = "ppc64el" ]; then
-        [ "$testbin" = "/usr/bin/lxc-test-autostart" ] && \
-            ignore "$STRING" && continue
-
-        [ "$testbin" = "/usr/bin/lxc-test-unpriv" ] && \
-            ignore "$STRING" && continue
-
-        [ "$testbin" = "/usr/bin/lxc-test-usernic" ] && \
-            ignore "$STRING" && continue
-    fi
-
     OUT=$(mktemp)
     $testbin >$OUT 2>&1 && pass "$STRING" || fail "$STRING" "$testbin" "$OUT"
     rm $OUT
@@ -117,9 +105,7 @@ done
 
 ## Python3 testsuite
 STRING="python3: API"
-if [ "$(dpkg --print-architecture)" = "ppc64el" ]; then
-    ignore "$STRING"
-elif [ ! -f /usr/share/doc/python3-lxc/examples/api_test.py.gz ]; then
+if [ ! -f /usr/share/doc/python3-lxc/examples/api_test.py.gz ]; then
     ignore "$STRING"
 else
     OUT=$(mktemp)
