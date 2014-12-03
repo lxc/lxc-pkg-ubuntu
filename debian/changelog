@@ -1,3 +1,14 @@
+lxc (1.1.0~alpha2-0ubuntu3) utopic; urgency=medium
+
+  * fix usernic and apparmor-mounts tests to not clear out the host's
+    /etc/lxc/lxc-usernet
+  * fix unprivileged containers when user's cgroup paths are not all
+    equivalent, and add a testcase for that.
+  * fix broken behavior when configuration has 'lxc.mount.auto ='
+    (LP: #1379030)
+
+ -- Serge Hallyn <serge.hallyn@ubuntu.com>  Thu, 09 Oct 2014 12:25:16 -0500
+
 lxc (1.1.0~alpha2-0ubuntu2) utopic; urgency=medium
 
   * Cherry-pick usptream bugfix for lxc-usernic test.
