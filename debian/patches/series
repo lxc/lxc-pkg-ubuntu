@@ -5,3 +5,4 @@
 0005-lxc-test-unpriv-test-for-different-cgroups-per-subsy.patch
 0006-lxc-test-apparmor-mount-don-t-clear-out-etc-lxc-lxc-.patch
 0007-c-r-put-lxc-restore-net-in-usr-share.patch
+0008-cgmanager-fix-attach-with-all-controller-support.patch
