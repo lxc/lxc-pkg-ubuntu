@@ -4,7 +4,7 @@
 m4_define([lxc_version_major], 1)
 m4_define([lxc_version_minor], 1)
 m4_define([lxc_version_micro], 0)
-m4_define([lxc_version_beta], [alpha2])
+m4_define([lxc_version_beta], [alpha3])
 
 m4_define([lxc_version_base], [lxc_version_major.lxc_version_minor.lxc_version_micro])
 m4_define([lxc_version],
@@ -646,6 +646,7 @@ AC_CONFIG_FILES([
 	config/templates/ubuntu.common.conf
 	config/templates/ubuntu.lucid.conf
 	config/templates/ubuntu.userns.conf
+	config/templates/openwrt.common.conf
 	config/templates/userns.conf
 	config/yum/Makefile
 	config/sysconfig/Makefile

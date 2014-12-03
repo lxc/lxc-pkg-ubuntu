@@ -100,7 +100,8 @@ DIST_COMMON = $(srcdir)/Makefile.in $(srcdir)/Makefile.am \
 	$(srcdir)/ubuntu-cloud.lucid.conf.in \
 	$(srcdir)/ubuntu-cloud.userns.conf.in \
 	$(srcdir)/ubuntu.common.conf.in $(srcdir)/ubuntu.lucid.conf.in \
-	$(srcdir)/ubuntu.userns.conf.in $(srcdir)/userns.conf.in
+	$(srcdir)/ubuntu.userns.conf.in \
+	$(srcdir)/openwrt.common.conf.in $(srcdir)/userns.conf.in
 ACLOCAL_M4 = $(top_srcdir)/aclocal.m4
 am__aclocal_m4_deps = $(top_srcdir)/config/acinclude.m4 \
 	$(top_srcdir)/config/tls.m4 $(top_srcdir)/configure.ac
@@ -117,7 +118,7 @@ CONFIG_CLEAN_FILES = archlinux.common.conf archlinux.userns.conf \
 	plamo.userns.conf ubuntu-cloud.common.conf \
 	ubuntu-cloud.lucid.conf ubuntu-cloud.userns.conf \
 	ubuntu.common.conf ubuntu.lucid.conf ubuntu.userns.conf \
-	userns.conf
+	openwrt.common.conf userns.conf
 CONFIG_CLEAN_VPATH_FILES =
 AM_V_P = $(am__v_P_@AM_V@)
 am__v_P_ = $(am__v_P_@AM_DEFAULT_V@)
@@ -360,6 +361,7 @@ templatesconfig_DATA = \
 	ubuntu.common.conf \
 	ubuntu.lucid.conf \
 	ubuntu.userns.conf \
+	openwrt.common.conf \
 	userns.conf
 
 all: all-am
@@ -442,6 +444,8 @@ ubuntu.common.conf: $(top_builddir)/config.status $(srcdir)/ubuntu.common.conf.i
 ubuntu.lucid.conf: $(top_builddir)/config.status $(srcdir)/ubuntu.lucid.conf.in
 	cd $(top_builddir) && $(SHELL) ./config.status $(subdir)/$@
 ubuntu.userns.conf: $(top_builddir)/config.status $(srcdir)/ubuntu.userns.conf.in
+	cd $(top_builddir) && $(SHELL) ./config.status $(subdir)/$@
+openwrt.common.conf: $(top_builddir)/config.status $(srcdir)/openwrt.common.conf.in
 	cd $(top_builddir) && $(SHELL) ./config.status $(subdir)/$@
 userns.conf: $(top_builddir)/config.status $(srcdir)/userns.conf.in
 	cd $(top_builddir) && $(SHELL) ./config.status $(subdir)/$@

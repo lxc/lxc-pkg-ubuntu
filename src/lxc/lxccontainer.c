@@ -39,6 +39,7 @@
 
 #include <lxc/lxccontainer.h>
 #include <lxc/version.h>
+#include <lxc/network.h>
 
 #include "config.h"
 #include "lxc.h"
@@ -54,6 +55,7 @@
 #include "attach.h"
 #include "monitor.h"
 #include "namespace.h"
+#include "network.h"
 #include "lxclock.h"
 #include "sync.h"
 
@@ -553,6 +555,7 @@ static bool lxcapi_start(struct lxc_container *c, int useinit, char * const argv
 		"/sbin/init",
 		NULL,
 	};
+	char *init_cmd[2];
 
 	/* container exists */
 	if (!c)
@@ -589,8 +592,15 @@ static bool lxcapi_start(struct lxc_container *c, int useinit, char * const argv
 		return ret == 0 ? true : false;
 	}
 
-	if (!argv)
-		argv = default_args;
+	if (!argv) {
+		if (conf->init_cmd) {
+			init_cmd[0] = conf->init_cmd;
+			init_cmd[1] = NULL;
+			argv = init_cmd;
+		}
+		else
+			argv = default_args;
+	}
 
 	/*
 	* say, I'm not sure - what locks do we want here?  Any?
@@ -1476,56 +1486,15 @@ static bool lxcapi_clear_config_item(struct lxc_container *c, const char *key)
 	return ret == 0;
 }
 
-static inline bool enter_to_ns(struct lxc_container *c) {
-	int netns, userns, ret = 0, init_pid = 0;;
-	char new_netns_path[MAXPATHLEN];
-	char new_userns_path[MAXPATHLEN];
+static inline bool enter_net_ns(struct lxc_container *c)
+{
+	pid_t pid = c->init_pid(c);
 
-	if (!c->is_running(c))
-		goto out;
-
-	init_pid = c->init_pid(c);
-
-	/* Switch to new userns */
 	if ((geteuid() != 0 || (c->lxc_conf && !lxc_list_empty(&c->lxc_conf->id_map))) && access("/proc/self/ns/user", F_OK) == 0) {
-		ret = snprintf(new_userns_path, MAXPATHLEN, "/proc/%d/ns/user", init_pid);
-		if (ret < 0 || ret >= MAXPATHLEN)
-			goto out;
-
-		userns = open(new_userns_path, O_RDONLY);
-		if (userns < 0) {
-			SYSERROR("failed to open %s", new_userns_path);
-			goto out;
-		}
-
-		if (setns(userns, CLONE_NEWUSER)) {
-			SYSERROR("failed to setns for CLONE_NEWUSER");
-			close(userns);
-			goto out;
-		}
-		close(userns);
+		if (!switch_to_ns(pid, "user"))
+			return false;
 	}
-
-	/* Switch to new netns */
-	ret = snprintf(new_netns_path, MAXPATHLEN, "/proc/%d/ns/net", init_pid);
-	if (ret < 0 || ret >= MAXPATHLEN)
-		goto out;
-
-	netns = open(new_netns_path, O_RDONLY);
-	if (netns < 0) {
-		SYSERROR("failed to open %s", new_netns_path);
-		goto out;
-	}
-
-	if (setns(netns, CLONE_NEWNET)) {
-		SYSERROR("failed to setns for CLONE_NEWNET");
-		close(netns);
-		goto out;
-	}
-	close(netns);
-	return true;
-out:
-	return false;
+	return switch_to_ns(pid, "net");
 }
 
 // used by qsort and bsearch functions for comparing names
@@ -1626,7 +1595,7 @@ static char** lxcapi_get_interfaces(struct lxc_container *c)
 		/* close the read-end of the pipe */
 		close(pipefd[0]);
 
-		if (!enter_to_ns(c)) {
+		if (!enter_net_ns(c)) {
 			SYSERROR("failed to enter namespace");
 			goto out;
 		}
@@ -1716,7 +1685,7 @@ static char** lxcapi_get_ips(struct lxc_container *c, const char* interface, con
 		/* close the read-end of the pipe */
 		close(pipefd[0]);
 
-		if (!enter_to_ns(c)) {
+		if (!enter_net_ns(c)) {
 			SYSERROR("failed to enter namespace");
 			goto out;
 		}
@@ -3467,6 +3436,94 @@ static bool lxcapi_remove_device_node(struct lxc_container *c, const char *src_p
 	return add_remove_device_node(c, src_path, dest_path, false);
 }
 
+static bool lxcapi_attach_interface(struct lxc_container *c, const char *ifname,
+				const char *dst_ifname)
+{
+	int ret = 0;
+	if (am_unpriv()) {
+		ERROR(NOT_SUPPORTED_ERROR, __FUNCTION__);
+		return false;
+	}
+
+	if (!ifname) {
+		ERROR("No source interface name given");
+		return false;
+	}
+
+	ret = lxc_netdev_isup(ifname);
+
+	if (ret > 0) {
+		/* netdev of ifname is up. */
+		ret = lxc_netdev_down(ifname);
+		if (ret)
+			goto err;
+	}
+
+	ret = lxc_netdev_move_by_name(ifname, c->init_pid(c), dst_ifname);
+	if (ret)
+		goto err;
+
+	return true;
+
+err:
+	return false;
+}
+
+static bool lxcapi_detach_interface(struct lxc_container *c, const char *ifname,
+					const char *dst_ifname)
+{
+	pid_t pid, pid_outside;
+
+	if (am_unpriv()) {
+		ERROR(NOT_SUPPORTED_ERROR, __FUNCTION__);
+		return false;
+	}
+
+	if (!ifname) {
+		ERROR("No source interface name given");
+		return false;
+	}
+
+	pid_outside = getpid();
+	pid = fork();
+	if (pid < 0) {
+		ERROR("failed to fork task to get interfaces information");
+		return false;
+	}
+
+	if (pid == 0) { // child
+		int ret = 0;
+		if (!enter_net_ns(c)) {
+			ERROR("failed to enter namespace");
+			exit(-1);
+		}
+
+		ret = lxc_netdev_isup(ifname);
+		if (ret < 0)
+			exit(ret);
+
+		/* netdev of ifname is up. */
+		if (ret) {
+			ret = lxc_netdev_down(ifname);
+			if (ret)
+				exit(ret);
+		}
+
+		ret = lxc_netdev_move_by_name(ifname, pid_outside, dst_ifname);
+
+		/* -EINVAL means there is no netdev named as ifanme. */
+		if (ret == -EINVAL) {
+			ERROR("No network device named as %s.", ifname);
+		}
+		exit(ret);
+	}
+
+	if (wait_for_pid(pid) != 0)
+		return false;
+
+	return true;
+}
+
 struct criu_opts {
 	/* The type of criu invocation, one of "dump" or "restore" */
 	char *action;
@@ -3485,39 +3542,15 @@ struct criu_opts {
 
 	/* restore: the file to write the init process' pid into */
 	char *pidfile;
+	const char *cgroup_path;
 };
-
-/*
- * @out must be 128 bytes long
- */
-static int read_criu_file(const char *directory, const char *file, int netnr, char *out)
-{
-	char path[PATH_MAX];
-	int ret;
-	FILE *f;
-
-	ret = snprintf(path, PATH_MAX,  "%s/%s%d", directory, file, netnr);
-	if (ret < 0 || ret >= PATH_MAX) {
-		ERROR("%s: path too long", __func__);
-		return -1;
-	}
-
-	f = fopen(path, "r");
-	if (!f)
-		return -1;
-
-	ret = fscanf(f, "%127s", out);
-	fclose(f);
-	if (ret <= 0)
-		return -1;
-
-	return 0;
-}
 
 static void exec_criu(struct criu_opts *opts)
 {
-	char **argv, log[PATH_MAX];
+	char **argv, log[PATH_MAX], buf[257];
 	int static_args = 14, argc = 0, i, ret;
+	int netnr = 0;
+	struct lxc_list *it;
 
 	/* The command line always looks like:
 	 * criu $(action) --tcp-established --file-locks --link-remap --force-irmap \
@@ -3533,8 +3566,9 @@ static void exec_criu(struct criu_opts *opts)
 		if (!opts->stop)
 			static_args++;
 	} else if (strcmp(opts->action, "restore") == 0) {
-		/* --root $(lxc_mount_point) --restore-detached --restore-sibling --pidfile $foo */
-		static_args += 6;
+		/* --root $(lxc_mount_point) --restore-detached
+		 * --restore-sibling --pidfile $foo --cgroup-root $foo */
+		static_args += 8;
 	} else {
 		return;
 	}
@@ -3554,11 +3588,15 @@ static void exec_criu(struct criu_opts *opts)
 
 	memset(argv, 0, static_args * sizeof(*argv));
 
-#define DECLARE_ARG(arg) 			\
-	do {					\
-		argv[argc++] = strdup(arg);	\
-		if (!argv[argc-1])		\
-			goto err;		\
+#define DECLARE_ARG(arg) 					\
+	do {							\
+		if (arg == NULL) {				\
+			ERROR("Got NULL argument for criu");	\
+			goto err;				\
+		}						\
+		argv[argc++] = strdup(arg);			\
+		if (!argv[argc-1])				\
+			goto err;				\
 	} while (0)
 
 	argv[argc++] = on_path("criu", NULL);
@@ -3594,29 +3632,34 @@ static void exec_criu(struct criu_opts *opts)
 		if (!opts->stop)
 			DECLARE_ARG("--leave-running");
 	} else if (strcmp(opts->action, "restore") == 0) {
-		int netnr = 0;
-		struct lxc_list *it;
-
 		DECLARE_ARG("--root");
 		DECLARE_ARG(opts->c->lxc_conf->rootfs.mount);
 		DECLARE_ARG("--restore-detached");
 		DECLARE_ARG("--restore-sibling");
 		DECLARE_ARG("--pidfile");
 		DECLARE_ARG(opts->pidfile);
+		DECLARE_ARG("--cgroup-root");
+		DECLARE_ARG(opts->cgroup_path);
 
 		lxc_list_for_each(it, &opts->c->lxc_conf->network) {
-			char eth[128], veth[128], buf[257];
+			char eth[128], *veth;
 			void *m;
+			struct lxc_netdev *n = it->elem;
 
-			if (read_criu_file(opts->directory, "veth", netnr, veth))
-				goto err;
-			if (read_criu_file(opts->directory, "eth", netnr, eth))
-				goto err;
-			ret = snprintf(buf, 257, "%s=%s", eth, veth);
-			if (ret < 0 || ret >= 257)
+			if (n->name) {
+				if (strlen(n->name) >= sizeof(eth))
+					goto err;
+				strncpy(eth, n->name, sizeof(eth));
+			} else
+				sprintf(eth, "eth%d", netnr);
+
+			veth = n->priv.veth_attr.pair;
+
+			ret = snprintf(buf, sizeof(buf), "%s=%s", eth, veth);
+			if (ret < 0 || ret >= sizeof(buf))
 				goto err;
 
-			/* final NULL and --veth-pair eth0:vethASDF */
+			/* final NULL and --veth-pair eth0=vethASDF */
 			m = realloc(argv, (argc + 1 + 2) * sizeof(*argv));
 			if (!m)
 				goto err;
@@ -3626,12 +3669,43 @@ static void exec_criu(struct criu_opts *opts)
 			DECLARE_ARG(buf);
 			argv[argc] = NULL;
 
-			netnr++;
 		}
 	}
 
-#undef DECLARE_ARG
+	netnr = 0;
+	lxc_list_for_each(it, &opts->c->lxc_conf->network) {
+		struct lxc_netdev *n = it->elem;
+		char veth[128];
 
+		/*
+		 * Here, we set some parameters that lxc-restore-net
+		 * will examine to figure out the right network to
+		 * restore.
+		 */
+		snprintf(buf, sizeof(buf), "LXC_CRIU_BRIDGE%d", netnr);
+		if (setenv(buf, n->link, 1))
+			goto err;
+
+		if (strcmp("restore", opts->action) == 0)
+			strncpy(veth, n->priv.veth_attr.pair, sizeof(veth));
+		else {
+			char *tmp;
+			ret = snprintf(buf, sizeof(buf), "lxc.network.%d.veth.pair", netnr);
+			if (ret < 0 || ret >= sizeof(buf))
+				goto err;
+			tmp = lxcapi_get_running_config_item(opts->c, buf);
+			strncpy(veth, tmp, sizeof(veth));
+			free(tmp);
+		}
+
+		snprintf(buf, sizeof(buf), "LXC_CRIU_VETH%d", netnr);
+		if (setenv(buf, veth, 1))
+			goto err;
+
+		netnr++;
+	}
+
+#undef DECLARE_ARG
 	execv(argv[0], argv);
 err:
 	for (i = 0; argv[i]; i++)
@@ -3690,30 +3764,21 @@ static bool criu_ok(struct lxc_container *c)
 	return true;
 }
 
-static bool lxcapi_checkpoint(struct lxc_container *c, char *directory, bool stop, bool verbose)
+static bool dump_net_info(struct lxc_container *c, char *directory)
 {
-	int netnr, status;
+	int netnr;
 	struct lxc_list *it;
-	bool error = false;
-	pid_t pid;
-
-	if (!criu_ok(c))
-		return false;
-
-	if (mkdir(directory, 0700) < 0 && errno != EEXIST)
-		return false;
 
 	netnr = 0;
 	lxc_list_for_each(it, &c->lxc_conf->network) {
 		char *veth = NULL, *bridge = NULL, veth_path[PATH_MAX], eth[128];
 		struct lxc_netdev *n = it->elem;
+		bool has_error = true;
 		int pret;
 
 		pret = snprintf(veth_path, PATH_MAX, "lxc.network.%d.veth.pair", netnr);
-		if (pret < 0 || pret >= PATH_MAX) {
-			error = true;
+		if (pret < 0 || pret >= PATH_MAX)
 			goto out;
-		}
 
 		veth = lxcapi_get_running_config_item(c, veth_path);
 		if (!veth) {
@@ -3724,49 +3789,47 @@ static bool lxcapi_checkpoint(struct lxc_container *c, char *directory, bool sto
 			break;
 		}
 
-		pret = snprintf(veth_path, PATH_MAX, "lxc.network.%d.link", netnr);
-		if (pret < 0 || pret >= PATH_MAX) {
-			error = true;
-			goto out;
-		}
-
 		bridge = lxcapi_get_running_config_item(c, veth_path);
-		if (!bridge) {
-			error = true;
+		if (!bridge)
 			goto out;
-		}
 
 		pret = snprintf(veth_path, PATH_MAX, "%s/veth%d", directory, netnr);
-		if (pret < 0 || pret >= PATH_MAX || print_to_file(veth_path, veth) < 0) {
-			error = true;
+		if (pret < 0 || pret >= PATH_MAX || print_to_file(veth_path, veth) < 0)
 			goto out;
-		}
-
-		pret = snprintf(veth_path, PATH_MAX, "%s/bridge%d", directory, netnr);
-		if (pret < 0 || pret >= PATH_MAX || print_to_file(veth_path, bridge) < 0) {
-			error = true;
-			goto out;
-		}
 
 		if (n->name) {
-			if (strlen(n->name) >= 128) {
-				error = true;
+			if (strlen(n->name) >= 128)
 				goto out;
-			}
 			strncpy(eth, n->name, 128);
 		} else
 			sprintf(eth, "eth%d", netnr);
 
-		pret = snprintf(veth_path, PATH_MAX, "%s/eth%d", directory, netnr);
-		if (pret < 0 || pret >= PATH_MAX || print_to_file(veth_path, eth) < 0)
-			error = true;
-
+		has_error = false;
 out:
-		free(veth);
-		free(bridge);
-		if (error)
+		if (veth)
+			free(veth);
+		if (bridge)
+			free(bridge);
+		if (has_error)
 			return false;
 	}
+
+	return true;
+}
+
+static bool lxcapi_checkpoint(struct lxc_container *c, char *directory, bool stop, bool verbose)
+{
+	pid_t pid;
+	int status;
+
+	if (!criu_ok(c))
+		return false;
+
+	if (mkdir(directory, 0700) < 0 && errno != EEXIST)
+		return false;
+
+	if (!dump_net_info(c, directory))
+		return false;
 
 	pid = fork();
 	if (pid < 0)
@@ -3799,12 +3862,40 @@ out:
 	}
 }
 
+static bool restore_net_info(struct lxc_container *c)
+{
+	struct lxc_list *it;
+	bool has_error = true;
+
+	if (container_mem_lock(c))
+		return false;
+
+	lxc_list_for_each(it, &c->lxc_conf->network) {
+		struct lxc_netdev *netdev = it->elem;
+		char template[IFNAMSIZ];
+		snprintf(template, sizeof(template), "vethXXXXXX");
+
+		if (!netdev->priv.veth_attr.pair)
+			netdev->priv.veth_attr.pair = lxc_mkifname(template);
+
+		if (!netdev->priv.veth_attr.pair)
+			goto out_unlock;
+	}
+
+	has_error = false;
+
+out_unlock:
+	container_mem_unlock(c);
+	return !has_error;
+}
+
 static bool lxcapi_restore(struct lxc_container *c, char *directory, bool verbose)
 {
 	pid_t pid;
-	struct lxc_list *it;
 	struct lxc_rootfs *rootfs;
 	char pidfile[L_tmpnam];
+	struct lxc_handler *handler;
+	bool has_error = true;
 
 	if (!criu_ok(c))
 		return false;
@@ -3817,9 +3908,28 @@ static bool lxcapi_restore(struct lxc_container *c, char *directory, bool verbos
 	if (!tmpnam(pidfile))
 		return false;
 
+	handler = lxc_init(c->name, c->lxc_conf, c->config_path);
+	if (!handler)
+		return false;
+
+	if (!cgroup_init(handler)) {
+		ERROR("failed initing cgroups");
+		goto out_fini_handler;
+	}
+
+	if (!cgroup_create(handler)) {
+		ERROR("failed creating groups");
+		goto out_fini_handler;
+	}
+
+	if (!restore_net_info(c)) {
+		ERROR("failed restoring network info");
+		goto out_fini_handler;
+	}
+
 	pid = fork();
 	if (pid < 0)
-		return false;
+		goto out_fini_handler;
 
 	if (pid == 0) {
 		struct criu_opts os;
@@ -3850,6 +3960,7 @@ static bool lxcapi_restore(struct lxc_container *c, char *directory, bool verbos
 		os.c = c;
 		os.pidfile = pidfile;
 		os.verbose = verbose;
+		os.cgroup_path = cgroup_canonical_path(handler);
 
 		/* exec_criu() returning is an error */
 		exec_criu(&os);
@@ -3858,30 +3969,22 @@ static bool lxcapi_restore(struct lxc_container *c, char *directory, bool verbos
 		exit(1);
 	} else {
 		int status;
-		struct lxc_handler *handler;
-		bool error = false;
 
 		pid_t w = waitpid(pid, &status, 0);
 
 		if (w == -1) {
 			perror("waitpid");
-			return false;
+			goto out_fini_handler;
 		}
-
-		handler = lxc_init(c->name, c->lxc_conf, c->config_path);
-		if (!handler)
-			return false;
 
 		if (WIFEXITED(status)) {
 			if (WEXITSTATUS(status)) {
-				error = true;
 				goto out_fini_handler;
 			}
 			else {
-				int netnr = 0, ret;
+				int ret;
 				FILE *f = fopen(pidfile, "r");
 				if (!f) {
-					error = true;
 					perror("reading pidfile");
 					ERROR("couldn't read restore's init pidfile %s\n", pidfile);
 					goto out_fini_handler;
@@ -3890,71 +3993,29 @@ static bool lxcapi_restore(struct lxc_container *c, char *directory, bool verbos
 				ret = fscanf(f, "%d", (int*) &handler->pid);
 				fclose(f);
 				if (ret != 1) {
-					error = true;
 					ERROR("reading restore pid failed");
 					goto out_fini_handler;
 				}
 
-				if (!cgroup_init(handler)) {
-					error = true;
-					ERROR("failed initing cgroups");
+				if (lxc_set_state(c->name, handler, RUNNING))
 					goto out_fini_handler;
-				}
-
-				if (!cgroup_parse_existing_cgroups(handler)) {
-					ERROR("failed creating cgroups");
-					goto out_fini_handler;
-				}
-
-				if (container_mem_lock(c)) {
-					error = true;
-					goto out_fini_handler;
-				}
-
-				lxc_list_for_each(it, &c->lxc_conf->network) {
-					char eth[128], veth[128];
-					struct lxc_netdev *netdev = it->elem;
-
-					if (read_criu_file(directory, "veth", netnr, veth)) {
-						error = true;
-						goto out_unlock;
-					}
-					if (read_criu_file(directory, "eth", netnr, eth)) {
-						error = true;
-						goto out_unlock;
-					}
-					netdev->priv.veth_attr.pair = strdup(veth);
-					if (!netdev->priv.veth_attr.pair) {
-						error = true;
-						goto out_unlock;
-					}
-					netnr++;
-				}
-out_unlock:
-				container_mem_unlock(c);
-				if (error)
-					goto out_fini_handler;
-
-				if (lxc_set_state(c->name, handler, RUNNING)) {
-					error = true;
-					goto out_fini_handler;
-				}
 			}
 		} else {
 			ERROR("CRIU was killed with signal %d\n", WTERMSIG(status));
-			error = true;
 			goto out_fini_handler;
 		}
 
 		if (lxc_poll(c->name, handler)) {
 			lxc_abort(c->name, handler);
-			return false;
+			goto out_fini_handler;
 		}
+	}
+
+	has_error = false;
 
 out_fini_handler:
-		lxc_fini(c->name, handler);
-		return !error;
-	}
+	lxc_fini(c->name, handler);
+	return !has_error;
 }
 
 static int lxcapi_attach_run_waitl(struct lxc_container *c, lxc_attach_options_t *options, const char *program, const char *arg, ...)
@@ -4089,6 +4150,8 @@ struct lxc_container *lxc_container_new(const char *name, const char *configpath
 	c->may_control = lxcapi_may_control;
 	c->add_device_node = lxcapi_add_device_node;
 	c->remove_device_node = lxcapi_remove_device_node;
+	c->attach_interface = lxcapi_attach_interface;
+	c->detach_interface = lxcapi_detach_interface;
 	c->checkpoint = lxcapi_checkpoint;
 	c->restore = lxcapi_restore;
 

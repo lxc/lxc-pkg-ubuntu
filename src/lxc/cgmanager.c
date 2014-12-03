@@ -547,15 +547,8 @@ static void *cgm_init(const char *name)
 		goto err1;
 	}
 
-	/* if we are running as root, use system cgroup pattern, otherwise
-	 * just create a cgroup under the current one. But also fall back to
-	 * that if for some reason reading the configuration fails and no
-	 * default value is available
-	 */
-	if (geteuid() == 0)
-		d->cgroup_pattern = lxc_global_config_value("lxc.cgroup.pattern");
-	if (!d->cgroup_pattern)
-		d->cgroup_pattern = "%n";
+	d->cgroup_pattern = lxc_global_config_value("lxc.cgroup.pattern");
+
 	// cgm_create immediately gets called so keep the connection open
 	return d;
 
@@ -734,6 +727,15 @@ out:
 }
 
 static const char *cgm_get_cgroup(void *hdata, const char *subsystem)
+{
+	struct cgm_data *d = hdata;
+
+	if (!d || !d->cgroup_path)
+		return NULL;
+	return d->cgroup_path;
+}
+
+static const char *cgm_canonical_path(void *hdata)
 {
 	struct cgm_data *d = hdata;
 
@@ -1384,13 +1386,13 @@ static struct cgroup_ops cgmanager_ops = {
 	.enter = cgm_enter,
 	.create_legacy = NULL,
 	.get_cgroup = cgm_get_cgroup,
+	.canonical_path = cgm_canonical_path,
 	.get = cgm_get,
 	.set = cgm_set,
 	.unfreeze = cgm_unfreeze,
 	.setup_limits = cgm_setup_limits,
 	.name = "cgmanager",
 	.chown = cgm_chown,
-	.parse_existing_cgroups = NULL,
 	.attach = cgm_attach,
 	.mount_cgroup = cgm_mount_cgroup,
 	.nrtasks = cgm_get_nrtasks,

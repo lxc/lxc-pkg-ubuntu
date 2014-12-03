@@ -276,6 +276,11 @@ int main(int argc, char *argv[])
 		}
 	}
 
+	if (c->is_running(c)) {
+		ERROR("Container is already running.");
+		err = 0;
+		goto out;
+	}
 	/*
 	 * We should use set_config_item() over &defines, which would handle
 	 * unset c->lxc_conf for us and let us not use lxc_config_define_load()
@@ -331,7 +336,10 @@ int main(int argc, char *argv[])
 	if (my_args.close_all_fds)
 		c->want_close_all_fds(c, true);
 
-	err = c->start(c, 0, args) ? 0 : 1;
+	if (args == default_args)
+		err = c->start(c, 0, NULL) ? 0 : 1;
+	else
+		err = c->start(c, 0, args) ? 0 : 1;
 
 	if (err) {
 		ERROR("The container failed to start.");

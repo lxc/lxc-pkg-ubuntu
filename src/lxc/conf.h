@@ -184,7 +184,7 @@ struct lxc_pty_info {
 
 /*
  * Defines the number of tty configured and contains the
- * instanciated ptys
+ * instantiated ptys
  * @nbtty = number of configured ttys
  */
 struct lxc_tty_info {
@@ -356,6 +356,9 @@ struct lxc_conf {
 	/* text representation of the config file */
 	char *unexpanded_config;
 	size_t unexpanded_len, unexpanded_alloced;
+
+	/* init command */
+	char *init_cmd;
 };
 
 int run_lxc_hooks(const char *name, char *hook, struct lxc_conf *conf,
@@ -414,5 +417,6 @@ extern int userns_exec_1(struct lxc_conf *conf, int (*fn)(void *), void *data);
 extern int parse_mntopts(const char *mntopts, unsigned long *mntflags,
 			 char **mntdata);
 extern void tmp_proc_unmount(struct lxc_conf *lxc_conf);
+void remount_all_slave(void);
 extern void suggest_default_idmap(void);
 #endif
