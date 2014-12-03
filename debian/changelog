@@ -1,3 +1,10 @@
+lxc (1.1.0~alpha2-0ubuntu4) vivid; urgency=medium
+
+  * install lxc-restore-net to /usr/share so that it doesn't get overmounted by
+    the rootfs in preparation for restore.  (LP: #1384751)
+
+ -- Tycho Andersen <tycho.andersen@canonical.com>  Mon, 27 Oct 2014 19:36:21 -0500
+
 lxc (1.1.0~alpha2-0ubuntu3) utopic; urgency=medium
 
   * fix usernic and apparmor-mounts tests to not clear out the host's
