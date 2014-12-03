@@ -1,3 +1,11 @@
+lxc (1.1.0~alpha2-0ubuntu6) vivid; urgency=medium
+
+  * 0009-attach-dont-ignore-sigint-sigkill-if-stdin-is-redirected: cherrypick
+    an upstream patch needed to keep lxd from being exited with ctrl-c after
+    a lxc shell.
+
+ -- Serge Hallyn <serge.hallyn@ubuntu.com>  Fri, 07 Nov 2014 15:58:58 +0100
+
 lxc (1.1.0~alpha2-0ubuntu5) vivid; urgency=medium
 
   * cherrypick 0008-cgmanager-fix-attach-with-all-controller from upstream to
