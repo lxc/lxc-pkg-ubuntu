@@ -1,3 +1,10 @@
+lxc (1.1.0~alpha2-0ubuntu5) vivid; urgency=medium
+
+  * cherrypick 0008-cgmanager-fix-attach-with-all-controller from upstream to
+    fix regression in attaching to containers.
+
+ -- Serge Hallyn <serge.hallyn@ubuntu.com>  Mon, 03 Nov 2014 17:22:53 +0100
+
 lxc (1.1.0~alpha2-0ubuntu4) vivid; urgency=medium
 
   * install lxc-restore-net to /usr/share so that it doesn't get overmounted by
