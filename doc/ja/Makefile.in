@@ -81,7 +81,6 @@ host_triplet = @host@
 @ENABLE_DOCBOOK_TRUE@@ENABLE_PYTHON_TRUE@	lxc-ls.1 \
 @ENABLE_DOCBOOK_TRUE@@ENABLE_PYTHON_TRUE@	lxc-start-ephemeral.1
 @ENABLE_DOCBOOK_TRUE@@ENABLE_PYTHON_FALSE@am__append_2 = legacy/lxc-ls.1
-@ENABLE_DOCBOOK_TRUE@@ENABLE_LUA_TRUE@am__append_3 = lxc-top.1
 subdir = doc/ja
 DIST_COMMON = $(srcdir)/Makefile.in $(srcdir)/Makefile.am \
 	$(srcdir)/lxc-attach.sgml.in $(srcdir)/lxc-autostart.sgml.in \
@@ -410,12 +409,12 @@ EXTRA_DIST = \
 @ENABLE_DOCBOOK_TRUE@	lxc-console.1 lxc-create.1 lxc-destroy.1 \
 @ENABLE_DOCBOOK_TRUE@	lxc-execute.1 lxc-freeze.1 lxc-info.1 \
 @ENABLE_DOCBOOK_TRUE@	lxc-monitor.1 lxc-snapshot.1 lxc-start.1 \
-@ENABLE_DOCBOOK_TRUE@	lxc-stop.1 lxc-unfreeze.1 lxc-unshare.1 \
-@ENABLE_DOCBOOK_TRUE@	lxc-user-nic.1 lxc-usernsexec.1 \
-@ENABLE_DOCBOOK_TRUE@	lxc-wait.1 lxc.conf.5 \
+@ENABLE_DOCBOOK_TRUE@	lxc-stop.1 lxc-top.1 lxc-unfreeze.1 \
+@ENABLE_DOCBOOK_TRUE@	lxc-unshare.1 lxc-user-nic.1 \
+@ENABLE_DOCBOOK_TRUE@	lxc-usernsexec.1 lxc-wait.1 lxc.conf.5 \
 @ENABLE_DOCBOOK_TRUE@	lxc.container.conf.5 lxc.system.conf.5 \
 @ENABLE_DOCBOOK_TRUE@	lxc-usernet.5 lxc.7 $(am__append_1) \
-@ENABLE_DOCBOOK_TRUE@	$(am__append_2) $(am__append_3)
+@ENABLE_DOCBOOK_TRUE@	$(am__append_2)
 all: all-recursive
 
 .SUFFIXES:

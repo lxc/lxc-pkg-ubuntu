@@ -1,5 +1,8 @@
 /* src/config.h.in.  Generated from configure.ac by autoheader.  */
 
+/* "Prefix for shared files." */
+#undef DATADIR
+
 /* Python3 is available */
 #undef ENABLE_PYTHON
 

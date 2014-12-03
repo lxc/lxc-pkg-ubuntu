@@ -43,6 +43,7 @@
 #include "utils.h"
 #include "log.h"
 #include "lxclock.h"
+#include "namespace.h"
 
 lxc_log_define(lxc_utils, lxc);
 
@@ -265,7 +266,7 @@ const char *lxc_global_config_value(const char *option_name)
 		{ "lxc.bdev.zfs.root",      DEFAULT_ZFSROOT },
 		{ "lxc.lxcpath",            NULL            },
 		{ "lxc.default_config",     NULL            },
-		{ "lxc.cgroup.pattern",     DEFAULT_CGROUP_PATTERN },
+		{ "lxc.cgroup.pattern",     NULL            },
 		{ "lxc.cgroup.use",         NULL            },
 		{ NULL, NULL },
 	};
@@ -276,9 +277,17 @@ const char *lxc_global_config_value(const char *option_name)
 #else
 	static const char *values[sizeof(options) / sizeof(options[0])] = { 0 };
 #endif
+
+	/* user_config_path is freed as soon as it is used */
 	char *user_config_path = NULL;
+
+	/*
+	 * The following variables are freed at bottom unconditionally.
+	 * So NULL the value if it is to be returned to the caller
+	 */
 	char *user_default_config_path = NULL;
 	char *user_lxc_path = NULL;
+	char *user_cgroup_pattern = NULL;
 
 	if (geteuid() > 0) {
 		const char *user_home = getenv("HOME");
@@ -292,11 +301,13 @@ const char *lxc_global_config_value(const char *option_name)
 		sprintf(user_config_path, "%s/.config/lxc/lxc.conf", user_home);
 		sprintf(user_default_config_path, "%s/.config/lxc/default.conf", user_home);
 		sprintf(user_lxc_path, "%s/.local/share/lxc/", user_home);
+		user_cgroup_pattern = strdup("%n");
 	}
 	else {
 		user_config_path = strdup(LXC_GLOBAL_CONF);
 		user_default_config_path = strdup(LXC_DEFAULT_CONFIG);
 		user_lxc_path = strdup(LXCPATH);
+		user_cgroup_pattern = strdup(DEFAULT_CGROUP_PATTERN);
 	}
 
 	const char * const (*ptr)[2];
@@ -312,6 +323,7 @@ const char *lxc_global_config_value(const char *option_name)
 		free(user_config_path);
 		free(user_default_config_path);
 		free(user_lxc_path);
+		free(user_cgroup_pattern);
 		errno = EINVAL;
 		return NULL;
 	}
@@ -320,6 +332,7 @@ const char *lxc_global_config_value(const char *option_name)
 		free(user_config_path);
 		free(user_default_config_path);
 		free(user_lxc_path);
+		free(user_cgroup_pattern);
 		return values[i];
 	}
 
@@ -358,18 +371,16 @@ const char *lxc_global_config_value(const char *option_name)
 			if (!*p)
 				continue;
 
-			free(user_default_config_path);
-
 			if (strcmp(option_name, "lxc.lxcpath") == 0) {
 				free(user_lxc_path);
 				user_lxc_path = copy_global_config_value(p);
 				remove_trailing_slashes(user_lxc_path);
 				values[i] = user_lxc_path;
+				user_lxc_path = NULL;
 				goto out;
 			}
 
 			values[i] = copy_global_config_value(p);
-			free(user_lxc_path);
 			goto out;
 		}
 	}
@@ -377,17 +388,19 @@ const char *lxc_global_config_value(const char *option_name)
 	if (strcmp(option_name, "lxc.lxcpath") == 0) {
 		remove_trailing_slashes(user_lxc_path);
 		values[i] = user_lxc_path;
-		free(user_default_config_path);
+		user_lxc_path = NULL;
 	}
 	else if (strcmp(option_name, "lxc.default_config") == 0) {
 		values[i] = user_default_config_path;
-		free(user_lxc_path);
+		user_default_config_path = NULL;
 	}
-	else {
-		free(user_default_config_path);
-		free(user_lxc_path);
+	else if (strcmp(option_name, "lxc.cgroup.pattern") == 0) {
+		values[i] = user_cgroup_pattern;
+		user_cgroup_pattern = NULL;
+	}
+	else
 		values[i] = (*ptr)[1];
-	}
+
 	/* special case: if default value is NULL,
 	 * and there is no config, don't view that
 	 * as an error... */
@@ -397,6 +410,10 @@ const char *lxc_global_config_value(const char *option_name)
 out:
 	if (fin)
 		fclose(fin);
+
+	free(user_cgroup_pattern);
+	free(user_default_config_path);
+	free(user_lxc_path);
 
 	return values[i];
 }
@@ -1260,6 +1277,31 @@ int detect_shared_rootfs(void)
 	return 0;
 }
 
+bool switch_to_ns(pid_t pid, const char *ns) {
+	int fd, ret;
+	char nspath[MAXPATHLEN];
+
+	/* Switch to new ns */
+	ret = snprintf(nspath, MAXPATHLEN, "/proc/%d/ns/%s", pid, ns);
+	if (ret < 0 || ret >= MAXPATHLEN)
+		return false;
+
+	fd = open(nspath, O_RDONLY);
+	if (fd < 0) {
+		SYSERROR("failed to open %s", nspath);
+		return false;
+	}
+
+	ret = setns(fd, 0);
+	if (ret) {
+		SYSERROR("failed to set process %d to %s of %d.", pid, ns, fd);
+		close(fd);
+		return false;
+	}
+	close(fd);
+	return true;
+}
+
 /*
  * looking at fs/proc_namespace.c, it appears we can
  * actually expect the rootfs entry to very specifically contain
@@ -1350,6 +1392,8 @@ bool file_exists(const char *f)
 char *choose_init(const char *rootfs)
 {
 	char *retv = NULL;
+	const char *empty = "",
+		   *tmp;
 	int ret, env_set = 0;
 	struct stat mystat;
 
@@ -1374,9 +1418,11 @@ char *choose_init(const char *rootfs)
 		return NULL;
 
 	if (rootfs)
-		ret = snprintf(retv, PATH_MAX, "%s/%s/init.lxc", rootfs, SBINDIR);
+		tmp = rootfs;
 	else
-		ret = snprintf(retv, PATH_MAX, SBINDIR "/init.lxc");
+		tmp = empty;
+
+	ret = snprintf(retv, PATH_MAX, "%s/%s/%s", tmp, SBINDIR, "/init.lxc");
 	if (ret < 0 || ret >= PATH_MAX) {
 		ERROR("pathname too long");
 		goto out1;
@@ -1386,10 +1432,7 @@ char *choose_init(const char *rootfs)
 	if (ret == 0)
 		return retv;
 
-	if (rootfs)
-		ret = snprintf(retv, PATH_MAX, "%s/%s/lxc/lxc-init", rootfs, LXCINITDIR);
-	else
-		ret = snprintf(retv, PATH_MAX, LXCINITDIR "/lxc/lxc-init");
+	ret = snprintf(retv, PATH_MAX, "%s/%s/%s", tmp, LXCINITDIR, "/lxc/lxc-init");
 	if (ret < 0 || ret >= PATH_MAX) {
 		ERROR("pathname too long");
 		goto out1;
@@ -1399,10 +1442,7 @@ char *choose_init(const char *rootfs)
 	if (ret == 0)
 		return retv;
 
-	if (rootfs)
-		ret = snprintf(retv, PATH_MAX, "%s/usr/lib/lxc/lxc-init", rootfs);
-	else
-		ret = snprintf(retv, PATH_MAX, "/usr/lib/lxc/lxc-init");
+	ret = snprintf(retv, PATH_MAX, "%s/usr/lib/lxc/lxc-init", tmp);
 	if (ret < 0 || ret >= PATH_MAX) {
 		ERROR("pathname too long");
 		goto out1;
@@ -1411,10 +1451,7 @@ char *choose_init(const char *rootfs)
 	if (ret == 0)
 		return retv;
 
-	if (rootfs)
-		ret = snprintf(retv, PATH_MAX, "%s/sbin/lxc-init", rootfs);
-	else
-		ret = snprintf(retv, PATH_MAX, "/sbin/lxc-init");
+	ret = snprintf(retv, PATH_MAX, "%s/sbin/lxc-init", tmp);
 	if (ret < 0 || ret >= PATH_MAX) {
 		ERROR("pathname too long");
 		goto out1;

@@ -4,7 +4,7 @@
 m4_define([lxc_version_major], 1)
 m4_define([lxc_version_minor], 1)
 m4_define([lxc_version_micro], 0)
-m4_define([lxc_version_beta], [alpha2])
+m4_define([lxc_version_beta], [alpha3])
 
 m4_define([lxc_version_base], [lxc_version_major.lxc_version_minor.lxc_version_micro])
 m4_define([lxc_version],
@@ -533,6 +533,9 @@ AS_AC_EXPAND(LOGPATH, "$with_log_path")
 AS_AC_EXPAND(RUNTIME_PATH, "$with_runtime_path")
 AC_SUBST(DEFAULT_CGROUP_PATTERN, ["$with_cgroup_pattern"])
 
+# We need the install path so criu knows where to reference the hook scripts.
+AC_DEFINE_UNQUOTED([DATADIR], "$DATADIR", ["Prefix for shared files."])
+
 # Check for some standard kernel headers
 AC_CHECK_HEADERS([linux/unistd.h linux/netlink.h linux/genetlink.h],
 				[],
@@ -643,6 +646,7 @@ AC_CONFIG_FILES([
 	config/templates/ubuntu.common.conf
 	config/templates/ubuntu.lucid.conf
 	config/templates/ubuntu.userns.conf
+	config/templates/openwrt.common.conf
 	config/templates/userns.conf
 	config/yum/Makefile
 	config/sysconfig/Makefile

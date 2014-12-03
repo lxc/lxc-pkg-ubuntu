@@ -11,6 +11,7 @@
 # Daniel Lezcano <daniel.lezcano@free.fr>
 # Frederic Crozat <fcrozat@suse.com>
 # Michael H. Warfield <mhw@WittsEnd.com>
+# Johannes Kastl <mail@ojkastl.de>
 
 # This library is free software; you can redistribute it and/or
 # modify it under the terms of the GNU Lesser General Public
@@ -38,8 +39,6 @@ done
 
 # Make sure the usual locations are in PATH
 export PATH=$PATH:/usr/sbin:/usr/bin:/sbin:/bin
-
-DISTRO=12.3
 
 configure_opensuse()
 {
@@ -164,6 +163,12 @@ Support: pwdutils rpcbind sysconfig
 Ignore: rpm:suse-build-key,build-key
 Ignore: systemd:systemd-presets-branding
 EOF
+
+    if [ $DISTRO = "13.2" ]
+    then
+	echo "Support: python3-base" >> $cache/partial-$arch-packages/opensuse.conf
+    fi
+
     if [ "$arch" = "i686" ]; then
         mkdir -p $cache/partial-$arch-packages/var/cache/zypp/packages/repo-oss/suse/i686/
         for i in "$cache/partial-$arch-packages/var/cache/zypp/packages/repo-oss/suse/i586/*" ; do
@@ -174,6 +179,9 @@ EOF
             ln -s $i $cache/partial-$arch-packages/var/cache/zypp/packages/update/i686/
         done
     fi
+
+    # openSUSE 13.2 has no noarch directory in update
+    [ -d $cache/partial-$arch-packages/var/cache/zypp/packages/update/noarch ] || mkdir -p $cache/partial-$arch-packages/var/cache/zypp/packages/update/noarch
 
     CLEAN_BUILD=1 BUILD_ARCH="$arch" BUILD_ROOT="$cache/partial-$arch" BUILD_DIST="$cache/partial-$arch-packages/opensuse.conf" PATH="$PATH:/usr/lib/build" /usr/lib/build/init_buildsystem  --clean --configdir /usr/lib/build/configs --cachedir $cache/partial-$arch-cache --repository $cache/partial-$arch-packages/var/cache/zypp/packages/repo-oss/suse/$arch --repository $cache/partial-$arch-packages/var/cache/zypp/packages/repo-oss/suse/noarch --repository $cache/partial-$arch-packages/var/cache/zypp/packages/update/$arch --repository $cache/partial-$arch-packages/var/cache/zypp/packages/update/noarch || return 1
     chroot $cache/partial-$arch /usr/bin/zypper --quiet --non-interactive ar http://download.opensuse.org/distribution/$DISTRO/repo/oss repo-oss || return 1
@@ -219,7 +227,7 @@ copy_opensuse()
 
 install_opensuse()
 {
-    cache="@LOCALSTATEDIR@/cache/lxc/opensuse"
+    cache="@LOCALSTATEDIR@/cache/lxc/opensuse/$DISTRO"
     rootfs=$1
     mkdir -p @LOCALSTATEDIR@/lock/subsys/
     (
@@ -371,7 +379,9 @@ clean()
 usage()
 {
     cat <<EOF
-$1 -h|--help -p|--path=<path> --clean
+$1 -h|--help -p|--path=<path> -r|--release nn.n --clean
+Please give the release as 12.3, 13.1, 13.2 etc.
+If no release is given, openSUSE 12.3 is installed.
 EOF
     return 0
 }
@@ -379,7 +389,7 @@ EOF
 # Make arch a global.  This may become configurable?
 arch=$(uname -m)
 
-options=$(getopt -o hp:n:c -l help,rootfs:,path:,name:,clean -- "$@")
+options=$(getopt -o hp:n:r:c -l help,rootfs:,path:,name:,release:,clean -- "$@")
 if [ $? -ne 0 ]; then
     usage $(basename $0)
     exit 1
@@ -393,6 +403,7 @@ do
         -p|--path)      path=$2; shift 2;;
         --rootfs)       rootfs=$2; shift 2;;
         -n|--name)      name=$2; shift 2;;
+	-r|--release)   DISTRO=$2; shift 2;;
         -c|--clean)     clean=$2; shift 2;;
         --)             shift 1; break ;;
         *)              break ;;
@@ -414,6 +425,38 @@ if [ -z "$path" ]; then
     echo "'path' parameter is required"
     exit 1
 fi
+
+if grep -q Harlequin /etc/os-release || grep -q Tumbleweed /etc/os-release ; then
+    echo "Building containers on openSUSE 13.2 or Tumbleweed is broken at the moment. We are working on this problem."
+    exit 1
+fi
+
+if [ -z "$DISTRO" ]; then
+    echo ""
+    echo "No release selected, using openSUSE 12.3"
+    DISTRO=12.3
+else
+    echo ""
+    case "$DISTRO" in
+	12.3)
+	    echo "Selected openSUSE 12.3"
+	    ;;
+
+	13.1)
+	    echo "Selected openSUSE 13.1"
+	    ;;
+
+	13.2)
+	    echo "Selected openSUSE 13.2"
+	    ;;
+
+	*)
+	    echo "You have chosen an invalid release, quitting..."
+	    exit 1
+	    ;;
+    esac
+fi
+
 
 if [ "$(id -u)" != "0" ]; then
     echo "This script should be run as 'root'"
