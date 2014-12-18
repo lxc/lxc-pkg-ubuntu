@@ -160,10 +160,14 @@ return -1;
 #define        __S_ISTYPE(mode, mask)  (((mode) & S_IFMT) == (mask))
 #endif
 
+#ifndef MS_PRIVATE
+#define MS_PRIVATE (1<<18)
+#endif
+
 char *lxchook_names[NUM_LXC_HOOKS] = {
 	"pre-start", "pre-mount", "mount", "autodev", "start", "post-stop", "clone" };
 
-typedef int (*instanciate_cb)(struct lxc_handler *, struct lxc_netdev *);
+typedef int (*instantiate_cb)(struct lxc_handler *, struct lxc_netdev *);
 
 struct mount_opt {
 	char *name;
@@ -179,20 +183,20 @@ struct caps_opt {
 /* Declare this here, since we don't want to reshuffle the whole file. */
 static int in_caplist(int cap, struct lxc_list *caps);
 
-static int instanciate_veth(struct lxc_handler *, struct lxc_netdev *);
-static int instanciate_macvlan(struct lxc_handler *, struct lxc_netdev *);
-static int instanciate_vlan(struct lxc_handler *, struct lxc_netdev *);
-static int instanciate_phys(struct lxc_handler *, struct lxc_netdev *);
-static int instanciate_empty(struct lxc_handler *, struct lxc_netdev *);
-static int instanciate_none(struct lxc_handler *, struct lxc_netdev *);
+static int instantiate_veth(struct lxc_handler *, struct lxc_netdev *);
+static int instantiate_macvlan(struct lxc_handler *, struct lxc_netdev *);
+static int instantiate_vlan(struct lxc_handler *, struct lxc_netdev *);
+static int instantiate_phys(struct lxc_handler *, struct lxc_netdev *);
+static int instantiate_empty(struct lxc_handler *, struct lxc_netdev *);
+static int instantiate_none(struct lxc_handler *, struct lxc_netdev *);
 
-static  instanciate_cb netdev_conf[LXC_NET_MAXCONFTYPE + 1] = {
-	[LXC_NET_VETH]    = instanciate_veth,
-	[LXC_NET_MACVLAN] = instanciate_macvlan,
-	[LXC_NET_VLAN]    = instanciate_vlan,
-	[LXC_NET_PHYS]    = instanciate_phys,
-	[LXC_NET_EMPTY]   = instanciate_empty,
-	[LXC_NET_NONE]    = instanciate_none,
+static  instantiate_cb netdev_conf[LXC_NET_MAXCONFTYPE + 1] = {
+	[LXC_NET_VETH]    = instantiate_veth,
+	[LXC_NET_MACVLAN] = instantiate_macvlan,
+	[LXC_NET_VLAN]    = instantiate_vlan,
+	[LXC_NET_PHYS]    = instantiate_phys,
+	[LXC_NET_EMPTY]   = instantiate_empty,
+	[LXC_NET_NONE]    = instantiate_none,
 };
 
 static int shutdown_veth(struct lxc_handler *, struct lxc_netdev *);
@@ -202,7 +206,7 @@ static int shutdown_phys(struct lxc_handler *, struct lxc_netdev *);
 static int shutdown_empty(struct lxc_handler *, struct lxc_netdev *);
 static int shutdown_none(struct lxc_handler *, struct lxc_netdev *);
 
-static  instanciate_cb netdev_deconf[LXC_NET_MAXCONFTYPE + 1] = {
+static  instantiate_cb netdev_deconf[LXC_NET_MAXCONFTYPE + 1] = {
 	[LXC_NET_VETH]    = shutdown_veth,
 	[LXC_NET_MACVLAN] = shutdown_macvlan,
 	[LXC_NET_VLAN]    = shutdown_vlan,
@@ -1426,7 +1430,7 @@ static int mount_autodev(const char *name, char *root, const char *lxcpath)
 		 * Get rid of old links and directoriess
 		 * This could be either a symlink and we remove it,
 		 * or an empty directory and we remove it,
-		 * or non-existant and we don't care,
+		 * or non-existent and we don't care,
 		 * or a non-empty directory, and we will then emit an error
 		 * but we will not fail out the process.
 		 */
@@ -1582,68 +1586,6 @@ int lxc_delete_autodev(struct lxc_handler *handler)
 	return 0;
 }
 
-/*
- * I'll forgive you for asking whether all of this is needed :)  The
- * answer is yes.
- * pivot_root will fail if the new root, the put_old dir, or the parent
- * of current->fs->root are MS_SHARED.  (parent of current->fs_root may
- * or may not be current->fs_root - if we assumed it always was, we could
- * just mount --make-rslave /).  So,
- *    1. mount a tiny tmpfs to be parent of current->fs->root.
- *    2. make that MS_SLAVE
- *    3. make a 'root' directory under that
- *    4. mount --rbind / under the $tinyroot/root.
- *    5. make that rslave
- *    6. chdir and chroot into $tinyroot/root
- *    7. $tinyroot will be unmounted by our parent in start.c
- */
-static int chroot_into_slave(struct lxc_conf *conf)
-{
-	char path[MAXPATHLEN];
-	const char *destpath = conf->rootfs.mount;
-	int ret;
-
-	if (mount(destpath, destpath, NULL, MS_BIND, 0)) {
-		SYSERROR("failed to mount %s bind", destpath);
-		return -1;
-	}
-	if (mount("", destpath, NULL, MS_SLAVE, 0)) {
-		SYSERROR("failed to make %s slave", destpath);
-		return -1;
-	}
-	if (mount("none", destpath, "tmpfs", 0, "size=10000,mode=755")) {
-		SYSERROR("Failed to mount tmpfs / at %s", destpath);
-		return -1;
-	}
-	ret = snprintf(path, MAXPATHLEN, "%s/root", destpath);
-	if (ret < 0 || ret >= MAXPATHLEN) {
-		ERROR("out of memory making root path");
-		return -1;
-	}
-	if (mkdir(path, S_IRWXU | S_IRGRP | S_IXGRP | S_IROTH | S_IXOTH)) {
-		SYSERROR("Failed to create /dev/pts in container");
-		return -1;
-	}
-	if (mount("/", path, NULL, MS_BIND|MS_REC, 0)) {
-		SYSERROR("Failed to rbind mount / to %s", path);
-		return -1;
-	}
-	if (mount("", destpath, NULL, MS_SLAVE|MS_REC, 0)) {
-		SYSERROR("Failed to make tmp-/ at %s rslave", path);
-		return -1;
-	}
-	if (chroot(path)) {
-		SYSERROR("Failed to chroot into tmp-/");
-		return -1;
-	}
-	if (chdir("/")) {
-		SYSERROR("Failed to chdir into tmp-/");
-		return -1;
-	}
-	INFO("Chrooted into tmp-/ at %s", path);
-	return 0;
-}
-
 static int setup_rootfs(struct lxc_conf *conf)
 {
 	const struct lxc_rootfs *rootfs = &conf->rootfs;
@@ -1681,12 +1623,106 @@ static int setup_rootfs(struct lxc_conf *conf)
 	return 0;
 }
 
+int prepare_ramfs_root(char *root)
+{
+	char buf[LINELEN], *p;
+	char nroot[PATH_MAX];
+	FILE *f;
+	int i;
+	char *p2;
+
+	if (realpath(root, nroot) == NULL)
+		return -1;
+
+	if (chdir("/") == -1)
+		return -1;
+
+	/*
+	 * We could use here MS_MOVE, but in userns this mount is
+	 * locked and can't be moved.
+	 */
+	if (mount(root, "/", NULL, MS_REC | MS_BIND, NULL)) {
+		SYSERROR("Failed to move %s into /", root);
+		return -1;
+	}
+
+	if (mount(".", NULL, NULL, MS_REC | MS_PRIVATE, NULL)) {
+		SYSERROR("Failed to make . rprivate");
+		return -1;
+	}
+
+	/*
+	 * The following code cleans up inhereted mounts which are not
+	 * required for CT.
+	 *
+	 * The mountinfo file shows not all mounts, if a few points have been
+	 * unmounted between read operations from the mountinfo. So we need to
+	 * read mountinfo a few times.
+	 *
+	 * This loop can be skipped if a container uses unserns, because all
+	 * inherited mounts are locked and we should live with all this trash.
+	 */
+	while (1) {
+		int progress = 0;
+
+		f = fopen("./proc/self/mountinfo", "r");
+		if (!f) {
+			SYSERROR("Unable to open /proc/self/mountinfo");
+			return -1;
+		}
+		while (fgets(buf, LINELEN, f)) {
+			for (p = buf, i=0; p && i < 4; i++)
+				p = strchr(p+1, ' ');
+			if (!p)
+				continue;
+			p2 = strchr(p+1, ' ');
+			if (!p2)
+				continue;
+
+			*p2 = '\0';
+			*p = '.';
+
+			if (strcmp(p + 1, "/") == 0)
+				continue;
+			if (strcmp(p + 1, "/proc") == 0)
+				continue;
+
+			if (umount2(p, MNT_DETACH) == 0)
+				progress++;
+		}
+		fclose(f);
+		if (!progress)
+			break;
+	}
+
+	if (umount2("./proc", MNT_DETACH)) {
+		SYSERROR("Unable to umount /proc");
+		return -1;
+	}
+
+	/* It is weird, but chdir("..") moves us in a new root */
+	if (chdir("..") == -1) {
+		SYSERROR("Unable to change working directory");
+		return -1;
+	}
+
+	if (chroot(".") == -1) {
+		SYSERROR("Unable to chroot");
+		return -1;
+	}
+
+	return 0;
+}
+
 static int setup_pivot_root(const struct lxc_rootfs *rootfs)
 {
 	if (!rootfs->path)
 		return 0;
 
-	if (setup_rootfs_pivot_root(rootfs->mount, rootfs->pivot)) {
+	if (detect_ramfs_rootfs()) {
+		if (prepare_ramfs_root(rootfs->mount))
+			return -1;
+	} else if (setup_rootfs_pivot_root(rootfs->mount, rootfs->pivot)) {
 		ERROR("failed to setup pivot root");
 		return -1;
 	}
@@ -2018,10 +2054,12 @@ static int mount_entry(const char *fsname, const char *target,
 	if ((mountflags & MS_REMOUNT) || (mountflags & MS_BIND)) {
 		DEBUG("remounting %s on %s to respect bind or remount options",
 		      fsname ? fsname : "(none)", target ? target : "(none)");
-
+		unsigned long rqd_flags = 0;
+		if (mountflags & MS_RDONLY)
+			rqd_flags |= MS_RDONLY;
 #ifdef HAVE_STATVFS
 		if (statvfs(fsname, &sb) == 0) {
-			unsigned long required_flags = 0;
+			unsigned long required_flags = rqd_flags;
 			if (sb.f_flag & MS_NOSUID)
 				required_flags |= MS_NOSUID;
 			if (sb.f_flag & MS_NODEV)
@@ -2037,7 +2075,7 @@ static int mount_entry(const char *fsname, const char *target,
 			 * mountflags, then skip the remount
 			 */
 			if (!(mountflags & MS_REMOUNT)) {
-				if (!(required_flags & ~mountflags)) {
+				if (!(required_flags & ~mountflags) && rqd_flags == 0) {
 					DEBUG("mountflags already was %lu, skipping remount",
 						mountflags);
 					goto skipremount;
@@ -2794,7 +2832,7 @@ void restore_phys_nics_to_netns(int netnsfd, struct lxc_conf *conf)
 	}
 	for (i=0; i<conf->num_savednics; i++) {
 		struct saved_nic *s = &conf->saved_nics[i];
-		if (lxc_netdev_move_by_index(s->ifindex, 1))
+		if (lxc_netdev_move_by_index(s->ifindex, 1, NULL))
 			WARN("Error moving nic index:%d back to host netns",
 					s->ifindex);
 	}
@@ -2875,7 +2913,7 @@ struct lxc_conf *lxc_conf_init(void)
 	return new;
 }
 
-static int instanciate_veth(struct lxc_handler *handler, struct lxc_netdev *netdev)
+static int instantiate_veth(struct lxc_handler *handler, struct lxc_netdev *netdev)
 {
 	char veth1buf[IFNAMSIZ], *veth1;
 	char veth2buf[IFNAMSIZ], *veth2;
@@ -2907,7 +2945,7 @@ static int instanciate_veth(struct lxc_handler *handler, struct lxc_netdev *netd
 
 	err = lxc_veth_create(veth1, veth2);
 	if (err) {
-		ERROR("failed to create %s-%s : %s", veth1, veth2,
+		ERROR("failed to create veth pair (%s and %s): %s", veth1, veth2,
 		      strerror(-err));
 		goto out_delete;
 	}
@@ -2917,7 +2955,7 @@ static int instanciate_veth(struct lxc_handler *handler, struct lxc_netdev *netd
 	 * of a container */
 	err = setup_private_host_hw_addr(veth1);
 	if (err) {
-		ERROR("failed to change mac address of host interface '%s' : %s",
+		ERROR("failed to change mac address of host interface '%s': %s",
 			veth1, strerror(-err));
 		goto out_delete;
 	}
@@ -2927,7 +2965,7 @@ static int instanciate_veth(struct lxc_handler *handler, struct lxc_netdev *netd
 		if (!err)
 			err = lxc_netdev_set_mtu(veth2, atoi(netdev->mtu));
 		if (err) {
-			ERROR("failed to set mtu '%s' for %s-%s : %s",
+			ERROR("failed to set mtu '%s' for veth pair (%s and %s): %s",
 			      netdev->mtu, veth1, veth2, strerror(-err));
 			goto out_delete;
 		}
@@ -2936,7 +2974,7 @@ static int instanciate_veth(struct lxc_handler *handler, struct lxc_netdev *netd
 	if (netdev->link) {
 		err = lxc_bridge_attach(netdev->link, veth1);
 		if (err) {
-			ERROR("failed to attach '%s' to the bridge '%s' : %s",
+			ERROR("failed to attach '%s' to the bridge '%s': %s",
 				      veth1, netdev->link, strerror(-err));
 			goto out_delete;
 		}
@@ -2961,7 +2999,7 @@ static int instanciate_veth(struct lxc_handler *handler, struct lxc_netdev *netd
 			goto out_delete;
 	}
 
-	DEBUG("instanciated veth '%s/%s', index is '%d'",
+	DEBUG("instantiated veth '%s/%s', index is '%d'",
 	      veth1, veth2, netdev->ifindex);
 
 	return 0;
@@ -2994,7 +3032,7 @@ static int shutdown_veth(struct lxc_handler *handler, struct lxc_netdev *netdev)
 	return 0;
 }
 
-static int instanciate_macvlan(struct lxc_handler *handler, struct lxc_netdev *netdev)
+static int instantiate_macvlan(struct lxc_handler *handler, struct lxc_netdev *netdev)
 {
 	char peerbuf[IFNAMSIZ], *peer;
 	int err;
@@ -3035,7 +3073,7 @@ static int instanciate_macvlan(struct lxc_handler *handler, struct lxc_netdev *n
 			goto out;
 	}
 
-	DEBUG("instanciated macvlan '%s', index is '%d' and mode '%d'",
+	DEBUG("instantiated macvlan '%s', index is '%d' and mode '%d'",
 	      peer, netdev->ifindex, netdev->priv.macvlan_attr.mode);
 
 	return 0;
@@ -3059,8 +3097,8 @@ static int shutdown_macvlan(struct lxc_handler *handler, struct lxc_netdev *netd
 	return 0;
 }
 
-/* XXX: merge with instanciate_macvlan */
-static int instanciate_vlan(struct lxc_handler *handler, struct lxc_netdev *netdev)
+/* XXX: merge with instantiate_macvlan */
+static int instantiate_vlan(struct lxc_handler *handler, struct lxc_netdev *netdev)
 {
 	char peer[IFNAMSIZ];
 	int err;
@@ -3090,7 +3128,7 @@ static int instanciate_vlan(struct lxc_handler *handler, struct lxc_netdev *netd
 		return -1;
 	}
 
-	DEBUG("instanciated vlan '%s', ifindex is '%d'", " vlan1000",
+	DEBUG("instantiated vlan '%s', ifindex is '%d'", " vlan1000",
 	      netdev->ifindex);
 
 	return 0;
@@ -3101,7 +3139,7 @@ static int shutdown_vlan(struct lxc_handler *handler, struct lxc_netdev *netdev)
 	return 0;
 }
 
-static int instanciate_phys(struct lxc_handler *handler, struct lxc_netdev *netdev)
+static int instantiate_phys(struct lxc_handler *handler, struct lxc_netdev *netdev)
 {
 	if (!netdev->link) {
 		ERROR("no link specified for the physical interface");
@@ -3138,13 +3176,13 @@ static int shutdown_phys(struct lxc_handler *handler, struct lxc_netdev *netdev)
 	return 0;
 }
 
-static int instanciate_none(struct lxc_handler *handler, struct lxc_netdev *netdev)
+static int instantiate_none(struct lxc_handler *handler, struct lxc_netdev *netdev)
 {
 	netdev->ifindex = 0;
 	return 0;
 }
 
-static int instanciate_empty(struct lxc_handler *handler, struct lxc_netdev *netdev)
+static int instantiate_empty(struct lxc_handler *handler, struct lxc_netdev *netdev)
 {
 	netdev->ifindex = 0;
 	if (netdev->upscript) {
@@ -3372,7 +3410,7 @@ int lxc_assign_network(struct lxc_list *network, pid_t pid)
 		if (!netdev->ifindex)
 			continue;
 
-		err = lxc_netdev_move_by_index(netdev->ifindex, pid);
+		err = lxc_netdev_move_by_index(netdev->ifindex, pid, NULL);
 		if (err) {
 			ERROR("failed to move '%s' to the container : %s",
 			      netdev->link, strerror(-err));
@@ -3978,7 +4016,7 @@ void tmp_proc_unmount(struct lxc_conf *lxc_conf)
 	}
 }
 
-static void remount_all_slave(void)
+void remount_all_slave(void)
 {
 	/* walk /proc/mounts and change any shared entries to slave */
 	FILE *f = fopen("/proc/self/mountinfo", "r");
@@ -4027,15 +4065,9 @@ int do_rootfs_setup(struct lxc_conf *conf, const char *name, const char *lxcpath
 		const char *path = conf->rootfs.mount;
 		if (mount(path, path, "rootfs", MS_BIND, NULL) < 0) {
 			ERROR("Failed to bind-mount container / onto itself");
-			return false;
-		}
-	}
-
-	if (detect_ramfs_rootfs()) {
-		if (chroot_into_slave(conf)) {
-			ERROR("Failed to chroot into slave /");
 			return -1;
 		}
+		return 0;
 	}
 
 	remount_all_slave();
@@ -4073,6 +4105,7 @@ static bool verify_start_hooks(struct lxc_conf *conf)
 					hookname);
 			return false;
 		}
+		return true;
 	}
 
 	return true;
@@ -4363,12 +4396,12 @@ int lxc_clear_nic(struct lxc_conf *c, const char *key)
 			free(netdev->mtu);
 			netdev->mtu = NULL;
 		}
-	} else if (strcmp(p1, ".ipv4_gateway") == 0) {
+	} else if (strcmp(p1, ".ipv4.gateway") == 0) {
 		if (netdev->ipv4_gateway) {
 			free(netdev->ipv4_gateway);
 			netdev->ipv4_gateway = NULL;
 		}
-	} else if (strcmp(p1, ".ipv6_gateway") == 0) {
+	} else if (strcmp(p1, ".ipv6.gateway") == 0) {
 		if (netdev->ipv6_gateway) {
 			free(netdev->ipv6_gateway);
 			netdev->ipv6_gateway = NULL;

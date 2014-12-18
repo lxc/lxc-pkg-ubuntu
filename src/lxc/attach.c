@@ -336,23 +336,8 @@ static int lxc_attach_set_environment(enum lxc_attach_env_policy_t policy, char*
 		 * number of C programs out there that just assume
 		 * that getenv("PATH") is never NULL and then die a
 		 * painful segfault death. */
-		if (!path_kept) {
-#ifdef HAVE_CONFSTR
-			size_t n;
-			char *path_env;
-
-			n = confstr(_CS_PATH, NULL, 0);
-			path_env = malloc(n);
-			if (path_env) {
-				confstr(_CS_PATH, path_env, n);
-				setenv("PATH", path_env, 1);
-				free(path_env);
-			}
-			/* don't error out, this is just an extra service */
-#else
+		if (!path_kept)
 			setenv("PATH", "/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin", 1);
-#endif
-		}
 	}
 
 	if (putenv("container=lxc")) {
@@ -744,7 +729,7 @@ int lxc_attach(const char* name, const char* lxcpath, lxc_attach_exec_t exec_fun
 	if (pid) {
 		pid_t to_cleanup_pid = pid;
 
-		/* inital thread, we close the socket that is for the
+		/* initial thread, we close the socket that is for the
 		 * subprocesses
 		 */
 		close(ipc_sockets[1]);
@@ -773,8 +758,10 @@ int lxc_attach(const char* name, const char* lxcpath, lxc_attach_exec_t exec_fun
 		}
 
 		/* ignore SIGKILL (CTRL-C) and SIGQUIT (CTRL-\) - issue #313 */
-		signal(SIGINT, SIG_IGN);
-		signal(SIGQUIT, SIG_IGN);
+		if (options->stdin_fd == 0) {
+			signal(SIGINT, SIG_IGN);
+			signal(SIGQUIT, SIG_IGN);
+		}
 
 		/* reap intermediate process */
 		ret = wait_for_pid(pid);

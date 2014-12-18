@@ -433,9 +433,9 @@ extern int lxc_list_nicconfigs(struct lxc_conf *c, const char *key,
 		strprint(retv, inlen, "hwaddr\n");
 		strprint(retv, inlen, "mtu\n");
 		strprint(retv, inlen, "ipv6\n");
-		strprint(retv, inlen, "ipv6_gateway\n");
+		strprint(retv, inlen, "ipv6.gateway\n");
 		strprint(retv, inlen, "ipv4\n");
-		strprint(retv, inlen, "ipv4_gateway\n");
+		strprint(retv, inlen, "ipv4.gateway\n");
 	}
 	switch(netdev->type) {
 	case LXC_NET_VETH:
@@ -1353,6 +1353,8 @@ out:
 static int config_fstab(const char *key, const char *value,
 			struct lxc_conf *lxc_conf)
 {
+	if (!value || strlen(value) == 0)
+		return -1;
 	return config_path_item(&lxc_conf->fstab, value);
 }
 
@@ -1384,8 +1386,10 @@ static int config_mount_auto(const char *key, const char *value,
 	int i;
 	int ret = -1;
 
-	if (!strlen(value))
-		return -1;
+	if (!value || strlen(value) == 0) {
+		lxc_conf->auto_mounts = 0;
+		return 0;
+	}
 
 	autos = strdup(value);
 	if (!autos) {
@@ -1419,6 +1423,12 @@ static int config_mount_auto(const char *key, const char *value,
 	return ret;
 }
 
+/*
+ * TODO
+ * This fn is handling lxc.mount, lxc.mount.entry, and lxc.mount.auto.
+ * It should probably be split into 3 separate functions indexed by
+ * the config[] entries at top.
+ */
 static int config_mount(const char *key, const char *value,
 			struct lxc_conf *lxc_conf)
 {
@@ -1428,9 +1438,6 @@ static int config_mount(const char *key, const char *value,
 	char *subkey;
 	char *mntelem;
 	struct lxc_list *mntlist;
-
-	if (!value || strlen(value) == 0)
-		return lxc_clear_mount_entries(lxc_conf);
 
 	subkey = strstr(key, token);
 
@@ -1449,8 +1456,9 @@ static int config_mount(const char *key, const char *value,
 		return config_mount_auto(key, value, lxc_conf);
 	}
 
-	if (!strlen(subkey))
-		return -1;
+	/* At this point we definitely have key = lxc.mount.entry */
+	if (!value || strlen(value) == 0)
+		return lxc_clear_mount_entries(lxc_conf);
 
 	mntlist = malloc(sizeof(*mntlist));
 	if (!mntlist)
@@ -2012,7 +2020,7 @@ static int lxc_get_auto_mounts(struct lxc_conf *c, char *retv, int inlen)
 /*
  * lxc.network.0.XXX, where XXX can be: name, type, link, flags, type,
  * macvlan.mode, veth.pair, vlan, ipv4, ipv6, script.up, hwaddr, mtu,
- * ipv4_gateway, ipv6_gateway.  ipvX_gateway can return 'auto' instead
+ * ipv4.gateway, ipv6.gateway.  ipvX.gateway can return 'auto' instead
  * of an address.  ipv4 and ipv6 return lists (newline-separated).
  * things like veth.pair return '' if invalid (i.e. if called for vlan
  * type).
@@ -2081,7 +2089,7 @@ static int lxc_get_item_nic(struct lxc_conf *c, char *retv, int inlen,
 		if (netdev->type == LXC_NET_VLAN) {
 			strprint(retv, inlen, "%d", netdev->priv.vlan_attr.vid);
 		}
-	} else if (strcmp(p1, "ipv4_gateway") == 0) {
+	} else if (strcmp(p1, "ipv4.gateway") == 0) {
 		if (netdev->ipv4_gateway_auto) {
 			strprint(retv, inlen, "auto");
 		} else if (netdev->ipv4_gateway) {
@@ -2095,9 +2103,9 @@ static int lxc_get_item_nic(struct lxc_conf *c, char *retv, int inlen,
 			struct lxc_inetdev *i = it2->elem;
 			char buf[INET_ADDRSTRLEN];
 			inet_ntop(AF_INET, &i->addr, buf, sizeof(buf));
-			strprint(retv, inlen, "%s\n", buf);
+			strprint(retv, inlen, "%s/%d\n", buf, i->prefix);
 		}
-	} else if (strcmp(p1, "ipv6_gateway") == 0) {
+	} else if (strcmp(p1, "ipv6.gateway") == 0) {
 		if (netdev->ipv6_gateway_auto) {
 			strprint(retv, inlen, "auto");
 		} else if (netdev->ipv6_gateway) {
@@ -2111,7 +2119,7 @@ static int lxc_get_item_nic(struct lxc_conf *c, char *retv, int inlen,
 			struct lxc_inet6dev *i = it2->elem;
 			char buf[INET6_ADDRSTRLEN];
 			inet_ntop(AF_INET6, &i->addr, buf, sizeof(buf));
-			strprint(retv, inlen, "%s\n", buf);
+			strprint(retv, inlen, "%s/%d\n", buf, i->prefix);
 		}
 	}
 	return fulllen;
@@ -2232,6 +2240,9 @@ int lxc_clear_config_item(struct lxc_conf *c, const char *key)
 	else if (strncmp(key, "lxc.seccomp", 11) == 0) {
 		lxc_seccomp_free(c);
 		return 0;
+	}
+	else if (strncmp(key, "lxc.id_map", 10) == 0) {
+		return lxc_clear_idmaps(c);
 	}
 
 	return -1;

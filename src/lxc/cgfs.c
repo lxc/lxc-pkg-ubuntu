@@ -1002,7 +1002,7 @@ static struct cgroup_process_info *lxc_cgroupfs_create(const char *name, const c
 		continue;
 
 	cleanup_from_error:
-		/* called if an error occured in the loop, so we
+		/* called if an error occurred in the loop, so we
 		 * do some additional cleanup here
 		 */
 		saved_errno = errno;
@@ -2226,15 +2226,7 @@ static void *cgfs_init(const char *name)
 	if (!d->name)
 		goto err1;
 
-	/* if we are running as root, use system cgroup pattern, otherwise
-	 * just create a cgroup under the current one. But also fall back to
-	 * that if for some reason reading the configuration fails and no
-	 * default value is available
-	 */
-	if (geteuid() == 0)
-		d->cgroup_pattern = lxc_global_config_value("lxc.cgroup.pattern");
-	if (!d->cgroup_pattern)
-		d->cgroup_pattern = "%n";
+	d->cgroup_pattern = lxc_global_config_value("lxc.cgroup.pattern");
 
 	d->meta = lxc_cgroup_load_meta();
 	if (!d->meta) {
