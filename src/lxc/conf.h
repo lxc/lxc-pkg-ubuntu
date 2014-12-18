@@ -140,7 +140,7 @@ struct lxc_netdev {
 /*
  * Defines a generic struct to configure the control group.
  * It is up to the programmer to specify the right subsystem.
- * @subsystem : the targetted subsystem
+ * @subsystem : the targeted subsystem
  * @value     : the value to set
  */
 struct lxc_cgroup {
@@ -184,7 +184,7 @@ struct lxc_pty_info {
 
 /*
  * Defines the number of tty configured and contains the
- * instanciated ptys
+ * instantiated ptys
  * @nbtty = number of configured ttys
  */
 struct lxc_tty_info {
@@ -399,5 +399,6 @@ extern int userns_exec_1(struct lxc_conf *conf, int (*fn)(void *), void *data);
 extern int parse_mntopts(const char *mntopts, unsigned long *mntflags,
 			 char **mntdata);
 extern void tmp_proc_unmount(struct lxc_conf *lxc_conf);
+void remount_all_slave(void);
 extern void suggest_default_idmap(void);
 #endif

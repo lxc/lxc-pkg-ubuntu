@@ -45,7 +45,7 @@ BuildRequires: systemd-units
 %endif
 
 Name: lxc
-Version: 1.0.6
+Version: 1.0.7
 Release: %{?beta_rel:0.1.%{beta_rel}}%{?!beta_rel:%{norm_rel}}%{?dist}
 URL: http://linuxcontainers.org
 Source: http://linuxcontainers.org/downloads/%{name}-%{version}%{?beta_dot}.tar.gz
@@ -178,7 +178,7 @@ rm -rf %{buildroot}
 %changelog
 * Tue Oct 22 2013 Dwight Engen <dwight.engen@oracle.com> - 1.0.0-0.1.alpha2
 - fix some rpmlint warnings/errors
-- split lua bits into seperate package
+- split lua bits into separate package
 
 * Mon Sep 10 2012 Dwight Engen <dwight.engen@oracle.com> - 0.8.0
 - fix lxc-init moved to libexec

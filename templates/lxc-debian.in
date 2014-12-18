@@ -33,7 +33,8 @@ done
 # Make sure the usual locations are in PATH
 export PATH=$PATH:/usr/sbin:/usr/bin:/sbin:/bin
 
-MIRROR=${MIRROR:-http://cdn.debian.net/debian}
+MIRROR=${MIRROR:-http://http.debian.net/debian}
+SECURITY_MIRROR=${SECURITY_MIRROR:-http://security.debian.org/}
 LOCALSTATEDIR="@LOCALSTATEDIR@"
 LXC_TEMPLATE_CONFIG="@LXCTEMPLATECONFIG@"
 
@@ -107,10 +108,10 @@ EOF
     fi
 
     # remove pointless services in a container
-    chroot $rootfs /usr/sbin/update-rc.d -f checkroot.sh remove
-    chroot $rootfs /usr/sbin/update-rc.d -f umountfs remove
-    chroot $rootfs /usr/sbin/update-rc.d -f hwclock.sh remove
-    chroot $rootfs /usr/sbin/update-rc.d -f hwclockfirst.sh remove
+    chroot $rootfs /usr/sbin/update-rc.d -f checkroot.sh disable
+    chroot $rootfs /usr/sbin/update-rc.d -f umountfs disable
+    chroot $rootfs /usr/sbin/update-rc.d -f hwclock.sh disable
+    chroot $rootfs /usr/sbin/update-rc.d -f hwclockfirst.sh disable
 
     # generate new SSH keys
     if [ -x $rootfs/var/lib/dpkg/info/openssh-server.postinst ]; then
@@ -150,6 +151,63 @@ EOF
 
     echo "root:root" | chroot $rootfs chpasswd
     echo "Root password is 'root', please change !"
+
+    return 0
+}
+
+write_sourceslist()
+{
+    local rootfs="$1";  shift
+    local release="$1"; shift
+    local arch="$1";    shift
+
+    local prefix="deb"
+    if [ -n "${arch}" ]; then
+        prefix="deb [arch=${arch}]"
+    fi
+
+    cat >> "${rootfs}/etc/apt/sources.list" << EOF
+${prefix} $MIRROR          ${release}         main contrib non-free
+${prefix} $SECURITY_MIRROR ${release}/updates main contrib non-free
+EOF
+}
+
+configure_debian_systemd()
+{
+    path=$1
+    rootfs=$2
+
+    init="$(chroot ${rootfs} dpkg-query --search /sbin/init | cut -d : -f 1)"
+    if [ "$init" = "systemd-sysv" ]; then
+       # only appropriate when systemd is PID 1
+       echo 'lxc.autodev = 1' >> "$path/config"
+       echo 'lxc.kmsg = 0' >> "$path/config"
+    fi
+
+    # this only works if we have getty@.service to manipulate
+    if [ -f ${rootfs}/lib/systemd/system/getty\@.service ]; then
+       sed -e 's/^ConditionPathExists=/# ConditionPathExists=/' \
+           -e 's/After=dev-%i.device/After=/' \
+           < ${rootfs}/lib/systemd/system/getty\@.service \
+           > ${rootfs}/etc/systemd/system/getty\@.service
+    fi
+
+    # just in case systemd is not installed
+    mkdir -p ${rootfs}/{lib,etc}/systemd/system
+    mkdir -p ${rootfs}/etc/systemd/system/getty.target.wants
+
+    # This function has been copied and adapted from lxc-fedora
+    rm -f ${rootfs}/etc/systemd/system/default.target
+    touch ${rootfs}/etc/fstab
+    chroot ${rootfs} ln -s /dev/null /etc/systemd/system/udev.service
+    chroot ${rootfs} ln -s /dev/null /etc/systemd/system/systemd-udevd.service
+    chroot ${rootfs} ln -s /lib/systemd/system/multi-user.target /etc/systemd/system/default.target
+    # Make systemd honor SIGPWR
+    chroot ${rootfs} ln -s /lib/systemd/system/halt.target /etc/systemd/system/sigpwr.target
+    # Setup getty service on the 4 ttys we are going to allow in the
+    # default config.  Number should match lxc.tty
+    ( cd ${rootfs}/etc/systemd/system/getty.target.wants
+        for i in 1 2 3 4 ; do ln -sf ../getty\@.service getty@tty${i}.service; done )
 
     return 0
 }
@@ -302,6 +360,38 @@ EOF
     return 0
 }
 
+post_process()
+{
+    local rootfs="$1";  shift
+    local release="$1"; shift
+    local arch="$1"; shift
+    local hostarch="$1"; shift
+
+    # Disable service startup
+    cat > ${rootfs}/usr/sbin/policy-rc.d << EOF
+#!/bin/sh
+exit 101
+EOF
+    chmod +x ${rootfs}/usr/sbin/policy-rc.d
+
+    # If the container isn't running a native architecture, setup multiarch
+    if [ "${arch}" != "${hostarch}" ]; then
+        mkdir -p ${rootfs}/etc/dpkg/dpkg.cfg.d
+        echo "foreign-architecture ${hostarch}" > ${rootfs}/etc/dpkg/dpkg.cfg.d/lxc-multiarch
+    fi
+
+    # Write a new sources.list containing both native and multiarch entries
+    > ${rootfs}/etc/apt/sources.list
+    if [ "${arch}" = "${hostarch}" ]; then
+        write_sourceslist ${rootfs} ${release} ${arch}
+    else
+        write_sourceslist ${rootfs} ${release}
+    fi
+
+    # Re-enable service startup
+    rm ${rootfs}/usr/sbin/policy-rc.d
+}
+
 clean()
 {
     cache="$LOCALSTATEDIR/cache/lxc/debian"
@@ -328,14 +418,16 @@ clean()
 usage()
 {
     cat <<EOF
-$1 -h|--help -p|--path=<path> [-a|--arch] [-r|--release=<release>] [-c|--clean]
-release: the debian release (e.g. wheezy): defaults to current stable
+$1 -h|--help -p|--path=<path> [-a|--arch] [-c|--clean] [--mirror=<mirror>] [-r|--release=<release>] [--security-mirror=<security mirror>]
 arch: the container architecture (e.g. amd64): defaults to host arch
+release: the debian release (e.g. wheezy): defaults to current stable
+mirror: debain mirror to use during installation
+security mirror: debain mirror to use for security updates
 EOF
     return 0
 }
 
-options=$(getopt -o hp:n:a:r:c -l help,rootfs:,path:,name:,arch:,release:,clean -- "$@")
+options=$(getopt -o hp:n:a:r:c -l arch:,clean,help,mirror:,name:,path:,release:,rootfs:,security-mirror: -- "$@")
 if [ $? -ne 0 ]; then
         usage $(basename $0)
         exit 1
@@ -359,15 +451,18 @@ hostarch=$arch
 while true
 do
     case "$1" in
-        -h|--help)      usage $0 && exit 1;;
-        -p|--path)      path=$2; shift 2;;
-        --rootfs)       rootfs=$2; shift 2;;
-        -a|--arch)      arch=$2; shift 2;;
-        -r|--release)   release=$2; shift 2;;
-        -n|--name)      name=$2; shift 2;;
-        -c|--clean)     clean=$2; shift 1;;
-        --)             shift 1; break ;;
-        *)              break ;;
+        -h|--help)            usage $0 && exit 1;;
+           --)                shift 1; break ;;
+
+        -a|--arch)            arch=$2; shift 2;;
+        -c|--clean)           clean=$2; shift 1;;
+           --mirror)          MIRROR=$2; shift 2;;
+        -n|--name)            name=$2; shift 2;;
+        -p|--path)            path=$2; shift 2;;
+        -r|--release)         release=$2; shift 2;;
+           --rootfs)          rootfs=$2; shift 2;;
+           --security-mirror) SECURITY_MIRROR=$2; shift 2;;
+        *)                    break ;;
     esac
 done
 
@@ -434,7 +529,6 @@ if [ -z "$rootfs" ]; then
     fi
 fi
 
-
 install_debian $rootfs $release $arch
 if [ $? -ne 0 ]; then
     echo "failed to install debian"
@@ -452,6 +546,10 @@ if [ $? -ne 0 ]; then
     echo "failed write configuration file"
     exit 1
 fi
+
+configure_debian_systemd $path $rootfs
+
+post_process ${rootfs} ${release} ${arch} ${hostarch}
 
 if [ ! -z $clean ]; then
     clean || exit 1
