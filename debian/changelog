@@ -1,10 +1,10 @@
-lxc (1.0.7-0ubuntu0.1) UNRELEASED; urgency=medium
+lxc (1.0.7-0ubuntu0.1) trusty; urgency=medium
 
   * New upstream bugfix release. (MRE tracking bug: LP: #1404039)
     - Changelog at: https://linuxcontainers.org/lxc/news/
   * Update debian/rules apparmor handling to match Ubuntu 14.10
 
- -- Stéphane Graber <stgraber@ubuntu.com>  Thu, 18 Dec 2014 17:45:55 -0500
+ -- Stéphane Graber <stgraber@ubuntu.com>  Thu, 18 Dec 2014 17:50:38 -0500
 
 lxc (1.0.6-0ubuntu0.1) trusty; urgency=medium
 
