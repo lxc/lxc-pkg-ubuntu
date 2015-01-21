@@ -1,10 +1,10 @@
-lxc (1.1.0~rc1-0ubuntu1) UNRELEASED; urgency=medium
+lxc (1.1.0~rc1-0ubuntu1) vivid; urgency=medium
 
   * New upstream release (1.1.0~rc1)
   * Add lxcfs to lxc-templates recommends. (MIR: #1413405)
   * Build the lua-lxc binding. (MIR: #1413402)
 
- -- Stéphane Graber <stgraber@ubuntu.com>  Wed, 21 Jan 2015 17:13:29 -0500
+ -- Stéphane Graber <stgraber@ubuntu.com>  Wed, 21 Jan 2015 17:34:45 -0500
 
 lxc (1.1.0~alpha3-0ubuntu1) vivid; urgency=medium
 
