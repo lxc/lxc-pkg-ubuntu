@@ -188,13 +188,6 @@ configure_debian_systemd()
     path=$1
     rootfs=$2
 
-    init="$(chroot ${rootfs} dpkg-query --search /sbin/init | cut -d : -f 1)"
-    if [ "$init" = "systemd-sysv" ]; then
-       # only appropiate when systemd is PID 1
-       echo 'lxc.autodev = 1' >> "$path/config"
-       echo 'lxc.kmsg = 0' >> "$path/config"
-    fi
-
     # this only works if we have getty@.service to manipulate
     if [ -f ${rootfs}/lib/systemd/system/getty\@.service ]; then
        sed -e 's/^ConditionPathExists=/# ConditionPathExists=/' \
@@ -438,6 +431,7 @@ usage()
 {
     cat <<EOF
 $1 -h|--help -p|--path=<path> [-a|--arch] [-c|--clean] [--mirror=<mirror>] [-r|--release=<release>] [--security-mirror=<security mirror>]
+clean: purge the download cache after installation
 arch: the container architecture (e.g. amd64): defaults to host arch
 release: the debian release (e.g. wheezy): defaults to current stable
 mirror: debain mirror to use during installation
@@ -475,7 +469,7 @@ do
            --)                shift 1; break ;;
 
         -a|--arch)            arch=$2; shift 2;;
-        -c|--clean)           clean=$2; shift 1;;
+        -c|--clean)           clean=1; shift 1;;
            --mirror)          MIRROR=$2; shift 2;;
         -n|--name)            name=$2; shift 2;;
            --packages)        packages=$2; shift 2;;
@@ -572,7 +566,7 @@ configure_debian_systemd $path $rootfs
 
 post_process ${rootfs} ${release} ${arch} ${hostarch} ${packages}
 
-if [ ! -z $clean ]; then
+if [ ! -z "$clean" ]; then
     clean || exit 1
     exit 0
 fi

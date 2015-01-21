@@ -166,6 +166,7 @@ dest = lxc.Container(os.path.basename(dest_path), args.lxcpath)
 dest.load_config(orig.config_file_name)
 dest.set_config_item("lxc.utsname", dest.name)
 dest.set_config_item("lxc.rootfs", os.path.join(dest_path, "rootfs"))
+print("setting rootfs to .%s.", os.path.join(dest_path, "rootfs"))
 for nic in dest.network:
     if hasattr(nic, 'hwaddr'):
         nic.hwaddr = randomMAC()
@@ -219,6 +220,14 @@ for entry in args.cdir:
         dst_path = "%s/rootfs/%s" % (dest_path, src_path)
         overlay_dirs += [(src_path, dst_path)]
 
+# do we have the new overlay fs which requires workdir, or the older
+# overlayfs which does not?
+have_new_overlay = False
+with open("/proc/filesystems", "r") as fd:
+    for line in fd:
+        if line == "nodev\toverlay\n":
+            have_new_overlay = True
+
 # Generate pre-mount script
 with open(os.path.join(dest_path, "pre-mount"), "w+") as fd:
     os.fchmod(fd.fileno(), 0o755)
@@ -230,19 +239,32 @@ LXC_NAME="%s"
 
     count = 0
     for entry in overlay_dirs:
-        target = "%s/delta%s" % (dest_path, count)
-        fd.write("mkdir -p %s %s\n" % (target, entry[1]))
+        deltdir = "%s/delta%s" % (tmpdir, count)
+        workdir = "%s/work%s" % (tmpdir, count)
+        fd.write("mkdir -p %s %s\n" % (deltdir, entry[1]))
+        if have_new_overlay:
+            fd.write("mkdir -p %s\n" % workdir)
 
         if args.storage_type == "tmpfs":
-            fd.write("mount -n -t tmpfs -o mode=0755 none %s\n" % (target))
+            fd.write("mount -n -t tmpfs -o mode=0755 none %s\n" % (tmpdir))
+            fd.write("mkdir %s\n" % deltdir)
+            fd.write("mkdir %s\n" % workdir)
 
-        fd.write("getfacl -a %s | setfacl --set-file=- %s || true\n" % (entry[0], target))
+        fd.write("getfacl -a %s | setfacl --set-file=- %s || true\n" % (entry[0], deltdir))
         fd.write("getfacl -a %s | setfacl --set-file=- %s || true\n" % (entry[0], entry[1]))
 
         if args.union_type == "overlayfs":
-            fd.write("mount -n -t overlayfs"
+            if have_new_overlay:
+                fd.write("mount -n -t overlay"
+                     " -oupperdir=%s,lowerdir=%s,workdir=%s none %s\n" % (
+                         deltdir,
+                         entry[0],
+                         workdir,
+                         entry[1]))
+            else:
+                fd.write("mount -n -t overlayfs"
                      " -oupperdir=%s,lowerdir=%s none %s\n" % (
-                         target,
+                         deltdir,
                          entry[0],
                          entry[1]))
         elif args.union_type == "aufs":
@@ -252,7 +274,7 @@ LXC_NAME="%s"
 
             fd.write("mount -n -t aufs "
                      "-o br=%s=rw:%s=ro,noplink,xino=%s none %s\n" % (
-                         target,
+                         deltdir,
                          entry[0],
                          xino_path,
                          entry[1]))

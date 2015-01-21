@@ -556,7 +556,8 @@ top_srcdir = @top_srcdir@
 @ENABLE_TESTS_TRUE@	-DRUNTIME_PATH=\"$(RUNTIME_PATH)\" \
 @ENABLE_TESTS_TRUE@	$(am__append_1) $(am__append_2)
 @ENABLE_TESTS_TRUE@bin_SCRIPTS = lxc-test-autostart \
-@ENABLE_TESTS_TRUE@	lxc-test-cloneconfig $(am__append_3)
+@ENABLE_TESTS_TRUE@	lxc-test-cloneconfig lxc-test-createconfig \
+@ENABLE_TESTS_TRUE@	$(am__append_3)
 EXTRA_DIST = \
 	cgpath.c \
 	clonetest.c \
@@ -575,6 +576,7 @@ EXTRA_DIST = \
 	lxc-test-apparmor-mount \
 	lxc-test-checkpoint-restore \
 	lxc-test-cloneconfig \
+	lxc-test-createconfig \
 	lxc-test-ubuntu \
 	lxc-test-unpriv \
 	may_control.c \

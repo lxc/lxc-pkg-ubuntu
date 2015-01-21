@@ -159,7 +159,7 @@ static int build_dir(const char *name)
 		*p = '\0';
 		if (access(n, F_OK)) {
 			ret = lxc_unpriv(mkdir(n, 0755));
-			if (ret && errno != -EEXIST) {
+			if (ret && errno != EEXIST) {
 				SYSERROR("failed to create directory '%s'.", n);
 				free(n);
 				return -1;
@@ -200,7 +200,7 @@ static int log_open(const char *name)
  * Build the path to the log file
  * @name     : the name of the container
  * @lxcpath  : the lxcpath to use as a basename or NULL to use LOGPATH
- * Returns malloced path on sucess, or NULL on failure
+ * Returns malloced path on success, or NULL on failure
  */
 static char *build_log_path(const char *name, const char *lxcpath)
 {

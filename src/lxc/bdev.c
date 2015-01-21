@@ -23,7 +23,7 @@
 
 /*
  * this is all just a first shot for experiment.  If we go this route, much
- * shoudl change.  bdev should be a directory with per-bdev file.  Things which
+ * should change.  bdev should be a directory with per-bdev file.  Things which
  * I'm doing by calling out to userspace should sometimes be done through
  * libraries like liblvm2
  */
@@ -356,15 +356,6 @@ struct bdev_type {
 	const char *name;
 	const struct bdev_ops *ops;
 };
-
-static int is_dir(const char *path)
-{
-	struct stat statbuf;
-	int ret = stat(path, &statbuf);
-	if (ret == 0 && S_ISDIR(statbuf.st_mode))
-		return 1;
-	return 0;
-}
 
 static int dir_detect(const char *path)
 {
@@ -1419,7 +1410,7 @@ static int btrfs_snapshot(const char *orig, const char *new)
 		goto out;
 	}
 	// make sure the directory doesn't already exist
-	if (rmdir(newfull) < 0 && errno != -ENOENT) {
+	if (rmdir(newfull) < 0 && errno != ENOENT) {
 		SYSERROR("Error removing empty new rootfs");
 		goto out;
 	}
@@ -1512,7 +1503,7 @@ static int btrfs_clonepaths(struct bdev *orig, struct bdev *new, const char *old
 		return userns_exec_1(conf, btrfs_snapshot_wrapper, &sdata);
 	}
 
-	if (rmdir(new->dest) < 0 && errno != -ENOENT) {
+	if (rmdir(new->dest) < 0 && errno != ENOENT) {
 		SYSERROR("removing %s", new->dest);
 		return -1;
 	}
@@ -2966,7 +2957,7 @@ static bool requires_nbd(const char *path)
  * attach_block_device returns true if all went well,
  * meaning either a block device was attached or was not
  * needed.  It returns false if something went wrong and
- * container startup shoudl be stopped.
+ * container startup should be stopped.
  */
 bool attach_block_device(struct lxc_conf *conf)
 {
@@ -3486,7 +3477,7 @@ static struct bdev * do_bdev_create(const char *dest, const char *type,
 /*
  * bdev_create:
  * Create a backing store for a container.
- * If successfull, return a struct bdev *, with the bdev mounted and ready
+ * If successful, return a struct bdev *, with the bdev mounted and ready
  * for use.  Before completing, the caller will need to call the
  * umount operation and bdev_put().
  * @dest: the mountpoint (i.e. /var/lib/lxc/$name/rootfs)

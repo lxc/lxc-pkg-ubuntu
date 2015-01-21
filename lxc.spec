@@ -52,8 +52,8 @@ BuildRequires: systemd
 # RPM needs alpha/beta/rc in Release: not Version: to ensure smooth
 # package upgrades from alpha->beta->rc->release. For more info see:
 # http://fedoraproject.org/wiki/Packaging%3aNamingGuidelines#NonNumericRelease
-%if "xalpha3" != "x"
-%global beta_rel alpha3
+%if "xrc1" != "x"
+%global beta_rel rc1
 %global beta_dot .%{beta_rel}
 %else
 %global norm_rel 1
@@ -297,7 +297,7 @@ fi
 %changelog
 * Tue Oct 22 2013 Dwight Engen <dwight.engen@oracle.com> - 1.0.0-0.1.alpha2
 - fix some rpmlint warnings/errors
-- split lua bits into seperate package
+- split lua bits into separate package
 
 * Mon Sep 10 2012 Dwight Engen <dwight.engen@oracle.com> - 0.8.0
 - fix lxc-init moved to libexec
