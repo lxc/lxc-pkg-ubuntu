@@ -13,6 +13,7 @@ Build-Depends: autotools-dev,
                libcap-dev,
                libcgmanager-dev,
                libgnutls-dev,
+               liblua5.2-dev,
                libseccomp-dev [i386 amd64 armhf],
                libselinux1-dev,
                linux-libc-dev,
@@ -81,6 +82,7 @@ Depends: lxc (>= 0.8.0~rc1-4ubuntu43), ${misc:Depends}
 Recommends: busybox-static,
             cloud-image-utils | cloud-utils,
             debootstrap | cdebootstrap,
+            lxcfs,
             openssl,
             rsync,
             uuid-runtime,
@@ -140,3 +142,21 @@ Description: Linux Containers userspace tools (Python 3.x bindings)
  kernel.
  .
  This package contains the Python 3.x bindings.
+
+Package: lua-lxc
+Architecture: linux-any
+Section: interpreters
+Depends: liblua5.2-0,
+         liblxc1 (=${binary:Version}),
+         lua-filesystem,
+         lua5.2,
+         ${misc:Depends},
+         ${shlibs:Depends}
+Recommends: lxc-templates (>= 0.8.0~rc1-4ubuntu43)
+Description: Linux Containers userspace tools (LUA bindings)
+ Containers are insulated areas inside a system, which have their own namespace
+ for filesystem, network, PID, IPC, CPU and memory allocation and which can be
+ created using the Control Group and Namespace features included in the Linux
+ kernel.
+ .
+ This package contains the LUA bindings.
