@@ -466,9 +466,6 @@ static bool lxcapi_want_daemonize(struct lxc_container *c, bool state)
 		return false;
 	}
 	c->daemonize = state;
-	/* daemonize implies close_all_fds so set it */
-	if (state == 1)
-		c->lxc_conf->close_all_fds = 1;
 	container_mem_unlock(c);
 	return true;
 }
@@ -636,7 +633,7 @@ static bool lxcapi_start(struct lxc_container *c, int useinit, char * const argv
 			SYSERROR("Error chdir()ing to /.");
 			return false;
 		}
-		lxc_check_inherited(conf, -1);
+		lxc_check_inherited(conf, true, -1);
 		close(0);
 		close(1);
 		close(2);
@@ -675,6 +672,13 @@ static bool lxcapi_start(struct lxc_container *c, int useinit, char * const argv
 
 reboot:
 	conf->reboot = 0;
+
+	if (lxc_check_inherited(conf, daemonize, -1)) {
+		ERROR("Inherited fds found");
+		ret = 1;
+		goto out;
+	}
+
 	ret = lxc_start(c->name, argv, conf, c->config_path);
 	c->error_num = ret;
 
@@ -684,6 +688,7 @@ reboot:
 		goto reboot;
 	}
 
+out:
 	if (c->pidfile) {
 		unlink(c->pidfile);
 		free(c->pidfile);

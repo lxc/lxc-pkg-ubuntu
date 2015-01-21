@@ -4,7 +4,7 @@
 m4_define([lxc_version_major], 1)
 m4_define([lxc_version_minor], 1)
 m4_define([lxc_version_micro], 0)
-m4_define([lxc_version_beta], [alpha3])
+m4_define([lxc_version_beta], [rc1])
 
 m4_define([lxc_version_base], [lxc_version_major.lxc_version_minor.lxc_version_micro])
 m4_define([lxc_version],
@@ -627,6 +627,7 @@ AC_CONFIG_FILES([
 	config/templates/centos.common.conf
 	config/templates/centos.userns.conf
 	config/templates/common.conf
+	config/templates/common.conf.d/Makefile
 	config/templates/debian.common.conf
 	config/templates/debian.userns.conf
 	config/templates/fedora.common.conf
