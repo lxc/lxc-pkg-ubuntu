@@ -82,6 +82,7 @@ Depends: lxc (>= 0.8.0~rc1-4ubuntu43), ${misc:Depends}
 Recommends: busybox-static,
             cloud-image-utils | cloud-utils,
             debootstrap | cdebootstrap,
+            lxcfs,
             openssl,
             rsync,
             uuid-runtime,
