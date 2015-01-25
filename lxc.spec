@@ -52,8 +52,8 @@ BuildRequires: systemd
 # RPM needs alpha/beta/rc in Release: not Version: to ensure smooth
 # package upgrades from alpha->beta->rc->release. For more info see:
 # http://fedoraproject.org/wiki/Packaging%3aNamingGuidelines#NonNumericRelease
-%if "xrc1" != "x"
-%global beta_rel rc1
+%if "xrc2" != "x"
+%global beta_rel rc2
 %global beta_dot .%{beta_rel}
 %else
 %global norm_rel 1
@@ -69,6 +69,7 @@ Group: Applications/System
 License: LGPLv2+
 BuildRoot: %{_tmppath}/%{name}-%{version}-build
 Requires: openssl rsync dnsmasq bridge-utils
+Requires: %{name}-libs = %{version}-%{release}
 Requires(pre): /usr/sbin/useradd
 Requires(postun): /usr/sbin/userdel
 %if 0%{?fedora} < 15 || 0%{?rhel} < 7

@@ -241,8 +241,7 @@ static int config_string_item(char **conf_item, const char *value)
 	char *new_value;
 
 	if (!value || strlen(value) == 0) {
-		if (*conf_item)
-			free(*conf_item);
+		free(*conf_item);
 		*conf_item = NULL;
 		return 0;
 	}
@@ -253,8 +252,7 @@ static int config_string_item(char **conf_item, const char *value)
 		return -1;
 	}
 
-	if (*conf_item)
-		free(*conf_item);
+	free(*conf_item);
 	*conf_item = new_value;
 	return 0;
 }
@@ -300,7 +298,7 @@ static int config_network_nic(const char *key, const char *value,
 	 */
 	if (*(key+12) < '0' || *(key+12) > '9')
 		goto out;
-	p = index(key+12, '.');
+	p = strchr(key+12, '.');
 	if (!p)
 		goto out;
 	strcpy(copy+12, p+1);
@@ -1120,7 +1118,7 @@ static int config_environment(const char *key, const char *value,
 	return 0;
 
 freak_out:
-	if (list_item) free(list_item);
+	free(list_item);
 
 	return -1;
 }
@@ -1331,15 +1329,12 @@ static int config_cgroup(const char *key, const char *value,
 	return 0;
 
 out:
-	if (cglist)
-		free(cglist);
+	free(cglist);
 
 	if (cgelem) {
-		if (cgelem->subsystem)
-			free(cgelem->subsystem);
+		free(cgelem->subsystem);
 
-		if (cgelem->value)
-			free(cgelem->value);
+		free(cgelem->value);
 
 		free(cgelem);
 	}
@@ -1399,8 +1394,7 @@ static int config_idmap(const char *key, const char *value, struct lxc_conf *lxc
 	return 0;
 
 out:
-	if (idmaplist)
-		free(idmaplist);
+	free(idmaplist);
 
 	if (idmap) {
 		free(idmap);
@@ -1796,8 +1790,7 @@ static int config_utsname(const char *key, const char *value,
 	}
 
 	strcpy(utsname->nodename, value);
-	if (lxc_conf->utsname)
-		free(lxc_conf->utsname);
+	free(lxc_conf->utsname);
 	lxc_conf->utsname = utsname;
 
 	return 0;
@@ -2078,8 +2071,8 @@ static int lxc_get_item_hooks(struct lxc_conf *c, char *retv, int inlen,
 	int i;
 
 	/* "lxc.hook.mount" */
-	subkey = index(key, '.');
-	if (subkey) subkey = index(subkey+1, '.');
+	subkey = strchr(key, '.');
+	if (subkey) subkey = strchr(subkey+1, '.');
 	if (!subkey)
 		return -1;
 	subkey++;
@@ -2243,7 +2236,7 @@ static int lxc_get_item_nic(struct lxc_conf *c, char *retv, int inlen,
 	else
 		memset(retv, 0, inlen);
 
-	p1 = index(key, '.');
+	p1 = strchr(key, '.');
 	if (!p1 || *(p1+1) == '\0') return -1;
 	p1++;
 
