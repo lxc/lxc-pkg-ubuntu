@@ -1280,7 +1280,7 @@ static int lxc_cgroup_set_data(const char *filename, const char *value, struct c
 
 	subsystem = alloca(strlen(filename) + 1);
 	strcpy(subsystem, filename);
-	if ((p = index(subsystem, '.')) != NULL)
+	if ((p = strchr(subsystem, '.')) != NULL)
 		*p = '\0';
 
 	path = lxc_cgroup_get_hierarchy_abs_path_data(subsystem, d);
@@ -1298,7 +1298,7 @@ static int lxc_cgroupfs_set(const char *filename, const char *value, const char 
 
 	subsystem = alloca(strlen(filename) + 1);
 	strcpy(subsystem, filename);
-	if ((p = index(subsystem, '.')) != NULL)
+	if ((p = strchr(subsystem, '.')) != NULL)
 		*p = '\0';
 
 	path = lxc_cgroup_get_hierarchy_abs_path(subsystem, name, lxcpath);
@@ -1316,7 +1316,7 @@ static int lxc_cgroupfs_get(const char *filename, char *value, size_t len, const
 
 	subsystem = alloca(strlen(filename) + 1);
 	strcpy(subsystem, filename);
-	if ((p = index(subsystem, '.')) != NULL)
+	if ((p = strchr(subsystem, '.')) != NULL)
 		*p = '\0';
 
 	path = lxc_cgroup_get_hierarchy_abs_path(subsystem, name, lxcpath);
@@ -2187,8 +2187,7 @@ static bool do_init_cpuset_file(struct cgroup_mount_point *mp,
 		SYSERROR("failed writing %s", childfile);
 
 out:
-	if (parentfile)
-		free(parentfile);
+	free(parentfile);
 	free(childfile);
 	return ok;
 }
@@ -2248,12 +2247,9 @@ static void cgfs_destroy(void *hdata)
 
 	if (!d)
 		return;
-	if (d->name)
-		free(d->name);
-	if (d->info)
-		lxc_cgroup_process_info_free_and_remove(d->info);
-	if (d->meta)
-		lxc_cgroup_put_meta(d->meta);
+	free(d->name);
+	lxc_cgroup_process_info_free_and_remove(d->info);
+	lxc_cgroup_put_meta(d->meta);
 	free(d);
 }
 
