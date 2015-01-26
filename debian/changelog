@@ -1,3 +1,9 @@
+lxc (1.1.0~rc2-0ubuntu2) UNRELEASED; urgency=medium
+
+  * New upstream release (1.1.0~rc3)
+
+ -- Stéphane Graber <stgraber@ubuntu.com>  Mon, 26 Jan 2015 18:16:23 -0500
+
 lxc (1.1.0~rc2-0ubuntu1) vivid; urgency=medium
 
   * New upstream release (1.1.0~rc2)
