@@ -787,29 +787,27 @@ static int config_network_ipv4_gateway(const char *key, const char *value,
 			               struct lxc_conf *lxc_conf)
 {
 	struct lxc_netdev *netdev;
-	struct in_addr *gw;
 
 	netdev = network_netdev(key, value, &lxc_conf->network);
 	if (!netdev)
 		return -1;
 
-	gw = malloc(sizeof(*gw));
-	if (!gw) {
-		SYSERROR("failed to allocate ipv4 gateway address");
-		return -1;
-	}
+	free(netdev->ipv4_gateway);
 
-	if (!value) {
-		ERROR("no ipv4 gateway address specified");
-		free(gw);
-		return -1;
-	}
-
-	if (!strcmp(value, "auto")) {
-		free(gw);
+	if (!value || strlen(value) == 0) {
+		netdev->ipv4_gateway = NULL;
+	} else if (!strcmp(value, "auto")) {
 		netdev->ipv4_gateway = NULL;
 		netdev->ipv4_gateway_auto = true;
 	} else {
+		struct in_addr *gw;
+
+		gw = malloc(sizeof(*gw));
+		if (!gw) {
+			SYSERROR("failed to allocate ipv4 gateway address");
+			return -1;
+		}
+
 		if (!inet_pton(AF_INET, value, gw)) {
 			SYSERROR("invalid ipv4 gateway address: %s", value);
 			free(gw);
@@ -892,12 +890,11 @@ static int config_network_ipv6_gateway(const char *key, const char *value,
 	if (!netdev)
 		return -1;
 
-	if (!value) {
-		ERROR("no ipv6 gateway address specified");
-		return -1;
-	}
+	free(netdev->ipv6_gateway);
 
-	if (!strcmp(value, "auto")) {
+	if (!value || strlen(value) == 0) {
+		netdev->ipv4_gateway = NULL;
+	} else if (!strcmp(value, "auto")) {
 		netdev->ipv6_gateway = NULL;
 		netdev->ipv6_gateway_auto = true;
 	} else {
@@ -1419,8 +1416,9 @@ static int config_mount_auto(const char *key, const char *value,
 		{ "proc",               LXC_AUTO_PROC_MASK,      LXC_AUTO_PROC_MIXED         },
 		{ "proc:mixed",         LXC_AUTO_PROC_MASK,      LXC_AUTO_PROC_MIXED         },
 		{ "proc:rw",            LXC_AUTO_PROC_MASK,      LXC_AUTO_PROC_RW            },
-		{ "sys",                LXC_AUTO_SYS_MASK,       LXC_AUTO_SYS_RO             },
+		{ "sys",                LXC_AUTO_SYS_MASK,       LXC_AUTO_SYS_MIXED          },
 		{ "sys:ro",             LXC_AUTO_SYS_MASK,       LXC_AUTO_SYS_RO             },
+		{ "sys:mixed",          LXC_AUTO_SYS_MASK,       LXC_AUTO_SYS_MIXED          },
 		{ "sys:rw",             LXC_AUTO_SYS_MASK,       LXC_AUTO_SYS_RW             },
 		{ "cgroup",             LXC_AUTO_CGROUP_MASK,    LXC_AUTO_CGROUP_NOSPEC      },
 		{ "cgroup:mixed",       LXC_AUTO_CGROUP_MASK,    LXC_AUTO_CGROUP_MIXED       },
@@ -2442,16 +2440,10 @@ int lxc_clear_config_item(struct lxc_conf *c, const char *key)
 		return lxc_clear_hooks(c, key);
 	else if (strncmp(key, "lxc.group", 9) == 0)
 		return lxc_clear_groups(c);
-	else if (strncmp(key, "lxc.seccomp", 11) == 0) {
-		lxc_seccomp_free(c);
-		return 0;
-	}
-	else if (strncmp(key, "lxc.environment", 15) == 0) {
+	else if (strncmp(key, "lxc.environment", 15) == 0)
 		return lxc_clear_environment(c);
-	}
-	else if (strncmp(key, "lxc.id_map", 10) == 0) {
+	else if (strncmp(key, "lxc.id_map", 10) == 0)
 		return lxc_clear_idmaps(c);
-	}
 	return -1;
 }
 

@@ -65,6 +65,7 @@
 
 #include "network.h"
 #include "error.h"
+#include "af_unix.h"
 #include "parse.h"
 #include "utils.h"
 #include "conf.h"
@@ -750,15 +751,21 @@ static int lxc_mount_auto_mounts(struct lxc_conf *conf, int flags, struct lxc_ha
 		 * MS_REMOUNT|MS_BIND|MS_RDONLY seems to work for kernels as low as
 		 * 2.6.32...
 		 */
-		{ LXC_AUTO_PROC_MASK, LXC_AUTO_PROC_MIXED, "proc",                  "%r/proc",               "proc",  MS_NODEV|MS_NOEXEC|MS_NOSUID, NULL },
-		{ LXC_AUTO_PROC_MASK, LXC_AUTO_PROC_MIXED, "%r/proc/sys",           "%r/proc/sys",           NULL,    MS_BIND,                      NULL },
-		{ LXC_AUTO_PROC_MASK, LXC_AUTO_PROC_MIXED, NULL,                    "%r/proc/sys",           NULL,    MS_REMOUNT|MS_BIND|MS_RDONLY, NULL },
-		{ LXC_AUTO_PROC_MASK, LXC_AUTO_PROC_MIXED, "%r/proc/sysrq-trigger", "%r/proc/sysrq-trigger", NULL,    MS_BIND,                      NULL },
-		{ LXC_AUTO_PROC_MASK, LXC_AUTO_PROC_MIXED, NULL,                    "%r/proc/sysrq-trigger", NULL,    MS_REMOUNT|MS_BIND|MS_RDONLY, NULL },
-		{ LXC_AUTO_PROC_MASK, LXC_AUTO_PROC_RW,    "proc",                  "%r/proc",               "proc",  MS_NODEV|MS_NOEXEC|MS_NOSUID, NULL },
-		{ LXC_AUTO_SYS_MASK,  LXC_AUTO_SYS_RW,     "sysfs",                 "%r/sys",                "sysfs", 0,                            NULL },
-		{ LXC_AUTO_SYS_MASK,  LXC_AUTO_SYS_RO,     "sysfs",                 "%r/sys",                "sysfs", MS_RDONLY,                    NULL },
-		{ 0,                  0,                   NULL,                    NULL,                    NULL,    0,                            NULL }
+		{ LXC_AUTO_PROC_MASK, LXC_AUTO_PROC_MIXED, "proc",                                              "%r/proc",                      "proc",     MS_NODEV|MS_NOEXEC|MS_NOSUID,   NULL },
+		{ LXC_AUTO_PROC_MASK, LXC_AUTO_PROC_MIXED, "%r/proc/sys",                                       "%r/proc/sys",                  NULL,       MS_BIND,                        NULL },
+		{ LXC_AUTO_PROC_MASK, LXC_AUTO_PROC_MIXED, NULL,                                                "%r/proc/sys",                  NULL,       MS_REMOUNT|MS_BIND|MS_RDONLY,   NULL },
+		{ LXC_AUTO_PROC_MASK, LXC_AUTO_PROC_MIXED, "%r/proc/sysrq-trigger",                             "%r/proc/sysrq-trigger",        NULL,       MS_BIND,                        NULL },
+		{ LXC_AUTO_PROC_MASK, LXC_AUTO_PROC_MIXED, NULL,                                                "%r/proc/sysrq-trigger",        NULL,       MS_REMOUNT|MS_BIND|MS_RDONLY,   NULL },
+		{ LXC_AUTO_PROC_MASK, LXC_AUTO_PROC_RW,    "proc",                                              "%r/proc",                      "proc",     MS_NODEV|MS_NOEXEC|MS_NOSUID,   NULL },
+		{ LXC_AUTO_SYS_MASK,  LXC_AUTO_SYS_RW,     "sysfs",                                             "%r/sys",                       "sysfs",    0,                              NULL },
+		{ LXC_AUTO_SYS_MASK,  LXC_AUTO_SYS_RO,     "sysfs",                                             "%r/sys",                       "sysfs",    MS_RDONLY,                      NULL },
+		{ LXC_AUTO_SYS_MASK,  LXC_AUTO_SYS_MIXED,  "sysfs",                                             "%r/sys",                       "sysfs",    MS_NODEV|MS_NOEXEC|MS_NOSUID,   NULL },
+		{ LXC_AUTO_SYS_MASK,  LXC_AUTO_SYS_MIXED,  "%r/sys",                                            "%r/sys",                       NULL,       MS_BIND,                        NULL },
+		{ LXC_AUTO_SYS_MASK,  LXC_AUTO_SYS_MIXED,  NULL,                                                "%r/sys",                       NULL,       MS_REMOUNT|MS_BIND|MS_RDONLY,   NULL },
+		{ LXC_AUTO_SYS_MASK,  LXC_AUTO_SYS_MIXED,  "sysfs",                                             "%r/sys/devices/virtual/net",   "sysfs",    0,                              NULL },
+		{ LXC_AUTO_SYS_MASK,  LXC_AUTO_SYS_MIXED,  "%r/sys/devices/virtual/net/devices/virtual/net",    "%r/sys/devices/virtual/net",   NULL,       MS_BIND,                        NULL },
+		{ LXC_AUTO_SYS_MASK,  LXC_AUTO_SYS_MIXED,  NULL,                                                "%r/sys/devices/virtual/net",   NULL,       MS_REMOUNT|MS_BIND|MS_NOSUID|MS_NODEV|MS_NOEXEC,   NULL },
+		{ 0,                  0,                   NULL,                                                NULL,                           NULL,       0,                              NULL }
 	};
 
 	for (i = 0; default_mounts[i].match_mask; i++) {
@@ -793,6 +800,7 @@ static int lxc_mount_auto_mounts(struct lxc_conf *conf, int flags, struct lxc_ha
 			saved_errno = errno;
 			if (r < 0)
 				SYSERROR("error mounting %s on %s flags %lu", source, destination, mflags);
+
 			free(source);
 			free(destination);
 			if (r < 0) {
@@ -943,29 +951,51 @@ static int setup_dev_symlinks(const struct lxc_rootfs *rootfs)
 	return 0;
 }
 
-static int setup_tty(const struct lxc_rootfs *rootfs,
-		     const struct lxc_tty_info *tty_info, char *ttydir)
+/*
+ * Build a space-separate list of ptys to pass to systemd.
+ */
+static bool append_ptyname(char **pp, char *name)
 {
+	char *p;
+
+	if (!*pp) {
+		*pp = malloc(strlen(name) + strlen("container_ttys=") + 1);
+		if (!*pp)
+			return false;
+		sprintf(*pp, "container_ttys=%s", name);
+		return true;
+	}
+	p = realloc(*pp, strlen(*pp) + strlen(name) + 2);
+	if (!p)
+		return false;
+	*pp = p;
+	strcat(p, " ");
+	strcat(p, name);
+	return true;
+}
+
+static int setup_tty(struct lxc_conf *conf)
+{
+	const struct lxc_tty_info *tty_info = &conf->tty_info;
+	char *ttydir = conf->ttydir;
 	char path[MAXPATHLEN], lxcpath[MAXPATHLEN];
 	int i, ret;
 
-	if (!rootfs->path)
+	if (!conf->rootfs.path)
 		return 0;
 
 	for (i = 0; i < tty_info->nbtty; i++) {
 
 		struct lxc_pty_info *pty_info = &tty_info->pty_info[i];
 
-		ret = snprintf(path, sizeof(path), "%s/dev/tty%d",
-			 rootfs->mount, i + 1);
+		ret = snprintf(path, sizeof(path), "/dev/tty%d", i + 1);
 		if (ret >= sizeof(path)) {
 			ERROR("pathname too long for ttys");
 			return -1;
 		}
 		if (ttydir) {
 			/* create dev/lxc/tty%d" */
-			ret = snprintf(lxcpath, sizeof(lxcpath), "%s/dev/%s/tty%d",
-				 rootfs->mount, ttydir, i + 1);
+			ret = snprintf(lxcpath, sizeof(lxcpath), "/dev/%s/tty%d", ttydir, i + 1);
 			if (ret >= sizeof(lxcpath)) {
 				ERROR("pathname too long for ttys");
 				return -1;
@@ -1011,10 +1041,13 @@ static int setup_tty(const struct lxc_rootfs *rootfs,
 				}
 			}
 			if (mount(pty_info->name, path, "none", MS_BIND, 0)) {
-				WARN("failed to mount '%s'->'%s'",
-						pty_info->name, path);
+				SYSERROR("failed to mount '%s'->'%s'", pty_info->name, path);
 				continue;
 			}
+		}
+		if (!append_ptyname(&conf->pty_names, pty_info->name)) {
+			ERROR("Error setting up container_ttys string");
+			return -1;
 		}
 	}
 
@@ -3473,19 +3506,8 @@ int chown_mapped_root(char *path, struct lxc_conf *conf)
 
 int ttys_shift_ids(struct lxc_conf *c)
 {
-	int i;
-
 	if (lxc_list_empty(&c->id_map))
 		return 0;
-
-	for (i = 0; i < c->tty_info.nbtty; i++) {
-		struct lxc_pty_info *pty_info = &c->tty_info.pty_info[i];
-
-		if (chown_mapped_root(pty_info->name, c) < 0) {
-			ERROR("Failed to chown %s", pty_info->name);
-			return -1;
-		}
-	}
 
 	if (strcmp(c->console.name, "") !=0 && chown_mapped_root(c->console.name, c) < 0) {
 		ERROR("Failed to chown %s", c->console.name);
@@ -3704,6 +3726,48 @@ static bool verify_start_hooks(struct lxc_conf *conf)
 	return true;
 }
 
+static int send_fd(int sock, int fd)
+{
+	int ret = lxc_abstract_unix_send_fd(sock, fd, NULL, 0);
+
+
+	if (ret < 0) {
+		SYSERROR("Error sending tty fd to parent");
+		return -1;
+	}
+
+	return 0;
+}
+
+static int send_ttys_to_parent(struct lxc_handler *handler)
+{
+	struct lxc_conf *conf = handler->conf;
+	const struct lxc_tty_info *tty_info = &conf->tty_info;
+	int i;
+	int sock = handler->ttysock[0];
+
+	for (i = 0; i < tty_info->nbtty; i++) {
+		struct lxc_pty_info *pty_info = &tty_info->pty_info[i];
+		if (send_fd(sock, pty_info->slave) < 0)
+			goto bad;
+		close(pty_info->slave);
+		pty_info->slave = -1;
+		if (send_fd(sock, pty_info->master) < 0)
+			goto bad;
+		close(pty_info->master);
+		pty_info->master = -1;
+	}
+
+	close(handler->ttysock[0]);
+	close(handler->ttysock[1]);
+
+	return 0;
+
+bad:
+	ERROR("Error writing tty fd to parent");
+	return -1;
+}
+
 int lxc_setup(struct lxc_handler *handler)
 {
 	const char *name = handler->name;
@@ -3794,11 +3858,6 @@ int lxc_setup(struct lxc_handler *handler)
 			ERROR("failed to setup kmsg for '%s'", name);
 	}
 
-	if (!lxc_conf->is_execute && setup_tty(&lxc_conf->rootfs, &lxc_conf->tty_info, lxc_conf->ttydir)) {
-		ERROR("failed to setup the ttys for '%s'", name);
-		return -1;
-	}
-
 	if (!lxc_conf->is_execute && setup_dev_symlinks(&lxc_conf->rootfs)) {
 		ERROR("failed to setup /dev symlinks for '%s'", name);
 		return -1;
@@ -3819,6 +3878,26 @@ int lxc_setup(struct lxc_handler *handler)
 		ERROR("failed to setup the new pts instance");
 		return -1;
 	}
+
+	if (lxc_create_tty(name, lxc_conf)) {
+		ERROR("failed to create the ttys");
+		return -1;
+	}
+
+	if (send_ttys_to_parent(handler) < 0) {
+		ERROR("failure sending console info to parent");
+		return -1;
+	}
+
+
+	if (!lxc_conf->is_execute && setup_tty(lxc_conf)) {
+		ERROR("failed to setup the ttys for '%s'", name);
+		return -1;
+	}
+
+	if (lxc_conf->pty_names && setenv("container_ttys", lxc_conf->pty_names, 1))
+		SYSERROR("failed to set environment variable for container ptys");
+
 
 	if (setup_personality(lxc_conf->personality)) {
 		ERROR("failed to setup personality");
@@ -3953,27 +4032,6 @@ int lxc_clear_nic(struct lxc_conf *c, const char *key)
 			free(it2->elem);
 			free(it2);
 		}
-	} else if (strcmp(p1, ".link") == 0) {
-		free(netdev->link);
-		netdev->link = NULL;
-	} else if (strcmp(p1, ".name") == 0) {
-		free(netdev->name);
-		netdev->name = NULL;
-	} else if (strcmp(p1, ".script.up") == 0) {
-		free(netdev->upscript);
-		netdev->upscript = NULL;
-	} else if (strcmp(p1, ".hwaddr") == 0) {
-		free(netdev->hwaddr);
-		netdev->hwaddr = NULL;
-	} else if (strcmp(p1, ".mtu") == 0) {
-		free(netdev->mtu);
-		netdev->mtu = NULL;
-	} else if (strcmp(p1, ".ipv4.gateway") == 0) {
-		free(netdev->ipv4_gateway);
-		netdev->ipv4_gateway = NULL;
-	} else if (strcmp(p1, ".ipv6.gateway") == 0) {
-		free(netdev->ipv6_gateway);
-		netdev->ipv6_gateway = NULL;
 	}
 		else return -1;
 
@@ -4172,6 +4230,7 @@ void lxc_conf_free(struct lxc_conf *conf)
 	free(conf->rcfile);
 	free(conf->init_cmd);
 	free(conf->unexpanded_config);
+	free(conf->pty_names);
 	lxc_clear_config_network(conf);
 	free(conf->lsm_aa_profile);
 	free(conf->lsm_se_context);

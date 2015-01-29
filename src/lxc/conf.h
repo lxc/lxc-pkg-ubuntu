@@ -236,6 +236,7 @@ enum {
 
 	LXC_AUTO_SYS_RW               = 0x004,   /* /sys */
 	LXC_AUTO_SYS_RO               = 0x008,   /* /sys read-only */
+	LXC_AUTO_SYS_MIXED            = 0x00C,   /* /sys read-only and /sys/class/net read-write */
 	LXC_AUTO_SYS_MASK             = 0x00C,
 
 	LXC_AUTO_CGROUP_RO            = 0x010,   /* /sys/fs/cgroup (partial mount, read-only) */
@@ -304,6 +305,7 @@ struct lxc_conf {
 	struct lxc_list caps;
 	struct lxc_list keepcaps;
 	struct lxc_tty_info tty_info;
+	char *pty_names; // comma-separated list of lxc.tty pty names
 	struct lxc_console console;
 	struct lxc_rootfs rootfs;
 	char *ttydir;
