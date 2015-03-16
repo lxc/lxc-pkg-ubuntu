@@ -1,3 +1,9 @@
+lxc (1.1.1-0ubuntu1) vivid; urgency=medium
+
+  * New upstream bugfix release (1.1.1)
+
+ -- Stéphane Graber <stgraber@ubuntu.com>  Mon, 16 Mar 2015 17:09:54 -0400
+
 lxc (1.1.0-0ubuntu1) vivid; urgency=medium
 
   * New upstream release (1.1.0)
