@@ -1,3 +1,10 @@
+lxc (1.1.1-0ubuntu2) vivid; urgency=medium
+
+  * Cherry-pick fix for attach when stdin isn't a tty:
+    - d3b6301135280d21d0c1c7d427e1c587b3177b69
+
+ -- Stéphane Graber <stgraber@ubuntu.com>  Tue, 17 Mar 2015 15:51:09 -0400
+
 lxc (1.1.1-0ubuntu1) vivid; urgency=medium
 
   * New upstream bugfix release (1.1.1)
