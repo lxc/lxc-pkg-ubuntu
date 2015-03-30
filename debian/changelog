@@ -1,3 +1,11 @@
+lxc (1.1.1-0ubuntu3) vivid; urgency=medium
+
+  * Add lxcfs as a test dependency of lxc.
+  * Reload apparmor at configure time if the profile helper script isn't
+    around and apparmor appears to be installed (ignore errors).
+
+ -- Stéphane Graber <stgraber@ubuntu.com>  Mon, 30 Mar 2015 12:49:37 -0400
+
 lxc (1.1.1-0ubuntu2) vivid; urgency=medium
 
   * Cherry-pick fix for attach when stdin isn't a tty:
