@@ -1,3 +1,10 @@
+lxc (1.1.1-0ubuntu4) vivid; urgency=medium
+
+  * Cherry-pick fix for lxc-test-apparmor:
+    - fad5004627bebe251228450a8a086500d803b9e4
+
+ -- Stéphane Graber <stgraber@ubuntu.com>  Mon, 06 Apr 2015 12:32:31 -0400
+
 lxc (1.1.1-0ubuntu3) vivid; urgency=medium
 
   * Add lxcfs as a test dependency of lxc.
