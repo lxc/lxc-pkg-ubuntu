@@ -148,14 +148,17 @@ init_lxc_DEPENDENCIES = liblxc.so
 am__init_lxc_static_SOURCES_DIST = lxc_init.c error.c log.c utils.c \
 	caps.c ../include/getline.c
 am__dirstamp = $(am__leading_dot)dirstamp
-@HAVE_FGETLN_TRUE@@HAVE_GETLINE_FALSE@@HAVE_STATIC_LIBCAP_TRUE@am__objects_1 = ../include/getline.$(OBJEXT)
+@HAVE_FGETLN_TRUE@@HAVE_GETLINE_FALSE@@HAVE_STATIC_LIBCAP_TRUE@am__objects_1 = ../include/init_lxc_static-getline.$(OBJEXT)
 @HAVE_STATIC_LIBCAP_TRUE@am_init_lxc_static_OBJECTS =  \
-@HAVE_STATIC_LIBCAP_TRUE@	lxc_init.$(OBJEXT) error.$(OBJEXT) \
-@HAVE_STATIC_LIBCAP_TRUE@	log.$(OBJEXT) utils.$(OBJEXT) \
-@HAVE_STATIC_LIBCAP_TRUE@	caps.$(OBJEXT) $(am__objects_1)
+@HAVE_STATIC_LIBCAP_TRUE@	init_lxc_static-lxc_init.$(OBJEXT) \
+@HAVE_STATIC_LIBCAP_TRUE@	init_lxc_static-error.$(OBJEXT) \
+@HAVE_STATIC_LIBCAP_TRUE@	init_lxc_static-log.$(OBJEXT) \
+@HAVE_STATIC_LIBCAP_TRUE@	init_lxc_static-utils.$(OBJEXT) \
+@HAVE_STATIC_LIBCAP_TRUE@	init_lxc_static-caps.$(OBJEXT) \
+@HAVE_STATIC_LIBCAP_TRUE@	$(am__objects_1)
 init_lxc_static_OBJECTS = $(am_init_lxc_static_OBJECTS)
 init_lxc_static_DEPENDENCIES =
-init_lxc_static_LINK = $(CCLD) $(AM_CFLAGS) $(CFLAGS) \
+init_lxc_static_LINK = $(CCLD) $(init_lxc_static_CFLAGS) $(CFLAGS) \
 	$(init_lxc_static_LDFLAGS) $(LDFLAGS) -o $@
 am__liblxc_so_SOURCES_DIST = arguments.c arguments.h bdev.c bdev.h \
 	lxc-btrfs.h commands.c commands.h start.c start.h execute.c \
@@ -670,6 +673,7 @@ lxc_checkpoint_SOURCES = lxc_checkpoint.c
 @HAVE_STATIC_LIBCAP_TRUE@	log.c utils.c caps.c $(am__append_20)
 @HAVE_STATIC_LIBCAP_TRUE@init_lxc_static_LDFLAGS = -static
 @HAVE_STATIC_LIBCAP_TRUE@init_lxc_static_LDADD = @CAP_LIBS@
+@HAVE_STATIC_LIBCAP_TRUE@init_lxc_static_CFLAGS = $(AM_CFLAGS) -DNO_LXC_CONF
 all: all-am
 
 .SUFFIXES:
@@ -892,7 +896,8 @@ init.lxc$(EXEEXT): $(init_lxc_OBJECTS) $(init_lxc_DEPENDENCIES) $(EXTRA_init_lxc
 ../include/$(DEPDIR)/$(am__dirstamp):
 	@$(MKDIR_P) ../include/$(DEPDIR)
 	@: > ../include/$(DEPDIR)/$(am__dirstamp)
-../include/getline.$(OBJEXT): ../include/$(am__dirstamp) \
+../include/init_lxc_static-getline.$(OBJEXT):  \
+	../include/$(am__dirstamp) \
 	../include/$(DEPDIR)/$(am__dirstamp)
 
 init.lxc.static$(EXEEXT): $(init_lxc_static_OBJECTS) $(init_lxc_static_DEPENDENCIES) $(EXTRA_init_lxc_static_DEPENDENCIES) 
@@ -1064,13 +1069,16 @@ mostlyclean-compile:
 distclean-compile:
 	-rm -f *.tab.c
 
-@AMDEP_TRUE@@am__include@ @am__quote@../include/$(DEPDIR)/getline.Po@am__quote@
+@AMDEP_TRUE@@am__include@ @am__quote@../include/$(DEPDIR)/init_lxc_static-getline.Po@am__quote@
 @AMDEP_TRUE@@am__include@ @am__quote@../include/$(DEPDIR)/liblxc_so-getline.Po@am__quote@
 @AMDEP_TRUE@@am__include@ @am__quote@../include/$(DEPDIR)/liblxc_so-ifaddrs.Po@am__quote@
 @AMDEP_TRUE@@am__include@ @am__quote@../include/$(DEPDIR)/liblxc_so-lxcmntent.Po@am__quote@
 @AMDEP_TRUE@@am__include@ @am__quote@../include/$(DEPDIR)/liblxc_so-openpty.Po@am__quote@
-@AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/caps.Po@am__quote@
-@AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/error.Po@am__quote@
+@AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/init_lxc_static-caps.Po@am__quote@
+@AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/init_lxc_static-error.Po@am__quote@
+@AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/init_lxc_static-log.Po@am__quote@
+@AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/init_lxc_static-lxc_init.Po@am__quote@
+@AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/init_lxc_static-utils.Po@am__quote@
 @AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/liblxc_so-af_unix.Po@am__quote@
 @AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/liblxc_so-arguments.Po@am__quote@
 @AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/liblxc_so-attach.Po@am__quote@
@@ -1103,7 +1111,6 @@ distclean-compile:
 @AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/liblxc_so-state.Po@am__quote@
 @AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/liblxc_so-sync.Po@am__quote@
 @AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/liblxc_so-utils.Po@am__quote@
-@AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/log.Po@am__quote@
 @AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/lxc_attach.Po@am__quote@
 @AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/lxc_autostart.Po@am__quote@
 @AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/lxc_cgroup.Po@am__quote@
@@ -1130,7 +1137,6 @@ distclean-compile:
 @AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/lxc_usernsexec.Po@am__quote@
 @AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/lxc_wait.Po@am__quote@
 @AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/network.Po@am__quote@
-@AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/utils.Po@am__quote@
 @AMDEP_TRUE@@am__include@ @am__quote@lsm/$(DEPDIR)/liblxc_so-apparmor.Po@am__quote@
 @AMDEP_TRUE@@am__include@ @am__quote@lsm/$(DEPDIR)/liblxc_so-lsm.Po@am__quote@
 @AMDEP_TRUE@@am__include@ @am__quote@lsm/$(DEPDIR)/liblxc_so-nop.Po@am__quote@
@@ -1151,6 +1157,90 @@ distclean-compile:
 @AMDEP_TRUE@@am__fastdepCC_FALSE@	$(AM_V_CC)source='$<' object='$@' libtool=no @AMDEPBACKSLASH@
 @AMDEP_TRUE@@am__fastdepCC_FALSE@	DEPDIR=$(DEPDIR) $(CCDEPMODE) $(depcomp) @AMDEPBACKSLASH@
 @am__fastdepCC_FALSE@	$(AM_V_CC@am__nodep@)$(COMPILE) -c -o $@ `$(CYGPATH_W) '$<'`
+
+init_lxc_static-lxc_init.o: lxc_init.c
+@am__fastdepCC_TRUE@	$(AM_V_CC)$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(init_lxc_static_CFLAGS) $(CFLAGS) -MT init_lxc_static-lxc_init.o -MD -MP -MF $(DEPDIR)/init_lxc_static-lxc_init.Tpo -c -o init_lxc_static-lxc_init.o `test -f 'lxc_init.c' || echo '$(srcdir)/'`lxc_init.c
+@am__fastdepCC_TRUE@	$(AM_V_at)$(am__mv) $(DEPDIR)/init_lxc_static-lxc_init.Tpo $(DEPDIR)/init_lxc_static-lxc_init.Po
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	$(AM_V_CC)source='lxc_init.c' object='init_lxc_static-lxc_init.o' libtool=no @AMDEPBACKSLASH@
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	DEPDIR=$(DEPDIR) $(CCDEPMODE) $(depcomp) @AMDEPBACKSLASH@
+@am__fastdepCC_FALSE@	$(AM_V_CC@am__nodep@)$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(init_lxc_static_CFLAGS) $(CFLAGS) -c -o init_lxc_static-lxc_init.o `test -f 'lxc_init.c' || echo '$(srcdir)/'`lxc_init.c
+
+init_lxc_static-lxc_init.obj: lxc_init.c
+@am__fastdepCC_TRUE@	$(AM_V_CC)$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(init_lxc_static_CFLAGS) $(CFLAGS) -MT init_lxc_static-lxc_init.obj -MD -MP -MF $(DEPDIR)/init_lxc_static-lxc_init.Tpo -c -o init_lxc_static-lxc_init.obj `if test -f 'lxc_init.c'; then $(CYGPATH_W) 'lxc_init.c'; else $(CYGPATH_W) '$(srcdir)/lxc_init.c'; fi`
+@am__fastdepCC_TRUE@	$(AM_V_at)$(am__mv) $(DEPDIR)/init_lxc_static-lxc_init.Tpo $(DEPDIR)/init_lxc_static-lxc_init.Po
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	$(AM_V_CC)source='lxc_init.c' object='init_lxc_static-lxc_init.obj' libtool=no @AMDEPBACKSLASH@
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	DEPDIR=$(DEPDIR) $(CCDEPMODE) $(depcomp) @AMDEPBACKSLASH@
+@am__fastdepCC_FALSE@	$(AM_V_CC@am__nodep@)$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(init_lxc_static_CFLAGS) $(CFLAGS) -c -o init_lxc_static-lxc_init.obj `if test -f 'lxc_init.c'; then $(CYGPATH_W) 'lxc_init.c'; else $(CYGPATH_W) '$(srcdir)/lxc_init.c'; fi`
+
+init_lxc_static-error.o: error.c
+@am__fastdepCC_TRUE@	$(AM_V_CC)$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(init_lxc_static_CFLAGS) $(CFLAGS) -MT init_lxc_static-error.o -MD -MP -MF $(DEPDIR)/init_lxc_static-error.Tpo -c -o init_lxc_static-error.o `test -f 'error.c' || echo '$(srcdir)/'`error.c
+@am__fastdepCC_TRUE@	$(AM_V_at)$(am__mv) $(DEPDIR)/init_lxc_static-error.Tpo $(DEPDIR)/init_lxc_static-error.Po
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	$(AM_V_CC)source='error.c' object='init_lxc_static-error.o' libtool=no @AMDEPBACKSLASH@
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	DEPDIR=$(DEPDIR) $(CCDEPMODE) $(depcomp) @AMDEPBACKSLASH@
+@am__fastdepCC_FALSE@	$(AM_V_CC@am__nodep@)$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(init_lxc_static_CFLAGS) $(CFLAGS) -c -o init_lxc_static-error.o `test -f 'error.c' || echo '$(srcdir)/'`error.c
+
+init_lxc_static-error.obj: error.c
+@am__fastdepCC_TRUE@	$(AM_V_CC)$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(init_lxc_static_CFLAGS) $(CFLAGS) -MT init_lxc_static-error.obj -MD -MP -MF $(DEPDIR)/init_lxc_static-error.Tpo -c -o init_lxc_static-error.obj `if test -f 'error.c'; then $(CYGPATH_W) 'error.c'; else $(CYGPATH_W) '$(srcdir)/error.c'; fi`
+@am__fastdepCC_TRUE@	$(AM_V_at)$(am__mv) $(DEPDIR)/init_lxc_static-error.Tpo $(DEPDIR)/init_lxc_static-error.Po
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	$(AM_V_CC)source='error.c' object='init_lxc_static-error.obj' libtool=no @AMDEPBACKSLASH@
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	DEPDIR=$(DEPDIR) $(CCDEPMODE) $(depcomp) @AMDEPBACKSLASH@
+@am__fastdepCC_FALSE@	$(AM_V_CC@am__nodep@)$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(init_lxc_static_CFLAGS) $(CFLAGS) -c -o init_lxc_static-error.obj `if test -f 'error.c'; then $(CYGPATH_W) 'error.c'; else $(CYGPATH_W) '$(srcdir)/error.c'; fi`
+
+init_lxc_static-log.o: log.c
+@am__fastdepCC_TRUE@	$(AM_V_CC)$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(init_lxc_static_CFLAGS) $(CFLAGS) -MT init_lxc_static-log.o -MD -MP -MF $(DEPDIR)/init_lxc_static-log.Tpo -c -o init_lxc_static-log.o `test -f 'log.c' || echo '$(srcdir)/'`log.c
+@am__fastdepCC_TRUE@	$(AM_V_at)$(am__mv) $(DEPDIR)/init_lxc_static-log.Tpo $(DEPDIR)/init_lxc_static-log.Po
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	$(AM_V_CC)source='log.c' object='init_lxc_static-log.o' libtool=no @AMDEPBACKSLASH@
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	DEPDIR=$(DEPDIR) $(CCDEPMODE) $(depcomp) @AMDEPBACKSLASH@
+@am__fastdepCC_FALSE@	$(AM_V_CC@am__nodep@)$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(init_lxc_static_CFLAGS) $(CFLAGS) -c -o init_lxc_static-log.o `test -f 'log.c' || echo '$(srcdir)/'`log.c
+
+init_lxc_static-log.obj: log.c
+@am__fastdepCC_TRUE@	$(AM_V_CC)$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(init_lxc_static_CFLAGS) $(CFLAGS) -MT init_lxc_static-log.obj -MD -MP -MF $(DEPDIR)/init_lxc_static-log.Tpo -c -o init_lxc_static-log.obj `if test -f 'log.c'; then $(CYGPATH_W) 'log.c'; else $(CYGPATH_W) '$(srcdir)/log.c'; fi`
+@am__fastdepCC_TRUE@	$(AM_V_at)$(am__mv) $(DEPDIR)/init_lxc_static-log.Tpo $(DEPDIR)/init_lxc_static-log.Po
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	$(AM_V_CC)source='log.c' object='init_lxc_static-log.obj' libtool=no @AMDEPBACKSLASH@
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	DEPDIR=$(DEPDIR) $(CCDEPMODE) $(depcomp) @AMDEPBACKSLASH@
+@am__fastdepCC_FALSE@	$(AM_V_CC@am__nodep@)$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(init_lxc_static_CFLAGS) $(CFLAGS) -c -o init_lxc_static-log.obj `if test -f 'log.c'; then $(CYGPATH_W) 'log.c'; else $(CYGPATH_W) '$(srcdir)/log.c'; fi`
+
+init_lxc_static-utils.o: utils.c
+@am__fastdepCC_TRUE@	$(AM_V_CC)$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(init_lxc_static_CFLAGS) $(CFLAGS) -MT init_lxc_static-utils.o -MD -MP -MF $(DEPDIR)/init_lxc_static-utils.Tpo -c -o init_lxc_static-utils.o `test -f 'utils.c' || echo '$(srcdir)/'`utils.c
+@am__fastdepCC_TRUE@	$(AM_V_at)$(am__mv) $(DEPDIR)/init_lxc_static-utils.Tpo $(DEPDIR)/init_lxc_static-utils.Po
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	$(AM_V_CC)source='utils.c' object='init_lxc_static-utils.o' libtool=no @AMDEPBACKSLASH@
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	DEPDIR=$(DEPDIR) $(CCDEPMODE) $(depcomp) @AMDEPBACKSLASH@
+@am__fastdepCC_FALSE@	$(AM_V_CC@am__nodep@)$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(init_lxc_static_CFLAGS) $(CFLAGS) -c -o init_lxc_static-utils.o `test -f 'utils.c' || echo '$(srcdir)/'`utils.c
+
+init_lxc_static-utils.obj: utils.c
+@am__fastdepCC_TRUE@	$(AM_V_CC)$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(init_lxc_static_CFLAGS) $(CFLAGS) -MT init_lxc_static-utils.obj -MD -MP -MF $(DEPDIR)/init_lxc_static-utils.Tpo -c -o init_lxc_static-utils.obj `if test -f 'utils.c'; then $(CYGPATH_W) 'utils.c'; else $(CYGPATH_W) '$(srcdir)/utils.c'; fi`
+@am__fastdepCC_TRUE@	$(AM_V_at)$(am__mv) $(DEPDIR)/init_lxc_static-utils.Tpo $(DEPDIR)/init_lxc_static-utils.Po
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	$(AM_V_CC)source='utils.c' object='init_lxc_static-utils.obj' libtool=no @AMDEPBACKSLASH@
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	DEPDIR=$(DEPDIR) $(CCDEPMODE) $(depcomp) @AMDEPBACKSLASH@
+@am__fastdepCC_FALSE@	$(AM_V_CC@am__nodep@)$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(init_lxc_static_CFLAGS) $(CFLAGS) -c -o init_lxc_static-utils.obj `if test -f 'utils.c'; then $(CYGPATH_W) 'utils.c'; else $(CYGPATH_W) '$(srcdir)/utils.c'; fi`
+
+init_lxc_static-caps.o: caps.c
+@am__fastdepCC_TRUE@	$(AM_V_CC)$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(init_lxc_static_CFLAGS) $(CFLAGS) -MT init_lxc_static-caps.o -MD -MP -MF $(DEPDIR)/init_lxc_static-caps.Tpo -c -o init_lxc_static-caps.o `test -f 'caps.c' || echo '$(srcdir)/'`caps.c
+@am__fastdepCC_TRUE@	$(AM_V_at)$(am__mv) $(DEPDIR)/init_lxc_static-caps.Tpo $(DEPDIR)/init_lxc_static-caps.Po
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	$(AM_V_CC)source='caps.c' object='init_lxc_static-caps.o' libtool=no @AMDEPBACKSLASH@
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	DEPDIR=$(DEPDIR) $(CCDEPMODE) $(depcomp) @AMDEPBACKSLASH@
+@am__fastdepCC_FALSE@	$(AM_V_CC@am__nodep@)$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(init_lxc_static_CFLAGS) $(CFLAGS) -c -o init_lxc_static-caps.o `test -f 'caps.c' || echo '$(srcdir)/'`caps.c
+
+init_lxc_static-caps.obj: caps.c
+@am__fastdepCC_TRUE@	$(AM_V_CC)$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(init_lxc_static_CFLAGS) $(CFLAGS) -MT init_lxc_static-caps.obj -MD -MP -MF $(DEPDIR)/init_lxc_static-caps.Tpo -c -o init_lxc_static-caps.obj `if test -f 'caps.c'; then $(CYGPATH_W) 'caps.c'; else $(CYGPATH_W) '$(srcdir)/caps.c'; fi`
+@am__fastdepCC_TRUE@	$(AM_V_at)$(am__mv) $(DEPDIR)/init_lxc_static-caps.Tpo $(DEPDIR)/init_lxc_static-caps.Po
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	$(AM_V_CC)source='caps.c' object='init_lxc_static-caps.obj' libtool=no @AMDEPBACKSLASH@
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	DEPDIR=$(DEPDIR) $(CCDEPMODE) $(depcomp) @AMDEPBACKSLASH@
+@am__fastdepCC_FALSE@	$(AM_V_CC@am__nodep@)$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(init_lxc_static_CFLAGS) $(CFLAGS) -c -o init_lxc_static-caps.obj `if test -f 'caps.c'; then $(CYGPATH_W) 'caps.c'; else $(CYGPATH_W) '$(srcdir)/caps.c'; fi`
+
+../include/init_lxc_static-getline.o: ../include/getline.c
+@am__fastdepCC_TRUE@	$(AM_V_CC)$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(init_lxc_static_CFLAGS) $(CFLAGS) -MT ../include/init_lxc_static-getline.o -MD -MP -MF ../include/$(DEPDIR)/init_lxc_static-getline.Tpo -c -o ../include/init_lxc_static-getline.o `test -f '../include/getline.c' || echo '$(srcdir)/'`../include/getline.c
+@am__fastdepCC_TRUE@	$(AM_V_at)$(am__mv) ../include/$(DEPDIR)/init_lxc_static-getline.Tpo ../include/$(DEPDIR)/init_lxc_static-getline.Po
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	$(AM_V_CC)source='../include/getline.c' object='../include/init_lxc_static-getline.o' libtool=no @AMDEPBACKSLASH@
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	DEPDIR=$(DEPDIR) $(CCDEPMODE) $(depcomp) @AMDEPBACKSLASH@
+@am__fastdepCC_FALSE@	$(AM_V_CC@am__nodep@)$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(init_lxc_static_CFLAGS) $(CFLAGS) -c -o ../include/init_lxc_static-getline.o `test -f '../include/getline.c' || echo '$(srcdir)/'`../include/getline.c
+
+../include/init_lxc_static-getline.obj: ../include/getline.c
+@am__fastdepCC_TRUE@	$(AM_V_CC)$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(init_lxc_static_CFLAGS) $(CFLAGS) -MT ../include/init_lxc_static-getline.obj -MD -MP -MF ../include/$(DEPDIR)/init_lxc_static-getline.Tpo -c -o ../include/init_lxc_static-getline.obj `if test -f '../include/getline.c'; then $(CYGPATH_W) '../include/getline.c'; else $(CYGPATH_W) '$(srcdir)/../include/getline.c'; fi`
+@am__fastdepCC_TRUE@	$(AM_V_at)$(am__mv) ../include/$(DEPDIR)/init_lxc_static-getline.Tpo ../include/$(DEPDIR)/init_lxc_static-getline.Po
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	$(AM_V_CC)source='../include/getline.c' object='../include/init_lxc_static-getline.obj' libtool=no @AMDEPBACKSLASH@
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	DEPDIR=$(DEPDIR) $(CCDEPMODE) $(depcomp) @AMDEPBACKSLASH@
+@am__fastdepCC_FALSE@	$(AM_V_CC@am__nodep@)$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(init_lxc_static_CFLAGS) $(CFLAGS) -c -o ../include/init_lxc_static-getline.obj `if test -f '../include/getline.c'; then $(CYGPATH_W) '../include/getline.c'; else $(CYGPATH_W) '$(srcdir)/../include/getline.c'; fi`
 
 liblxc_so-arguments.o: arguments.c
 @am__fastdepCC_TRUE@	$(AM_V_CC)$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(liblxc_so_CFLAGS) $(CFLAGS) -MT liblxc_so-arguments.o -MD -MP -MF $(DEPDIR)/liblxc_so-arguments.Tpo -c -o liblxc_so-arguments.o `test -f 'arguments.c' || echo '$(srcdir)/'`arguments.c
