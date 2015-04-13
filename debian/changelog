@@ -1,3 +1,10 @@
+lxc (1.1.2-0ubuntu2) vivid; urgency=medium
+
+  * Cherry-pick a fix from upstream to resolve invalid command message
+    on container stop.
+
+ -- Stéphane Graber <stgraber@ubuntu.com>  Mon, 13 Apr 2015 17:02:41 -0500
+
 lxc (1.1.2-0ubuntu1) vivid; urgency=medium
 
   * New upstream bugfix release (1.1.2)
