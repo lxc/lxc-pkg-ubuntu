@@ -1,3 +1,18 @@
+lxc (1.1.2-0ubuntu3) vivid; urgency=medium
+
+  * Cherry-pick a bunch of bugfixes:
+    - 81216170c1c2555498573e9fe200e20d3b433b14 fix integer overflow in setproctitle
+    - e310e136b9de89c9f8596c004afa217f308aea3d c/r: no double fclose() of mnts
+    - 216113e77331881d3c45bd4e141a4f458c9a4565 fix NULL dereference
+    - 53caaac80f6850287251cc5e3a02479fb4a27087 fix dead code
+    - 8721f7f43185208e0c1802ff2bc03108fd3e3204 lxc-fedora: manage secondary architectures
+    - 3149bd4c0e81973b3db2e1230bd1784dc222a4ed don't compare unsigned values as negative ones
+    - 17f48b9679b2bb6d4e5d156fa59e6399f82277d9 Revert (by hand) "logs: introduce a thread-local 'current' lxc_config"
+
+  Those combined will make LXD pass its testsutie (fixing threading bugs).
+
+ -- Stéphane Graber <stgraber@ubuntu.com>  Tue, 14 Apr 2015 18:39:15 -0500
+
 lxc (1.1.2-0ubuntu2) vivid; urgency=medium
 
   * Cherry-pick a fix from upstream to resolve invalid command message
