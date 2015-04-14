@@ -1,0 +1,24 @@
+From bf43d07da05c09604fbf014112a53e43ff6d4d40 Mon Sep 17 00:00:00 2001
+From: Tycho Andersen <tycho.andersen@canonical.com>
+Date: Mon, 13 Apr 2015 18:07:01 +0000
+Subject: c/r: no double fclose() of mnts
+
+Reported-by: Coverity
+Signed-off-by: Tycho Andersen <tycho.andersen@canonical.com>
+Acked-by: Serge E. Hallyn <serge.hallyn@ubuntu.com>
+---
+ src/lxc/lxccontainer.c | 1 +
+ 1 file changed, 1 insertion(+)
+
+diff --git a/src/lxc/lxccontainer.c b/src/lxc/lxccontainer.c
+index 522d652..f6ec587 100644
+--- a/src/lxc/lxccontainer.c
++++ b/src/lxc/lxccontainer.c
+@@ -3892,6 +3892,7 @@ static void exec_criu(struct criu_opts *opts)
+ 		DECLARE_ARG(arg);
+ 	}
+ 	fclose(mnts);
++	mnts = NULL;
+ 
+ 	argv[argc] = NULL;
+ 

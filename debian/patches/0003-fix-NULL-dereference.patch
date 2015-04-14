@@ -1,0 +1,32 @@
+From 8292eab8e8767c2ef59eb8a7144435a85d0345b8 Mon Sep 17 00:00:00 2001
+From: Tycho Andersen <tycho.andersen@canonical.com>
+Date: Mon, 13 Apr 2015 18:07:02 +0000
+Subject: fix NULL dereference
+
+lxc_console dereferences C, so we should check that it is not null and fail if
+it is.
+
+Reported-by: Coverity
+Signed-off-by: Tycho Andersen <tycho.andersen@canonical.com>
+Acked-by: Serge E. Hallyn <serge.hallyn@ubuntu.com>
+---
+ src/lxc/lxccontainer.c | 6 +++++-
+ 1 file changed, 5 insertions(+), 1 deletion(-)
+
+diff --git a/src/lxc/lxccontainer.c b/src/lxc/lxccontainer.c
+index f6ec587..5ec1eec 100644
+--- a/src/lxc/lxccontainer.c
++++ b/src/lxc/lxccontainer.c
+@@ -463,7 +463,11 @@ static int lxcapi_console(struct lxc_container *c, int ttynum, int stdinfd,
+ {
+ 	int ret;
+ 	struct lxc_conf *old = current_config;
+-	current_config = c ? c->lxc_conf : NULL;
++
++	if (!c)
++		return -1;
++
++	current_config = c->lxc_conf;
+ 	ret = lxc_console(c, ttynum, stdinfd, stdoutfd, stderrfd, escape);
+ 	current_config = old;
+ 	return ret;
