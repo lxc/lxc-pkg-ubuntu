@@ -1,0 +1,25 @@
+Domain Names for Containers
+
+For convenience, it is possible to automatically map domain names to your
+containers' IP addresses.  This allows connecting to them from the host machine
+using names like mycontainer.lxc, rather than having to keep track of their
+numeric addresses.
+
+First, uncomment the following line in the host's /etc/default/lxc-net file:
+
+LXC_DOMAIN="lxc"
+
+Next, add the following line to the host's dnsmasq configuration file:
+
+server=/lxc/10.0.3.1
+
+On Debian-based systems running NetworkManager, such as Ubuntu desktops, add
+that line to /etc/NetworkManager/dnsmasq.d/lxc.conf (or a similarly-named file
+in the same directory).  On systems without NetworkManager, add it to
+/etc/dnsmasq.conf instead.  You may have to create the file yourself.
+
+Finally, restart the lxc-net service, and the network-manager service if it is
+running on your system:  (These commands must be run as root.)
+
+invoke-rc.d lxc-net restart
+invoke-rc.d network-manager restart

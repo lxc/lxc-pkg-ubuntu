@@ -31,8 +31,10 @@ LXC_DHCP_MAX="253"
 
 # Uncomment the next line if you want lxcbr0's dnsmasq to resolve the .lxc
 # domain.  You can then add "server=/lxc/10.0.$i.1' (or your actual \$LXC_ADDR)
-# to /etc/dnsmasq.conf, after which 'container1.lxc' will resolve on your
-# host.
+# to your dnsmasq configuration file (normally /etc/dnsmasq.conf, or
+# /etc/NetworkManager/dnsmasq.d/lxc.conf on systems that use NetworkManager).
+# Once these changes are made, restart the lxc-net and network-manager services.
+# 'container1.lxc' will then resolve on your host.
 #LXC_DOMAIN="lxc"
 EOF
 }
