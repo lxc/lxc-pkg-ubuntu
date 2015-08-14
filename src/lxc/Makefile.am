@@ -12,6 +12,7 @@ noinst_HEADERS = \
 	conf.h \
 	console.h \
 	error.h \
+	initutils.h \
 	list.h \
 	log.h \
 	lxc.h \
@@ -21,7 +22,8 @@ noinst_HEADERS = \
 	namespace.h \
 	start.h \
 	state.h \
-	utils.h
+	utils.h \
+	criu.h
 
 if IS_BIONIC
 noinst_HEADERS += \
@@ -66,6 +68,7 @@ liblxc_so_SOURCES = \
 	cgfs.c \
 	cgroup.c cgroup.h \
 	lxc.h \
+	initutils.c initutils.h \
 	utils.c utils.h \
 	sync.c sync.h \
 	namespace.h namespace.c \
@@ -75,6 +78,7 @@ liblxc_so_SOURCES = \
 	state.c state.h \
 	log.c log.h \
 	attach.c attach.h \
+	criu.c criu.h \
 	\
 	network.c network.h \
 	nl.c nl.h \
@@ -164,7 +168,6 @@ bin_SCRIPTS = lxc-checkconfig
 
 EXTRA_DIST = \
 	lxc-ls \
-	lxc-restore-net \
 	lxc-top.lua
 
 if ENABLE_PYTHON
@@ -238,7 +241,7 @@ lxc_checkpoint_SOURCES = lxc_checkpoint.c
 if HAVE_STATIC_LIBCAP
 sbin_PROGRAMS += init.lxc.static
 
-init_lxc_static_SOURCES = lxc_init.c error.c log.c utils.c caps.c
+init_lxc_static_SOURCES = lxc_init.c error.c log.c initutils.c caps.c
 
 if !HAVE_GETLINE
 if HAVE_FGETLN
@@ -260,9 +263,6 @@ install-exec-local: install-soPROGRAMS
 
 install-exec-hook:
 	chmod u+s $(DESTDIR)$(libexecdir)/lxc/lxc-user-nic
-
-install-data-local:
-	install -c -m 755 lxc-restore-net $(DESTDIR)$(datadir)/lxc
 
 uninstall-local:
 	$(RM) $(DESTDIR)$(libdir)/liblxc.so*

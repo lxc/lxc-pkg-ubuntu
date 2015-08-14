@@ -1,0 +1,200 @@
+From 1fd993e3c2fc97b3d0a6e7d139ae29d3c0f65345 Mon Sep 17 00:00:00 2001
+From: Serge Hallyn <serge.hallyn@ubuntu.com>
+Date: Tue, 14 Apr 2015 15:47:02 -0500
+Subject: Revert (by hand) "logs: introduce a thread-local 'current'
+ lxc_config"
+
+This is hopefully temporary - it works great for lxc itself, but seems
+to be upsetting golang.
+
+Signed-off-by: Serge Hallyn <serge.hallyn@ubuntu.com>
+Tested-by: Tycho Andersen <tycho.andersen@canonical.com>
+---
+ src/lxc/Makefile.am |  1 -
+ src/lxc/conf.c      | 14 --------------
+ src/lxc/conf.h      |  7 -------
+ src/lxc/confile.c   | 12 ++++++------
+ src/lxc/log.h       | 23 +++++++----------------
+ 5 files changed, 13 insertions(+), 44 deletions(-)
+
+diff --git a/src/lxc/Makefile.am b/src/lxc/Makefile.am
+index ce46495..2080314 100644
+--- a/src/lxc/Makefile.am
++++ b/src/lxc/Makefile.am
+@@ -251,7 +251,6 @@ endif
+ 
+ init_lxc_static_LDFLAGS = -static
+ init_lxc_static_LDADD = @CAP_LIBS@
+-init_lxc_static_CFLAGS = $(AM_CFLAGS) -DNO_LXC_CONF
+ endif
+ 
+ install-exec-local: install-soPROGRAMS
+diff --git a/src/lxc/conf.c b/src/lxc/conf.c
+index d37112b..467ecda 100644
+--- a/src/lxc/conf.c
++++ b/src/lxc/conf.c
+@@ -178,17 +178,6 @@ struct caps_opt {
+ 	int value;
+ };
+ 
+-/*
+- * The lxc_conf of the container currently being worked on in an
+- * API call
+- * This is used in the error calls
+- */
+-#ifdef HAVE_TLS
+-__thread struct lxc_conf *current_config;
+-#else
+-struct lxc_conf *current_config;
+-#endif
+-
+ /* Declare this here, since we don't want to reshuffle the whole file. */
+ static int in_caplist(int cap, struct lxc_list *caps);
+ 
+@@ -2582,7 +2571,6 @@ struct lxc_conf *lxc_conf_init(void)
+ 		return NULL;
+ 	}
+ 	new->kmsg = 0;
+-	new->logfd = -1;
+ 	lxc_list_init(&new->cgroup);
+ 	lxc_list_init(&new->network);
+ 	lxc_list_init(&new->mount_list);
+@@ -4212,8 +4200,6 @@ void lxc_conf_free(struct lxc_conf *conf)
+ 	free(conf->rootfs.path);
+ 	free(conf->rootfs.pivot);
+ 	free(conf->logfile);
+-	if (conf->logfd != -1)
+-		close(conf->logfd);
+ 	free(conf->utsname);
+ 	free(conf->ttydir);
+ 	free(conf->fstab);
+diff --git a/src/lxc/conf.h b/src/lxc/conf.h
+index c01e1a4..6b83c90 100644
+--- a/src/lxc/conf.h
++++ b/src/lxc/conf.h
+@@ -335,7 +335,6 @@ struct lxc_conf {
+ 	// store the config file specified values here.
+ 	char *logfile;  // the logfile as specifed in config
+ 	int loglevel;   // loglevel as specifed in config (if any)
+-	int logfd;
+ 
+ 	int inherit_ns_fd[LXC_NS_MAX];
+ 
+@@ -365,12 +364,6 @@ struct lxc_conf {
+ 	char *init_cmd;
+ };
+ 
+-#ifdef HAVE_TLS
+-extern __thread struct lxc_conf *current_config;
+-#else
+-extern struct lxc_conf *current_config;
+-#endif
+-
+ int run_lxc_hooks(const char *name, char *hook, struct lxc_conf *conf,
+ 		  const char *lxcpath, char *argv[]);
+ 
+diff --git a/src/lxc/confile.c b/src/lxc/confile.c
+index dcfeac9..70341c2 100644
+--- a/src/lxc/confile.c
++++ b/src/lxc/confile.c
+@@ -1226,15 +1226,15 @@ static int config_lsm_se_context(const char *key, const char *value,
+ }
+ 
+ static int config_logfile(const char *key, const char *value,
+-			     struct lxc_conf *c)
++			     struct lxc_conf *lxc_conf)
+ {
+ 	int ret;
+ 
+ 	// store these values in the lxc_conf, and then try to set for
+ 	// actual current logging.
+-	ret = config_path_item(&c->logfile, value);
++	ret = config_path_item(&lxc_conf->logfile, value);
+ 	if (ret == 0)
+-		ret = lxc_log_set_file(&c->logfd, c->logfile);
++		ret = lxc_log_set_file(lxc_conf->logfile);
+ 	return ret;
+ }
+ 
+@@ -1253,7 +1253,7 @@ static int config_loglevel(const char *key, const char *value,
+ 	// store these values in the lxc_conf, and then try to set for
+ 	// actual current logging.
+ 	lxc_conf->loglevel = newlevel;
+-	return lxc_log_set_level(&lxc_conf->loglevel, newlevel);
++	return lxc_log_set_level(newlevel);
+ }
+ 
+ static int config_autodev(const char *key, const char *value,
+@@ -2424,9 +2424,9 @@ int lxc_get_config_item(struct lxc_conf *c, const char *key, char *retv,
+ 	else if (strcmp(key, "lxc.se_context") == 0)
+ 		v = c->lsm_se_context;
+ 	else if (strcmp(key, "lxc.logfile") == 0)
+-		v = c->logfile;
++		v = lxc_log_get_file();
+ 	else if (strcmp(key, "lxc.loglevel") == 0)
+-		v = lxc_log_priority_to_string(c->loglevel);
++		v = lxc_log_priority_to_string(lxc_log_get_level());
+ 	else if (strcmp(key, "lxc.cgroup") == 0) // all cgroup info
+ 		return lxc_get_cgroup_entry(c, retv, inlen, "all");
+ 	else if (strncmp(key, "lxc.cgroup.", 11) == 0) // specific cgroup info
+diff --git a/src/lxc/log.h b/src/lxc/log.h
+index 76bd4df..b47f120 100644
+--- a/src/lxc/log.h
++++ b/src/lxc/log.h
+@@ -33,8 +33,6 @@
+ #include <strings.h>
+ #include <stdbool.h>
+ 
+-#include "conf.h"
+-
+ #ifndef O_CLOEXEC
+ #define O_CLOEXEC 02000000
+ #endif
+@@ -106,10 +104,6 @@ struct lxc_log_category {
+ 	const struct lxc_log_category	*parent;
+ };
+ 
+-#ifndef NO_LXC_CONF
+-extern int lxc_log_use_global_fd;
+-#endif
+-
+ /*
+  * Returns true if the chained priority is equal to or higher than
+  * given priority.
+@@ -122,14 +116,7 @@ lxc_log_priority_is_enabled(const struct lxc_log_category* category,
+ 	       category->parent)
+ 		category = category->parent;
+ 
+-	int cmp_prio = category->priority;
+-#ifndef NO_LXC_CONF
+-	if (!lxc_log_use_global_fd && current_config &&
+-			current_config->loglevel != LXC_LOG_PRIORITY_NOTSET)
+-		cmp_prio = current_config->loglevel;
+-#endif
+-
+-	return priority >= cmp_prio;
++	return priority >= category->priority;
+ }
+ 
+ /*
+@@ -307,14 +294,18 @@ ATTR_UNUSED static inline void LXC_##PRIORITY(struct lxc_log_locinfo* locinfo,	\
+ 	ERROR("%s - " format, strerror(errno), ##__VA_ARGS__);		\
+ } while (0)
+ 
++#ifdef HAVE_TLS
++extern __thread int lxc_log_fd;
++#else
+ extern int lxc_log_fd;
++#endif
+ 
+ extern int lxc_log_init(const char *name, const char *file,
+ 			const char *priority, const char *prefix, int quiet,
+ 			const char *lxcpath);
+ 
+-extern int lxc_log_set_file(int *fd, const char *fname);
+-extern int lxc_log_set_level(int *dest, int level);
++extern int lxc_log_set_file(const char *fname);
++extern int lxc_log_set_level(int level);
+ extern void lxc_log_set_prefix(const char *prefix);
+ extern const char *lxc_log_get_file(void);
+ extern int lxc_log_get_level(void);

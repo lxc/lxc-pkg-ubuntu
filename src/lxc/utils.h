@@ -32,16 +32,13 @@
 #include <unistd.h>
 
 #include "config.h"
+#include "initutils.h"
 
 /* returns 1 on success, 0 if there were any failures */
 extern int lxc_rmdir_onedev(char *path, const char *exclude);
-extern void lxc_setup_fs(void);
 extern int get_u16(unsigned short *val, const char *arg, int base);
 extern int mkdir_p(const char *dir, mode_t mode);
-extern void remove_trailing_slashes(char *p);
 extern char *get_rundir(void);
-
-extern const char *lxc_global_config_value(const char *option_name);
 
 /* Define getline() if missing from the C library */
 #ifndef HAVE_GETLINE
@@ -147,10 +144,6 @@ static inline int signalfd(int fd, const sigset_t *mask, int flags)
 	return retval;
 }
 #endif
-
-/* open a file with O_CLOEXEC */
-FILE *fopen_cloexec(const char *path, const char *mode);
-
 
 /* Struct to carry child pid from lxc_popen() to lxc_pclose().
  * Not an opaque struct to allow direct access to the underlying FILE *
@@ -275,7 +268,6 @@ extern bool dir_exists(const char *path);
 
 #define FNV1A_64_INIT ((uint64_t)0xcbf29ce484222325ULL)
 uint64_t fnv_64a_buf(void *buf, size_t len, uint64_t hval);
-#endif
 
 int detect_shared_rootfs(void);
 int detect_ramfs_rootfs(void);
@@ -287,3 +279,6 @@ bool switch_to_ns(pid_t pid, const char *ns);
 int is_dir(const char *path);
 char *get_template_path(const char *t);
 int setproctitle(char *title);
+int mount_proc_if_needed(const char *rootfs);
+int null_stdfds(void);
+#endif /* __LXC_UTILS_H */
