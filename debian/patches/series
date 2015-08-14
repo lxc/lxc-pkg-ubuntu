@@ -5,3 +5,5 @@
 0005-don-t-compare-unsigned-values-as-negative-ones.patch
 0006-Revert-by-hand-logs-introduce-a-thread-local-current.patch
 0007-lxc-fedora-manage-secondary-architectures.patch
+0008-CVE-2015-1331.patch
+0009-CVE-2015-1334.patch
