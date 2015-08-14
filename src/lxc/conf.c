@@ -1368,10 +1368,8 @@ int prepare_ramfs_root(char *root)
 			break;
 	}
 
-	if (umount2("./proc", MNT_DETACH)) {
-		SYSERROR("Unable to umount /proc");
-		return -1;
-	}
+	/* This also can be skipped if a container uses unserns */
+	umount2("./proc", MNT_DETACH);
 
 	/* It is weird, but chdir("..") moves us in a new root */
 	if (chdir("..") == -1) {
@@ -2613,9 +2611,11 @@ static int instantiate_veth(struct lxc_handler *handler, struct lxc_netdev *netd
 	char veth2buf[IFNAMSIZ], *veth2;
 	int err;
 
-	if (netdev->priv.veth_attr.pair)
+	if (netdev->priv.veth_attr.pair) {
 		veth1 = netdev->priv.veth_attr.pair;
-	else {
+		if (handler->conf->reboot)
+			lxc_netdev_delete_by_name(veth1);
+	} else {
 		err = snprintf(veth1buf, sizeof(veth1buf), "vethXXXXXX");
 		if (err >= sizeof(veth1buf)) { /* can't *really* happen, but... */
 			ERROR("veth1 name too long");
@@ -3545,48 +3545,6 @@ int ttys_shift_ids(struct lxc_conf *c)
 	return 0;
 }
 
-/*
- * _do_tmp_proc_mount: Mount /proc inside container if not already
- * mounted
- *
- * @rootfs : the rootfs where proc should be mounted
- *
- * Returns < 0 on failure, 0 if the correct proc was already mounted
- * and 1 if a new proc was mounted.
- */
-static int do_tmp_proc_mount(const char *rootfs)
-{
-	char path[MAXPATHLEN];
-	char link[20];
-	int linklen, ret;
-
-	ret = snprintf(path, MAXPATHLEN, "%s/proc/self", rootfs);
-	if (ret < 0 || ret >= MAXPATHLEN) {
-		SYSERROR("proc path name too long");
-		return -1;
-	}
-	memset(link, 0, 20);
-	linklen = readlink(path, link, 20);
-	INFO("I am %d, /proc/self points to '%s'", getpid(), link);
-	ret = snprintf(path, MAXPATHLEN, "%s/proc", rootfs);
-	if (linklen < 0) /* /proc not mounted */
-		goto domount;
-	/* can't be longer than rootfs/proc/1 */
-	if (strncmp(link, "1", linklen) != 0) {
-		/* wrong /procs mounted */
-		umount2(path, MNT_DETACH); /* ignore failure */
-		goto domount;
-	}
-	/* the right proc is already mounted */
-	return 0;
-
-domount:
-	if (mount("proc", path, "proc", 0, NULL))
-		return -1;
-	INFO("Mounted /proc in container for security transition");
-	return 1;
-}
-
 int tmp_proc_mount(struct lxc_conf *lxc_conf)
 {
 	int mounted;
@@ -3598,7 +3556,7 @@ int tmp_proc_mount(struct lxc_conf *lxc_conf)
 		} else
 			mounted = 1;
 	} else
-		mounted = do_tmp_proc_mount(lxc_conf->rootfs.mount);
+		mounted = mount_proc_if_needed(lxc_conf->rootfs.mount);
 	if (mounted == -1) {
 		SYSERROR("failed to mount /proc in the container.");
 		return -1;
@@ -4245,6 +4203,8 @@ void lxc_conf_free(struct lxc_conf *conf)
 {
 	if (!conf)
 		return;
+	if (current_config == conf)
+		current_config = NULL;
 	free(conf->console.log_path);
 	free(conf->console.path);
 	free(conf->rootfs.mount);
@@ -4554,4 +4514,59 @@ void suggest_default_idmap(void)
 
 	free(gname);
 	free(uname);
+}
+
+static void free_cgroup_settings(struct lxc_list *result)
+{
+	struct lxc_list *iterator, *next;
+
+	lxc_list_for_each_safe(iterator, result, next) {
+		lxc_list_del(iterator);
+		free(iterator);
+	}
+	free(result);
+}
+
+/*
+ * Return the list of cgroup_settings sorted according to the following rules
+ * 1. Put memory.limit_in_bytes before memory.memsw.limit_in_bytes
+ */
+struct lxc_list *sort_cgroup_settings(struct lxc_list* cgroup_settings)
+{
+	struct lxc_list *result;
+	struct lxc_list *memsw_limit = NULL;
+	struct lxc_list *it = NULL;
+	struct lxc_cgroup *cg = NULL;
+	struct lxc_list *item = NULL;
+
+	result = malloc(sizeof(*result));
+	if (!result) {
+		ERROR("failed to allocate memory to sort cgroup settings");
+		return NULL;
+	}
+	lxc_list_init(result);
+
+	/*Iterate over the cgroup settings and copy them to the output list*/
+	lxc_list_for_each(it, cgroup_settings) {
+		item = malloc(sizeof(*item));
+		if (!item) {
+			ERROR("failed to allocate memory to sort cgroup settings");
+			free_cgroup_settings(result);
+			return NULL;
+		}
+		item->elem = it->elem;
+		cg = it->elem;
+		if (strcmp(cg->subsystem, "memory.memsw.limit_in_bytes") == 0) {
+			/* Store the memsw_limit location */
+			memsw_limit = item;
+		} else if (strcmp(cg->subsystem, "memory.limit_in_bytes") == 0 && memsw_limit != NULL) {
+			/* lxc.cgroup.memory.memsw.limit_in_bytes is found before 
+			 * lxc.cgroup.memory.limit_in_bytes, swap these two items */
+			item->elem = memsw_limit->elem;
+			memsw_limit->elem = it->elem;
+		}
+		lxc_list_add_tail(result, item);
+	}
+
+	return result;
 }

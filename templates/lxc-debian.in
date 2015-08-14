@@ -32,6 +32,7 @@ done
 
 # Make sure the usual locations are in PATH
 export PATH=$PATH:/usr/sbin:/usr/bin:/sbin:/bin
+export GREP_OPTIONS=""
 
 MIRROR=${MIRROR:-http://http.debian.net/debian}
 SECURITY_MIRROR=${SECURITY_MIRROR:-http://security.debian.org/}
@@ -96,16 +97,6 @@ $hostname
 EOF
 
     # reconfigure some services
-    if [ -z "$LANG" ]; then
-        chroot $rootfs locale-gen en_US.UTF-8 UTF-8
-        chroot $rootfs update-locale LANG=en_US.UTF-8
-    else
-        encoding=$(echo $LANG | cut -d. -f2)
-        chroot $rootfs sed -e "s/^# \(${LANG} ${encoding}\)/\1/" \
-            -i /etc/locale.gen 2> /dev/null
-        chroot $rootfs locale-gen $LANG $encoding
-        chroot $rootfs update-locale LANG=$LANG
-    fi
 
     # remove pointless services in a container
     chroot $rootfs /usr/sbin/update-rc.d -f checkroot.sh disable
@@ -168,8 +159,13 @@ write_sourceslist()
 
     cat >> "${rootfs}/etc/apt/sources.list" << EOF
 ${prefix} $MIRROR          ${release}         main contrib non-free
+EOF
+
+    if [ "$release" != "unstable" -a "$release" != "sid" ]; then
+      cat >> "${rootfs}/etc/apt/sources.list" << EOF
 ${prefix} $SECURITY_MIRROR ${release}/updates main contrib non-free
 EOF
+    fi
 }
 
 install_packages()
@@ -199,6 +195,11 @@ configure_debian_systemd()
     # just in case systemd is not installed
     mkdir -p ${rootfs}/{lib,etc}/systemd/system
     mkdir -p ${rootfs}/etc/systemd/system/getty.target.wants
+
+    # Fix getty-static-service as debootstrap does not install dbus
+    if [ -e $rootfs//lib/systemd/system/getty-static.service ] ; then
+        sed 's/ getty@tty[5-9].service//g' $rootfs/lib/systemd/system/getty-static.service |  sed 's/\(tty2-tty\)[5-9]/\14/g' > $rootfs/etc/systemd/system/getty-static.service
+    fi
 
     # This function has been copied and adapted from lxc-fedora
     rm -f ${rootfs}/etc/systemd/system/default.target
@@ -397,6 +398,25 @@ EOF
 
     # Re-enable service startup
     rm ${rootfs}/usr/sbin/policy-rc.d
+    
+    # reconfigure locales
+    if [ -z "$LANG" ]; then
+        cat >> $rootfs/etc/locale.gen << EOF
+en_US.UTF-8 UTF-8
+EOF
+        chroot $rootfs locale-gen en_US.UTF-8 UTF-8
+        chroot $rootfs update-locale LANG=en_US.UTF-8
+    else
+        encoding=$(echo $LANG | cut -d. -f2)
+        chroot $rootfs sed -e "s/^# \(${LANG} ${encoding}\)/\1/" \
+            -i /etc/locale.gen 2> /dev/null
+        cat >> $rootfs/etc/locale.gen << EOF
+$LANG $encoding
+EOF
+        chroot $rootfs locale-gen $LANG $encoding
+        chroot $rootfs update-locale LANG=$LANG
+    fi
+    # end
 }
 
 clean()

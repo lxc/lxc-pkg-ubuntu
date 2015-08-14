@@ -9,6 +9,9 @@
 /* Have cgmanager_get_pid_cgroup_abs_sync */
 #undef HAVE_CGMANAGER_GET_PID_CGROUP_ABS_SYNC
 
+/* Have cgmanager_list_controllers */
+#undef HAVE_CGMANAGER_LIST_CONTROLLERS
+
 /* Define to 1 if you have the `confstr' function. */
 #undef HAVE_CONFSTR
 
