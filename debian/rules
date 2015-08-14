@@ -96,3 +96,6 @@ override_dh_gencontrol:
 	else \
 		dh_gencontrol -- -V'lxc:Depends=apparmor'; \
 	fi
+
+override_dh_systemd_start:
+	dh_systemd_start --no-restart-on-upgrade
