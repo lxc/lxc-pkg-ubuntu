@@ -1,3 +1,9 @@
+lxc (1.1.2-0ubuntu4) wily; urgency=medium
+
+  * No-change rebuild for python3.5 transition
+
+ -- Steve Langasek <steve.langasek@ubuntu.com>  Wed, 22 Jul 2015 19:00:00 +0000
+
 lxc (1.1.2-0ubuntu3) vivid; urgency=medium
 
   * Cherry-pick a bunch of bugfixes:
