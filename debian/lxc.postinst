@@ -46,6 +46,8 @@ apparmor_load() {
 
     if [ -x /lib/init/apparmor-profile-load ]; then
         /lib/init/apparmor-profile-load lxc-containers
+    elif [ -x /etc/init.d/apparmor ]; then
+        invoke-rc.d apparmor reload || true
     fi
 }
 
