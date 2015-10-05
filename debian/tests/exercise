@@ -66,7 +66,7 @@ for testbin in /usr/bin/lxc-test-*; do
     [ "$testbin" = "/usr/bin/lxc-test-may-control" ] && continue
 
     # Skip some tests when running in a container
-    if [ -f /run/container_type ]; then
+    if [ -f /run/container_type ] || (type systemd-detect-virt >/dev/null 2>&1 && systemd-detect-virt  --container >/dev/null 2>&1); then
         [ "$testbin" = "/usr/bin/lxc-test-apparmor" ] && \
             ignore "$STRING" && continue
 
