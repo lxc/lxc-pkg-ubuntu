@@ -1,3 +1,15 @@
+lxc (1.1.2-0ubuntu3.2) vivid-security; urgency=medium
+
+  * SECURITY UPDATE: Arbitrary host file access and AppArmor
+    confinement breakout via lxc-start following symlinks while
+    setting up mounts within a malicious container (LP: #1476662).
+    - debian/patches/0010-CVE-2015-1335.patch: block mounts to paths
+      containing symlinks and block bind mounts from relative paths
+      containing symlinks. Patch from upstream.
+    - CVE-2015-1335
+
+ -- Steve Beattie <sbeattie@ubuntu.com>  Tue, 22 Sep 2015 16:04:18 -0700
+
 lxc (1.1.2-0ubuntu3.1) vivid-security; urgency=medium
 
   * SECURITY UPDATE: Arbitrary file creation via unintentional symlink
