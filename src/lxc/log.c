@@ -41,37 +41,6 @@
 #define LXC_LOG_PREFIX_SIZE	32
 #define LXC_LOG_BUFFER_SIZE	512
 
-static pthread_mutex_t log_mutex = PTHREAD_MUTEX_INITIALIZER;
-static void lock_mutex(pthread_mutex_t *l)
-{
-	int ret;
-
-	if ((ret = pthread_mutex_lock(l)) != 0) {
-		fprintf(stderr, "pthread_mutex_lock returned:%d %s\n", ret, strerror(ret));
-		exit(1);
-	}
-}
-
-static void unlock_mutex(pthread_mutex_t *l)
-{
-	int ret;
-
-	if ((ret = pthread_mutex_unlock(l)) != 0) {
-		fprintf(stderr, "pthread_mutex_unlock returned:%d %s\n", ret, strerror(ret));
-		exit(1);
-	}
-}
-
-void log_lock(void)
-{
-	lock_mutex(&log_mutex);
-}
-
-void log_unlock(void)
-{
-	unlock_mutex(&log_mutex);
-}
-
 int lxc_log_fd = -1;
 int lxc_quiet_specified;
 int lxc_log_use_global_fd;
@@ -381,7 +350,7 @@ extern int lxc_log_init(const char *name, const char *file,
 			lxcpath = LOGPATH;
 
 		/* try LOGPATH if lxcpath is the default for the privileged containers */
-		if (!geteuid() && strcmp(lxcpath, lxc_global_config_value("lxc.lxcpath")) == 0)
+		if (!geteuid() && strcmp(LXCPATH, lxcpath) == 0)
 			ret = _lxc_log_set_file(name, NULL, 0);
 
 		/* try in lxcpath */

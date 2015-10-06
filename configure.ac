@@ -3,7 +3,7 @@
 
 m4_define([lxc_version_major], 1)
 m4_define([lxc_version_minor], 1)
-m4_define([lxc_version_micro], 2)
+m4_define([lxc_version_micro], 4)
 m4_define([lxc_version_beta], [])
 
 m4_define([lxc_version_base], [lxc_version_major.lxc_version_minor.lxc_version_micro])
@@ -279,6 +279,17 @@ AC_SEARCH_LIBS([cgmanager_get_pid_cgroup_abs_sync], [cgmanager], [have_abs_cgrou
 LIBS=$save_LIBS
 if test "x$have_abs_cgroups" = "xyes"; then
 	AC_DEFINE([HAVE_CGMANAGER_GET_PID_CGROUP_ABS_SYNC], 1, [Have cgmanager_get_pid_cgroup_abs_sync])
+	AC_MSG_RESULT([yes])
+else
+	AC_MSG_RESULT([no])
+fi
+
+AC_MSG_CHECKING(for cgmanager_list_controllers)
+save_LIBS=$LIBS
+AC_SEARCH_LIBS([cgmanager_list_controllers_sync], [cgmanager], [have_list_controllers=yes], [have_list_controllers=no], [-lnih -lnih-dbus -ldbus-1])
+LIBS=$save_LIBS
+if test "x$have_list_controllers" = "xyes"; then
+	AC_DEFINE([HAVE_CGMANAGER_LIST_CONTROLLERS], 1, [Have cgmanager_list_controllers])
 	AC_MSG_RESULT([yes])
 else
 	AC_MSG_RESULT([no])
@@ -635,6 +646,7 @@ AC_CONFIG_FILES([
 	config/templates/gentoo.common.conf
 	config/templates/gentoo.moresecure.conf
 	config/templates/gentoo.userns.conf
+	config/templates/nesting.conf
 	config/templates/opensuse.common.conf
 	config/templates/opensuse.userns.conf
 	config/templates/oracle.common.conf

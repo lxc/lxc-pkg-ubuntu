@@ -79,7 +79,7 @@ lxc-execute creates a container with the identifier NAME\n\
 and execs COMMAND into this container.\n\
 \n\
 Options :\n\
-  -n, --name=NAME      NAME for name of the container\n\
+  -n, --name=NAME      NAME of the container\n\
   -f, --rcfile=FILE    Load configuration file FILE\n\
   -s, --define KEY=VAL Assign VAL to configuration variable KEY\n",
 	.options  = my_longopts,
@@ -139,7 +139,7 @@ int main(int argc, char *argv[])
 	if (lxc_config_define_load(&defines, conf))
 		return 1;
 
-	ret = lxc_execute(my_args.name, my_args.argv, my_args.quiet, conf, my_args.lxcpath[0]);
+	ret = lxc_execute(my_args.name, my_args.argv, my_args.quiet, conf, my_args.lxcpath[0], false);
 
 	lxc_conf_free(conf);
 

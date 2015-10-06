@@ -32,6 +32,7 @@ done
 
 # Make sure the usual locations are in PATH
 export PATH=$PATH:/usr/sbin:/usr/bin:/sbin:/bin
+export GREP_OPTIONS=""
 
 MIRROR=${MIRROR:-http://http.debian.net/debian}
 SECURITY_MIRROR=${SECURITY_MIRROR:-http://security.debian.org/}
@@ -96,16 +97,6 @@ $hostname
 EOF
 
     # reconfigure some services
-    if [ -z "$LANG" ]; then
-        chroot $rootfs locale-gen en_US.UTF-8 UTF-8
-        chroot $rootfs update-locale LANG=en_US.UTF-8
-    else
-        encoding=$(echo $LANG | cut -d. -f2)
-        chroot $rootfs sed -e "s/^# \(${LANG} ${encoding}\)/\1/" \
-            -i /etc/locale.gen 2> /dev/null
-        chroot $rootfs locale-gen $LANG $encoding
-        chroot $rootfs update-locale LANG=$LANG
-    fi
 
     # remove pointless services in a container
     chroot $rootfs /usr/sbin/update-rc.d -f checkroot.sh disable
@@ -166,10 +157,21 @@ write_sourceslist()
         prefix="deb [arch=${arch}]"
     fi
 
+    if [ "$mainonly" = 1 ]; then
+      non_main=''
+    else
+      non_main=' contrib non-free'
+    fi
+
     cat >> "${rootfs}/etc/apt/sources.list" << EOF
-${prefix} $MIRROR          ${release}         main contrib non-free
-${prefix} $SECURITY_MIRROR ${release}/updates main contrib non-free
+${prefix} $MIRROR          ${release}         main${non_main}
 EOF
+
+    if [ "$release" != "unstable" -a "$release" != "sid" ]; then
+      cat >> "${rootfs}/etc/apt/sources.list" << EOF
+${prefix} $SECURITY_MIRROR ${release}/updates main${non_main}
+EOF
+    fi
 }
 
 install_packages()
@@ -199,6 +201,11 @@ configure_debian_systemd()
     # just in case systemd is not installed
     mkdir -p ${rootfs}/{lib,etc}/systemd/system
     mkdir -p ${rootfs}/etc/systemd/system/getty.target.wants
+
+    # Fix getty-static-service as debootstrap does not install dbus
+    if [ -e $rootfs//lib/systemd/system/getty-static.service ] ; then
+        sed 's/ getty@tty[5-9].service//g' $rootfs/lib/systemd/system/getty-static.service |  sed 's/\(tty2-tty\)[5-9]/\14/g' > $rootfs/etc/systemd/system/getty-static.service
+    fi
 
     # This function has been copied and adapted from lxc-fedora
     rm -f ${rootfs}/etc/systemd/system/default.target
@@ -376,8 +383,10 @@ EOF
 
     # If the container isn't running a native architecture, setup multiarch
     if [ "${arch}" != "${hostarch}" ]; then
-        mkdir -p ${rootfs}/etc/dpkg/dpkg.cfg.d
-        echo "foreign-architecture ${hostarch}" > ${rootfs}/etc/dpkg/dpkg.cfg.d/lxc-multiarch
+        # Test if dpkg supports multiarch
+        if ! chroot $rootfs dpkg --print-foreign-architecture 2>&1; then
+            chroot $rootfs dpkg --add-architecture ${hostarch}
+        fi
     fi
 
     # Write a new sources.list containing both native and multiarch entries
@@ -397,6 +406,25 @@ EOF
 
     # Re-enable service startup
     rm ${rootfs}/usr/sbin/policy-rc.d
+    
+    # reconfigure locales
+    if [ -z "$LANG" ]; then
+        cat >> $rootfs/etc/locale.gen << EOF
+en_US.UTF-8 UTF-8
+EOF
+        chroot $rootfs locale-gen en_US.UTF-8 UTF-8
+        chroot $rootfs update-locale LANG=en_US.UTF-8
+    else
+        encoding=$(echo $LANG | cut -d. -f2)
+        chroot $rootfs sed -e "s/^# \(${LANG} ${encoding}\)/\1/" \
+            -i /etc/locale.gen 2> /dev/null
+        cat >> $rootfs/etc/locale.gen << EOF
+$LANG $encoding
+EOF
+        chroot $rootfs locale-gen $LANG $encoding
+        chroot $rootfs update-locale LANG=$LANG
+    fi
+    # end
 }
 
 clean()
@@ -449,6 +477,7 @@ Options :
   --packages=PACKAGE_NAME1,PACKAGE_NAME2,...
                          List of additional packages to install. Comma separated, without space.
   -c, --clean            only clean up the cache and terminate
+  --main-only            include only Debian's main repository (i.e. no contrib and non-free).
 
 Environment variables:
 
@@ -461,24 +490,20 @@ EOF
     return 0
 }
 
-options=$(getopt -o hp:n:a:r:c -l arch:,clean,help,mirror:,name:,packages:,path:,release:,rootfs:,security-mirror: -- "$@")
+options=$(getopt -o hp:n:a:r:c -l arch:,clean,help,main-only,mirror:,name:,packages:,path:,release:,rootfs:,security-mirror: -- "$@")
 if [ $? -ne 0 ]; then
         usage $(basename $0)
         exit 1
 fi
 eval set -- "$options"
 
-if which dpkg > /dev/null 2>&1 ; then
-    arch=$(dpkg --print-architecture)
-else
-    arch=$(uname -m)
-    if [ "$arch" = "i686" ]; then
-        arch="i386"
-    elif [ "$arch" = "x86_64" ]; then
-        arch="amd64"
-    elif [ "$arch" = "armv7l" ]; then
-        arch="armhf"
-    fi
+arch=$(uname -m)
+if [ "$arch" = "i686" ]; then
+    arch="i386"
+elif [ "$arch" = "x86_64" ]; then
+    arch="amd64"
+elif [ "$arch" = "armv7l" ]; then
+    arch="armhf"
 fi
 hostarch=$arch
 
@@ -490,6 +515,7 @@ do
 
         -a|--arch)            arch=$2; shift 2;;
         -c|--clean)           clean=1; shift 1;;
+           --main-only)       mainonly=1; shift 1;;
            --mirror)          MIRROR=$2; shift 2;;
         -n|--name)            name=$2; shift 2;;
            --packages)        packages=$2; shift 2;;
@@ -548,7 +574,7 @@ fi
 
 current_release=`wget ${MIRROR}/dists/stable/Release -O - 2> /dev/null | head |awk '/^Codename: (.*)$/ { print $2; }'`
 release=${release:-${current_release}}
-valid_releases=('squeeze' 'wheezy' 'jessie' 'sid')
+valid_releases=('squeeze' 'wheezy' 'jessie' 'stretch' 'sid')
 if [[ ! "${valid_releases[*]}" =~ (^|[^[:alpha:]])$release([^[:alpha:]]|$) ]]; then
     echo "Invalid release ${release}, valid ones are: ${valid_releases[*]}"
     exit 1

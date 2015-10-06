@@ -121,6 +121,7 @@ enum lxc_hostarch_t {
 	lxc_seccomp_arch_i386,
 	lxc_seccomp_arch_amd64,
 	lxc_seccomp_arch_arm,
+	lxc_seccomp_arch_arm64,
 	lxc_seccomp_arch_ppc64,
 	lxc_seccomp_arch_ppc64le,
 	lxc_seccomp_arch_ppc,
@@ -140,6 +141,8 @@ int get_hostarch(void)
 		return lxc_seccomp_arch_amd64;
 	else if (strncmp(uts.machine, "armv7", 5) == 0)
 		return lxc_seccomp_arch_arm;
+	else if (strncmp(uts.machine, "aarch64", 7) == 0)
+		return lxc_seccomp_arch_arm64;
 	else if (strncmp(uts.machine, "ppc64le", 7) == 0)
 		return lxc_seccomp_arch_ppc64le;
 	else if (strncmp(uts.machine, "ppc64", 5) == 0)
@@ -159,6 +162,9 @@ scmp_filter_ctx get_new_ctx(enum lxc_hostarch_t n_arch, uint32_t default_policy_
 	case lxc_seccomp_arch_i386: arch = SCMP_ARCH_X86; break;
 	case lxc_seccomp_arch_amd64: arch = SCMP_ARCH_X86_64; break;
 	case lxc_seccomp_arch_arm: arch = SCMP_ARCH_ARM; break;
+#ifdef SCMP_ARCH_AARCH64
+	case lxc_seccomp_arch_arm64: arch = SCMP_ARCH_AARCH64; break;
+#endif
 #ifdef SCMP_ARCH_PPC64LE
 	case lxc_seccomp_arch_ppc64le: arch = SCMP_ARCH_PPC64LE; break;
 #endif
@@ -259,6 +265,7 @@ static int parse_config_v2(FILE *f, char *line, struct lxc_conf *conf)
 	uint32_t default_policy_action = -1, default_rule_action = -1, action;
 	enum lxc_hostarch_t native_arch = get_hostarch(),
 			    cur_rule_arch = native_arch;
+	uint32_t compat_arch = SCMP_ARCH_NATIVE;
 
 	if (strncmp(line, "blacklist", 9) == 0)
 		blacklist = true;
@@ -288,6 +295,7 @@ static int parse_config_v2(FILE *f, char *line, struct lxc_conf *conf)
 
 	if (native_arch == lxc_seccomp_arch_amd64) {
 		cur_rule_arch = lxc_seccomp_arch_all;
+		compat_arch = SCMP_ARCH_X86;
 		compat_ctx = get_new_ctx(lxc_seccomp_arch_i386,
 				default_policy_action);
 		if (!compat_ctx)
@@ -324,14 +332,6 @@ static int parse_config_v2(FILE *f, char *line, struct lxc_conf *conf)
 					continue;
 				}
 				cur_rule_arch = lxc_seccomp_arch_i386;
-				if (native_arch == lxc_seccomp_arch_amd64) {
-					if (compat_ctx)
-						continue;
-					compat_ctx = get_new_ctx(lxc_seccomp_arch_i386,
-							default_policy_action);
-					if (!compat_ctx)
-						goto bad;
-				}
 			} else if (strcmp(line, "[X86_64]") == 0 ||
 					strcmp(line, "[x86_64]") == 0) {
 				if (native_arch != lxc_seccomp_arch_amd64) {
@@ -342,14 +342,6 @@ static int parse_config_v2(FILE *f, char *line, struct lxc_conf *conf)
 			} else if (strcmp(line, "[all]") == 0 ||
 					strcmp(line, "[ALL]") == 0) {
 				cur_rule_arch = lxc_seccomp_arch_all;
-				if (native_arch == lxc_seccomp_arch_amd64 && !compat_ctx) {
-					if (compat_ctx)
-						continue;
-					compat_ctx = get_new_ctx(lxc_seccomp_arch_i386,
-							default_policy_action);
-					if (!compat_ctx)
-						goto bad;
-				}
 			}
 #ifdef SCMP_ARCH_ARM
 			else if (strcmp(line, "[arm]") == 0 ||
@@ -359,6 +351,16 @@ static int parse_config_v2(FILE *f, char *line, struct lxc_conf *conf)
 					continue;
 				}
 				cur_rule_arch = lxc_seccomp_arch_arm;
+			}
+#endif
+#ifdef SCMP_ARCH_AARCH64
+			else if (strcmp(line, "[arm64]") == 0 ||
+					strcmp(line, "[ARM64]") == 0) {
+				if (native_arch != lxc_seccomp_arch_arm64) {
+					cur_rule_arch = lxc_seccomp_arch_unknown;
+					continue;
+				}
+				cur_rule_arch = lxc_seccomp_arch_arm64;
 			}
 #endif
 #ifdef SCMP_ARCH_PPC64LE
@@ -408,41 +410,24 @@ static int parse_config_v2(FILE *f, char *line, struct lxc_conf *conf)
 			goto bad_rule;
 		}
 
-		/*
-		 * TODO generalize - if !is_compat_only(native_arch, cur_rule_arch)
-		 *
-		 * in other words, the rule is 32-bit only, on 64-bit host;  don't run
-		 * the rule against the native arch.
-		 */
-		if (!(cur_rule_arch == lxc_seccomp_arch_i386 &&
-			native_arch == lxc_seccomp_arch_amd64)) {
-			INFO("Adding non-compat rule for %s action %d", line, action);
+		if (cur_rule_arch == native_arch ||
+		    cur_rule_arch == lxc_seccomp_arch_native ||
+		    compat_arch == SCMP_ARCH_NATIVE) {
+			INFO("Adding native rule for %s action %d", line, action);
 			if (!do_resolve_add_rule(SCMP_ARCH_NATIVE, line, conf->seccomp_ctx, action))
 				goto bad_rule;
 		}
-
-		/*
-		 * TODO generalize - if need_compat(native_arch, cur_rule_arch)
-		 */
-		if (native_arch == lxc_seccomp_arch_amd64 &&
-			cur_rule_arch != lxc_seccomp_arch_amd64) {
-			int nr1, nr2;
+		else if (cur_rule_arch != lxc_seccomp_arch_all) {
+			INFO("Adding compat-only rule for %s action %d", line, action);
+			if (!do_resolve_add_rule(compat_arch, line, compat_ctx, action))
+				goto bad_rule;
+		}
+		else {
+			INFO("Adding native rule for %s action %d", line, action);
+			if (!do_resolve_add_rule(SCMP_ARCH_NATIVE, line, conf->seccomp_ctx, action))
+				goto bad_rule;
 			INFO("Adding compat rule for %s action %d", line, action);
-			nr1 = seccomp_syscall_resolve_name_arch(SCMP_ARCH_X86, line);
-			nr2 = seccomp_syscall_resolve_name_arch(SCMP_ARCH_NATIVE, line);
-			if (nr1 == nr2) {
-				/* If the syscall # is the same for 32- and 64-bit, then we cannot
-				 * apply it to the compat_ctx.  So apply it to the noncompat ctx.
-				 * We may already have done so, but that's ok
-				 */
-				INFO("Adding non-compat rule bc nr1 == nr2 (%d, %d)", nr1, nr2);
-				if (!do_resolve_add_rule(SCMP_ARCH_NATIVE, line, conf->seccomp_ctx, action))
-					goto bad_rule;
-				continue;
-			}
-			INFO("Really adding compat rule bc nr1 == nr2 (%d, %d)", nr1, nr2);
-			if (!do_resolve_add_rule(SCMP_ARCH_X86, line,
-						compat_ctx, action))
+			if (!do_resolve_add_rule(compat_arch, line, compat_ctx, action))
 				goto bad_rule;
 		}
 	}
