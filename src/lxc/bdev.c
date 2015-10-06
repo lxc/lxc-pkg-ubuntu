@@ -72,6 +72,11 @@
 
 lxc_log_define(bdev, lxc);
 
+struct ovl_rsync_data {
+	struct bdev *orig;
+	struct bdev *new;
+};
+
 struct rsync_data_char {
 	char *src;
 	char *dest;
@@ -98,7 +103,7 @@ static int do_rsync(const char *src, const char *dest)
 	s[l-2] = '/';
 	s[l-1] = '\0';
 
-	execlp("rsync", "rsync", "-aHX", s, dest, (char *)NULL);
+	execlp("rsync", "rsync", "-aHX", "--delete", s, dest, (char *)NULL);
 	exit(1);
 }
 
@@ -2219,6 +2224,10 @@ static int overlayfs_mount(struct bdev *bdev)
 	*upper = '\0';
 	upper++;
 
+	// if delta doesn't yet exist, create it
+	if (mkdir_p(upper, 0755) < 0 && errno != EEXIST)
+		return -22;
+
 	// overlayfs.v22 or higher needs workdir option
 	// if upper is /var/lib/lxc/c2/delta0,
 	// then workdir is /var/lib/lxc/c2/olwork
@@ -2328,6 +2337,75 @@ static int rsync_delta_wrapper(void *data)
 	return rsync_delta(arg);
 }
 
+static int ovl_rsync(struct ovl_rsync_data *data)
+{
+	int ret;
+
+	if (setgid(0) < 0) {
+		ERROR("Failed to setgid to 0");
+		return -1;
+	}
+	if (setgroups(0, NULL) < 0)
+		WARN("Failed to clear groups");
+	if (setuid(0) < 0) {
+		ERROR("Failed to setuid to 0");
+		return -1;
+	}
+
+	if (unshare(CLONE_NEWNS) < 0) {
+		SYSERROR("Unable to unshare mounts ns");
+		return -1;
+	}
+	if (detect_shared_rootfs()) {
+		if (mount(NULL, "/", NULL, MS_SLAVE|MS_REC, NULL)) {
+			SYSERROR("Failed to make / rslave");
+			ERROR("Continuing...");
+		}
+	}
+	if (overlayfs_mount(data->orig) < 0) {
+		ERROR("Failed mounting original container fs");
+		return -1;
+	}
+	if (overlayfs_mount(data->new) < 0) {
+		ERROR("Failed mounting new container fs");
+		return -1;
+	}
+	ret = do_rsync(data->orig->dest, data->new->dest);
+
+	overlayfs_umount(data->new);
+	overlayfs_umount(data->orig);
+
+	if (ret < 0) {
+		ERROR("rsyncing %s to %s", data->orig->dest, data->new->dest);
+		return -1;
+	}
+
+	return 0;
+}
+
+static int ovl_rsync_wrapper(void *data)
+{
+	struct ovl_rsync_data *arg = data;
+	return ovl_rsync(arg);
+}
+
+static int ovl_do_rsync(struct bdev *orig, struct bdev *new, struct lxc_conf *conf)
+{
+	int ret = -1;
+	struct ovl_rsync_data rdata;
+
+	rdata.orig = orig;
+	rdata.new = new;
+	if (am_unpriv())
+		ret = userns_exec_1(conf, ovl_rsync_wrapper, &rdata);
+	else
+		ret = ovl_rsync(&rdata);
+	if (ret)
+		ERROR("copying overlayfs delta");
+
+	return ret;
+}
+
 static int overlayfs_clonepaths(struct bdev *orig, struct bdev *new, const char *oldname,
 		const char *cname, const char *oldpath, const char *lxcpath, int snap,
 		uint64_t newsize, struct lxc_conf *conf)
@@ -2383,12 +2461,15 @@ static int overlayfs_clonepaths(struct bdev *orig, struct bdev *new, const char 
 		// and needs to be on the same filesystem as upperdir,
 		// so it's OK for it to be empty.
 		work = malloc(lastslashidx + 7);
-		if (!work)
+		if (!work) {
+			free(delta);
 			return -1;
+		}
 		strncpy(work, new->dest, lastslashidx+1);
 		strcpy(work+lastslashidx, "olwork");
 		if (mkdir(work, 0755) < 0) {
 			SYSERROR("error: mkdir %s", work);
+			free(delta);
 			free(work);
 			return -1;
 		}
@@ -2460,19 +2541,6 @@ static int overlayfs_clonepaths(struct bdev *orig, struct bdev *new, const char 
 			WARN("Failed to update ownership of %s", work);
 		free(work);
 
-		struct rsync_data_char rdata;
-		rdata.src = odelta;
-		rdata.dest = ndelta;
-		if (am_unpriv())
-			ret = userns_exec_1(conf, rsync_delta_wrapper, &rdata);
-		else
-			ret = rsync_delta(&rdata);
-		if (ret) {
-			free(osrc);
-			free(ndelta);
-			ERROR("copying overlayfs delta");
-			return -1;
-		}
 		len = strlen(nsrc) + strlen(ndelta) + 12;
 		new->src = malloc(len);
 		if (!new->src) {
@@ -2485,6 +2553,8 @@ static int overlayfs_clonepaths(struct bdev *orig, struct bdev *new, const char 
 		free(ndelta);
 		if (ret < 0 || ret >= len)
 			return -ENOMEM;
+
+		return ovl_do_rsync(orig, new, conf);
 	} else {
 		ERROR("overlayfs clone of %s container is not yet supported",
 			orig->type);
@@ -3614,3 +3684,40 @@ bool rootfs_is_blockdev(struct lxc_conf *conf)
 		return true;
 	return false;
 }
+
+bool bdev_destroy(struct lxc_conf *conf)
+{
+	struct bdev *r;
+	bool ret = false;
+
+	r = bdev_init(conf, conf->rootfs.path, conf->rootfs.mount, NULL);
+	if (!r)
+		return ret;
+
+	if (r->ops->destroy(r) == 0)
+		ret = true;
+	bdev_put(r);
+
+	return ret;
+}
+
+int bdev_destroy_wrapper(void *data)
+{
+	struct lxc_conf *conf = data;
+
+	if (setgid(0) < 0) {
+		ERROR("Failed to setgid to 0");
+		return -1;
+	}
+	if (setgroups(0, NULL) < 0)
+		WARN("Failed to clear groups");
+	if (setuid(0) < 0) {
+		ERROR("Failed to setuid to 0");
+		return -1;
+	}
+	if (!bdev_destroy(conf))
+		return -1;
+	else
+		return 0;
+}
+

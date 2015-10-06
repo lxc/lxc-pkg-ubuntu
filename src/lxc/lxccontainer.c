@@ -1364,19 +1364,26 @@ static bool do_lxcapi_create(struct lxc_container *c, const char *t,
 		goto free_tpath;
 
 	/*
-	 * either template or rootfs.path should be set.
 	 * if both template and rootfs.path are set, template is setup as rootfs.path.
 	 * container is already created if we have a config and rootfs.path is accessible
 	 */
-	if (!c->lxc_conf->rootfs.path && !tpath)
-		/* no template passed in and rootfs does not exist: error */
+	if (!c->lxc_conf->rootfs.path && !tpath) {
+		/* no template passed in and rootfs does not exist */
+		if (!c->save_config(c, NULL)) {
+			ERROR("failed to save starting configuration for %s\n", c->name);
+			goto out;
+		}
+		ret = true;
 		goto out;
+	}
 	if (c->lxc_conf->rootfs.path && access(c->lxc_conf->rootfs.path, F_OK) != 0)
 		/* rootfs passed into configuration, but does not exist: error */
 		goto out;
 	if (do_lxcapi_is_defined(c) && c->lxc_conf->rootfs.path && !tpath) {
 		/* Rootfs already existed, user just wanted to save the
 		 * loaded configuration */
+		if (!c->save_config(c, NULL))
+			ERROR("failed to save starting configuration for %s\n", c->name);
 		ret = true;
 		goto out;
 	}
@@ -2112,48 +2119,25 @@ static bool has_snapshots(struct lxc_container *c)
 	return count > 0;
 }
 
+static bool do_destroy_container(struct lxc_conf *conf) {
+	if (am_unpriv()) {
+		if (userns_exec_1(conf, bdev_destroy_wrapper, conf) < 0)
+			return false;
+		return true;
+	}
+	return bdev_destroy(conf);
+}
+
 static int lxc_rmdir_onedev_wrapper(void *data)
 {
 	char *arg = (char *) data;
 	return lxc_rmdir_onedev(arg, "snaps");
 }
 
-static int do_bdev_destroy(struct lxc_conf *conf)
-{
-	struct bdev *r;
-	int ret = 0;
-
-	r = bdev_init(conf, conf->rootfs.path, conf->rootfs.mount, NULL);
-	if (!r)
-		return -1;
-
-	if (r->ops->destroy(r) < 0)
-		ret = -1;
-	bdev_put(r);
-	return ret;
-}
-
-static int bdev_destroy_wrapper(void *data)
-{
-	struct lxc_conf *conf = data;
-
-	if (setgid(0) < 0) {
-		ERROR("Failed to setgid to 0");
-		return -1;
-	}
-	if (setgroups(0, NULL) < 0)
-		WARN("Failed to clear groups");
-	if (setuid(0) < 0) {
-		ERROR("Failed to setuid to 0");
-		return -1;
-	}
-	return do_bdev_destroy(conf);
-}
-
 static bool container_destroy(struct lxc_container *c)
 {
 	bool bret = false;
-	int ret;
+	int ret = 0;
 
 	if (!c || !do_lxcapi_is_defined(c))
 		return false;
@@ -2176,14 +2160,11 @@ static bool container_destroy(struct lxc_container *c)
 	}
 
 	if (c->lxc_conf && c->lxc_conf->rootfs.path && c->lxc_conf->rootfs.mount) {
-		if (am_unpriv())
-			ret = userns_exec_1(c->lxc_conf, bdev_destroy_wrapper, c->lxc_conf);
-		else
-			ret = do_bdev_destroy(c->lxc_conf);
-		if (ret < 0) {
+		if (!do_destroy_container(c->lxc_conf)) {
 			ERROR("Error destroying rootfs for %s", c->name);
 			goto out;
 		}
+		INFO("Destroyed rootfs for %s", c->name);
 	}
 
 	mod_all_rdeps(c, false);
@@ -2199,6 +2180,8 @@ static bool container_destroy(struct lxc_container *c)
 		ERROR("Error destroying container directory for %s", c->name);
 		goto out;
 	}
+	INFO("Destroyed directory for %s", c->name);
+
 	bret = true;
 
 out:
@@ -2710,19 +2693,19 @@ static int clone_update_rootfs(struct clone_update_data *data)
 
 	if (!lxc_list_empty(&conf->hooks[LXCHOOK_CLONE])) {
 		/* Start of environment variable setup for hooks */
-		if (setenv("LXC_SRC_NAME", c0->name, 1)) {
+		if (c0->name && setenv("LXC_SRC_NAME", c0->name, 1)) {
 			SYSERROR("failed to set environment variable for source container name");
 		}
-		if (setenv("LXC_NAME", c->name, 1)) {
+		if (c->name && setenv("LXC_NAME", c->name, 1)) {
 			SYSERROR("failed to set environment variable for container name");
 		}
-		if (setenv("LXC_CONFIG_FILE", conf->rcfile, 1)) {
+		if (conf->rcfile && setenv("LXC_CONFIG_FILE", conf->rcfile, 1)) {
 			SYSERROR("failed to set environment variable for config path");
 		}
-		if (setenv("LXC_ROOTFS_MOUNT", bdev->dest, 1)) {
+		if (bdev->dest && setenv("LXC_ROOTFS_MOUNT", bdev->dest, 1)) {
 			SYSERROR("failed to set environment variable for rootfs mount");
 		}
-		if (setenv("LXC_ROOTFS_PATH", conf->rootfs.path, 1)) {
+		if (conf->rootfs.path && setenv("LXC_ROOTFS_PATH", conf->rootfs.path, 1)) {
 			SYSERROR("failed to set environment variable for rootfs mount");
 		}
 
@@ -2784,7 +2767,7 @@ static int create_file_dirname(char *path, struct lxc_conf *conf)
 	if (!p)
 		return -1;
 	*p = '\0';
-        ret = do_create_container_dir(path, conf);
+	ret = do_create_container_dir(path, conf);
 	*p = '/';
 	return ret;
 }
@@ -2873,12 +2856,15 @@ static struct lxc_container *do_lxcapi_clone(struct lxc_container *c, const char
 	if (ret < 0)
 		goto out;
 
-	clear_unexp_config_line(c2->lxc_conf, "lxc.utsname", false);
 
 	// update utsname
-	if (!set_config_item_locked(c2, "lxc.utsname", newname)) {
-		ERROR("Error setting new hostname");
-		goto out;
+	if (!(flags & LXC_CLONE_KEEPNAME)) {
+		clear_unexp_config_line(c2->lxc_conf, "lxc.utsname", false);
+
+		if (!set_config_item_locked(c2, "lxc.utsname", newname)) {
+			ERROR("Error setting new hostname");
+			goto out;
+		}
 	}
 
 	// copy hooks

@@ -122,13 +122,13 @@ static void cull_user_controllers(void);
 
 static void cgm_dbus_disconnect(void)
 {
-       if (cgroup_manager) {
-	       dbus_connection_flush(cgroup_manager->connection);
-	       dbus_connection_close(cgroup_manager->connection);
-               nih_free(cgroup_manager);
-       }
-       cgroup_manager = NULL;
-       cgm_unlock();
+	if (cgroup_manager) {
+		dbus_connection_flush(cgroup_manager->connection);
+		dbus_connection_close(cgroup_manager->connection);
+		nih_free(cgroup_manager);
+	}
+	cgroup_manager = NULL;
+	cgm_unlock();
 }
 
 #define CGMANAGER_DBUS_SOCK "unix:path=/sys/fs/cgroup/cgmanager/sock"
@@ -1477,7 +1477,7 @@ static bool cgm_bind_dir(const char *root, const char *dirname)
 	}
 
 	/* mount a tmpfs there so we can create subdirs */
-	if (mount("cgroup", cgpath, "tmpfs", 0, "size=10000,mode=755")) {
+	if (safe_mount("cgroup", cgpath, "tmpfs", 0, "size=10000,mode=755", root)) {
 		SYSERROR("Failed to mount tmpfs at %s", cgpath);
 		return false;
 	}
@@ -1488,7 +1488,7 @@ static bool cgm_bind_dir(const char *root, const char *dirname)
 		return false;
 	}
 
-	if (mount(dirname, cgpath, "none", MS_BIND, 0)) {
+	if (safe_mount(dirname, cgpath, "none", MS_BIND, 0, root)) {
 		SYSERROR("Failed to bind mount %s to %s", dirname, cgpath);
 		return false;
 	}
