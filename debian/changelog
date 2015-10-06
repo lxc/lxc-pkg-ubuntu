@@ -1,3 +1,11 @@
+lxc (1.1.4-0ubuntu1) wily; urgency=medium
+
+  * New upstream bugfix release (1.1.4)
+    - This fixes CVE-2015-1335 (LP: #1476662)
+    - Detailed changelog at: https://linuxcontainers.org/lxc/news
+
+ -- Stéphane Graber <stgraber@ubuntu.com>  Tue, 06 Oct 2015 15:45:15 +0100
+
 lxc (1.1.3-0ubuntu2) wily; urgency=medium
 
   * Build using libseccomp on all architectures.
