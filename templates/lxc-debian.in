@@ -157,13 +157,19 @@ write_sourceslist()
         prefix="deb [arch=${arch}]"
     fi
 
+    if [ "$mainonly" = 1 ]; then
+      non_main=''
+    else
+      non_main=' contrib non-free'
+    fi
+
     cat >> "${rootfs}/etc/apt/sources.list" << EOF
-${prefix} $MIRROR          ${release}         main contrib non-free
+${prefix} $MIRROR          ${release}         main${non_main}
 EOF
 
     if [ "$release" != "unstable" -a "$release" != "sid" ]; then
       cat >> "${rootfs}/etc/apt/sources.list" << EOF
-${prefix} $SECURITY_MIRROR ${release}/updates main contrib non-free
+${prefix} $SECURITY_MIRROR ${release}/updates main${non_main}
 EOF
     fi
 }
@@ -377,8 +383,10 @@ EOF
 
     # If the container isn't running a native architecture, setup multiarch
     if [ "${arch}" != "${hostarch}" ]; then
-        mkdir -p ${rootfs}/etc/dpkg/dpkg.cfg.d
-        echo "foreign-architecture ${hostarch}" > ${rootfs}/etc/dpkg/dpkg.cfg.d/lxc-multiarch
+        # Test if dpkg supports multiarch
+        if ! chroot $rootfs dpkg --print-foreign-architecture 2>&1; then
+            chroot $rootfs dpkg --add-architecture ${hostarch}
+        fi
     fi
 
     # Write a new sources.list containing both native and multiarch entries
@@ -469,6 +477,7 @@ Options :
   --packages=PACKAGE_NAME1,PACKAGE_NAME2,...
                          List of additional packages to install. Comma separated, without space.
   -c, --clean            only clean up the cache and terminate
+  --main-only            include only Debian's main repository (i.e. no contrib and non-free).
 
 Environment variables:
 
@@ -481,24 +490,20 @@ EOF
     return 0
 }
 
-options=$(getopt -o hp:n:a:r:c -l arch:,clean,help,mirror:,name:,packages:,path:,release:,rootfs:,security-mirror: -- "$@")
+options=$(getopt -o hp:n:a:r:c -l arch:,clean,help,main-only,mirror:,name:,packages:,path:,release:,rootfs:,security-mirror: -- "$@")
 if [ $? -ne 0 ]; then
         usage $(basename $0)
         exit 1
 fi
 eval set -- "$options"
 
-if which dpkg > /dev/null 2>&1 ; then
-    arch=$(dpkg --print-architecture)
-else
-    arch=$(uname -m)
-    if [ "$arch" = "i686" ]; then
-        arch="i386"
-    elif [ "$arch" = "x86_64" ]; then
-        arch="amd64"
-    elif [ "$arch" = "armv7l" ]; then
-        arch="armhf"
-    fi
+arch=$(uname -m)
+if [ "$arch" = "i686" ]; then
+    arch="i386"
+elif [ "$arch" = "x86_64" ]; then
+    arch="amd64"
+elif [ "$arch" = "armv7l" ]; then
+    arch="armhf"
 fi
 hostarch=$arch
 
@@ -510,6 +515,7 @@ do
 
         -a|--arch)            arch=$2; shift 2;;
         -c|--clean)           clean=1; shift 1;;
+           --main-only)       mainonly=1; shift 1;;
            --mirror)          MIRROR=$2; shift 2;;
         -n|--name)            name=$2; shift 2;;
            --packages)        packages=$2; shift 2;;
@@ -568,7 +574,7 @@ fi
 
 current_release=`wget ${MIRROR}/dists/stable/Release -O - 2> /dev/null | head |awk '/^Codename: (.*)$/ { print $2; }'`
 release=${release:-${current_release}}
-valid_releases=('squeeze' 'wheezy' 'jessie' 'sid')
+valid_releases=('squeeze' 'wheezy' 'jessie' 'stretch' 'sid')
 if [[ ! "${valid_releases[*]}" =~ (^|[^[:alpha:]])$release([^[:alpha:]]|$) ]]; then
     echo "Invalid release ${release}, valid ones are: ${valid_releases[*]}"
     exit 1

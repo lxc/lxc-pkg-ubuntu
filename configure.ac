@@ -3,7 +3,7 @@
 
 m4_define([lxc_version_major], 1)
 m4_define([lxc_version_minor], 1)
-m4_define([lxc_version_micro], 3)
+m4_define([lxc_version_micro], 4)
 m4_define([lxc_version_beta], [])
 
 m4_define([lxc_version_base], [lxc_version_major.lxc_version_minor.lxc_version_micro])
@@ -646,6 +646,7 @@ AC_CONFIG_FILES([
 	config/templates/gentoo.common.conf
 	config/templates/gentoo.moresecure.conf
 	config/templates/gentoo.userns.conf
+	config/templates/nesting.conf
 	config/templates/opensuse.common.conf
 	config/templates/opensuse.userns.conf
 	config/templates/oracle.common.conf
