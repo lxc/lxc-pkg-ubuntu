@@ -1,0 +1,5 @@
+# Needed to build with older dpkg-dev
+lxc source: xs-testsuite-header-in-debian-control xs-testsuite
+
+# Not quite true yet in Ubuntu
+lxc source: build-depends-on-obsolete-package build-depends: hardening-wrapper => use dpkg-buildflags instead

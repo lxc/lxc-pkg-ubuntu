@@ -19,7 +19,7 @@ Build-Depends: autotools-dev,
                linux-libc-dev,
                pkg-config,
                python3-all-dev (>= 3.2.3)
-Standards-Version: 3.9.5
+Standards-Version: 3.9.6
 Homepage: https://linuxcontainers.org
 Vcs-Git: git://github.com/lxc/lxc-pkg-ubuntu
 Vcs-Browser: https://github.com/lxc/lxc-pkg-ubuntu
