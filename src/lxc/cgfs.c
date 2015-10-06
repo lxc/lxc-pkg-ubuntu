@@ -1363,7 +1363,10 @@ static bool cgroupfs_mount_cgroup(void *hdata, const char *root, int type)
 	if (!path)
 		return false;
 	snprintf(path, bufsz, "%s/sys/fs/cgroup", root);
-	r = mount("cgroup_root", path, "tmpfs", MS_NOSUID|MS_NODEV|MS_NOEXEC|MS_RELATIME, "size=10240k,mode=755");
+	r = safe_mount("cgroup_root", path, "tmpfs",
+			MS_NOSUID|MS_NODEV|MS_NOEXEC|MS_RELATIME,
+			"size=10240k,mode=755",
+			root);
 	if (r < 0) {
 		SYSERROR("could not mount tmpfs to /sys/fs/cgroup in the container");
 		return false;
@@ -1886,14 +1889,19 @@ static int do_cgroup_set(const char *cgroup_path, const char *sub_filename,
 static int do_setup_cgroup_limits(struct cgfs_data *d,
 			   struct lxc_list *cgroup_settings, bool do_devices)
 {
-	struct lxc_list *iterator;
+	struct lxc_list *iterator, *sorted_cgroup_settings, *next;
 	struct lxc_cgroup *cg;
 	int ret = -1;
 
 	if (lxc_list_empty(cgroup_settings))
 		return 0;
 
-	lxc_list_for_each(iterator, cgroup_settings) {
+	sorted_cgroup_settings = sort_cgroup_settings(cgroup_settings);
+	if (!sorted_cgroup_settings) {
+		return -1;
+	}
+
+	lxc_list_for_each(iterator, sorted_cgroup_settings) {
 		cg = iterator->elem;
 
 		if (do_devices == !strncmp("devices", cg->subsystem, 7)) {
@@ -1916,6 +1924,11 @@ static int do_setup_cgroup_limits(struct cgfs_data *d,
 	ret = 0;
 	INFO("cgroup has been setup");
 out:
+	lxc_list_for_each_safe(iterator, sorted_cgroup_settings, next) {
+		lxc_list_del(iterator);
+		free(iterator);
+	}
+	free(sorted_cgroup_settings);
 	return ret;
 }
 

@@ -178,6 +178,17 @@ struct caps_opt {
 	int value;
 };
 
+/*
+ * The lxc_conf of the container currently being worked on in an
+ * API call
+ * This is used in the error calls
+ */
+#ifdef HAVE_TLS
+__thread struct lxc_conf *current_config;
+#else
+struct lxc_conf *current_config;
+#endif
+
 /* Declare this here, since we don't want to reshuffle the whole file. */
 static int in_caplist(int cap, struct lxc_list *caps);
 
@@ -273,6 +284,9 @@ static struct caps_opt caps_opt[] = {
 	{ "sys_tty_config",    CAP_SYS_TTY_CONFIG    },
 	{ "mknod",             CAP_MKNOD             },
 	{ "lease",             CAP_LEASE             },
+#ifdef CAP_AUDIT_READ
+	{ "audit_read",        CAP_AUDIT_READ        },
+#endif
 #ifdef CAP_AUDIT_WRITE
 	{ "audit_write",       CAP_AUDIT_WRITE       },
 #endif
@@ -287,6 +301,9 @@ static struct caps_opt caps_opt[] = {
 #endif
 #ifdef CAP_WAKE_ALARM
 	{ "wake_alarm",        CAP_WAKE_ALARM        },
+#endif
+#ifdef CAP_BLOCK_SUSPEND
+	{ "block_suspend",     CAP_BLOCK_SUSPEND     },
 #endif
 };
 #else
@@ -730,7 +747,7 @@ static unsigned long add_required_remount_flags(const char *s, const char *d,
 static int lxc_mount_auto_mounts(struct lxc_conf *conf, int flags, struct lxc_handler *handler)
 {
 	int r;
-	size_t i;
+	int i;
 	static struct {
 		int match_mask;
 		int match_flag;
@@ -752,10 +769,11 @@ static int lxc_mount_auto_mounts(struct lxc_conf *conf, int flags, struct lxc_ha
 		 * 2.6.32...
 		 */
 		{ LXC_AUTO_PROC_MASK, LXC_AUTO_PROC_MIXED, "proc",                                              "%r/proc",                      "proc",     MS_NODEV|MS_NOEXEC|MS_NOSUID,   NULL },
-		{ LXC_AUTO_PROC_MASK, LXC_AUTO_PROC_MIXED, "%r/proc/sys/net",                                   "%r/proc/net",                  NULL,       MS_BIND,                        NULL },
+		/* proc/tty is used as a temporary placeholder for proc/sys/net which we'll move back in a few steps */
+		{ LXC_AUTO_PROC_MASK, LXC_AUTO_PROC_MIXED, "%r/proc/sys/net",                                   "%r/proc/tty",                  NULL,       MS_BIND,                        NULL },
 		{ LXC_AUTO_PROC_MASK, LXC_AUTO_PROC_MIXED, "%r/proc/sys",                                       "%r/proc/sys",                  NULL,       MS_BIND,                        NULL },
 		{ LXC_AUTO_PROC_MASK, LXC_AUTO_PROC_MIXED, NULL,                                                "%r/proc/sys",                  NULL,       MS_REMOUNT|MS_BIND|MS_RDONLY,   NULL },
-		{ LXC_AUTO_PROC_MASK, LXC_AUTO_PROC_MIXED, "%r/proc/net",                                       "%r/proc/sys/net",              NULL,       MS_MOVE,                        NULL },
+		{ LXC_AUTO_PROC_MASK, LXC_AUTO_PROC_MIXED, "%r/proc/tty",                                       "%r/proc/sys/net",              NULL,       MS_MOVE,                        NULL },
 		{ LXC_AUTO_PROC_MASK, LXC_AUTO_PROC_MIXED, "%r/proc/sysrq-trigger",                             "%r/proc/sysrq-trigger",        NULL,       MS_BIND,                        NULL },
 		{ LXC_AUTO_PROC_MASK, LXC_AUTO_PROC_MIXED, NULL,                                                "%r/proc/sysrq-trigger",        NULL,       MS_REMOUNT|MS_BIND|MS_RDONLY,   NULL },
 		{ LXC_AUTO_PROC_MASK, LXC_AUTO_PROC_RW,    "proc",                                              "%r/proc",                      "proc",     MS_NODEV|MS_NOEXEC|MS_NOSUID,   NULL },
@@ -779,26 +797,28 @@ static int lxc_mount_auto_mounts(struct lxc_conf *conf, int flags, struct lxc_ha
 
 			if (default_mounts[i].source) {
 				/* will act like strdup if %r is not present */
-				source = lxc_string_replace("%r", conf->rootfs.mount, default_mounts[i].source);
+				source = lxc_string_replace("%r", conf->rootfs.path ? conf->rootfs.mount : "", default_mounts[i].source);
 				if (!source) {
 					SYSERROR("memory allocation error");
 					return -1;
 				}
 			}
-			if (default_mounts[i].destination) {
-				/* will act like strdup if %r is not present */
-				destination = lxc_string_replace("%r", conf->rootfs.mount, default_mounts[i].destination);
-				if (!destination) {
-					saved_errno = errno;
-					SYSERROR("memory allocation error");
-					free(source);
-					errno = saved_errno;
-					return -1;
-				}
+			if (!default_mounts[i].destination) {
+				ERROR("BUG: auto mounts destination %d was NULL", i);
+				return -1;
+			}
+			/* will act like strdup if %r is not present */
+			destination = lxc_string_replace("%r", conf->rootfs.path ? conf->rootfs.mount : "", default_mounts[i].destination);
+			if (!destination) {
+				saved_errno = errno;
+				SYSERROR("memory allocation error");
+				free(source);
+				errno = saved_errno;
+				return -1;
 			}
 			mflags = add_required_remount_flags(source, destination,
 					default_mounts[i].flags);
-			r = mount(source, destination, default_mounts[i].fstype, mflags, default_mounts[i].options);
+			r = safe_mount(source, destination, default_mounts[i].fstype, mflags, default_mounts[i].options, conf->rootfs.path ? conf->rootfs.mount : NULL);
 			saved_errno = errno;
 			if (r < 0 && errno == ENOENT) {
 				INFO("Mount source or target for %s on %s doesn't exist. Skipping.", source, destination);
@@ -842,7 +862,7 @@ static int lxc_mount_auto_mounts(struct lxc_conf *conf, int flags, struct lxc_ha
 			}
 		}
 
-		if (!cgroup_mount(conf->rootfs.mount, handler, cg_flags)) {
+		if (!cgroup_mount(conf->rootfs.path ? conf->rootfs.mount : "", handler, cg_flags)) {
 			SYSERROR("error mounting /sys/fs/cgroup");
 			return -1;
 		}
@@ -931,7 +951,7 @@ static int setup_dev_symlinks(const struct lxc_rootfs *rootfs)
 
 	for (i = 0; i < sizeof(dev_symlinks) / sizeof(dev_symlinks[0]); i++) {
 		const struct dev_symlinks *d = &dev_symlinks[i];
-		ret = snprintf(path, sizeof(path), "%s/dev/%s", rootfs->mount, d->name);
+		ret = snprintf(path, sizeof(path), "%s/dev/%s", rootfs->path ? rootfs->mount : "", d->name);
 		if (ret < 0 || ret >= MAXPATHLEN)
 			return -1;
 
@@ -1128,36 +1148,37 @@ fail:
  * Just create a path for /dev under $lxcpath/$name and in rootfs
  * If we hit an error, log it but don't fail yet.
  */
-static int mount_autodev(const char *name, char *root, const char *lxcpath)
+static int mount_autodev(const char *name, const struct lxc_rootfs *rootfs, const char *lxcpath)
 {
 	int ret;
 	size_t clen;
 	char *path;
 
-	INFO("Mounting /dev under %s", root);
+	INFO("Mounting container /dev");
 
-	/* $(root) + "/dev/pts" + '\0' */
-	clen = strlen(root) + 9;
+	/* $(rootfs->mount) + "/dev/pts" + '\0' */
+	clen = (rootfs->path ? strlen(rootfs->mount) : 0) + 9;
 	path = alloca(clen);
 
-	ret = snprintf(path, clen, "%s/dev", root);
+	ret = snprintf(path, clen, "%s/dev", rootfs->path ? rootfs->mount : "");
 	if (ret < 0 || ret >= clen)
 		return -1;
 
 	if (!dir_exists(path)) {
-		WARN("No /dev on container rootfs.");
+		WARN("No /dev in container.");
 		WARN("Proceeding without autodev setup");
 		return 0;
 	}
 
-	if (mount("none", path, "tmpfs", 0, "size=100000,mode=755")) {
+	if (safe_mount("none", path, "tmpfs", 0, "size=100000,mode=755",
+				rootfs->path ? rootfs->mount : NULL)) {
 		SYSERROR("Failed mounting tmpfs onto %s\n", path);
 		return false;
 	}
 
 	INFO("Mounted tmpfs onto %s",  path);
 
-	ret = snprintf(path, clen, "%s/dev/pts", root);
+	ret = snprintf(path, clen, "%s/dev/pts", rootfs->path ? rootfs->mount : "");
 	if (ret < 0 || ret >= clen)
 		return -1;
 
@@ -1173,7 +1194,7 @@ static int mount_autodev(const char *name, char *root, const char *lxcpath)
 		}
 	}
 
-	INFO("Mounted /dev under %s", root);
+	INFO("Mounted container /dev");
 	return 0;
 }
 
@@ -1194,16 +1215,16 @@ static const struct lxc_devs lxc_devs[] = {
 	{ "console",	S_IFCHR | S_IRUSR | S_IWUSR,	       5, 1	},
 };
 
-static int fill_autodev(const char *root)
+static int fill_autodev(const struct lxc_rootfs *rootfs)
 {
 	int ret;
 	char path[MAXPATHLEN];
 	int i;
 	mode_t cmask;
 
-	INFO("Creating initial consoles under %s/dev", root);
+	INFO("Creating initial consoles under container /dev");
 
-	ret = snprintf(path, MAXPATHLEN, "%s/dev", root);
+	ret = snprintf(path, MAXPATHLEN, "%s/dev", rootfs->path ? rootfs->mount : "");
 	if (ret < 0 || ret >= MAXPATHLEN) {
 		ERROR("Error calculating container /dev location");
 		return -1;
@@ -1212,11 +1233,11 @@ static int fill_autodev(const char *root)
 	if (!dir_exists(path))  // ignore, just don't try to fill in
 		return 0;
 
-	INFO("Populating /dev under %s", root);
+	INFO("Populating container /dev");
 	cmask = umask(S_IXUSR | S_IXGRP | S_IXOTH);
 	for (i = 0; i < sizeof(lxc_devs) / sizeof(lxc_devs[0]); i++) {
 		const struct lxc_devs *d = &lxc_devs[i];
-		ret = snprintf(path, MAXPATHLEN, "%s/dev/%s", root, d->name);
+		ret = snprintf(path, MAXPATHLEN, "%s/dev/%s", rootfs->path ? rootfs->mount : "", d->name);
 		if (ret < 0 || ret >= MAXPATHLEN)
 			return -1;
 		ret = mknod(path, d->mode, makedev(d->maj, d->min));
@@ -1235,7 +1256,8 @@ static int fill_autodev(const char *root)
 				return -1;
 			}
 			fclose(pathfile);
-			if (mount(hostpath, path, 0, MS_BIND, NULL) != 0) {
+			if (safe_mount(hostpath, path, 0, MS_BIND, NULL,
+						rootfs->path ? rootfs->mount : NULL) != 0) {
 				SYSERROR("Failed bind mounting device %s from host into container",
 					d->name);
 				return -1;
@@ -1244,7 +1266,7 @@ static int fill_autodev(const char *root)
 	}
 	umask(cmask);
 
-	INFO("Populated /dev under %s", root);
+	INFO("Populated container /dev");
 	return 0;
 }
 
@@ -1357,10 +1379,8 @@ int prepare_ramfs_root(char *root)
 			break;
 	}
 
-	if (umount2("./proc", MNT_DETACH)) {
-		SYSERROR("Unable to umount /proc");
-		return -1;
-	}
+	/* This also can be skipped if a container uses unserns */
+	umount2("./proc", MNT_DETACH);
 
 	/* It is weird, but chdir("..") moves us in a new root */
 	if (chdir("..") == -1) {
@@ -1490,7 +1510,7 @@ static int setup_dev_console(const struct lxc_rootfs *rootfs,
 		return -1;
 	}
 
-	if (mount(console->name, path, "none", MS_BIND, 0)) {
+	if (safe_mount(console->name, path, "none", MS_BIND, 0, rootfs->mount)) {
 		ERROR("failed to mount '%s' on '%s'", console->name, path);
 		return -1;
 	}
@@ -1545,7 +1565,7 @@ static int setup_ttydir_console(const struct lxc_rootfs *rootfs,
 		return 0;
 	}
 
-	if (mount(console->name, lxcpath, "none", MS_BIND, 0)) {
+	if (safe_mount(console->name, lxcpath, "none", MS_BIND, 0, rootfs->mount)) {
 		ERROR("failed to mount '%s' on '%s'", console->name, lxcpath);
 		return -1;
 	}
@@ -1695,13 +1715,13 @@ static char *get_field(char *src, int nfields)
 
 static int mount_entry(const char *fsname, const char *target,
 		       const char *fstype, unsigned long mountflags,
-		       const char *data, int optional)
+		       const char *data, int optional, const char *rootfs)
 {
 #ifdef HAVE_STATVFS
 	struct statvfs sb;
 #endif
 
-	if (mount(fsname, target, fstype, mountflags & ~MS_REMOUNT, data)) {
+	if (safe_mount(fsname, target, fstype, mountflags & ~MS_REMOUNT, data, rootfs)) {
 		if (optional) {
 			INFO("failed to mount '%s' on '%s' (optional): %s", fsname,
 			     target, strerror(errno));
@@ -1748,7 +1768,7 @@ static int mount_entry(const char *fsname, const char *target,
 #endif
 
 		if (mount(fsname, target, fstype,
-			  mountflags | MS_REMOUNT, data)) {
+			  mountflags | MS_REMOUNT, data) < 0) {
 			if (optional) {
 				INFO("failed to mount '%s' on '%s' (optional): %s",
 					 fsname, target, strerror(errno));
@@ -1795,36 +1815,50 @@ static void cull_mntent_opt(struct mntent *mntent)
 	}
 }
 
-static inline int mount_entry_on_systemfs(struct mntent *mntent)
+static int mount_entry_create_dir_file(const struct mntent *mntent,
+				       const char* path)
 {
-	unsigned long mntflags;
-	char *mntdata;
-	int ret;
+	char *pathdirname = NULL;
+	int ret = 0;
 	FILE *pathfile = NULL;
-	char* pathdirname = NULL;
-	bool optional = hasmntopt(mntent, "optional") != NULL;
 
 	if (hasmntopt(mntent, "create=dir")) {
-		if (mkdir_p(mntent->mnt_dir, 0755) < 0) {
-			WARN("Failed to create mount target '%s'", mntent->mnt_dir);
+		if (mkdir_p(path, 0755) < 0) {
+			WARN("Failed to create mount target '%s'", path);
 			ret = -1;
 		}
 	}
 
-	if (hasmntopt(mntent, "create=file") && access(mntent->mnt_dir, F_OK)) {
-		pathdirname = strdup(mntent->mnt_dir);
+	if (hasmntopt(mntent, "create=file") && access(path, F_OK)) {
+		pathdirname = strdup(path);
 		pathdirname = dirname(pathdirname);
 		if (mkdir_p(pathdirname, 0755) < 0) {
 			WARN("Failed to create target directory");
 		}
-		pathfile = fopen(mntent->mnt_dir, "wb");
+		pathfile = fopen(path, "wb");
 		if (!pathfile) {
-			WARN("Failed to create mount target '%s'", mntent->mnt_dir);
+			WARN("Failed to create mount target '%s'", path);
 			ret = -1;
 		}
 		else
 			fclose(pathfile);
 	}
+	free(pathdirname);
+	return ret;
+}
+
+static inline int mount_entry_on_generic(struct mntent *mntent,
+                 const char* path, const char *rootfs)
+{
+	unsigned long mntflags;
+	char *mntdata;
+	int ret;
+	bool optional = hasmntopt(mntent, "optional") != NULL;
+
+	ret = mount_entry_create_dir_file(mntent, path);
+
+	if (ret < 0)
+		return optional ? 0 : -1;
 
 	cull_mntent_opt(mntent);
 
@@ -1833,13 +1867,17 @@ static inline int mount_entry_on_systemfs(struct mntent *mntent)
 		return -1;
 	}
 
-	ret = mount_entry(mntent->mnt_fsname, mntent->mnt_dir,
-			  mntent->mnt_type, mntflags, mntdata, optional);
+	ret = mount_entry(mntent->mnt_fsname, path, mntent->mnt_type,
+			  mntflags, mntdata, optional, rootfs);
 
-	free(pathdirname);
 	free(mntdata);
 
 	return ret;
+}
+
+static inline int mount_entry_on_systemfs(struct mntent *mntent)
+{
+  return mount_entry_on_generic(mntent, mntent->mnt_dir, NULL);
 }
 
 static int mount_entry_on_absolute_rootfs(struct mntent *mntent,
@@ -1848,13 +1886,8 @@ static int mount_entry_on_absolute_rootfs(struct mntent *mntent,
 {
 	char *aux;
 	char path[MAXPATHLEN];
-	unsigned long mntflags;
-	char *mntdata;
 	int r, ret = 0, offset;
 	const char *lxcpath;
-	FILE *pathfile = NULL;
-	char *pathdirname = NULL;
-	bool optional = hasmntopt(mntent, "optional") != NULL;
 
 	lxcpath = lxc_global_config_value("lxc.lxcpath");
 	if (!lxcpath) {
@@ -1878,7 +1911,7 @@ skipvarlib:
 	aux = strstr(mntent->mnt_dir, rootfs->path);
 	if (!aux) {
 		WARN("ignoring mount point '%s'", mntent->mnt_dir);
-		goto out;
+		return ret;
 	}
 	offset = strlen(rootfs->path);
 
@@ -1888,58 +1921,17 @@ skipabs:
 		 aux + offset);
 	if (r < 0 || r >= MAXPATHLEN) {
 		WARN("pathnme too long for '%s'", mntent->mnt_dir);
-		ret = -1;
-		goto out;
-	}
-
-	if (hasmntopt(mntent, "create=dir")) {
-		if (mkdir_p(path, 0755) < 0) {
-			WARN("Failed to create mount target '%s'", path);
-			ret = -1;
-		}
-	}
-
-	if (hasmntopt(mntent, "create=file") && access(path, F_OK)) {
-		pathdirname = strdup(path);
-		pathdirname = dirname(pathdirname);
-		if (mkdir_p(pathdirname, 0755) < 0) {
-			WARN("Failed to create target directory");
-		}
-		pathfile = fopen(path, "wb");
-		if (!pathfile) {
-			WARN("Failed to create mount target '%s'", path);
-			ret = -1;
-		}
-		else
-			fclose(pathfile);
-	}
-	cull_mntent_opt(mntent);
-
-	if (parse_mntopts(mntent->mnt_opts, &mntflags, &mntdata) < 0) {
-		free(mntdata);
 		return -1;
 	}
 
-	ret = mount_entry(mntent->mnt_fsname, path, mntent->mnt_type,
-			  mntflags, mntdata, optional);
-
-	free(mntdata);
-
-out:
-	free(pathdirname);
-	return ret;
+	return mount_entry_on_generic(mntent, path, rootfs->mount);
 }
 
 static int mount_entry_on_relative_rootfs(struct mntent *mntent,
 					  const char *rootfs)
 {
 	char path[MAXPATHLEN];
-	unsigned long mntflags;
-	char *mntdata;
 	int ret;
-	FILE *pathfile = NULL;
-	char *pathdirname = NULL;
-	bool optional = hasmntopt(mntent, "optional") != NULL;
 
 	/* relative to root mount point */
 	ret = snprintf(path, sizeof(path), "%s/%s", rootfs, mntent->mnt_dir);
@@ -1948,41 +1940,7 @@ static int mount_entry_on_relative_rootfs(struct mntent *mntent,
 		return -1;
 	}
 
-	if (hasmntopt(mntent, "create=dir")) {
-		if (mkdir_p(path, 0755) < 0) {
-			WARN("Failed to create mount target '%s'", path);
-			ret = -1;
-		}
-	}
-
-	if (hasmntopt(mntent, "create=file") && access(path, F_OK)) {
-		pathdirname = strdup(path);
-		pathdirname = dirname(pathdirname);
-		if (mkdir_p(pathdirname, 0755) < 0) {
-			WARN("Failed to create target directory");
-		}
-		pathfile = fopen(path, "wb");
-		if (!pathfile) {
-			WARN("Failed to create mount target '%s'", path);
-			ret = -1;
-		}
-		else
-			fclose(pathfile);
-	}
-	cull_mntent_opt(mntent);
-
-	if (parse_mntopts(mntent->mnt_opts, &mntflags, &mntdata) < 0) {
-		free(mntdata);
-		return -1;
-	}
-
-	ret = mount_entry(mntent->mnt_fsname, path, mntent->mnt_type,
-			  mntflags, mntdata, optional);
-
-	free(pathdirname);
-	free(mntdata);
-
-	return ret;
+	return mount_entry_on_generic(mntent, path, rootfs);
 }
 
 static int mount_file_entries(const struct lxc_rootfs *rootfs, FILE *file,
@@ -2573,6 +2531,7 @@ struct lxc_conf *lxc_conf_init(void)
 		return NULL;
 	}
 	new->kmsg = 0;
+	new->logfd = -1;
 	lxc_list_init(&new->cgroup);
 	lxc_list_init(&new->network);
 	lxc_list_init(&new->mount_list);
@@ -2601,9 +2560,11 @@ static int instantiate_veth(struct lxc_handler *handler, struct lxc_netdev *netd
 	char veth2buf[IFNAMSIZ], *veth2;
 	int err;
 
-	if (netdev->priv.veth_attr.pair)
+	if (netdev->priv.veth_attr.pair) {
 		veth1 = netdev->priv.veth_attr.pair;
-	else {
+		if (handler->conf->reboot)
+			lxc_netdev_delete_by_name(veth1);
+	} else {
 		err = snprintf(veth1buf, sizeof(veth1buf), "vethXXXXXX");
 		if (err >= sizeof(veth1buf)) { /* can't *really* happen, but... */
 			ERROR("veth1 name too long");
@@ -3533,63 +3494,16 @@ int ttys_shift_ids(struct lxc_conf *c)
 	return 0;
 }
 
-/*
- * _do_tmp_proc_mount: Mount /proc inside container if not already
- * mounted
- *
- * @rootfs : the rootfs where proc should be mounted
- *
- * Returns < 0 on failure, 0 if the correct proc was already mounted
- * and 1 if a new proc was mounted.
- */
-static int do_tmp_proc_mount(const char *rootfs)
-{
-	char path[MAXPATHLEN];
-	char link[20];
-	int linklen, ret;
-
-	ret = snprintf(path, MAXPATHLEN, "%s/proc/self", rootfs);
-	if (ret < 0 || ret >= MAXPATHLEN) {
-		SYSERROR("proc path name too long");
-		return -1;
-	}
-	memset(link, 0, 20);
-	linklen = readlink(path, link, 20);
-	INFO("I am %d, /proc/self points to '%s'", getpid(), link);
-	ret = snprintf(path, MAXPATHLEN, "%s/proc", rootfs);
-	if (linklen < 0) /* /proc not mounted */
-		goto domount;
-	/* can't be longer than rootfs/proc/1 */
-	if (strncmp(link, "1", linklen) != 0) {
-		/* wrong /procs mounted */
-		umount2(path, MNT_DETACH); /* ignore failure */
-		goto domount;
-	}
-	/* the right proc is already mounted */
-	return 0;
-
-domount:
-	if (mount("proc", path, "proc", 0, NULL))
-		return -1;
-	INFO("Mounted /proc in container for security transition");
-	return 1;
-}
-
 int tmp_proc_mount(struct lxc_conf *lxc_conf)
 {
 	int mounted;
 
-	if (lxc_conf->rootfs.path == NULL || strlen(lxc_conf->rootfs.path) == 0) {
-		if (mount("proc", "/proc", "proc", 0, NULL)) {
-			SYSERROR("Failed mounting /proc, proceeding");
-			mounted = 0;
-		} else
-			mounted = 1;
-	} else
-		mounted = do_tmp_proc_mount(lxc_conf->rootfs.mount);
+	mounted = mount_proc_if_needed(lxc_conf->rootfs.path ? lxc_conf->rootfs.mount : "");
 	if (mounted == -1) {
 		SYSERROR("failed to mount /proc in the container.");
-		return -1;
+		/* continue only if there is no rootfs */
+		if (lxc_conf->rootfs.path)
+			return -1;
 	} else if (mounted == 1) {
 		lxc_conf->tmp_umount_proc = 1;
 	}
@@ -3676,7 +3590,7 @@ void lxc_execute_bind_init(struct lxc_conf *conf)
 		fclose(pathfile);
 	}
 
-	ret = mount(path, destpath, "none", MS_BIND, NULL);
+	ret = safe_mount(path, destpath, "none", MS_BIND, NULL, conf->rootfs.mount);
 	if (ret < 0)
 		SYSERROR("Failed to bind lxc.init.static into container");
 	INFO("lxc.init.static bound into container at %s", path);
@@ -3727,12 +3641,12 @@ static bool verify_start_hooks(struct lxc_conf *conf)
 		int ret;
 
 		ret = snprintf(path, MAXPATHLEN, "%s%s",
-			conf->rootfs.mount, hookname);
+			conf->rootfs.path ? conf->rootfs.mount : "", hookname);
 		if (ret < 0 || ret >= MAXPATHLEN)
 			return false;
 		ret = stat(path, &st);
 		if (ret) {
-			SYSERROR("Start hook %s not found in container rootfs",
+			SYSERROR("Start hook %s not found in container",
 					hookname);
 			return false;
 		}
@@ -3808,7 +3722,7 @@ int lxc_setup(struct lxc_handler *handler)
 	}
 
 	if (lxc_conf->autodev > 0) {
-		if (mount_autodev(name, lxc_conf->rootfs.mount, lxcpath)) {
+		if (mount_autodev(name, &lxc_conf->rootfs, lxcpath)) {
 			ERROR("failed to mount /dev in the container");
 			return -1;
 		}
@@ -3832,7 +3746,7 @@ int lxc_setup(struct lxc_handler *handler)
 		return -1;
 	}
 
-	/* Make sure any start hooks are in the rootfs */
+	/* Make sure any start hooks are in the container */
 	if (!verify_start_hooks(lxc_conf))
 		return -1;
 
@@ -3858,7 +3772,7 @@ int lxc_setup(struct lxc_handler *handler)
 			ERROR("failed to run autodev hooks for container '%s'.", name);
 			return -1;
 		}
-		if (fill_autodev(lxc_conf->rootfs.mount)) {
+		if (fill_autodev(&lxc_conf->rootfs)) {
 			ERROR("failed to populate /dev in the container");
 			return -1;
 		}
@@ -4233,6 +4147,8 @@ void lxc_conf_free(struct lxc_conf *conf)
 {
 	if (!conf)
 		return;
+	if (current_config == conf)
+		current_config = NULL;
 	free(conf->console.log_path);
 	free(conf->console.path);
 	free(conf->rootfs.mount);
@@ -4240,6 +4156,8 @@ void lxc_conf_free(struct lxc_conf *conf)
 	free(conf->rootfs.path);
 	free(conf->rootfs.pivot);
 	free(conf->logfile);
+	if (conf->logfd != -1)
+		close(conf->logfd);
 	free(conf->utsname);
 	free(conf->ttydir);
 	free(conf->fstab);
@@ -4540,4 +4458,59 @@ void suggest_default_idmap(void)
 
 	free(gname);
 	free(uname);
+}
+
+static void free_cgroup_settings(struct lxc_list *result)
+{
+	struct lxc_list *iterator, *next;
+
+	lxc_list_for_each_safe(iterator, result, next) {
+		lxc_list_del(iterator);
+		free(iterator);
+	}
+	free(result);
+}
+
+/*
+ * Return the list of cgroup_settings sorted according to the following rules
+ * 1. Put memory.limit_in_bytes before memory.memsw.limit_in_bytes
+ */
+struct lxc_list *sort_cgroup_settings(struct lxc_list* cgroup_settings)
+{
+	struct lxc_list *result;
+	struct lxc_list *memsw_limit = NULL;
+	struct lxc_list *it = NULL;
+	struct lxc_cgroup *cg = NULL;
+	struct lxc_list *item = NULL;
+
+	result = malloc(sizeof(*result));
+	if (!result) {
+		ERROR("failed to allocate memory to sort cgroup settings");
+		return NULL;
+	}
+	lxc_list_init(result);
+
+	/*Iterate over the cgroup settings and copy them to the output list*/
+	lxc_list_for_each(it, cgroup_settings) {
+		item = malloc(sizeof(*item));
+		if (!item) {
+			ERROR("failed to allocate memory to sort cgroup settings");
+			free_cgroup_settings(result);
+			return NULL;
+		}
+		item->elem = it->elem;
+		cg = it->elem;
+		if (strcmp(cg->subsystem, "memory.memsw.limit_in_bytes") == 0) {
+			/* Store the memsw_limit location */
+			memsw_limit = item;
+		} else if (strcmp(cg->subsystem, "memory.limit_in_bytes") == 0 && memsw_limit != NULL) {
+			/* lxc.cgroup.memory.memsw.limit_in_bytes is found before
+			 * lxc.cgroup.memory.limit_in_bytes, swap these two items */
+			item->elem = memsw_limit->elem;
+			memsw_limit->elem = it->elem;
+		}
+		lxc_list_add_tail(result, item);
+	}
+
+	return result;
 }

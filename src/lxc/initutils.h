@@ -20,12 +20,34 @@
  * License along with this library; if not, write to the Free Software
  * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA
  */
-#ifndef __LXC_VERSION_H
-#define __LXC_VERSION_H
 
-#define LXC_VERSION_MAJOR 1
-#define LXC_VERSION_MINOR 1
-#define LXC_VERSION_MICRO 4
-#define LXC_VERSION "1.1.4"
+#ifndef __LXC_INITUTILS_H
+#define __LXC_INITUTILS_H
 
-#endif
+#include <errno.h>
+#include <stdio.h>
+#include <stdbool.h>
+#include <sys/stat.h>
+#include <sys/types.h>
+#include <sys/stat.h>
+#include <sys/mount.h>
+#include <unistd.h>
+#include <string.h>
+#include <stdlib.h>
+#include <fcntl.h>
+
+
+#include "config.h"
+
+#define DEFAULT_VG "lxc"
+#define DEFAULT_THIN_POOL "lxc"
+#define DEFAULT_ZFSROOT "lxc"
+
+extern void lxc_setup_fs(void);
+extern const char *lxc_global_config_value(const char *option_name);
+
+/* open a file with O_CLOEXEC */
+extern void remove_trailing_slashes(char *p);
+FILE *fopen_cloexec(const char *path, const char *mode);
+
+#endif /* __LXC_INITUTILS_H */
