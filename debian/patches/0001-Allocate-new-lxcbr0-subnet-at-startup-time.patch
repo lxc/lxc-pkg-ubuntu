@@ -1,7 +1,16 @@
-Index: lxc-1.1.4/config/init/common/lxc-net.in
-===================================================================
---- lxc-1.1.4.orig/config/init/common/lxc-net.in
-+++ lxc-1.1.4/config/init/common/lxc-net.in
+From 0a78dee32d977c2105584d86a985864c00d0c8d2 Mon Sep 17 00:00:00 2001
+From: =?UTF-8?q?St=C3=A9phane=20Graber?= <stgraber@ubuntu.com>
+Date: Tue, 3 Nov 2015 11:42:58 -0500
+Subject: Allocate new lxcbr0 subnet at startup time
+
+---
+ config/init/common/lxc-net.in | 98 +++++++++++++++++++++++++++++++++++++++----
+ 1 file changed, 90 insertions(+), 8 deletions(-)
+
+diff --git a/config/init/common/lxc-net.in b/config/init/common/lxc-net.in
+index efe64c1..3e10c8e 100644
+--- a/config/init/common/lxc-net.in
++++ b/config/init/common/lxc-net.in
 @@ -22,6 +22,85 @@ LXC_IPV6_MASK=""
  LXC_IPV6_NETWORK=""
  LXC_IPV6_NAT="false"
