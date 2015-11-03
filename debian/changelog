@@ -1,3 +1,17 @@
+lxc (1.1.4-0ubuntu1.1) wily-proposed; urgency=medium
+
+  * lxc-net init script: update to select the default lxc bridge network
+    at first service start time rather than install time.  (LP: #1509414)
+  * lxc-net init script: also move cleanup() definition as it was undefined
+    when called after failed dnsmasq.
+  * lxc.preinst:
+    - remove code for writing /etc/default/lxc-net (moved to lxc-net service)
+    - add code removing just the known-potentially-bad /etc/default/lxc-net
+    - if user had deleted /etc/default/lxc-net (intending to disable lxcbr0),
+       honor that by creating one which says not to use lxcbr0.
+
+ -- Serge Hallyn <serge.hallyn@ubuntu.com>  Fri, 23 Oct 2015 19:29:23 -0500
+
 lxc (1.1.4-0ubuntu1) wily; urgency=medium
 
   * New upstream bugfix release (1.1.4)
