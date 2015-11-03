@@ -125,6 +125,33 @@ ifup() {
     CIDR_ADDR="${LXC_ADDR}/${MASK}"
     ip addr add ${CIDR_ADDR} dev $1
     ip link set dev $1 up
+
+    # Workaround for LP: 1512749
+    if which nmcli >/dev/null 2>&1; then
+        if nmcli dev show $1 >/dev/null 2>&1; then
+             while :; do
+                 sleep 1
+
+                 # Connected state
+                 if nmcli dev show $1 | grep -q "^GENERAL.STATE.*100 "; then
+                     break
+                 fi
+
+                 # Disconnected state
+                 if nmcli dev show $1 | grep -q "^GENERAL.STATE.*30 "; then
+                     break
+                 fi
+
+                 # Unmanaged state
+                 if nmcli dev show $1 | grep -q "^GENERAL.STATE.*10 "; then
+                     break
+                 fi
+             done
+
+             sleep 1
+             ip addr add ${CIDR_ADDR} dev $1 >/dev/null 2>&1 || true
+        fi
+    fi
 }
 
 cleanup() {
