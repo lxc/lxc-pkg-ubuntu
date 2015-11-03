@@ -1,0 +1,51 @@
+From 4629b92c74913c41aa47580bb0d30e4c2bc95990 Mon Sep 17 00:00:00 2001
+From: =?UTF-8?q?St=C3=A9phane=20Graber?= <stgraber@ubuntu.com>
+Date: Tue, 3 Nov 2015 12:04:53 -0500
+Subject: Add NetworkManager bug workaround
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+Signed-off-by: Stéphane Graber <stgraber@ubuntu.com>
+---
+ config/init/common/lxc-net.in | 27 +++++++++++++++++++++++++++
+ 1 file changed, 27 insertions(+)
+
+diff --git a/config/init/common/lxc-net.in b/config/init/common/lxc-net.in
+index 3e10c8e..95c20dd 100644
+--- a/config/init/common/lxc-net.in
++++ b/config/init/common/lxc-net.in
+@@ -125,6 +125,33 @@ ifup() {
+     CIDR_ADDR="${LXC_ADDR}/${MASK}"
+     ip addr add ${CIDR_ADDR} dev $1
+     ip link set dev $1 up
++
++    # Workaround for LP: 1512749
++    if which nmcli >/dev/null 2>&1; then
++        if nmcli dev show $1 >/dev/null 2>&1; then
++             while :; do
++                 sleep 1
++
++                 # Connected state
++                 if nmcli dev show $1 | grep -q "^GENERAL.STATE.*100 "; then
++                     break
++                 fi
++
++                 # Disconnected state
++                 if nmcli dev show $1 | grep -q "^GENERAL.STATE.*30 "; then
++                     break
++                 fi
++
++                 # Unmanaged state
++                 if nmcli dev show $1 | grep -q "^GENERAL.STATE.*10 "; then
++                     break
++                 fi
++             done
++
++             sleep 1
++             ip addr add ${CIDR_ADDR} dev $1 >/dev/null 2>&1 || true
++        fi
++    fi
+ }
+ 
+ cleanup() {
