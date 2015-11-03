@@ -1,3 +1,10 @@
+lxc (1.1.4-0ubuntu2) xenial; urgency=medium
+
+  * Add a workaround for the broken NetworkManager which breaks lxcbr0
+    from under us. (LP: #1512749)
+
+ -- Stéphane Graber <stgraber@ubuntu.com>  Tue, 03 Nov 2015 12:05:10 -0500
+
 lxc (1.1.4-0ubuntu1.1) wily-proposed; urgency=medium
 
   * lxc-net init script: update to select the default lxc bridge network
