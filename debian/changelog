@@ -1,3 +1,9 @@
+lxc (1.1.4-0ubuntu3) xenial; urgency=medium
+
+  * Revert previous upload as we now have a NetworkManager fix!
+
+ -- Stéphane Graber <stgraber@ubuntu.com>  Tue, 03 Nov 2015 15:47:55 -0500
+
 lxc (1.1.4-0ubuntu2) xenial; urgency=medium
 
   * Add a workaround for the broken NetworkManager which breaks lxcbr0
