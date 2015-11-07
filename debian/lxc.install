@@ -2,6 +2,7 @@ etc
 lib/systemd
 usr/bin
 usr/lib/*/lxc/lxc-*
+usr/lib/*/lxc/hooks
 usr/sbin/*
 usr/share/doc
 usr/share/lxc/config
