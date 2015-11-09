@@ -1,3 +1,17 @@
+lxc (1.0.8-0ubuntu0.1) trusty; urgency=medium
+
+  * New upstream bugfix release. (MRE tracking bug: LP: #1514623)
+    (LP: #1429140)
+    - Changelog at: https://linuxcontainers.org/lxc/news/
+  * Drop proxy detection from the autopkgtest exercise script.
+  * Add patch:
+    - 0001-Trusty-Swap-out-the-CVE-2015-1335-fix-with-the-trust.patch
+      This is a patch by Serge Hallyn to cope with the trusty 3.13 kernel.
+      It updates the upstream CVE fix to the version which trusty ended
+      up with after the few round of fixes.
+
+ -- Stéphane Graber <stgraber@ubuntu.com>  Mon, 09 Nov 2015 18:15:31 -0500
+
 lxc (1.0.7-0ubuntu0.10) trusty; urgency=medium
 
   * Update the /proc/self/mountinfo no-symlink verification to accomodate
