@@ -1,3 +1,11 @@
+lxc (1.1.5-0ubuntu1) xenial; urgency=medium
+
+  * New upstream bugfix release (1.1.5)
+    (LP: #1514558, LP: #1497420, LP: #1466458, LP: #1510619)
+  * Drop proxy detection from the autopkgtest exercise script.
+
+ -- Stéphane Graber <stgraber@ubuntu.com>  Mon, 09 Nov 2015 14:22:16 -0500
+
 lxc (1.1.4-0ubuntu3) xenial; urgency=medium
 
   * Revert previous upload as we now have a NetworkManager fix!
