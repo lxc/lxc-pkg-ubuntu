@@ -1,3 +1,12 @@
+lxc (1.1.5-0ubuntu0.15.04.1) vivid-proposed; urgency=medium
+
+  * New upstream bugfix release (MRE) (1.1.5)
+    (LP: #1497420, LP: #1436723, LP: #1441068, LP: #1504496,
+     LP: #1466458, LP: #1510619)
+  * Drop proxy detection from the autopkgtest exercise script.
+
+ -- Stéphane Graber <stgraber@ubuntu.com>  Mon, 09 Nov 2015 17:01:48 -0500
+
 lxc (1.1.4-0ubuntu0.1) vivid; urgency=medium
 
   * New upstream bugfix release. (MRE tracking bug: LP: #1503330)
