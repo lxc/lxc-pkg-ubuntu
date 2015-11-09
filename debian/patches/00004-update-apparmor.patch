@@ -1,0 +1,55 @@
+Get AppArmor profile fixes from stable-1.0 branch to fix current
+incompatibility with 3.13.
+
+--- lxc-1.0.7.orig/config/apparmor/abstractions/container-base
++++ lxc-1.0.7/config/apparmor/abstractions/container-base
+@@ -70,9 +70,10 @@
+   mount fstype=efivarfs -> /sys/firmware/efi/efivars/,
+ 
+   # block some other dangerous paths
+-  deny @{PROC}/sysrq-trigger rwklx,
+-  deny @{PROC}/mem rwklx,
++  deny @{PROC}/kcore rwklx,
+   deny @{PROC}/kmem rwklx,
++  deny @{PROC}/mem rwklx,
++  deny @{PROC}/sysrq-trigger rwklx,
+ 
+   # deny writes in /sys except for /sys/fs/cgroup, also allow
+   # fusectl, securityfs and debugfs to be mounted there (read-only)
+--- lxc-1.0.7.orig/config/apparmor/abstractions/container-base.in
++++ lxc-1.0.7/config/apparmor/abstractions/container-base.in
+@@ -70,9 +70,10 @@
+   mount fstype=efivarfs -> /sys/firmware/efi/efivars/,
+ 
+   # block some other dangerous paths
+-  deny @{PROC}/sysrq-trigger rwklx,
+-  deny @{PROC}/mem rwklx,
++  deny @{PROC}/kcore rwklx,
+   deny @{PROC}/kmem rwklx,
++  deny @{PROC}/mem rwklx,
++  deny @{PROC}/sysrq-trigger rwklx,
+ 
+   # deny writes in /sys except for /sys/fs/cgroup, also allow
+   # fusectl, securityfs and debugfs to be mounted there (read-only)
+--- lxc-1.0.7.orig/config/apparmor/abstractions/start-container
++++ lxc-1.0.7/config/apparmor/abstractions/start-container
+@@ -13,7 +13,7 @@
+   mount -> /usr/lib/lxc/{**,},
+   mount fstype=devpts -> /dev/pts/,
+   mount options=bind /dev/pts/ptmx/ -> /dev/ptmx/,
+-  mount options=(rw, slave) -> /,
++  mount options=(rw, make-slave) -> **,
+   mount fstype=debugfs,
+   # allow pre-mount hooks to stage mounts under /var/lib/lxc/<container>/
+   mount -> /var/lib/lxc/{**,},
+--- lxc-1.0.7.orig/config/apparmor/profiles/lxc-default-with-nesting
++++ lxc-1.0.7/config/apparmor/profiles/lxc-default-with-nesting
+@@ -8,6 +8,8 @@ profile lxc-container-default-with-nesti
+ #  Uncomment the line below if you are not using cgmanager
+ #  mount fstype=cgroup -> /sys/fs/cgroup/**,
+ 
++  deny /dev/.lxc/proc/** rw,
++  deny /dev/.lxc/sys/** rw,
+   mount fstype=proc -> /var/cache/lxc/**,
+   mount fstype=sysfs -> /var/cache/lxc/**,
+   mount options=(rw,bind) /var/cache/lxc/**/dev/shm/ -> /var/cache/lxc/**/run/shm/,

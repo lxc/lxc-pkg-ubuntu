@@ -3,3 +3,4 @@
 0003-CVE-2015-1335.patch
 fix-multislash.patch
 avoid-dot.patch
+00004-update-apparmor.patch
