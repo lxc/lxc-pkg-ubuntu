@@ -1,3 +1,10 @@
+lxc (1.0.7-0ubuntu0.6) trusty-security; urgency=medium
+
+  * Fix breakage of some configurations where // ends up in the mount
+    target.  (LP: #1501310) (LP: #1476662)
+
+ -- Serge Hallyn <serge.hallyn@ubuntu.com>  Wed, 30 Sep 2015 10:38:14 -0500
+
 lxc (1.0.7-0ubuntu0.5) trusty-security; urgency=medium
 
   * SECURITY UPDATE: Arbitrary host file access and AppArmor
