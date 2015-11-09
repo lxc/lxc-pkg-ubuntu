@@ -1,3 +1,21 @@
+lxc (1.0.7-0ubuntu0.2) trusty-security; urgency=medium
+
+  * SECURITY UPDATE: Arbitrary file creation via unintentional symlink
+    following when accessing an LXC lock file (LP: #1470842)
+    - debian/patches/0001-CVE-2015-1331.patch: Use /run/lxc/lock, rather than
+      /run/lock/lxc, as /run and /run/lxc is only writable by root. Based on
+      patch from upstream.
+    - CVE-2015-1131
+  * SECURITY UPDATE: Container AppArmor/SELinux confinement breakout via
+    lxc-attach using a potentially malicious container proc filesystem to
+    initialize confinement (LP: #1475050)
+    - debian/patches/0002-CVE-2015-1334.patch: Use the host's proc filesystem
+      to set up AppArmor profile and SELinux domain transitions during
+      lxc-attach. Based on patch from upstream.
+    - CVE-2015-1334
+
+ -- Tyler Hicks <tyhicks@canonical.com>  Fri, 17 Jul 2015 10:58:00 -0500
+
 lxc (1.0.7-0ubuntu0.1) trusty; urgency=medium
 
   * New upstream bugfix release. (MRE tracking bug: LP: #1404039)
