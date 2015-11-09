@@ -28,10 +28,15 @@ get_static_apk () {
 
     if [ -z "$repository" ]; then
         url=http://wiki.alpinelinux.org/cgi-bin/dl.cgi
+	yaml_path="latest-stable/releases/$apk_arch/latest-releases.yaml"
         if [ -z "$release" ]; then
             echo -n "Determining the latest release... "
-            release=$($wget $url/.latest.$apk_arch.txt | \
-                cut -d " " -f 3 | cut -d / -f 1 | uniq)
+            release=$($wget $url/$yaml_path | \
+	        awk '$1 == "branch:" {print $2; exit 0}')
+            if [ -z "$release" ]; then
+                release=$($wget $url/.latest.$apk_arch.txt | \
+                    cut -d " " -f 3 | cut -d / -f 1 | uniq)
+            fi
             if [ -z "$release" ]; then
                 echo failed
                 return 1
@@ -78,7 +83,7 @@ get_static_apk () {
 
     # verify the static apk binary signature
     APK=$rootfs/sbin/apk.static
-    openssl dgst -verify $rootfs/etc/apk/keys/$keyname \
+    openssl dgst -sha1 -verify $rootfs/etc/apk/keys/$keyname \
         -signature "$APK.SIGN.RSA.$keyname" "$APK" || return 1
 
     if [ "$auto_repo_dir" ]; then
@@ -104,7 +109,7 @@ install_alpine() {
     else
         cp /etc/apk/repositories "$rootfs"/etc/apk/repositories || return 1
         if [ -n "$release" ]; then
-            sed -i -e "s:/[^/]\+/\([^/]\+\)$:/$release/\1:" \
+            sed -E -i "s:/[^/]+/([^/]+)$:/$release/\\1:" \
                 "$rootfs"/etc/apk/repositories
         fi
     fi
@@ -247,7 +252,7 @@ lxc.cgroup.devices.allow = c 254:0 rm
 lxc.mount.entry=proc proc proc nodev,noexec,nosuid 0 0
 lxc.mount.entry=run run tmpfs nodev,noexec,nosuid,relatime,size=1m,mode=0755 0 0
 lxc.mount.entry=none dev/pts devpts gid=5,mode=620 0 0
-lxc.mount.entry=shm dev/shm tmpfs nodev,nosuid,noexec,mode=1777 0 0
+lxc.mount.entry=shm dev/shm tmpfs nodev,nosuid,noexec,mode=1777,create=dir 0 0
 
 EOF
 
@@ -273,12 +278,6 @@ usage_err() {
     exit 1
 }
 
-optarg_check() {
-    if [ -z "$2" ]; then
-        usage_err "option '$1' requires an argument"
-    fi
-}
-
 default_path=@LXCPATH@
 release=
 arch=$(uname -m)
@@ -289,58 +288,39 @@ if [ $(id -u) -ne 0 ]; then
    exit 1
 fi
 
+options=$(getopt -o hn:p:r:R:a: -l help,name:,rootfs:,path:,repository:,release:,arch: -- "$@")
+[ $? -eq 0 ] || usage_err
+eval set -- "$options"
+
 while [ $# -gt 0 ]; do
-    opt="$1"
-    shift
-    case "$opt" in
+    case "$1" in
     -h|--help)
         usage
         exit 0
         ;;
     -n|--name)
-        optarg_check $opt "$1"
-        name=$1
-        shift
+        name=$2
         ;;
     --rootfs)
-        optarg_check $opt "$1"
-        rootfs=$1
-        shift
+        rootfs=$2
         ;;
     -p|--path)
-        optarg_check $opt "$1"
-        path=$1
-        shift
+        path=$2
         ;;
     -r|--repository)
-        optarg_check $opt "$1"
-        repository=$1
-        shift
+        repository=$2
 	;;
     -R|--release)
-        optarg_check $opt "$1"
-        release=$1
-        shift
+        release=$2
         ;;
     -a|--arch)
-        optarg_check $opt "$1"
-        arch=$1
-        shift
+        arch=$2
         ;;
     --)
+	shift
         break;;
-    --*=*)
-        # split --myopt=foo=bar into --myopt foo=bar
-        set -- ${opt%=*} ${opt#*=} "$@"
-        ;;
-    -?)
-        usage_err "unknown option '$opt'"
-        ;;
-    -*)
-        # split opts -abc into -a -b -c
-        set -- $(echo "${opt#-}" | sed 's/\(.\)/ -\1/g') "$@"
-        ;;
     esac
+    shift 2
 done
 
 

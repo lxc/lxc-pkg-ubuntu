@@ -220,6 +220,7 @@ DEVICE=eth0
 BOOTPROTO=dhcp
 ONBOOT=yes
 HOSTNAME=${utsname}
+DHCP_HOSTNAME=\`hostname\`
 NM_CONTROLLED=no
 TYPE=Ethernet
 MTU=${MTU}
@@ -362,6 +363,12 @@ configure_fedora_systemd()
     chroot ${rootfs_path} ln -s /lib/systemd/system/multi-user.target /etc/systemd/system/default.target
     # Make systemd honor SIGPWR
     chroot ${rootfs_path} ln -s /usr/lib/systemd/system/halt.target /etc/systemd/system/sigpwr.target
+
+    # if desired, prevent systemd from over-mounting /tmp with tmpfs
+    if [ $masktmp -eq 1 ]; then
+        chroot ${rootfs_path} ln -s /dev/null /etc/systemd/system/tmp.mount
+    fi
+
     #dependency on a device unit fails it specially that we disabled udev
     # sed -i 's/After=dev-%i.device/After=/' ${rootfs_path}/lib/systemd/system/getty\@.service
     #
@@ -570,7 +577,7 @@ Have a beer or a cup of coffee.  This will take a bit (~300MB).
         # Right now, we are using Fedora 20 for the inial bootstrap.
         # We could make this the "current" Fedora rev (F > 15).
 
-        rsync -av mirrors.kernel.org::fedora/releases/20/Fedora/$basearch/os/LiveOS .
+        rsync -av ${mirrorurl}/fedora/linux/releases/20/Fedora/$basearch/os/LiveOS .
 
         if [[ 0 == $? ]]
         then
@@ -647,8 +654,8 @@ This will take a couple of minutes.  Patience..."
     # of this LiveOS image we're camped out on.  This is the beginning
     # of the butt ugly hack.  Look close or you may missing it...
 
-    rsync -av mirrors.kernel.org::fedora/releases/20/Fedora/$basearch/os/Packages/r/rpm-[0-9]* \
-        mirrors.kernel.org::fedora/releases/20/Fedora/$basearch/os/Packages/y/yum-[0-9]* .
+    rsync -av ${mirrorurl}/fedora/linux/releases/20/Fedora/$basearch/os/Packages/r/rpm-[0-9]* \
+        ${mirrorurl}/fedora/linux/releases/20/Fedora/$basearch/os/Packages/y/yum-[0-9]* .
 
     # And here it is...
     # The --nodeps is STUPID but F15 had a bogus dependency on RawHide?!?!
@@ -680,7 +687,7 @@ This will take a couple of minutes.  Patience..."
     echo "Stage 1 creation complete.  Building stage 2 Installation Bootstrap"
 
     mount -o bind ../bootstrap run/install
-    rsync -av mirrors.kernel.org::fedora/releases/20/Fedora/$basearch/os/Packages/f/fedora-release-20* .
+    rsync -av ${mirrorurl}/fedora/linux/releases/20/Fedora/$basearch/os/Packages/f/fedora-release-20* .
 
     # The --nodeps is STUPID but F15 had a bogus dependency on RawHide?!?!
     chroot . rpm --root /run/install --nodeps -ivh fedora-release-*
@@ -813,6 +820,13 @@ download_fedora()
         PKG_LIST="${PKG_LIST} db4-utils"
     fi
 
+    if [[ ${release} -ge 21 ]]
+    then
+        # Since Fedora 21, a separate fedora-repos package is needed.
+        # Before, the information was conained in fedora-release.
+        PKG_LIST="${PKG_LIST} fedora-repos"
+    fi
+
     DOWNLOAD_OK=no
 
     # We're splitting the old loop into two loops plus a directory retrival.
@@ -841,7 +855,7 @@ download_fedora()
             RELEASE_URL="$MIRROR_URL/Packages/"
         fi
 
-        echo "Fetching rpm name from $RELEASE_URL..."
+        echo "Fetching release rpm name from $RELEASE_URL..."
         # This code is mildly "brittle" in that it assumes a certain directory
         # page format and parsing HTML.  I've done worse.  :-P
         RELEASE_RPM=$(curl -L -f "$RELEASE_URL" | sed -e "/fedora-release-${release}-/!d" -e 's/.*<a href=\"//' -e 's/\">.*//' )
@@ -856,6 +870,24 @@ download_fedora()
             echo "Failed to download fedora release rpm ${RELEASE_RPM}."
             continue
         fi
+
+        # F21 and newer need fedora-repos in addition to fedora-release.
+        if [ "$release" -ge "21" ]; then
+          echo "Fetching repos rpm name from $RELEASE_URL..."
+          REPOS_RPM=$(curl -L -f "$RELEASE_URL" | sed -e "/fedora-repos-${release}-/!d" -e 's/.*<a href=\"//' -e 's/\">.*//' )
+          if [ $? -ne 0  -o "${REPOS_RPM}" = "" ]; then
+              echo "Failed to identify fedora repos rpm."
+              continue
+          fi
+
+          echo "Fetching fedora repos rpm from ${RELEASE_URL}/${REPOS_RPM}..."
+          curl -L -f "${RELEASE_URL}/${REPOS_RPM}" > ${INSTALL_ROOT}/${REPOS_RPM}
+          if [ $? -ne 0 ]; then
+              echo "Failed to download fedora repos rpm ${RELEASE_RPM}."
+              continue
+          fi
+        fi
+
 
         DOWNLOAD_OK=yes
         break
@@ -877,8 +909,17 @@ download_fedora()
     fedora_bootstrap_mounts
 
     ${BOOTSTRAP_CHROOT}rpm --root ${BOOTSTRAP_INSTALL_ROOT} --initdb
+
     # The --nodeps is STUPID but F15 had a bogus dependency on RawHide?!?!
     ${BOOTSTRAP_CHROOT}rpm --root ${BOOTSTRAP_INSTALL_ROOT} --nodeps -ivh ${BOOTSTRAP_INSTALL_ROOT}/${RELEASE_RPM}
+
+    # F21 and newer need fedora-repos in addition to fedora-release...
+    # Note that fedora-release and fedora-system have a mutual dependency.
+    # So installing the reops package after the release package we can
+    # spare one --nodeps.
+    if [ "$release" -ge "21" ]; then
+      ${BOOTSTRAP_CHROOT}rpm --root ${BOOTSTRAP_INSTALL_ROOT} -ivh ${BOOTSTRAP_INSTALL_ROOT}/${REPOS_RPM}
+    fi
 
     # yum will take $basearch from host, so force the arch we want
     sed -i "s|\$basearch|$basearch|" ${BOOTSTRAP_DIR}/${BOOTSTRAP_INSTALL_ROOT}/etc/yum.repos.d/*
@@ -1073,12 +1114,21 @@ lxc.include = @LXCTEMPLATECONFIG@/fedora.common.conf
 " >> $config_path/config
     fi
 
+    if [ "x$have_systemd" = "x1" ]; then
+        cat <<EOF >> $config_path/config
+lxc.autodev = 1
+lxc.kmsg = 0
+EOF
+    else
+        cat <<EOF >> $config_path/config
+lxc.autodev = 0
+EOF
+    fi
+
     # Append things which require expansion here...
     cat <<EOF >> $config_path/config
 lxc.arch = $arch
 lxc.utsname = $utsname
-
-lxc.autodev = $auto_dev
 
 # When using LXC with apparmor, uncomment the next line to run unconfined:
 #lxc.aa_profile = unconfined
@@ -1131,41 +1181,49 @@ usage()
     cat <<EOF
 usage:
     $1 -n|--name=<container_name>
-        [-p|--path=<path>] [-c|--clean] [-R|--release=<Fedora_release>] [--fqdn=<network name of container>] [-a|--arch=<arch of the container>]
+        [-p|--path=<path>] [-c|--clean] [-R|--release=<Fedora_release>]
+        [--fqdn=<network name of container>] [-a|--arch=<arch of the container>]
+        [--mask-tmp]
         [-h|--help]
 Mandatory args:
-  -n,--name         container name, used to as an identifier for that container from now on
+  -n,--name         container name, used to as an identifier for that container
 Optional args:
-  -p,--path         path to where the container will be created, defaults to @LXCPATH@. The container config will go under @LXCPATH@ in that case
+  -p,--path         path to where the container will be created,
+                    defaults to @LXCPATH@.
   --rootfs          path for actual rootfs.
   -c,--clean        clean the cache
-  -R,--release      Fedora release for the new container. if the host is Fedora, then it will default to the host's release.
+  -R,--release      Fedora release for the new container.
+                    Defaults to host's release if the host is Fedora.
      --fqdn         fully qualified domain name (FQDN) for DNS and system naming
   -a,--arch         Define what arch the container will be [i686,x86_64]
+  --mask-tmp        Prevent systemd from over-mounting /tmp with tmpfs.
   -h,--help         print this help
 EOF
     return 0
 }
 
-options=$(getopt -o a:hp:n:cR: -l help,path:,rootfs:,name:,clean,release:,arch:,fqdn: -- "$@")
+options=$(getopt -o a:hp:n:cR: -l help,path:,rootfs:,name:,clean,release:,arch:,fqdn:,mask-tmp -- "$@")
 if [ $? -ne 0 ]; then
     usage $(basename $0)
     exit 1
 fi
 
 arch=$(uname -m)
+masktmp=0
+
 eval set -- "$options"
 while true
 do
     case "$1" in
         -h|--help)      usage $0 && exit 0;;
         -p|--path)      path=$2; shift 2;;
-        --rootfs)       rootfs=$2; shift 2;;
+        --rootfs)       rootfs_path=$2; shift 2;;
         -n|--name)      name=$2; shift 2;;
-        -c|--clean)     clean=$2; shift 2;;
+        -c|--clean)     clean=1; shift 1;;
         -R|--release)   release=$2; shift 2;;
         -a|--arch)      newarch=$2; shift 2;;
         --fqdn)         utsname=$2; shift 2;;
+        --mask-tmp)     masktmp=1; shift 1;;
         --)             shift 1; break ;;
         *)              break ;;
     esac
@@ -1175,7 +1233,6 @@ if [ ! -z "$clean" -a -z "$path" ]; then
     clean || exit 1
     exit 0
 fi
-
 
 basearch=${arch}
 # Map a few architectures to their generic Fedora repository archs.
@@ -1188,6 +1245,12 @@ case "$arch" in
 i686) basearch=i386 ;;
 armv3l|armv4l|armv5l) basearch=arm ;;
 armv6l|armv7l|armv8l) basearch=armhfp ;;
+*) ;;
+esac
+
+mirrorurl="archives.fedoraproject.org::fedora-archive"
+case "$basearch" in
+ppc64|s390x) mirrorurl="archives.fedoraproject.org::fedora-secondary" ;;
 *) ;;
 esac
 
@@ -1288,24 +1351,23 @@ if [ -z "$release" ]; then
     if [ "$is_fedora" -a "$fedora_host_ver" ]; then
         release=$fedora_host_ver
     else
-        echo "This is not a fedora host and release missing, defaulting to 20 use -R|--release to specify release"
-        release=20
+        echo "This is not a fedora host and release missing, defaulting to 22 use -R|--release to specify release"
+        release=22
     fi
 fi
 
-# Fedora 15 and above run systemd.  We need autodev enabled to keep
+# Fedora 15 and above run systemd.We need autodev enabled to keep
 # systemd from causing problems.
+# Also, kmsg must not be mapped to prevent a 100% cpu loop
+# in systemd-journald.
 if [ $release -gt 14 ]; then
-    auto_dev="1"
-else
-    auto_dev="0"
+    have_systemd="1"
 fi
 
 if [ "$(id -u)" != "0" ]; then
     echo "This script should be run as 'root'"
     exit 1
 fi
-
 
 if [ -z "$rootfs_path" ]; then
     rootfs_path=$path/rootfs
@@ -1362,7 +1424,7 @@ then
     configure_fedora_init
 fi
 
-if [ ! -z $clean ]; then
+if [ ! -z "$clean" ]; then
     clean || exit 1
     exit 0
 fi

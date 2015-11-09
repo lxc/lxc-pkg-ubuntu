@@ -29,6 +29,7 @@
 #include <sys/types.h>
 #include <sys/wait.h>
 #include <errno.h>
+#include <poll.h>
 
 #include "lxc.h"
 #include "log.h"
@@ -60,7 +61,7 @@ static struct lxc_arguments my_args = {
 lxc-monitor monitors the state of the NAME container\n\
 \n\
 Options :\n\
-  -n, --name=NAME   NAME for name of the container\n\
+  -n, --name=NAME   NAME of the container\n\
                     NAME may be a regular expression\n\
   -Q, --quit        tell lxc-monitord to quit\n",
 	.name     = ".*",
@@ -70,13 +71,28 @@ Options :\n\
 	.lxcpath_additional = -1,
 };
 
+static void close_fds(struct pollfd *fds, nfds_t nfds)
+{
+	nfds_t i;
+
+	if (nfds < 1)
+		return;
+
+	for (i = 0; i < nfds; ++i) {
+		close(fds[i].fd);
+	}
+}
+
 int main(int argc, char *argv[])
 {
 	char *regexp;
 	struct lxc_msg msg;
 	regex_t preg;
-	fd_set rfds, rfds_save;
-	int len, rc, i, nfds = -1;
+	struct pollfd *fds;
+	nfds_t nfds;
+	int len, rc_main, rc_snp, i;
+
+	rc_main = 0;
 
 	if (lxc_arguments_parse(&my_args, argc, argv))
 		return 1;
@@ -117,51 +133,49 @@ int main(int argc, char *argv[])
 		ERROR("failed to allocate memory");
 		return 1;
 	}
-	rc = snprintf(regexp, len, "^%s$", my_args.name);
-	if (rc < 0 || rc >= len) {
+	rc_snp = snprintf(regexp, len, "^%s$", my_args.name);
+	if (rc_snp < 0 || rc_snp >= len) {
 		ERROR("Name too long");
-		free(regexp);
-		return 1;
+		rc_main = 1;
+		goto error;
 	}
 
 	if (regcomp(&preg, regexp, REG_NOSUB|REG_EXTENDED)) {
 		ERROR("failed to compile the regex '%s'", my_args.name);
-		free(regexp);
-		return 1;
-	}
-	free(regexp);
-
-	if (my_args.lxcpath_cnt > FD_SETSIZE) {
-		ERROR("too many paths requested, only the first %d will be monitored", FD_SETSIZE);
-		my_args.lxcpath_cnt = FD_SETSIZE;
+		rc_main = 1;
+		goto error;
 	}
 
-	FD_ZERO(&rfds);
-	for (i = 0; i < my_args.lxcpath_cnt; i++) {
+	fds = malloc(my_args.lxcpath_cnt * sizeof(struct pollfd));
+	if (!fds) {
+		SYSERROR("out of memory");
+		rc_main = -1;
+		goto cleanup;
+	}
+
+	nfds = my_args.lxcpath_cnt;
+	for (i = 0; i < nfds; i++) {
 		int fd;
 
 		lxc_monitord_spawn(my_args.lxcpath[i]);
 
 		fd = lxc_monitor_open(my_args.lxcpath[i]);
 		if (fd < 0) {
-			regfree(&preg);
-			return 1;
+			close_fds(fds, i);
+			rc_main = 1;
+			goto cleanup;
 		}
-		FD_SET(fd, &rfds);
-		if (fd > nfds)
-			nfds = fd;
+		fds[i].fd = fd;
+		fds[i].events = POLLIN;
+		fds[i].revents = 0;
 	}
-	memcpy(&rfds_save, &rfds, sizeof(rfds_save));
-	nfds++;
 
 	setlinebuf(stdout);
 
 	for (;;) {
-		memcpy(&rfds, &rfds_save, sizeof(rfds));
-
-		if (lxc_monitor_read_fdset(&rfds, nfds, &msg, -1) < 0) {
-			regfree(&preg);
-			return 1;
+		if (lxc_monitor_read_fdset(fds, nfds, &msg, -1) < 0) {
+			rc_main = 1;
+			goto close_and_clean;
 		}
 
 		msg.name[sizeof(msg.name)-1] = '\0';
@@ -183,7 +197,15 @@ int main(int argc, char *argv[])
 		}
 	}
 
-	regfree(&preg);
+close_and_clean:
+	close_fds(fds, nfds);
 
-	return 0;
+cleanup:
+	regfree(&preg);
+	free(fds);
+
+error:
+	free(regexp);
+
+	return rc_main;
 }

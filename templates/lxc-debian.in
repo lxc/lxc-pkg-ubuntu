@@ -32,6 +32,7 @@ done
 
 # Make sure the usual locations are in PATH
 export PATH=$PATH:/usr/sbin:/usr/bin:/sbin:/bin
+export GREP_OPTIONS=""
 
 MIRROR=${MIRROR:-http://http.debian.net/debian}
 SECURITY_MIRROR=${SECURITY_MIRROR:-http://security.debian.org/}
@@ -96,16 +97,6 @@ $hostname
 EOF
 
     # reconfigure some services
-    if [ -z "$LANG" ]; then
-        chroot $rootfs locale-gen en_US.UTF-8 UTF-8
-        chroot $rootfs update-locale LANG=en_US.UTF-8
-    else
-        encoding=$(echo $LANG | cut -d. -f2)
-        chroot $rootfs sed -e "s/^# \(${LANG} ${encoding}\)/\1/" \
-            -i /etc/locale.gen 2> /dev/null
-        chroot $rootfs locale-gen $LANG $encoding
-        chroot $rootfs update-locale LANG=$LANG
-    fi
 
     # remove pointless services in a container
     chroot $rootfs /usr/sbin/update-rc.d -f checkroot.sh disable
@@ -168,8 +159,13 @@ write_sourceslist()
 
     cat >> "${rootfs}/etc/apt/sources.list" << EOF
 ${prefix} $MIRROR          ${release}         main contrib non-free
+EOF
+
+    if [ "$release" != "unstable" -a "$release" != "sid" ]; then
+      cat >> "${rootfs}/etc/apt/sources.list" << EOF
 ${prefix} $SECURITY_MIRROR ${release}/updates main contrib non-free
 EOF
+    fi
 }
 
 configure_debian_systemd()
@@ -195,6 +191,11 @@ configure_debian_systemd()
     # just in case systemd is not installed
     mkdir -p ${rootfs}/{lib,etc}/systemd/system
     mkdir -p ${rootfs}/etc/systemd/system/getty.target.wants
+
+    # Fix getty-static-service as debootstrap does not install dbus
+    if [ -e $rootfs//lib/systemd/system/getty-static.service ] ; then
+        sed 's/ getty@tty[5-9].service//g' $rootfs/lib/systemd/system/getty-static.service |  sed 's/\(tty2-tty\)[5-9]/\14/g' > $rootfs/etc/systemd/system/getty-static.service
+    fi
 
     # This function has been copied and adapted from lxc-fedora
     rm -f ${rootfs}/etc/systemd/system/default.target
@@ -376,8 +377,10 @@ EOF
 
     # If the container isn't running a native architecture, setup multiarch
     if [ "${arch}" != "${hostarch}" ]; then
-        mkdir -p ${rootfs}/etc/dpkg/dpkg.cfg.d
-        echo "foreign-architecture ${hostarch}" > ${rootfs}/etc/dpkg/dpkg.cfg.d/lxc-multiarch
+        # Test if dpkg supports multiarch
+        if ! chroot $rootfs dpkg --print-foreign-architecture 2>&1; then
+            chroot $rootfs dpkg --add-architecture ${hostarch}
+        fi
     fi
 
     # Write a new sources.list containing both native and multiarch entries
@@ -390,6 +393,25 @@ EOF
 
     # Re-enable service startup
     rm ${rootfs}/usr/sbin/policy-rc.d
+    
+    # reconfigure locales
+    if [ -z "$LANG" ]; then
+        cat >> $rootfs/etc/locale.gen << EOF
+en_US.UTF-8 UTF-8
+EOF
+        chroot $rootfs locale-gen en_US.UTF-8 UTF-8
+        chroot $rootfs update-locale LANG=en_US.UTF-8
+    else
+        encoding=$(echo $LANG | cut -d. -f2)
+        chroot $rootfs sed -e "s/^# \(${LANG} ${encoding}\)/\1/" \
+            -i /etc/locale.gen 2> /dev/null
+        cat >> $rootfs/etc/locale.gen << EOF
+$LANG $encoding
+EOF
+        chroot $rootfs locale-gen $LANG $encoding
+        chroot $rootfs update-locale LANG=$LANG
+    fi
+    # end
 }
 
 clean()
@@ -418,11 +440,35 @@ clean()
 usage()
 {
     cat <<EOF
-$1 -h|--help -p|--path=<path> [-a|--arch] [-c|--clean] [--mirror=<mirror>] [-r|--release=<release>] [--security-mirror=<security mirror>]
-arch: the container architecture (e.g. amd64): defaults to host arch
-release: the debian release (e.g. wheezy): defaults to current stable
-mirror: debain mirror to use during installation
-security mirror: debain mirror to use for security updates
+Template specific options can be passed to lxc-create after a '--' like this:
+
+  lxc-create --name=NAME [-lxc-create-options] -- [-template-options]
+
+Usage: $1 -h|--help -p|--path=<path> [-c|--clean] [-a|--arch=<arch>] [-r|--release=<release>]
+                                     [--mirror=<mirror>] [--security-mirror=<security mirror>]
+
+Options :
+
+  -h, --help             print this help text
+  -p, --path=PATH        directory where config and rootfs of this VM will be kept
+  -a, --arch=ARCH        The container architecture. Can be one of: i686, x86_64,
+                         amd64, armhf, armel, powerpc. Defaults to host arch.
+  -r, --release=RELEASE  Debian release. Can be one of: squeeze, wheezy, jessie, sid.
+                         Defaults to current stable.
+  --mirror=MIRROR        Debian mirror to use during installation. Overrides the MIRROR
+                         environment variable (see below).
+  --security-mirror=SECURITY_MIRROR
+                         Debian mirror to use for security updates. Overrides the
+                         SECURITY_MIRROR environment variable (see below).
+  -c, --clean            only clean up the cache and terminate
+
+Environment variables:
+
+  MIRROR                 The Debian package mirror to use. See also the --mirror switch above.
+                         Defaults to '$MIRROR'
+  SECURITY_MIRROR        The Debian package security mirror to use. See also the --security-mirror switch above.
+                         Defaults to '$SECURITY_MIRROR'
+
 EOF
     return 0
 }
@@ -434,17 +480,13 @@ if [ $? -ne 0 ]; then
 fi
 eval set -- "$options"
 
-if which dpkg > /dev/null 2>&1 ; then
-    arch=$(dpkg --print-architecture)
-else
-    arch=$(uname -m)
-    if [ "$arch" = "i686" ]; then
-        arch="i386"
-    elif [ "$arch" = "x86_64" ]; then
-        arch="amd64"
-    elif [ "$arch" = "armv7l" ]; then
-        arch="armhf"
-    fi
+arch=$(uname -m)
+if [ "$arch" = "i686" ]; then
+    arch="i386"
+elif [ "$arch" = "x86_64" ]; then
+    arch="amd64"
+elif [ "$arch" = "armv7l" ]; then
+    arch="armhf"
 fi
 hostarch=$arch
 
@@ -455,7 +497,7 @@ do
            --)                shift 1; break ;;
 
         -a|--arch)            arch=$2; shift 2;;
-        -c|--clean)           clean=$2; shift 1;;
+        -c|--clean)           clean=1; shift 1;;
            --mirror)          MIRROR=$2; shift 2;;
         -n|--name)            name=$2; shift 2;;
         -p|--path)            path=$2; shift 2;;
@@ -513,7 +555,7 @@ fi
 
 current_release=`wget ${MIRROR}/dists/stable/Release -O - 2> /dev/null | head |awk '/^Codename: (.*)$/ { print $2; }'`
 release=${release:-${current_release}}
-valid_releases=('squeeze' 'wheezy' 'jessie' 'sid')
+valid_releases=('squeeze' 'wheezy' 'jessie' 'stretch' 'sid')
 if [[ ! "${valid_releases[*]}" =~ (^|[^[:alpha:]])$release([^[:alpha:]]|$) ]]; then
     echo "Invalid release ${release}, valid ones are: ${valid_releases[*]}"
     exit 1
@@ -551,7 +593,7 @@ configure_debian_systemd $path $rootfs
 
 post_process ${rootfs} ${release} ${arch} ${hostarch}
 
-if [ ! -z $clean ]; then
+if [ ! -z "$clean" ]; then
     clean || exit 1
     exit 0
 fi

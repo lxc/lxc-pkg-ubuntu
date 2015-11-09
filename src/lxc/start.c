@@ -117,14 +117,15 @@ static void close_ns(int ns_fd[LXC_NS_MAX]) {
 	}
 }
 
-static int preserve_ns(int ns_fd[LXC_NS_MAX], int clone_flags) {
+static int preserve_ns(int ns_fd[LXC_NS_MAX], int clone_flags, pid_t pid) {
 	int i, saved_errno;
 	char path[MAXPATHLEN];
 
 	for (i = 0; i < LXC_NS_MAX; i++)
 		ns_fd[i] = -1;
 
-	if (access("/proc/self/ns", X_OK)) {
+	snprintf(path, MAXPATHLEN, "/proc/%d/ns", pid);
+	if (access(path, X_OK)) {
 		WARN("Kernel does not support attach; preserve_ns ignored");
 		return 0;
 	}
@@ -132,7 +133,8 @@ static int preserve_ns(int ns_fd[LXC_NS_MAX], int clone_flags) {
 	for (i = 0; i < LXC_NS_MAX; i++) {
 		if ((clone_flags & ns_info[i].clone_flag) == 0)
 			continue;
-		snprintf(path, MAXPATHLEN, "/proc/self/ns/%s", ns_info[i].proc_name);
+		snprintf(path, MAXPATHLEN, "/proc/%d/ns/%s", pid,
+		         ns_info[i].proc_name);
 		ns_fd[i] = open(path, O_RDONLY | O_CLOEXEC);
 		if (ns_fd[i] < 0)
 			goto error;
@@ -355,6 +357,7 @@ out_sigfd:
 
 struct lxc_handler *lxc_init(const char *name, struct lxc_conf *conf, const char *lxcpath)
 {
+	int i;
 	struct lxc_handler *handler;
 
 	handler = malloc(sizeof(*handler));
@@ -366,6 +369,9 @@ struct lxc_handler *lxc_init(const char *name, struct lxc_conf *conf, const char
 	handler->conf = conf;
 	handler->lxcpath = lxcpath;
 	handler->pinfd = -1;
+
+	for (i = 0; i < LXC_NS_MAX; i++)
+		handler->nsfd[i] = -1;
 
 	lsm_init();
 
@@ -390,16 +396,16 @@ struct lxc_handler *lxc_init(const char *name, struct lxc_conf *conf, const char
 	}
 
 	/* Start of environment variable setup for hooks */
-	if (setenv("LXC_NAME", name, 1)) {
+	if (name && setenv("LXC_NAME", name, 1)) {
 		SYSERROR("failed to set environment variable for container name");
 	}
-	if (setenv("LXC_CONFIG_FILE", conf->rcfile, 1)) {
+	if (conf->rcfile && setenv("LXC_CONFIG_FILE", conf->rcfile, 1)) {
 		SYSERROR("failed to set environment variable for config path");
 	}
-	if (setenv("LXC_ROOTFS_MOUNT", conf->rootfs.mount, 1)) {
+	if (conf->rootfs.mount && setenv("LXC_ROOTFS_MOUNT", conf->rootfs.mount, 1)) {
 		SYSERROR("failed to set environment variable for rootfs mount");
 	}
-	if (setenv("LXC_ROOTFS_PATH", conf->rootfs.path, 1)) {
+	if (conf->rootfs.path && setenv("LXC_ROOTFS_PATH", conf->rootfs.path, 1)) {
 		SYSERROR("failed to set environment variable for rootfs mount");
 	}
 	if (conf->console.path && setenv("LXC_CONSOLE", conf->console.path, 1)) {
@@ -462,10 +468,19 @@ out_free:
 
 static void lxc_fini(const char *name, struct lxc_handler *handler)
 {
+	int i;
+
 	/* The STOPPING state is there for future cleanup code
 	 * which can take awhile
 	 */
 	lxc_set_state(name, handler, STOPPING);
+
+	for (i = 0; i < LXC_NS_MAX; i++) {
+		if (handler->nsfd[i] != -1) {
+			close(handler->nsfd[i]);
+			handler->nsfd[i] = -1;
+		}
+	}
 	lxc_set_state(name, handler, STOPPED);
 
 	if (run_lxc_hooks(name, "post-stop", handler->conf, handler->lxcpath, NULL))
@@ -505,10 +520,10 @@ static void lxc_abort(const char *name, struct lxc_handler *handler)
  */
 static int container_reboot_supported(void *arg)
 {
-        int *cmd = arg;
+	int *cmd = arg;
 	int ret;
 
-        ret = reboot(*cmd);
+	ret = reboot(*cmd);
 	if (ret == -1 && errno == EINVAL)
 		return 1;
 	return 0;
@@ -518,10 +533,10 @@ static int must_drop_cap_sys_boot(struct lxc_conf *conf)
 {
 	FILE *f;
 	int ret, cmd, v, flags;
-        long stack_size = 4096;
-        void *stack = alloca(stack_size);
-        int status;
-        pid_t pid;
+	long stack_size = 4096;
+	void *stack = alloca(stack_size);
+	int status;
+	pid_t pid;
 
 	f = fopen("/proc/sys/kernel/ctrl-alt-del", "r");
 	if (!f) {
@@ -621,7 +636,7 @@ static int do_start(void *data)
 		return -1;
 	}
 
-        /* This prctl must be before the synchro, so if the parent
+	/* This prctl must be before the synchro, so if the parent
 	 * dies before we set the parent death signal, we will detect
 	 * its death with the synchro right after, otherwise we have
 	 * a window where the parent can exit before we set the pdeath
@@ -874,7 +889,7 @@ static int lxc_spawn(struct lxc_handler *handler)
 			INFO("failed to pin the container's rootfs");
 	}
 
-	if (preserve_ns(saved_ns_fd, preserve_mask) < 0)
+	if (preserve_ns(saved_ns_fd, preserve_mask, getpid()) < 0)
 		goto out_delete_net;
 	if (attach_ns(handler->conf->inherit_ns_fd) < 0)
 		goto out_delete_net;
@@ -893,6 +908,11 @@ static int lxc_spawn(struct lxc_handler *handler)
 	if (handler->pid < 0) {
 		SYSERROR("failed to fork into a new namespace");
 		goto out_delete_net;
+	}
+
+	if (preserve_ns(handler->nsfd, handler->clone_flags, handler->pid) < 0) {
+	    ERROR("failed to store namespace references");
+	    goto out_delete_net;
 	}
 
 	if (attach_ns(saved_ns_fd))
@@ -1081,6 +1101,8 @@ int __lxc_start(const char *name, struct lxc_conf *conf,
 		goto out_fini_nonet;
 	}
 
+	handler->conf->reboot = 0;
+
 	netnsfd = get_netns_fd(handler->pid);
 
 	err = lxc_poll(name, handler);
@@ -1100,7 +1122,7 @@ int __lxc_start(const char *name, struct lxc_conf *conf,
 	 * lxc-execute which simply exited.  In any case, treat
 	 * it as a 'halt'
 	 */
-        if (WIFSIGNALED(status)) {
+	if (WIFSIGNALED(status)) {
 		switch(WTERMSIG(status)) {
 		case SIGINT: /* halt */
 			DEBUG("Container halting");
@@ -1116,9 +1138,14 @@ int __lxc_start(const char *name, struct lxc_conf *conf,
 			DEBUG("unknown exit status for init: %d", WTERMSIG(status));
 			break;
 		}
-        }
+	}
 
+	DEBUG("Pushing physical nics back to host namespace");
 	lxc_rename_phys_nics_on_shutdown(netnsfd, handler->conf);
+
+	DEBUG("Tearing down virtual network devices used by container");
+	lxc_delete_network(handler);
+
 	if (netnsfd >= 0)
 		close(netnsfd);
 

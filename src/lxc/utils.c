@@ -29,6 +29,7 @@
 #include <stddef.h>
 #include <string.h>
 #include <sys/types.h>
+#include <sys/vfs.h>
 #include <sys/stat.h>
 #include <sys/mman.h>
 #include <sys/param.h>
@@ -44,9 +45,22 @@
 #include "log.h"
 #include "lxclock.h"
 
+#ifndef O_PATH
+#define O_PATH      010000000
+#endif
+
+#ifndef O_NOFOLLOW
+#define O_NOFOLLOW  00400000
+#endif
+
 lxc_log_define(lxc_utils, lxc);
 
-static int _recursive_rmdir_onedev(char *dirname, dev_t pdev)
+/*
+ * if path is btrfs, tries to remove it and any subvolumes beneath it
+ */
+extern bool btrfs_try_remove_subvol(const char *path);
+
+static int _recursive_rmdir(char *dirname, dev_t pdev, bool onedev)
 {
 	struct dirent dirent, *direntp;
 	DIR *dir;
@@ -76,26 +90,32 @@ static int _recursive_rmdir_onedev(char *dirname, dev_t pdev)
 			failed=1;
 			continue;
 		}
+
 		ret = lstat(pathname, &mystat);
 		if (ret) {
 			ERROR("%s: failed to stat %s", __func__, pathname);
-			failed=1;
+			failed = 1;
 			continue;
 		}
-		if (mystat.st_dev != pdev)
+		if (onedev && mystat.st_dev != pdev) {
+			/* TODO should we be checking /proc/self/mountinfo for
+			 * pathname and not doing this if found? */
+			if (btrfs_try_remove_subvol(pathname))
+				INFO("Removed btrfs subvolume at %s\n", pathname);
 			continue;
+		}
 		if (S_ISDIR(mystat.st_mode)) {
-			if (_recursive_rmdir_onedev(pathname, pdev) < 0)
+			if (_recursive_rmdir(pathname, pdev, onedev) < 0)
 				failed=1;
 		} else {
 			if (unlink(pathname) < 0) {
-				ERROR("%s: failed to delete %s", __func__, pathname);
+				SYSERROR("%s: failed to delete %s", __func__, pathname);
 				failed=1;
 			}
 		}
 	}
 
-	if (rmdir(dirname) < 0) {
+	if (rmdir(dirname) < 0 && !btrfs_try_remove_subvol(dirname)) {
 		ERROR("%s: failed to delete %s", __func__, dirname);
 		failed=1;
 	}
@@ -109,54 +129,43 @@ static int _recursive_rmdir_onedev(char *dirname, dev_t pdev)
 	return failed ? -1 : 0;
 }
 
+/* we have two different magic values for overlayfs, yay */
+#define OVERLAYFS_SUPER_MAGIC 0x794c764f
+#define OVERLAY_SUPER_MAGIC 0x794c7630
+/*
+ * In overlayfs, st_dev is unreliable.  so on overlayfs we don't do
+ * the lxc_rmdir_onedev()
+ */
+static bool is_native_overlayfs(const char *path)
+{
+	struct statfs sb;
+
+	if (statfs(path, &sb) < 0)
+		return false;
+	if (sb.f_type == OVERLAYFS_SUPER_MAGIC ||
+			sb.f_type == OVERLAY_SUPER_MAGIC)
+		return true;
+	return false;
+}
+
 /* returns 0 on success, -1 if there were any failures */
 extern int lxc_rmdir_onedev(char *path)
 {
 	struct stat mystat;
+	bool onedev = true;
+
+	if (is_native_overlayfs(path)) {
+		onedev = false;
+	}
 
 	if (lstat(path, &mystat) < 0) {
+		if (errno == ENOENT)
+			return 0;
 		ERROR("%s: failed to stat %s", __func__, path);
 		return -1;
 	}
 
-	return _recursive_rmdir_onedev(path, mystat.st_dev);
-}
-
-static int mount_fs(const char *source, const char *target, const char *type)
-{
-	/* the umount may fail */
-	if (umount(target))
-		WARN("failed to unmount %s : %s", target, strerror(errno));
-
-	if (mount(source, target, type, 0, NULL)) {
-		ERROR("failed to mount %s : %s", target, strerror(errno));
-		return -1;
-	}
-
-	DEBUG("'%s' mounted on '%s'", source, target);
-
-	return 0;
-}
-
-extern void lxc_setup_fs(void)
-{
-	if (mount_fs("proc", "/proc", "proc"))
-		INFO("failed to remount proc");
-
-	/* if we can't mount /dev/shm, continue anyway */
-	if (mount_fs("shmfs", "/dev/shm", "tmpfs"))
-		INFO("failed to mount /dev/shm");
-
-	/* If we were able to mount /dev/shm, then /dev exists */
-	/* Sure, but it's read-only per config :) */
-	if (access("/dev/mqueue", F_OK) && mkdir("/dev/mqueue", 0666)) {
-		DEBUG("failed to create '/dev/mqueue'");
-		return;
-	}
-
-	/* continue even without posix message queue support */
-	if (mount_fs("mqueue", "/dev/mqueue", "mqueue"))
-		INFO("failed to mount /dev/mqueue");
+	return _recursive_rmdir(path, mystat.st_dev, onedev);
 }
 
 /* borrowed from iproute2 */
@@ -199,195 +208,6 @@ extern int mkdir_p(const char *dir, mode_t mode)
 	} while(tmp != dir);
 
 	return 0;
-}
-
-extern void remove_trailing_slashes(char *p)
-{
-	int l = strlen(p);
-	while (--l >= 0 && (p[l] == '/' || p[l] == '\n'))
-		p[l] = '\0';
-}
-
-static char *copy_global_config_value(char *p)
-{
-	int len = strlen(p);
-	char *retbuf;
-
-	if (len < 1)
-		return NULL;
-	if (p[len-1] == '\n') {
-		p[len-1] = '\0';
-		len--;
-	}
-	retbuf = malloc(len+1);
-	if (!retbuf)
-		return NULL;
-	strcpy(retbuf, p);
-	return retbuf;
-}
-
-#define DEFAULT_VG "lxc"
-#define DEFAULT_THIN_POOL "lxc"
-#define DEFAULT_ZFSROOT "lxc"
-
-const char *lxc_global_config_value(const char *option_name)
-{
-	static const char * const options[][2] = {
-		{ "lxc.bdev.lvm.vg",        DEFAULT_VG      },
-		{ "lxc.bdev.lvm.thin_pool", DEFAULT_THIN_POOL },
-		{ "lxc.bdev.zfs.root",      DEFAULT_ZFSROOT },
-		{ "lxc.lxcpath",            NULL            },
-		{ "lxc.default_config",     NULL            },
-		{ "lxc.cgroup.pattern",     NULL            },
-		{ "lxc.cgroup.use",         NULL            },
-		{ NULL, NULL },
-	};
-
-	/* placed in the thread local storage pool for non-bionic targets */
-#ifdef HAVE_TLS
-	static __thread const char *values[sizeof(options) / sizeof(options[0])] = { 0 };
-#else
-	static const char *values[sizeof(options) / sizeof(options[0])] = { 0 };
-#endif
-
-	/* user_config_path is freed as soon as it is used */
-	char *user_config_path = NULL;
-
-	/*
-	 * The following variables are freed at bottom unconditionally.
-	 * So NULL the value if it is to be returned to the caller
-	 */
-	char *user_default_config_path = NULL;
-	char *user_lxc_path = NULL;
-	char *user_cgroup_pattern = NULL;
-
-	if (geteuid() > 0) {
-		const char *user_home = getenv("HOME");
-		if (!user_home)
-			user_home = "/";
-
-		user_config_path = malloc(sizeof(char) * (22 + strlen(user_home)));
-		user_default_config_path = malloc(sizeof(char) * (26 + strlen(user_home)));
-		user_lxc_path = malloc(sizeof(char) * (19 + strlen(user_home)));
-
-		sprintf(user_config_path, "%s/.config/lxc/lxc.conf", user_home);
-		sprintf(user_default_config_path, "%s/.config/lxc/default.conf", user_home);
-		sprintf(user_lxc_path, "%s/.local/share/lxc/", user_home);
-		user_cgroup_pattern = strdup("%n");
-	}
-	else {
-		user_config_path = strdup(LXC_GLOBAL_CONF);
-		user_default_config_path = strdup(LXC_DEFAULT_CONFIG);
-		user_lxc_path = strdup(LXCPATH);
-		user_cgroup_pattern = strdup(DEFAULT_CGROUP_PATTERN);
-	}
-
-	const char * const (*ptr)[2];
-	size_t i;
-	char buf[1024], *p, *p2;
-	FILE *fin = NULL;
-
-	for (i = 0, ptr = options; (*ptr)[0]; ptr++, i++) {
-		if (!strcmp(option_name, (*ptr)[0]))
-			break;
-	}
-	if (!(*ptr)[0]) {
-		free(user_config_path);
-		free(user_default_config_path);
-		free(user_lxc_path);
-		free(user_cgroup_pattern);
-		errno = EINVAL;
-		return NULL;
-	}
-
-	if (values[i]) {
-		free(user_config_path);
-		free(user_default_config_path);
-		free(user_lxc_path);
-		free(user_cgroup_pattern);
-		return values[i];
-	}
-
-	fin = fopen_cloexec(user_config_path, "r");
-	free(user_config_path);
-	if (fin) {
-		while (fgets(buf, 1024, fin)) {
-			if (buf[0] == '#')
-				continue;
-			p = strstr(buf, option_name);
-			if (!p)
-				continue;
-			/* see if there was just white space in front
-			 * of the option name
-			 */
-			for (p2 = buf; p2 < p; p2++) {
-				if (*p2 != ' ' && *p2 != '\t')
-					break;
-			}
-			if (p2 < p)
-				continue;
-			p = strchr(p, '=');
-			if (!p)
-				continue;
-			/* see if there was just white space after
-			 * the option name
-			 */
-			for (p2 += strlen(option_name); p2 < p; p2++) {
-				if (*p2 != ' ' && *p2 != '\t')
-					break;
-			}
-			if (p2 < p)
-				continue;
-			p++;
-			while (*p && (*p == ' ' || *p == '\t')) p++;
-			if (!*p)
-				continue;
-
-			if (strcmp(option_name, "lxc.lxcpath") == 0) {
-				free(user_lxc_path);
-				user_lxc_path = copy_global_config_value(p);
-				remove_trailing_slashes(user_lxc_path);
-				values[i] = user_lxc_path;
-				user_lxc_path = NULL;
-				goto out;
-			}
-
-			values[i] = copy_global_config_value(p);
-			goto out;
-		}
-	}
-	/* could not find value, use default */
-	if (strcmp(option_name, "lxc.lxcpath") == 0) {
-		remove_trailing_slashes(user_lxc_path);
-		values[i] = user_lxc_path;
-		user_lxc_path = NULL;
-	}
-	else if (strcmp(option_name, "lxc.default_config") == 0) {
-		values[i] = user_default_config_path;
-		user_default_config_path = NULL;
-	}
-	else if (strcmp(option_name, "lxc.cgroup.pattern") == 0) {
-		values[i] = user_cgroup_pattern;
-		user_cgroup_pattern = NULL;
-	}
-	else
-		values[i] = (*ptr)[1];
-
-	/* special case: if default value is NULL,
-	 * and there is no config, don't view that
-	 * as an error... */
-	if (!values[i])
-		errno = 0;
-
-out:
-	if (fin)
-		fclose(fin);
-
-	free(user_cgroup_pattern);
-	free(user_default_config_path);
-	free(user_lxc_path);
-
-	return values[i];
 }
 
 char *get_rundir()
@@ -593,50 +413,6 @@ oom:
 const char** lxc_va_arg_list_to_argv_const(va_list ap, size_t skip)
 {
 	return (const char**)lxc_va_arg_list_to_argv(ap, skip, 0);
-}
-
-FILE *fopen_cloexec(const char *path, const char *mode)
-{
-	int open_mode = 0;
-	int step = 0;
-	int fd;
-	int saved_errno = 0;
-	FILE *ret;
-
-	if (!strncmp(mode, "r+", 2)) {
-		open_mode = O_RDWR;
-		step = 2;
-	} else if (!strncmp(mode, "r", 1)) {
-		open_mode = O_RDONLY;
-		step = 1;
-	} else if (!strncmp(mode, "w+", 2)) {
-		open_mode = O_RDWR | O_TRUNC | O_CREAT;
-		step = 2;
-	} else if (!strncmp(mode, "w", 1)) {
-		open_mode = O_WRONLY | O_TRUNC | O_CREAT;
-		step = 1;
-	} else if (!strncmp(mode, "a+", 2)) {
-		open_mode = O_RDWR | O_CREAT | O_APPEND;
-		step = 2;
-	} else if (!strncmp(mode, "a", 1)) {
-		open_mode = O_WRONLY | O_CREAT | O_APPEND;
-		step = 1;
-	}
-	for (; mode[step]; step++)
-		if (mode[step] == 'x')
-			open_mode |= O_EXCL;
-	open_mode |= O_CLOEXEC;
-
-	fd = open(path, open_mode, 0666);
-	if (fd < 0)
-		return NULL;
-
-	ret = fdopen(fd, mode);
-	saved_errno = errno;
-	if (!ret)
-		close(fd);
-	errno = saved_errno;
-	return ret;
 }
 
 extern struct lxc_popen_FILE *lxc_popen(const char *command)
@@ -1321,4 +1097,292 @@ next_loop:
 
 	free(path);
 	return NULL;
+}
+
+/*
+ * Given the '-t' template option to lxc-create, figure out what to
+ * do.  If the template is a full executable path, use that.  If it
+ * is something like 'sshd', then return $templatepath/lxc-sshd.
+ * On success return the template, on error return NULL.
+ */
+char *get_template_path(const char *t)
+{
+	int ret, len;
+	char *tpath;
+
+	if (t[0] == '/' && access(t, X_OK) == 0) {
+		tpath = strdup(t);
+		return tpath;
+	}
+
+	len = strlen(LXCTEMPLATEDIR) + strlen(t) + strlen("/lxc-") + 1;
+	tpath = malloc(len);
+	if (!tpath)
+		return NULL;
+	ret = snprintf(tpath, len, "%s/lxc-%s", LXCTEMPLATEDIR, t);
+	if (ret < 0 || ret >= len) {
+		free(tpath);
+		return NULL;
+	}
+	if (access(tpath, X_OK) < 0) {
+		SYSERROR("bad template: %s", t);
+		free(tpath);
+		return NULL;
+	}
+
+	return tpath;
+}
+
+int null_stdfds(void)
+{
+	int fd, ret = -1;
+
+	fd = open("/dev/null", O_RDWR);
+	if (fd < 0)
+		return -1;
+
+	if (dup2(fd, 0) < 0)
+		goto err;
+	if (dup2(fd, 1) < 0)
+		goto err;
+	if (dup2(fd, 2) < 0)
+		goto err;
+
+	ret = 0;
+err:
+	close(fd);
+	return ret;
+}
+
+/*
+ * @path:    a pathname where / replaced with '\0'.
+ * @offsetp: pointer to int showing which path segment was last seen.
+ *           Updated on return to reflect the next segment.
+ * @fulllen: full original path length.
+ * Returns a pointer to the next path segment, or NULL if done.
+ */
+static char *get_nextpath(char *path, int *offsetp, int fulllen)
+{
+	int offset = *offsetp;
+
+	if (offset >= fulllen)
+		return NULL;
+
+	while (path[offset] != '\0' && offset < fulllen)
+		offset++;
+	while (path[offset] == '\0' && offset < fulllen)
+		offset++;
+
+	*offsetp = offset;
+	return (offset < fulllen) ? &path[offset] : NULL;
+}
+
+/*
+ * Check that @subdir is a subdir of @dir.  @len is the length of
+ * @dir (to avoid having to recalculate it).
+ */
+static bool is_subdir(const char *subdir, const char *dir, size_t len)
+{
+	size_t subdirlen = strlen(subdir);
+
+	if (subdirlen < len)
+		return false;
+	if (strncmp(subdir, dir, len) != 0)
+		return false;
+	if (dir[len-1] == '/')
+		return true;
+	if (subdir[len] == '/' || subdirlen == len)
+		return true;
+	return false;
+}
+
+/*
+ * Check if the open fd is a symlink.  Return -ELOOP if it is.  Return
+ * -ENOENT if we couldn't fstat.  Return 0 if the fd is ok.
+ */
+static int check_symlink(int fd)
+{
+	struct stat sb;
+	int ret = fstat(fd, &sb);
+	if (ret < 0)
+		return -ENOENT;
+	if (S_ISLNK(sb.st_mode))
+		return -ELOOP;
+	return 0;
+}
+
+/*
+ * Open a file or directory, provided that it contains no symlinks.
+ *
+ * CAVEAT: This function must not be used for other purposes than container
+ * setup before executing the container's init
+ */
+static int open_if_safe(int dirfd, const char *nextpath)
+{
+	int newfd = openat(dirfd, nextpath, O_RDONLY | O_NOFOLLOW);
+	if (newfd >= 0) // was not a symlink, all good
+		return newfd;
+
+	if (errno == ELOOP)
+		return newfd;
+
+	if (errno == EPERM || errno == EACCES) {
+		/* we're not root (cause we got EPERM) so
+		   try opening with O_PATH */
+		newfd = openat(dirfd, nextpath, O_PATH | O_NOFOLLOW);
+		if (newfd >= 0) {
+			/* O_PATH will return an fd for symlinks.  We know
+			 * nextpath wasn't a symlink at last openat, so if fd
+			 * is now a link, then something * fishy is going on
+			 */
+			int ret = check_symlink(newfd);
+			if (ret < 0) {
+				close(newfd);
+				newfd = ret;
+			}
+		}
+	}
+
+	return newfd;
+}
+
+/*
+ * Open a path intending for mounting, ensuring that the final path
+ * is inside the container's rootfs.
+ *
+ * CAVEAT: This function must not be used for other purposes than container
+ * setup before executing the container's init
+ *
+ * @target: path to be opened
+ * @prefix_skip: a part of @target in which to ignore symbolic links.  This
+ * would be the container's rootfs.
+ *
+ * Return an open fd for the path, or <0 on error.
+ */
+static int open_without_symlink(const char *target, const char *prefix_skip)
+{
+	int curlen = 0, dirfd, fulllen, i;
+	char *dup = NULL;
+
+	fulllen = strlen(target);
+
+	/* make sure prefix-skip makes sense */
+	if (prefix_skip) {
+		curlen = strlen(prefix_skip);
+		if (!is_subdir(target, prefix_skip, curlen)) {
+			ERROR("WHOA there - target '%s' didn't start with prefix '%s'",
+				target, prefix_skip);
+			return -EINVAL;
+		}
+		/*
+		 * get_nextpath() expects the curlen argument to be
+		 * on a  (turned into \0) / or before it, so decrement
+		 * curlen to make sure that happens
+		 */
+		if (curlen)
+			curlen--;
+	} else {
+		prefix_skip = "/";
+		curlen = 0;
+	}
+
+	/* Make a copy of target which we can hack up, and tokenize it */
+	if ((dup = strdup(target)) == NULL) {
+		SYSERROR("Out of memory checking for symbolic link");
+		return -ENOMEM;
+	}
+	for (i = 0; i < fulllen; i++) {
+		if (dup[i] == '/')
+			dup[i] = '\0';
+	}
+
+	dirfd = open(prefix_skip, O_RDONLY);
+	if (dirfd < 0)
+		goto out;
+	while (1) {
+		int newfd, saved_errno;
+		char *nextpath;
+
+		if ((nextpath = get_nextpath(dup, &curlen, fulllen)) == NULL)
+			goto out;
+		newfd = open_if_safe(dirfd, nextpath);
+		saved_errno = errno;
+		close(dirfd);
+		dirfd = newfd;
+		if (newfd < 0) {
+			errno = saved_errno;
+			if (errno == ELOOP)
+				SYSERROR("%s in %s was a symbolic link!", nextpath, target);
+			else
+				SYSERROR("Error examining %s in %s", nextpath, target);
+			goto out;
+		}
+	}
+
+out:
+	free(dup);
+	return dirfd;
+}
+
+/*
+ * Safely mount a path into a container, ensuring that the mount target
+ * is under the container's @rootfs.  (If @rootfs is NULL, then the container
+ * uses the host's /)
+ *
+ * CAVEAT: This function must not be used for other purposes than container
+ * setup before executing the container's init
+ */
+int safe_mount(const char *src, const char *dest, const char *fstype,
+		unsigned long flags, const void *data, const char *rootfs)
+{
+	int srcfd = -1, destfd, ret, saved_errno;
+	char srcbuf[50], destbuf[50]; // only needs enough for /proc/self/fd/<fd>
+	const char *mntsrc = src;
+
+	if (!rootfs)
+		rootfs = "";
+
+	/* todo - allow symlinks for relative paths if 'allowsymlinks' option is passed */
+	if (flags & MS_BIND && src && src[0] != '/') {
+		INFO("this is a relative bind mount");
+		srcfd = open_without_symlink(src, NULL);
+		if (srcfd < 0)
+			return srcfd;
+		ret = snprintf(srcbuf, 50, "/proc/self/fd/%d", srcfd);
+		if (ret < 0 || ret > 50) {
+			close(srcfd);
+			ERROR("Out of memory");
+			return -EINVAL;
+		}
+		mntsrc = srcbuf;
+	}
+
+	destfd = open_without_symlink(dest, rootfs);
+	if (destfd < 0) {
+		if (srcfd != -1)
+			close(srcfd);
+		return destfd;
+	}
+
+	ret = snprintf(destbuf, 50, "/proc/self/fd/%d", destfd);
+	if (ret < 0 || ret > 50) {
+		if (srcfd != -1)
+			close(srcfd);
+		close(destfd);
+		ERROR("Out of memory");
+		return -EINVAL;
+	}
+
+	ret = mount(mntsrc, destbuf, fstype, flags, data);
+	saved_errno = errno;
+	if (srcfd != -1)
+		close(srcfd);
+	close(destfd);
+	if (ret < 0) {
+		errno = saved_errno;
+		SYSERROR("Failed to mount %s onto %s", src, dest);
+		return ret;
+	}
+
+	return 0;
 }

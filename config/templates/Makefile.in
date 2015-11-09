@@ -88,7 +88,7 @@ DIST_COMMON = $(srcdir)/Makefile.in $(srcdir)/Makefile.am \
 	$(srcdir)/fedora.userns.conf.in \
 	$(srcdir)/gentoo.common.conf.in \
 	$(srcdir)/gentoo.moresecure.conf.in \
-	$(srcdir)/gentoo.userns.conf.in \
+	$(srcdir)/gentoo.userns.conf.in $(srcdir)/nesting.conf.in \
 	$(srcdir)/oracle.common.conf.in \
 	$(srcdir)/oracle.userns.conf.in $(srcdir)/plamo.common.conf.in \
 	$(srcdir)/plamo.userns.conf.in \
@@ -107,10 +107,11 @@ CONFIG_HEADER = $(top_builddir)/src/config.h
 CONFIG_CLEAN_FILES = centos.common.conf centos.userns.conf \
 	debian.common.conf debian.userns.conf fedora.common.conf \
 	fedora.userns.conf gentoo.common.conf gentoo.moresecure.conf \
-	gentoo.userns.conf oracle.common.conf oracle.userns.conf \
-	plamo.common.conf plamo.userns.conf ubuntu-cloud.common.conf \
-	ubuntu-cloud.lucid.conf ubuntu-cloud.userns.conf \
-	ubuntu.common.conf ubuntu.lucid.conf ubuntu.userns.conf
+	gentoo.userns.conf nesting.conf oracle.common.conf \
+	oracle.userns.conf plamo.common.conf plamo.userns.conf \
+	ubuntu-cloud.common.conf ubuntu-cloud.lucid.conf \
+	ubuntu-cloud.userns.conf ubuntu.common.conf ubuntu.lucid.conf \
+	ubuntu.userns.conf
 CONFIG_CLEAN_VPATH_FILES =
 AM_V_P = $(am__v_P_@AM_V@)
 am__v_P_ = $(am__v_P_@AM_DEFAULT_V@)
@@ -336,6 +337,7 @@ templatesconfig_DATA = \
 	gentoo.common.conf \
 	gentoo.moresecure.conf \
 	gentoo.userns.conf \
+	nesting.conf \
 	oracle.common.conf \
 	oracle.userns.conf \
 	plamo.common.conf \
@@ -397,6 +399,8 @@ gentoo.common.conf: $(top_builddir)/config.status $(srcdir)/gentoo.common.conf.i
 gentoo.moresecure.conf: $(top_builddir)/config.status $(srcdir)/gentoo.moresecure.conf.in
 	cd $(top_builddir) && $(SHELL) ./config.status $(subdir)/$@
 gentoo.userns.conf: $(top_builddir)/config.status $(srcdir)/gentoo.userns.conf.in
+	cd $(top_builddir) && $(SHELL) ./config.status $(subdir)/$@
+nesting.conf: $(top_builddir)/config.status $(srcdir)/nesting.conf.in
 	cd $(top_builddir) && $(SHELL) ./config.status $(subdir)/$@
 oracle.common.conf: $(top_builddir)/config.status $(srcdir)/oracle.common.conf.in
 	cd $(top_builddir) && $(SHELL) ./config.status $(subdir)/$@

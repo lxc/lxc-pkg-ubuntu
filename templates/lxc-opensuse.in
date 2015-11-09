@@ -38,7 +38,7 @@ done
 # Make sure the usual locations are in PATH
 export PATH=$PATH:/usr/sbin:/usr/bin:/sbin:/bin
 
-DISTRO=12.3
+DISTRO=13.1
 
 configure_opensuse()
 {
@@ -372,7 +372,7 @@ do
         -p|--path)      path=$2; shift 2;;
         --rootfs)       rootfs=$2; shift 2;;
         -n|--name)      name=$2; shift 2;;
-        -c|--clean)     clean=$2; shift 2;;
+        -c|--clean)     clean=1; shift 1;;
         --)             shift 1; break ;;
         *)              break ;;
     esac
@@ -395,8 +395,11 @@ if [ -z "$path" ]; then
 fi
 
 if grep -q Harlequin /etc/os-release || grep -q Tumbleweed /etc/os-release ; then
-    echo "Building containers on openSUSE 13.2 or Tumbleweed is broken at the moment. We are working on this problem."
-    exit 1
+    BVER=`rpm -q --qf '%{version}\n' build`
+    if [ $? -ne 0 -o "$BVER" -lt "20141120" ]; then
+	echo "Building openSUSE containers with your version of the build package is broken. Please install the update to version 20141120 or newer."
+	exit 1
+    fi
 fi
 
 if [ "$(id -u)" != "0" ]; then
@@ -432,7 +435,7 @@ if [ $? -ne 0 ]; then
     exit 1
 fi
 
-if [ ! -z $clean ]; then
+if [ ! -z "$clean" ]; then
     clean || exit 1
     exit 0
 fi

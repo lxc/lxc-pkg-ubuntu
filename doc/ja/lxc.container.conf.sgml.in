@@ -335,34 +335,34 @@ by KATOH Yasufumi <karma at jazz.email.ne.jp>
 	      <option>empty:</option> ループバックインターフェースだけを作成します。
 	    </para>
 
-	    <para>
+            <para>
               <!--
-	      <option>veth:</option> a peer network device is created
-	      with one side assigned to the container and the other
-	      side is attached to a bridge specified by
-	      the <option>lxc.network.link</option>. If the bridge is
-	      not specified, then the veth pair device will be created
-	      but not attached to any bridge. Otherwise, the bridge
-	      has to be setup before on the
-	      system, <command>lxc</command> won't handle any
-	      configuration outside of the container.  By
-	      default <command>lxc</command> choose a name for the
-	      network device belonging to the outside of the
-	      container, this name is handled
-	      by <command>lxc</command>, but if you wish to handle
-	      this name yourself, you can tell <command>lxc</command>
-	      to set a specific name with
-	      the <option>lxc.network.veth.pair</option> option (except for
-	      unprivileged containers where this option is ignored for security
-	      reasons).
+              <option>veth:</option> a virtual ethernet pair
+              device is created with one side assigned to the container
+              and the other side attached to a bridge specified by
+              the <option>lxc.network.link</option> option.
+              If the bridge is not specified, then the veth pair device
+              will be created but not attached to any bridge.
+              Otherwise, the bridge has to be created on the system
+              before starting the container.
+              <command>lxc</command> won't handle any
+              configuration outside of the container.
+              By default, <command>lxc</command> chooses a name for the
+              network device belonging to the outside of the
+              container, but if you wish to handle
+              this name yourselves, you can tell <command>lxc</command>
+              to set a specific name with
+              the <option>lxc.network.veth.pair</option> option (except for
+              unprivileged containers where this option is ignored for security
+              reasons).
               -->
-              <option>veth:</option> 一方がコンテナに、もう一方が <option>lxc.network.link</option> で指定されるブリッジにアタッチされる、ピアネットワークデバイスを作成します。
-              もし、ブリッジが指定されていない場合、veth ペアデバイスは作成されますが、ブリッジにはアタッチされません。
-              ブリッジはシステムで事前に設定する必要があります。
-              さもなければ、<command>lxc</command> はコンテナ外のいかなる設定も扱うことはできないでしょう。
-              デフォルトでは、<command>lxc</command> はコンテナの外部に属するネットワークデバイスに対する名前を決定し、<command>lxc</command> はこの名前を使います。
+              <option>veth:</option > 一方がコンテナに、もう一方が <option>lxc.network.link</option> オプションで指定されたブリッジに接続されるペアの仮想イーサネットデバイスを作成します。
+              もし、ブリッジが指定されていない場合、veth ペアデバイスは作成されますが、ブリッジには接続されません。
+              ブリッジはコンテナが開始する前にシステムで事前に設定しておく必要があります。
+              <command>lxc</command> はコンテナ外の設定を扱うことはありません。
+              デフォルトでは、<command>lxc</command> がコンテナの外部に属するネットワークデバイスに対する名前を決定します。
               しかし、もしこの名前を自分で指定したい場合、<option>lxc.network.veth.pair</option> オプションを使って名前を設定し、lxc に対して指定をすることができます (非特権コンテナの場合をのぞきます。セキュリティ上の理由からこのオプションは無視されます)。
-	    </para>
+            </para>
 
 	    <para>
               <!--
@@ -934,6 +934,23 @@ by KATOH Yasufumi <karma at jazz.email.ne.jp>
         これらのマウントポイントは、コンテナだけに見え、コンテナ外で実行されるプロセスから見えることはありません。
         例えば、/etc や /var や /home をマウントするときに役に立つでしょう。
       </para>
+      <para>
+	<!--
+	NOTE - LXC will generally ensure that mount targets and relative
+	bind-mount sources are properly confined under the container
+	root, to avoid attacks involving over-mounting host directories
+	and files.  (Symbolic links in absolute mount sources are ignored)
+	However, if the container configuration first mounts a directory which
+	is under the control of the container user, such as /home/joe, into
+        the container at some <filename>path</filename>, and then mounts
+        under <filename>path</filename>, then a TOCTTOU attack would be
+        possible where the container user modifies a symbolic link under
+        his home directory at just the right time.
+	  -->
+	注意: 通常 LXC は、マウント対象と相対パス指定のバインドマウントを、適切にコンテナルート以下に閉じ込めます。
+	これは、ホストのディレクトリやファイルに対して重ね合わせを行うようなマウントによる攻撃を防ぎます。(絶対パス指定のマウントソース中の各パスがシンボリックリンクである場合は無視されます。)
+	しかし、もしコンテナの設定が最初に、/home/joe のようなコンテナユーザのコントロール配下にあるディレクトリを、コンテナ中のある <filename>path</filename> にマウントし、その後 <filename>path</filename> 以下でマウントが行われるような場合、コンテナユーザがタイミングを見計らって自身のホームディレクトリ以下でシンボリックリンクを操作するような TOCTTOU 攻撃が成立する可能性があります。
+      </para>
       <variablelist>
 	<varlistentry>
 	  <term>
@@ -996,6 +1013,16 @@ proc proc proc nodev,noexec,nosuid 0 0
 	      fstab format.
               -->
               fstab フォーマットの一行と同じフォーマットのマウントポイントの指定をします。
+
+              <!--
+              Moreover lxc add two options to mount.
+              <option>optional</option> don't fail if mount does not work.
+              <option>create=dir</option> or <option>create=file</option>
+              to create dir (or file) when the point will be mounted.
+              -->
+              fstab フォーマットに加えて、LXC ではマウントに対して独自の 2 つのオプションが使えます。
+              <option>optional</option> は、マウントが失敗しても失敗を返さずに無視します。
+              <option>create=dir</option> と <option>create=file</option> は、マウントポイントをマウントする際にディレクトリもしくはファイルを作成します。
 	    </para>
 	  </listitem>
 	</varlistentry>
@@ -2072,7 +2099,7 @@ mknod errno 0
               containers.
               -->
               コンテナを追加したいコンテナグループ名を指定します。
-              (複数回使用される可能性のある) 複数の値を設定可能です。
+              複数の値を設定でき、複数回指定することもできます。
               設定されたグループは、関連する一連のコンテナを起動させるために使われます。
             </para>
           </listitem>

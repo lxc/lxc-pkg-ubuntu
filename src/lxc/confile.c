@@ -64,6 +64,8 @@ static int config_idmap(const char *, const char *, struct lxc_conf *);
 static int config_loglevel(const char *, const char *, struct lxc_conf *);
 static int config_logfile(const char *, const char *, struct lxc_conf *);
 static int config_mount(const char *, const char *, struct lxc_conf *);
+static int config_mount_auto(const char *, const char *, struct lxc_conf *);
+static int config_fstab(const char *, const char *, struct lxc_conf *);
 static int config_rootfs(const char *, const char *, struct lxc_conf *);
 static int config_rootfs_mount(const char *, const char *, struct lxc_conf *);
 static int config_rootfs_options(const char *, const char *, struct lxc_conf *);
@@ -111,7 +113,9 @@ static struct lxc_config_t config[] = {
 	{ "lxc.id_map",               config_idmap                },
 	{ "lxc.loglevel",             config_loglevel             },
 	{ "lxc.logfile",              config_logfile              },
-	{ "lxc.mount",                config_mount                },
+	{ "lxc.mount.entry",          config_mount                },
+	{ "lxc.mount.auto",           config_mount_auto           },
+	{ "lxc.mount",                config_fstab                },
 	{ "lxc.rootfs.mount",         config_rootfs_mount         },
 	{ "lxc.rootfs.options",       config_rootfs_options       },
 	{ "lxc.rootfs",               config_rootfs               },
@@ -181,6 +185,63 @@ static const struct signame signames[] = {
 	{ SIGTSTP,   "TSTP" },
 	{ SIGTTIN,   "TTIN" },
 	{ SIGTTOU,   "TTOU" },
+#ifdef SIGTRAP
+	{ SIGTRAP,   "TRAP" },
+#endif
+#ifdef SIGIOT
+	{ SIGIOT,    "IOT" },
+#endif
+#ifdef SIGEMT
+	{ SIGEMT,    "EMT" },
+#endif
+#ifdef SIGBUS
+	{ SIGBUS,    "BUS" },
+#endif
+#ifdef SIGSTKFLT
+	{ SIGSTKFLT, "STKFLT" },
+#endif
+#ifdef SIGCLD
+	{ SIGCLD,    "CLD" },
+#endif
+#ifdef SIGURG
+	{ SIGURG,    "URG" },
+#endif
+#ifdef SIGXCPU
+	{ SIGXCPU,   "XCPU" },
+#endif
+#ifdef SIGXFSZ
+	{ SIGXFSZ,   "XFSZ" },
+#endif
+#ifdef SIGVTALRM
+	{ SIGVTALRM, "VTALRM" },
+#endif
+#ifdef SIGPROF
+	{ SIGPROF,   "PROF" },
+#endif
+#ifdef SIGWINCH
+	{ SIGWINCH,  "WINCH" },
+#endif
+#ifdef SIGIO
+	{ SIGIO,     "IO" },
+#endif
+#ifdef SIGPOLL
+	{ SIGPOLL,   "POLL" },
+#endif
+#ifdef SIGINFO
+	{ SIGINFO,   "INFO" },
+#endif
+#ifdef SIGLOST
+	{ SIGLOST,   "LOST" },
+#endif
+#ifdef SIGPWR
+	{ SIGPWR,    "PWR" },
+#endif
+#ifdef SIGUNUSED
+	{ SIGUNUSED, "UNUSED" },
+#endif
+#ifdef SIGSYS
+	{ SIGSYS,    "SYS" },
+#endif
 };
 
 static const size_t config_size = sizeof(config)/sizeof(struct lxc_config_t);
@@ -230,8 +291,7 @@ static int config_string_item(char **conf_item, const char *value)
 	char *new_value;
 
 	if (!value || strlen(value) == 0) {
-		if (*conf_item)
-			free(*conf_item);
+		free(*conf_item);
 		*conf_item = NULL;
 		return 0;
 	}
@@ -242,8 +302,7 @@ static int config_string_item(char **conf_item, const char *value)
 		return -1;
 	}
 
-	if (*conf_item)
-		free(*conf_item);
+	free(*conf_item);
 	*conf_item = new_value;
 	return 0;
 }
@@ -289,7 +348,7 @@ static int config_network_nic(const char *key, const char *value,
 	 */
 	if (*(key+12) < '0' || *(key+12) > '9')
 		goto out;
-	p = index(key+12, '.');
+	p = strchr(key+12, '.');
 	if (!p)
 		goto out;
 	strcpy(copy+12, p+1);
@@ -767,29 +826,27 @@ static int config_network_ipv4_gateway(const char *key, const char *value,
 			               struct lxc_conf *lxc_conf)
 {
 	struct lxc_netdev *netdev;
-	struct in_addr *gw;
 
 	netdev = network_netdev(key, value, &lxc_conf->network);
 	if (!netdev)
 		return -1;
 
-	gw = malloc(sizeof(*gw));
-	if (!gw) {
-		SYSERROR("failed to allocate ipv4 gateway address");
-		return -1;
-	}
+	free(netdev->ipv4_gateway);
 
-	if (!value) {
-		ERROR("no ipv4 gateway address specified");
-		free(gw);
-		return -1;
-	}
-
-	if (!strcmp(value, "auto")) {
-		free(gw);
+	if (!value || strlen(value) == 0) {
+		netdev->ipv4_gateway = NULL;
+	} else if (!strcmp(value, "auto")) {
 		netdev->ipv4_gateway = NULL;
 		netdev->ipv4_gateway_auto = true;
 	} else {
+		struct in_addr *gw;
+
+		gw = malloc(sizeof(*gw));
+		if (!gw) {
+			SYSERROR("failed to allocate ipv4 gateway address");
+			return -1;
+		}
+
 		if (!inet_pton(AF_INET, value, gw)) {
 			SYSERROR("invalid ipv4 gateway address: %s", value);
 			free(gw);
@@ -872,12 +929,11 @@ static int config_network_ipv6_gateway(const char *key, const char *value,
 	if (!netdev)
 		return -1;
 
-	if (!value) {
-		ERROR("no ipv6 gateway address specified");
-		return -1;
-	}
+	free(netdev->ipv6_gateway);
 
-	if (!strcmp(value, "auto")) {
+	if (!value || strlen(value) == 0) {
+		netdev->ipv4_gateway = NULL;
+	} else if (!strcmp(value, "auto")) {
 		netdev->ipv6_gateway = NULL;
 		netdev->ipv6_gateway_auto = true;
 	} else {
@@ -1039,10 +1095,10 @@ static int config_group(const char *key, const char *value,
 	/* in case several groups are specified in a single line
 	 * split these groups in a single element for the list */
 	for (groupptr = groups;;groupptr = NULL) {
-                token = strtok_r(groupptr, " \t", &sptr);
-                if (!token) {
+		token = strtok_r(groupptr, " \t", &sptr);
+		if (!token) {
 			ret = 0;
-                        break;
+			break;
 		}
 
 		grouplist = malloc(sizeof(*grouplist));
@@ -1059,7 +1115,7 @@ static int config_group(const char *key, const char *value,
 		}
 
 		lxc_list_add_tail(&lxc_conf->groups, grouplist);
-        }
+	}
 
 	free(groups);
 
@@ -1272,15 +1328,12 @@ static int config_cgroup(const char *key, const char *value,
 	return 0;
 
 out:
-	if (cglist)
-		free(cglist);
+	free(cglist);
 
 	if (cgelem) {
-		if (cgelem->subsystem)
-			free(cgelem->subsystem);
+		free(cgelem->subsystem);
 
-		if (cgelem->value)
-			free(cgelem->value);
+		free(cgelem->value);
 
 		free(cgelem);
 	}
@@ -1340,8 +1393,7 @@ static int config_idmap(const char *key, const char *value, struct lxc_conf *lxc
 	return 0;
 
 out:
-	if (idmaplist)
-		free(idmaplist);
+	free(idmaplist);
 
 	if (idmap) {
 		free(idmap);
@@ -1377,7 +1429,7 @@ static int config_mount_auto(const char *key, const char *value,
 		{ "cgroup-full:mixed",  LXC_AUTO_CGROUP_MASK,    LXC_AUTO_CGROUP_FULL_MIXED  },
 		{ "cgroup-full:ro",     LXC_AUTO_CGROUP_MASK,    LXC_AUTO_CGROUP_FULL_RO     },
 		{ "cgroup-full:rw",     LXC_AUTO_CGROUP_MASK,    LXC_AUTO_CGROUP_FULL_RW     },
-		/* NB: For adding anything that ist just a single on/off, but has
+		/* NB: For adding anything that is just a single on/off, but has
 		 *     no options: keep mask and flag identical and just define the
 		 *     enum value as an unused bit so far
 		 */
@@ -1398,10 +1450,10 @@ static int config_mount_auto(const char *key, const char *value,
 	}
 
 	for (autoptr = autos; ; autoptr = NULL) {
-                token = strtok_r(autoptr, " \t", &sptr);
-                if (!token) {
+		token = strtok_r(autoptr, " \t", &sptr);
+		if (!token) {
 			ret = 0;
-                        break;
+			break;
 		}
 
 		for (i = 0; allowed_auto_mounts[i].token; i++) {
@@ -1416,47 +1468,19 @@ static int config_mount_auto(const char *key, const char *value,
 
 		lxc_conf->auto_mounts &= ~allowed_auto_mounts[i].mask;
 		lxc_conf->auto_mounts |= allowed_auto_mounts[i].flag;
-        }
+	}
 
 	free(autos);
 
 	return ret;
 }
 
-/*
- * TODO
- * This fn is handling lxc.mount, lxc.mount.entry, and lxc.mount.auto.
- * It should probably be split into 3 separate functions indexed by
- * the config[] entries at top.
- */
 static int config_mount(const char *key, const char *value,
 			struct lxc_conf *lxc_conf)
 {
-	char *fstab_token = "lxc.mount";
-	char *token = "lxc.mount.entry";
-	char *auto_token = "lxc.mount.auto";
-	char *subkey;
 	char *mntelem;
 	struct lxc_list *mntlist;
 
-	subkey = strstr(key, token);
-
-	if (!subkey) {
-		subkey = strstr(key, auto_token);
-
-		if (!subkey) {
-			subkey = strstr(key, fstab_token);
-
-			if (!subkey)
-				return -1;
-
-			return config_fstab(key, value, lxc_conf);
-		}
-
-		return config_mount_auto(key, value, lxc_conf);
-	}
-
-	/* At this point we definitely have key = lxc.mount.entry */
 	if (!value || strlen(value) == 0)
 		return lxc_clear_mount_entries(lxc_conf);
 
@@ -1495,10 +1519,10 @@ static int config_cap_keep(const char *key, const char *value,
 	/* in case several capability keep is specified in a single line
 	 * split these caps in a single element for the list */
 	for (keepptr = keepcaps;;keepptr = NULL) {
-                token = strtok_r(keepptr, " \t", &sptr);
-                if (!token) {
+		token = strtok_r(keepptr, " \t", &sptr);
+		if (!token) {
 			ret = 0;
-                        break;
+			break;
 		}
 
 		keeplist = malloc(sizeof(*keeplist));
@@ -1515,7 +1539,7 @@ static int config_cap_keep(const char *key, const char *value,
 		}
 
 		lxc_list_add_tail(&lxc_conf->keepcaps, keeplist);
-        }
+	}
 
 	free(keepcaps);
 
@@ -1541,10 +1565,10 @@ static int config_cap_drop(const char *key, const char *value,
 	/* in case several capability drop is specified in a single line
 	 * split these caps in a single element for the list */
 	for (dropptr = dropcaps;;dropptr = NULL) {
-                token = strtok_r(dropptr, " \t", &sptr);
-                if (!token) {
+		token = strtok_r(dropptr, " \t", &sptr);
+		if (!token) {
 			ret = 0;
-                        break;
+			break;
 		}
 
 		droplist = malloc(sizeof(*droplist));
@@ -1561,7 +1585,7 @@ static int config_cap_drop(const char *key, const char *value,
 		}
 
 		lxc_list_add_tail(&lxc_conf->caps, droplist);
-        }
+	}
 
 	free(dropcaps);
 
@@ -1629,8 +1653,7 @@ static int config_utsname(const char *key, const char *value,
 	}
 
 	strcpy(utsname->nodename, value);
-	if (lxc_conf->utsname)
-		free(lxc_conf->utsname);
+	free(lxc_conf->utsname);
 	lxc_conf->utsname = utsname;
 
 	return 0;
@@ -1791,7 +1814,7 @@ int lxc_fill_elevated_privileges(char *flaglist, int *flags)
 		/* for the sake of backward compatibility, drop all privileges
 		   if none is specified */
 		for (i = 0; all_privs[i].token; i++) {
-	                *flags |= all_privs[i].flag;
+			*flags |= all_privs[i].flag;
 		}
 		return 0;
 	}
@@ -1888,8 +1911,8 @@ static int lxc_get_item_hooks(struct lxc_conf *c, char *retv, int inlen,
 	int i;
 
 	/* "lxc.hook.mount" */
-	subkey = index(key, '.');
-	if (subkey) subkey = index(subkey+1, '.');
+	subkey = strchr(key, '.');
+	if (subkey) subkey = strchr(subkey+1, '.');
 	if (!subkey)
 		return -1;
 	subkey++;
@@ -2037,7 +2060,7 @@ static int lxc_get_item_nic(struct lxc_conf *c, char *retv, int inlen,
 	else
 		memset(retv, 0, inlen);
 
-	p1 = index(key, '.');
+	p1 = strchr(key, '.');
 	if (!p1 || *(p1+1) == '\0') return -1;
 	p1++;
 
