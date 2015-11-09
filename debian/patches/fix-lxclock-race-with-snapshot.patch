@@ -1,0 +1,24 @@
+Index: lxc-1.0.7/src/lxc/lxclock.c
+===================================================================
+--- lxc-1.0.7.orig/src/lxc/lxclock.c
++++ lxc-1.0.7/src/lxc/lxclock.c
+@@ -108,8 +108,8 @@ static char *lxclock_name(const char *p,
+ 	 * $XDG_RUNTIME_DIR + "/lxc/lock/$lxcpath/$lxcname + '\0' if non-root
+ 	 */
+ 
+-	/* length of "/lxc/lock/" + $lxcpath + "/" + $lxcname + '\0' */
+-	len = strlen("/lxc/lock/") + strlen(n) + strlen(p) + 2;
++	/* length of "/lxc/lock/" + $lxcpath + "/" + "." + $lxcname + '\0' */
++	len = strlen("/lxc/lock/") + strlen(n) + strlen(p) + 3;
+ 	rundir = get_rundir();
+ 	if (!rundir)
+ 		return NULL;
+@@ -133,7 +133,7 @@ static char *lxclock_name(const char *p,
+ 		return NULL;
+ 	}
+ 
+-	ret = snprintf(dest, len, "%s/lxc/lock/%s/%s", rundir, p, n);
++	ret = snprintf(dest, len, "%s/lxc/lock/%s/.%s", rundir, p, n);
+ 	free(rundir);
+ 	if (ret < 0 || ret >= len) {
+ 		free(dest);
