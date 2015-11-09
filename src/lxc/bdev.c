@@ -62,10 +62,19 @@
 #define LO_FLAGS_AUTOCLEAR 4
 #endif
 
+#ifndef LOOP_CTL_GET_FREE
+#define LOOP_CTL_GET_FREE 0x4C82
+#endif
+
 #define DEFAULT_FS_SIZE 1073741824
 #define DEFAULT_FSTYPE "ext3"
 
 lxc_log_define(bdev, lxc);
+
+struct ovl_rsync_data {
+	struct bdev *orig;
+	struct bdev *new;
+};
 
 struct rsync_data_char {
 	char *src;
@@ -93,7 +102,7 @@ static int do_rsync(const char *src, const char *dest)
 	s[l-2] = '/';
 	s[l-1] = '\0';
 
-	execlp("rsync", "rsync", "-a", s, dest, (char *)NULL);
+	execlp("rsync", "rsync", "-aHX", "--delete", s, dest, (char *)NULL);
 	exit(1);
 }
 
@@ -223,12 +232,8 @@ static int do_mkfs(const char *path, const char *fstype)
 
 	// If the file is not a block device, we don't want mkfs to ask
 	// us about whether to proceed.
-	close(0);
-	close(1);
-	close(2);
-	open("/dev/zero", O_RDONLY);
-	open("/dev/null", O_RDWR);
-	open("/dev/null", O_RDWR);
+	if (null_stdfds() < 0)
+		exit(1);
 	execlp("mkfs", "mkfs", "-t", fstype, path, NULL);
 	exit(1);
 }
@@ -329,17 +334,17 @@ static int detect_fs(struct bdev *bdev, char *type, int len)
 	if (!f)
 		exit(1);
 	while (getline(&line, &linelen, f) != -1) {
-		sp1 = index(line, ' ');
+		sp1 = strchr(line, ' ');
 		if (!sp1)
 			exit(1);
 		*sp1 = '\0';
 		if (strcmp(line, l))
 			continue;
-		sp2 = index(sp1+1, ' ');
+		sp2 = strchr(sp1+1, ' ');
 		if (!sp2)
 			exit(1);
 		*sp2 = '\0';
-		sp3 = index(sp2+1, ' ');
+		sp3 = strchr(sp2+1, ' ');
 		if (!sp3)
 			exit(1);
 		*sp3 = '\0';
@@ -611,7 +616,7 @@ static int zfs_clone(const char *opath, const char *npath, const char *oname,
 
 	if (zfs_list_entry(opath, output, MAXPATHLEN)) {
 		// zfsroot is output up to ' '
-		if ((p = index(output, ' ')) == NULL)
+		if ((p = strchr(output, ' ')) == NULL)
 			return -1;
 		*p = '\0';
 		if ((p = strrchr(output, '/')) == NULL)
@@ -731,7 +736,7 @@ static int zfs_destroy(struct bdev *orig)
 	}
 
 	// zfs mount is output up to ' '
-	if ((p = index(output, ' ')) == NULL)
+	if ((p = strchr(output, ' ')) == NULL)
 		return -1;
 	*p = '\0';
 
@@ -1261,7 +1266,7 @@ int btrfs_list_get_path_rootid(int fd, u64 *treeid)
 	return 0;
 }
 
-static bool is_btrfs_fs(const char *path)
+bool is_btrfs_fs(const char *path)
 {
 	int fd, ret;
 	struct btrfs_ioctl_space_args sargs;
@@ -1447,8 +1452,7 @@ out:
 		close(fddst);
 	if (fd != -1)
 		close(fd);
-	if (newfull)
-		free(newfull);
+	free(newfull);
 	return ret;
 }
 
@@ -1540,7 +1544,7 @@ static int btrfs_do_destroy_subvol(const char *path)
 
 	fd = open(newfull, O_RDONLY);
 	if (fd < 0) {
-		ERROR("Error opening %s", newfull);
+		SYSERROR("Error opening %s", newfull);
 		free(newfull);
 		return -1;
 	}
@@ -1838,6 +1842,13 @@ ignore_search:
 	return btrfs_do_destroy_subvol(path);
 }
 
+bool btrfs_try_remove_subvol(const char *path)
+{
+	if (!btrfs_detect(path))
+		return false;
+	return btrfs_recursive_destroy(path) == 0;
+}
+
 static int btrfs_destroy(struct bdev *orig)
 {
 	return btrfs_recursive_destroy(orig->src);
@@ -1874,7 +1885,7 @@ static int loop_detect(const char *path)
 	return 0;
 }
 
-static int find_free_loopdev(int *retfd, char *namep)
+static int find_free_loopdev_no_control(int *retfd, char *namep)
 {
 	struct dirent dirent, *direntp;
 	struct loop_info64 lo;
@@ -1910,6 +1921,26 @@ static int find_free_loopdev(int *retfd, char *namep)
 		return -1;
 	}
 
+	*retfd = fd;
+	return 0;
+}
+
+static int find_free_loopdev(int *retfd, char *namep)
+{
+	int rc, fd = -1;
+	int ctl = open("/dev/loop-control", O_RDWR);
+	if (ctl < 0)
+		return find_free_loopdev_no_control(retfd, namep);
+	rc = ioctl(ctl, LOOP_CTL_GET_FREE);
+	if (rc >= 0) {
+		snprintf(namep, 100, "/dev/loop%d", rc);
+		fd = open(namep, O_RDWR);
+	}
+	close(ctl);
+	if (fd == -1) {
+		ERROR("No loop device found");
+		return -1;
+	}
 	*retfd = fd;
 	return 0;
 }
@@ -2147,6 +2178,28 @@ static int overlayfs_detect(const char *path)
 	return 0;
 }
 
+static char *overlayfs_name;
+static char *detect_overlayfs_name(void)
+{
+	char *v = "overlayfs";
+	char *line = NULL;
+	size_t len = 0;
+	FILE *f = fopen("/proc/filesystems", "r");
+	if (!f)
+		return v;
+
+	while (getline(&line, &len, f) != -1) {
+		if (strcmp(line, "nodev\toverlay\n") == 0) {
+			v = "overlay";
+			break;
+		}
+	}
+
+	fclose(f);
+	free(line);
+	return v;
+}
+
 //
 // XXXXXXX plain directory bind mount ops
 //
@@ -2165,16 +2218,23 @@ static int overlayfs_mount(struct bdev *bdev)
 	if (!bdev->src || !bdev->dest)
 		return -22;
 
+	if (!overlayfs_name)
+		overlayfs_name = detect_overlayfs_name();
+
 	//  separately mount it first
 	//  mount -t overlayfs -oupperdir=${upper},lowerdir=${lower} lower dest
 	dup = alloca(strlen(bdev->src)+1);
 	strcpy(dup, bdev->src);
-	if (!(lower = index(dup, ':')))
+	if (!(lower = strchr(dup, ':')))
 		return -22;
-	if (!(upper = index(++lower, ':')))
+	if (!(upper = strchr(++lower, ':')))
 		return -22;
 	*upper = '\0';
 	upper++;
+
+	// if delta doesn't yet exist, create it
+	if (mkdir_p(upper, 0755) < 0 && errno != EEXIST)
+		return -22;
 
 	// overlayfs.v22 or higher needs workdir option
 	// if upper is /var/lib/lxc/c2/delta0,
@@ -2190,6 +2250,11 @@ static int overlayfs_mount(struct bdev *bdev)
 	strcpy(work+lastslashidx, "olwork");
 
 	if (parse_mntopts(bdev->mntopts, &mntflags, &mntdata) < 0) {
+		free(mntdata);
+		return -22;
+	}
+
+	if (mkdir_p(work, 0755) < 0 && errno != EEXIST) {
 		free(mntdata);
 		return -22;
 	}
@@ -2225,13 +2290,13 @@ static int overlayfs_mount(struct bdev *bdev)
 	}
 
 	// mount without workdir option for overlayfs before v21
-	ret = mount(lower, bdev->dest, "overlayfs", MS_MGC_VAL | mntflags, options);
+	ret = mount(lower, bdev->dest, overlayfs_name, MS_MGC_VAL | mntflags, options);
 	if (ret < 0) {
 		INFO("overlayfs: error mounting %s onto %s options %s. retry with workdir",
 			lower, bdev->dest, options);
 
 		// retry with workdir option for overlayfs v22 and higher
-		ret = mount(lower, bdev->dest, "overlayfs", MS_MGC_VAL | mntflags, options_work);
+		ret = mount(lower, bdev->dest, overlayfs_name, MS_MGC_VAL | mntflags, options_work);
 		if (ret < 0)
 			SYSERROR("overlayfs: error mounting %s onto %s options %s",
 				lower, bdev->dest, options_work);
@@ -2278,6 +2343,75 @@ static int rsync_delta_wrapper(void *data)
 {
 	struct rsync_data_char *arg = data;
 	return rsync_delta(arg);
+}
+
+static int ovl_rsync(struct ovl_rsync_data *data)
+{
+	int ret;
+
+	if (setgid(0) < 0) {
+		ERROR("Failed to setgid to 0");
+		return -1;
+	}
+	if (setgroups(0, NULL) < 0)
+		WARN("Failed to clear groups");
+	if (setuid(0) < 0) {
+		ERROR("Failed to setuid to 0");
+		return -1;
+	}
+
+	if (unshare(CLONE_NEWNS) < 0) {
+		SYSERROR("Unable to unshare mounts ns");
+		return -1;
+	}
+	if (detect_shared_rootfs()) {
+		if (mount(NULL, "/", NULL, MS_SLAVE|MS_REC, NULL)) {
+			SYSERROR("Failed to make / rslave");
+			ERROR("Continuing...");
+		}
+	}
+	if (overlayfs_mount(data->orig) < 0) {
+		ERROR("Failed mounting original container fs");
+		return -1;
+	}
+	if (overlayfs_mount(data->new) < 0) {
+		ERROR("Failed mounting new container fs");
+		return -1;
+	}
+	ret = do_rsync(data->orig->dest, data->new->dest);
+
+	overlayfs_umount(data->new);
+	overlayfs_umount(data->orig);
+
+	if (ret < 0) {
+		ERROR("rsyncing %s to %s", data->orig->dest, data->new->dest);
+		return -1;
+	}
+
+	return 0;
+}
+
+static int ovl_rsync_wrapper(void *data)
+{
+	struct ovl_rsync_data *arg = data;
+	return ovl_rsync(arg);
+}
+
+static int ovl_do_rsync(struct bdev *orig, struct bdev *new, struct lxc_conf *conf)
+{
+	int ret = -1;
+	struct ovl_rsync_data rdata;
+
+	rdata.orig = orig;
+	rdata.new = new;
+	if (am_unpriv())
+		ret = userns_exec_1(conf, ovl_rsync_wrapper, &rdata);
+	else
+		ret = ovl_rsync(&rdata);
+	if (ret)
+		ERROR("copying overlayfs delta");
+
+	return ret;
 }
 
 static int overlayfs_clonepaths(struct bdev *orig, struct bdev *new, const char *oldname,
@@ -2335,12 +2469,15 @@ static int overlayfs_clonepaths(struct bdev *orig, struct bdev *new, const char 
 		// and needs to be on the same filesystem as upperdir,
 		// so it's OK for it to be empty.
 		work = malloc(lastslashidx + 7);
-		if (!work)
+		if (!work) {
+			free(delta);
 			return -1;
+		}
 		strncpy(work, new->dest, lastslashidx+1);
 		strcpy(work+lastslashidx, "olwork");
 		if (mkdir(work, 0755) < 0) {
 			SYSERROR("error: mkdir %s", work);
+			free(delta);
 			free(work);
 			return -1;
 		}
@@ -2369,8 +2506,8 @@ static int overlayfs_clonepaths(struct bdev *orig, struct bdev *new, const char 
 		int len, ret, lastslashidx;
 		if (!(osrc = strdup(orig->src)))
 			return -22;
-		nsrc = index(osrc, ':') + 1;
-		if (nsrc != osrc + 10 || (odelta = index(nsrc, ':')) == NULL) {
+		nsrc = strchr(osrc, ':') + 1;
+		if (nsrc != osrc + 10 || (odelta = strchr(nsrc, ':')) == NULL) {
 			free(osrc);
 			return -22;
 		}
@@ -2412,19 +2549,6 @@ static int overlayfs_clonepaths(struct bdev *orig, struct bdev *new, const char 
 			WARN("Failed to update ownership of %s", work);
 		free(work);
 
-		struct rsync_data_char rdata;
-		rdata.src = odelta;
-		rdata.dest = ndelta;
-		if (am_unpriv())
-			ret = userns_exec_1(conf, rsync_delta_wrapper, &rdata);
-		else
-			ret = rsync_delta(&rdata);
-		if (ret) {
-			free(osrc);
-			free(ndelta);
-			ERROR("copying overlayfs delta");
-			return -1;
-		}
 		len = strlen(nsrc) + strlen(ndelta) + 12;
 		new->src = malloc(len);
 		if (!new->src) {
@@ -2437,6 +2561,8 @@ static int overlayfs_clonepaths(struct bdev *orig, struct bdev *new, const char 
 		free(ndelta);
 		if (ret < 0 || ret >= len)
 			return -ENOMEM;
+
+		return ovl_do_rsync(orig, new, conf);
 	} else {
 		ERROR("overlayfs clone of %s container is not yet supported",
 			orig->type);
@@ -2454,7 +2580,7 @@ static int overlayfs_destroy(struct bdev *orig)
 
 	if (strncmp(orig->src, "overlayfs:", 10) != 0)
 		return -22;
-	upper = index(orig->src + 10, ':');
+	upper = strchr(orig->src + 10, ':');
 	if (!upper)
 		return -22;
 	upper++;
@@ -2536,12 +2662,12 @@ static int aufs_detect(const char *path)
 //
 static int aufs_mount(struct bdev *bdev)
 {
-	char *options, *dup, *lower, *upper, *rundir;
+	char *options, *dup, *lower, *upper;
 	int len;
 	unsigned long mntflags;
 	char *mntdata;
-	char *runpath;
 	int ret;
+	const char *xinopath = "/dev/shm/aufs.xino";
 
 	if (strcmp(bdev->type, "aufs"))
 		return -22;
@@ -2552,9 +2678,9 @@ static int aufs_mount(struct bdev *bdev)
 	//  mount -t aufs -obr=${upper}=rw:${lower}=ro lower dest
 	dup = alloca(strlen(bdev->src)+1);
 	strcpy(dup, bdev->src);
-	if (!(lower = index(dup, ':')))
+	if (!(lower = strchr(dup, ':')))
 		return -22;
-	if (!(upper = index(++lower, ':')))
+	if (!(upper = strchr(++lower, ':')))
 		return -22;
 	*upper = '\0';
 	upper++;
@@ -2567,40 +2693,23 @@ static int aufs_mount(struct bdev *bdev)
 	// TODO We should check whether bdev->src is a blockdev, and if so
 	// but for now, only support aufs of a basic directory
 
-	rundir = get_rundir();
-	if (!rundir)
-		return -1;
-
-	len = strlen(rundir) + strlen("/lxc") + 1;
-	runpath = alloca(len);
-	ret = snprintf(runpath, len, "%s/lxc", rundir);
-	if (ret < 0 || ret >= len) {
-		free(mntdata);
-		free(rundir);
-		return -1;
-	}
-	if (mkdir_p(runpath, 0755) < 0) {
-		free(mntdata);
-		free(rundir);
-		return -1;
-	}
-
 	// AUFS does not work on top of certain filesystems like (XFS or Btrfs)
-	// so add xino=RUNDIR/lxc/aufs.xino parameter to mount options
+	// so add xino=/dev/shm/aufs.xino parameter to mount options.
+	// The same xino option can be specified to multiple aufs mounts, and
+	// a xino file is not shared among multiple aufs mounts.
 	//
 	// see http://www.mail-archive.com/aufs-users@lists.sourceforge.net/msg02587.html
+	//     http://www.mail-archive.com/aufs-users@lists.sourceforge.net/msg05126.html
 	if (mntdata) {
-		len = strlen(lower) + strlen(upper) + strlen(runpath) + strlen("br==rw:=ro,,xino=/aufs.xino") + strlen(mntdata) + 1;
+		len = strlen(lower) + strlen(upper) + strlen(xinopath) + strlen("br==rw:=ro,,xino=") + strlen(mntdata) + 1;
 		options = alloca(len);
-		ret = snprintf(options, len, "br=%s=rw:%s=ro,%s,xino=%s/aufs.xino", upper, lower, mntdata, runpath);
+		ret = snprintf(options, len, "br=%s=rw:%s=ro,%s,xino=%s", upper, lower, mntdata, xinopath);
 	}
 	else {
-		len = strlen(lower) + strlen(upper) + strlen(runpath) + strlen("br==rw:=ro,xino=/aufs.xino") + 1;
+		len = strlen(lower) + strlen(upper) + strlen(xinopath) + strlen("br==rw:=ro,xino=") + 1;
 		options = alloca(len);
-		ret = snprintf(options, len, "br=%s=rw:%s=ro,xino=%s/aufs.xino", upper, lower, runpath);
+		ret = snprintf(options, len, "br=%s=rw:%s=ro,xino=%s", upper, lower, xinopath);
 	}
-
-	free(rundir);
 
 	if (ret < 0 || ret >= len) {
 		free(mntdata);
@@ -2644,6 +2753,9 @@ static int aufs_clonepaths(struct bdev *orig, struct bdev *new, const char *oldn
 	if (mkdir_p(new->dest, 0755) < 0)
 		return -1;
 
+	if (am_unpriv() && chown_mapped_root(new->dest, conf) < 0)
+		WARN("Failed to update ownership of %s", new->dest);
+
 	if (strcmp(orig->type, "dir") == 0) {
 		char *delta, *lastslash;
 		int ret, len, lastslashidx;
@@ -2668,6 +2780,8 @@ static int aufs_clonepaths(struct bdev *orig, struct bdev *new, const char *oldn
 			free(delta);
 			return -1;
 		}
+		if (am_unpriv() && chown_mapped_root(delta, conf) < 0)
+			WARN("Failed to update ownership of %s", delta);
 
 		// the src will be 'aufs:lowerdir:upperdir'
 		len = strlen(delta) + strlen(orig->src) + 12;
@@ -2689,8 +2803,8 @@ static int aufs_clonepaths(struct bdev *orig, struct bdev *new, const char *oldn
 		int len, ret;
 		if (!(osrc = strdup(orig->src)))
 			return -22;
-		nsrc = index(osrc, ':') + 1;
-		if (nsrc != osrc + 5 || (odelta = index(nsrc, ':')) == NULL) {
+		nsrc = strchr(osrc, ':') + 1;
+		if (nsrc != osrc + 5 || (odelta = strchr(nsrc, ':')) == NULL) {
 			free(osrc);
 			return -22;
 		}
@@ -2701,7 +2815,23 @@ static int aufs_clonepaths(struct bdev *orig, struct bdev *new, const char *oldn
 			free(osrc);
 			return -ENOMEM;
 		}
-		if (do_rsync(odelta, ndelta) < 0) {
+		if ((ret = mkdir(ndelta, 0755)) < 0 && errno != EEXIST) {
+			SYSERROR("error: mkdir %s", ndelta);
+			free(osrc);
+			free(ndelta);
+			return -1;
+		}
+		if (am_unpriv() && chown_mapped_root(ndelta, conf) < 0)
+			WARN("Failed to update ownership of %s", ndelta);
+
+		struct rsync_data_char rdata;
+		rdata.src = odelta;
+		rdata.dest = ndelta;
+		if (am_unpriv())
+			ret = userns_exec_1(conf, rsync_delta_wrapper, &rdata);
+		else
+			ret = rsync_delta(&rdata);
+		if (ret) {
 			free(osrc);
 			free(ndelta);
 			ERROR("copying aufs delta");
@@ -2736,7 +2866,7 @@ static int aufs_destroy(struct bdev *orig)
 
 	if (strncmp(orig->src, "aufs:", 5) != 0)
 		return -22;
-	upper = index(orig->src + 5, ':');
+	upper = strchr(orig->src + 5, ':');
 	if (!upper)
 		return -22;
 	upper++;
@@ -2817,12 +2947,9 @@ static const size_t numbdevs = sizeof(bdevs) / sizeof(struct bdev_type);
 
 void bdev_put(struct bdev *bdev)
 {
-	if (bdev->mntopts)
-		free(bdev->mntopts);
-	if (bdev->src)
-		free(bdev->src);
-	if (bdev->dest)
-		free(bdev->dest);
+	free(bdev->mntopts);
+	free(bdev->src);
+	free(bdev->dest);
 	free(bdev);
 }
 
@@ -2978,6 +3105,7 @@ static bool unpriv_snap_allowed(struct bdev *b, const char *t, bool snap,
 		// (unless snap && b->type == dir, in which case it will be
 		// overlayfs -- which is also allowed)
 		if (strcmp(b->type, "dir") == 0 ||
+				strcmp(b->type, "aufs") == 0 ||
 				strcmp(b->type, "overlayfs") == 0 ||
 				strcmp(b->type, "btrfs") == 0 ||
 				strcmp(b->type, "loop") == 0)
@@ -2987,8 +3115,11 @@ static bool unpriv_snap_allowed(struct bdev *b, const char *t, bool snap,
 
 	// unprivileged users can copy and snapshot dir, overlayfs,
 	// and loop.  In particular, not zfs, btrfs, or lvm.
-	if (strcmp(t, "dir") == 0 || strcmp(t, "overlayfs") == 0 ||
-			strcmp(t, "btrfs") == 0 || strcmp(t, "loop") == 0)
+	if (strcmp(t, "dir") == 0 ||
+		strcmp(t, "aufs") == 0 ||
+		strcmp(t, "overlayfs") == 0 ||
+		strcmp(t, "btrfs") == 0 ||
+		strcmp(t, "loop") == 0)
 		return true;
 	return false;
 }
@@ -3012,7 +3143,6 @@ struct bdev *bdev_copy(struct lxc_container *c0, const char *cname,
 	const char *oldname = c0->name;
 	const char *oldpath = c0->config_path;
 	struct rsync_data data;
-	char *rootfs;
 
 	/* if the container name doesn't show up in the rootfs path, then
 	 * we don't know how to come up with a new name
@@ -3031,25 +3161,26 @@ struct bdev *bdev_copy(struct lxc_container *c0, const char *cname,
 
 	if (!orig->dest) {
 		int ret;
-		orig->dest = malloc(MAXPATHLEN);
+		size_t len;
+		struct stat sb;
+
+		len = strlen(oldpath) + strlen(oldname) + strlen("/rootfs") + 2;
+		orig->dest = malloc(len);
 		if (!orig->dest) {
 			ERROR("out of memory");
 			bdev_put(orig);
 			return NULL;
 		}
-		rootfs = strrchr(orig->src, '/');
-		if (!rootfs) {
-			ERROR("invalid rootfs path");
-			bdev_put(orig);
-			return NULL;
-		}
-		rootfs++;
-		ret = snprintf(orig->dest, MAXPATHLEN, "%s/%s/%s", oldpath, oldname, rootfs);
-		if (ret < 0 || ret >= MAXPATHLEN) {
+		ret = snprintf(orig->dest, len, "%s/%s/rootfs", oldpath, oldname);
+		if (ret < 0 || ret >= len) {
 			ERROR("rootfs path too long");
 			bdev_put(orig);
 			return NULL;
 		}
+		ret = stat(orig->dest, &sb);
+		if (ret < 0 && errno == ENOENT)
+			if (mkdir_p(orig->dest, 0755) < 0)
+				WARN("Error creating '%s', continuing.", orig->dest);
 	}
 
 	/*
@@ -3075,8 +3206,12 @@ struct bdev *bdev_copy(struct lxc_container *c0, const char *cname,
 	*needs_rdep = 0;
 	if (bdevtype && strcmp(orig->type, "dir") == 0 &&
 			(strcmp(bdevtype, "aufs") == 0 ||
-			 strcmp(bdevtype, "overlayfs") == 0))
+			 strcmp(bdevtype, "overlayfs") == 0)) {
 		*needs_rdep = 1;
+	} else if (snap && strcmp(orig->type, "lvm") == 0 &&
+			!lvm_is_thin_volume(orig->src)) {
+		*needs_rdep = 1;
+	}
 
 	new = bdev_get(bdevtype ? bdevtype : orig->type);
 	if (!new) {
@@ -3199,7 +3334,7 @@ struct bdev *bdev_create(const char *dest, const char *type,
 	}
 
 	// -B lvm,dir
-	if (index(type, ',') != NULL) {
+	if (strchr(type, ',') != NULL) {
 		char *dup = alloca(strlen(type)+1), *saveptr = NULL, *token;
 		strcpy(dup, type);
 		for (token = strtok_r(dup, ",", &saveptr); token;
@@ -3214,7 +3349,7 @@ struct bdev *bdev_create(const char *dest, const char *type,
 
 char *overlay_getlower(char *p)
 {
-	char *p1 = index(p, ':');
+	char *p1 = strchr(p, ':');
 	if (p1)
 		*p1 = '\0';
 	return p;

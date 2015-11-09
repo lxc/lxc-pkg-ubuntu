@@ -113,12 +113,12 @@ static int my_parser(struct lxc_arguments* args, int c, char* arg)
 		/* -s implies -e */
 		lxc_fill_elevated_privileges(NULL, &elevated_privileges);
 		break;
-        case 500: /* clear-env */
-                env_policy = LXC_ATTACH_CLEAR_ENV;
-                break;
-        case 501: /* keep-env */
-                env_policy = LXC_ATTACH_KEEP_ENV;
-                break;
+	case 500: /* clear-env */
+		env_policy = LXC_ATTACH_CLEAR_ENV;
+		break;
+	case 501: /* keep-env */
+		env_policy = LXC_ATTACH_KEEP_ENV;
+		break;
 	case 502: /* keep-var */
 		ret = add_to_simple_array(&extra_keep, &extra_keep_size, arg);
 		if (ret < 0) {
@@ -146,7 +146,7 @@ static struct lxc_arguments my_args = {
 Execute the specified COMMAND - enter the container NAME\n\
 \n\
 Options :\n\
-  -n, --name=NAME   NAME for name of the container\n\
+  -n, --name=NAME   NAME of the container\n\
   -e, --elevated-privileges=PRIVILEGES\n\
                     Use elevated privileges instead of those of the\n\
                     container. If you don't specify privileges to be\n\

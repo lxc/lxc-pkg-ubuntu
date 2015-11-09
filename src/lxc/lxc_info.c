@@ -53,7 +53,7 @@ static int my_parser(struct lxc_arguments* args, int c, char* arg)
 	char **newk;
 	switch (c) {
 	case 'c':
-		newk = realloc(key, keys+1 * sizeof(key[0]));
+		newk = realloc(key, (keys + 1) * sizeof(key[0]));
 		if (!newk)
 			return -1;
 		key = newk;
@@ -87,7 +87,7 @@ static struct lxc_arguments my_args = {
 lxc-info display some information about a container with the identifier NAME\n\
 \n\
 Options :\n\
-  -n, --name=NAME       NAME for name of the container\n\
+  -n, --name=NAME       NAME of the container\n\
   -c, --config=KEY      show configuration variable KEY from running container\n\
   -i, --ips             shows the IP addresses\n\
   -p, --pid             shows the process id of the init container\n\

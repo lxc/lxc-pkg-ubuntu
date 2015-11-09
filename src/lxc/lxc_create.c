@@ -61,7 +61,7 @@ static uint64_t get_fssize(char *s)
 	else if (*end == 't' || *end == 'T')
 		ret *= 1024ULL * 1024ULL * 1024ULL * 1024ULL;
 	else
-	{		
+	{
 		fprintf(stderr, "Invalid blockdev unit size '%c' in '%s', using default size\n", *end, s);
 		return 0;
 	}
@@ -101,8 +101,6 @@ static const struct option my_longopts[] = {
 
 static void create_helpfn(const struct lxc_arguments *args) {
 	char *argv[3], *path;
-	size_t len;
-	int ret;
 	pid_t pid;
 
 	if (!args->template)
@@ -114,11 +112,7 @@ static void create_helpfn(const struct lxc_arguments *args) {
 		return;
 	}
 
-	len = strlen(LXCTEMPLATEDIR) + strlen(args->template) + strlen("/lxc-") + 1;
-	path = alloca(len);
-	ret = snprintf(path, len,  "%s/lxc-%s", LXCTEMPLATEDIR, args->template);
-	if (ret < 0 || ret >= len)
-		return;
+	path = get_template_path(args->template);
 
 	argv[0] = path;
 	argv[1] = "-h";
@@ -132,12 +126,12 @@ static struct lxc_arguments my_args = {
 	.progname = "lxc-create",
 	.helpfn   = create_helpfn,
 	.help     = "\
---name=NAME [-w] [-r] [-t template] [-P lxcpath]\n\
+--name=NAME -t template [-w] [-r] [-P lxcpath]\n\
 \n\
 lxc-create creates a container\n\
 \n\
 Options :\n\
-  -n, --name=NAME    NAME for name of the container\n\
+  -n, --name=NAME    NAME of the container\n\
   -f, --config=file  Initial configuration file\n\
   -t, --template=t   Template to use to setup container\n\
   -B, --bdev=BDEV    Backing store type to use\n\
@@ -202,6 +196,15 @@ int main(int argc, char *argv[])
 			 my_args.progname, my_args.quiet, my_args.lxcpath[0]))
 		exit(1);
 	lxc_log_options_no_override();
+
+	if (!my_args.template) {
+		fprintf(stderr, "A template must be specified.\n");
+		fprintf(stderr, "Use \"none\" if you really want a container without a rootfs.\n");
+		exit(1);
+	}
+
+	if (strcmp(my_args.template, "none") == 0)
+		my_args.template = NULL;
 
 	memset(&spec, 0, sizeof(spec));
 	if (!my_args.bdevtype)

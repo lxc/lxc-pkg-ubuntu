@@ -45,7 +45,7 @@ BuildRequires: systemd-units
 %endif
 
 Name: lxc
-Version: 1.0.7
+Version: 1.0.8
 Release: %{?beta_rel:0.1.%{beta_rel}}%{?!beta_rel:%{norm_rel}}%{?dist}
 URL: http://linuxcontainers.org
 Source: http://linuxcontainers.org/downloads/%{name}-%{version}%{?beta_dot}.tar.gz
@@ -54,6 +54,7 @@ Group: Applications/System
 License: LGPLv2+
 BuildRoot: %{_tmppath}/%{name}-%{version}-build
 Requires: openssl rsync
+Requires: %{name}-libs = %{version}-%{release}
 BuildRequires: libcap libcap-devel docbook2X graphviz
 
 %if %{with_python}

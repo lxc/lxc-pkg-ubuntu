@@ -85,8 +85,8 @@ static void do_function(void *arguments)
     }
 
     if (debug) {
-	c->set_config_item(c, "lxc.loglevel", "DEBUG");
-	c->set_config_item(c, "lxc.logfile", name);
+        c->set_config_item(c, "lxc.loglevel", "DEBUG");
+        c->set_config_item(c, "lxc.logfile", name);
     }
 
     if (strcmp(args->mode, "create") == 0) {
@@ -132,7 +132,7 @@ static void do_function(void *arguments)
 out:
     lxc_container_put(c);
     if (debug)
-	lxc_log_close();
+        lxc_log_close();
 }
 
 static void *concurrent(void *arguments)
@@ -171,9 +171,9 @@ int main(int argc, char *argv[]) {
         case 'q':
             quiet = 1;
             break;
-	case 'D':
-	    debug = 1;
-	    break;
+        case 'D':
+            debug = 1;
+            break;
         case 'm': {
             char *mode_tok, *tok, *saveptr = NULL;
 
@@ -182,11 +182,15 @@ int main(int argc, char *argv[]) {
                  (tok = strtok_r(mode_tok, ",", &saveptr));
                 i++, mode_tok = NULL) {
                 modes = realloc(modes, sizeof(*modes) * (i+2));
+                if (!modes) {
+                    perror("realloc");
+                    exit(EXIT_FAILURE);
+                }
                 modes[i] = tok;
-	    }
+            }
             modes[i] = NULL;
             break;
-	}
+        }
         default: /* '?' */
             usage();
             exit(EXIT_FAILURE);

@@ -24,7 +24,7 @@ is_enabled() {
     if [ $RES -eq 0 ]; then
         $SETCOLOR_SUCCESS && echo "enabled" && $SETCOLOR_NORMAL
     else
-        if [ ! -z "$mandatory" -a "$mandatory" = yes ]; then
+        if [ ! -z "$mandatory" ] && [ "$mandatory" = yes ]; then
             $SETCOLOR_FAILURE && echo "required" && $SETCOLOR_NORMAL
         else
             $SETCOLOR_WARNING && echo "missing" && $SETCOLOR_NORMAL
@@ -100,7 +100,7 @@ echo -n "Cgroup device: " && is_enabled CONFIG_CGROUP_DEVICE
 echo -n "Cgroup sched: " && is_enabled CONFIG_CGROUP_SCHED
 echo -n "Cgroup cpu account: " && is_enabled CONFIG_CGROUP_CPUACCT
 echo -n "Cgroup memory controller: "
-if [ $KVER_MAJOR -ge 3 -a $KVER_MINOR -ge 6 ]; then
+if ([ $KVER_MAJOR -ge 3 ] && [ $KVER_MINOR -ge 6 ]) || ([ $KVER_MAJOR -gt 3 ]); then
     is_enabled CONFIG_MEMCG
 else
     is_enabled CONFIG_CGROUP_MEM_RES_CTLR
@@ -111,6 +111,25 @@ echo "--- Misc ---"
 echo -n "Veth pair device: " && is_enabled CONFIG_VETH
 echo -n "Macvlan: " && is_enabled CONFIG_MACVLAN
 echo -n "Vlan: " && is_enabled CONFIG_VLAN_8021Q
+echo -n "Bridges: " && is_enabled CONFIG_BRIDGE
+echo -n "Advanced netfilter: " && is_enabled CONFIG_NETFILTER_ADVANCED
+echo -n "CONFIG_NF_NAT_IPV4: " && is_enabled CONFIG_NF_NAT_IPV4
+echo -n "CONFIG_NF_NAT_IPV6: " && is_enabled CONFIG_NF_NAT_IPV6
+echo -n "CONFIG_IP_NF_TARGET_MASQUERADE: " && is_enabled CONFIG_IP_NF_TARGET_MASQUERADE
+echo -n "CONFIG_IP6_NF_TARGET_MASQUERADE: " && is_enabled CONFIG_IP6_NF_TARGET_MASQUERADE
+echo -n "CONFIG_NETFILTER_XT_TARGET_CHECKSUM: " && is_enabled CONFIG_NETFILTER_XT_TARGET_CHECKSUM
+
+echo
+echo "--- Checkpoint/Restore ---"
+echo -n "checkpoint restore: " && is_enabled CONFIG_CHECKPOINT_RESTORE
+echo -n "CONFIG_FHANDLE: " && is_enabled CONFIG_FHANDLE
+echo -n "CONFIG_EVENTFD: " && is_enabled CONFIG_EVENTFD
+echo -n "CONFIG_EPOLL: " && is_enabled CONFIG_EPOLL
+echo -n "CONFIG_UNIX_DIAG: " && is_enabled CONFIG_UNIX_DIAG
+echo -n "CONFIG_INET_DIAG: " && is_enabled CONFIG_INET_DIAG
+echo -n "CONFIG_PACKET_DIAG: " && is_enabled CONFIG_PACKET_DIAG
+echo -n "CONFIG_NETLINK_DIAG: " && is_enabled CONFIG_NETLINK_DIAG
+
 echo -n "File capabilities: " && \
     ( [ "${KVER_MAJOR}" = 2 ] && [ ${KVER_MINOR} -lt 33 ] && \
        is_enabled CONFIG_SECURITY_FILE_CAPABILITIES ) || \
