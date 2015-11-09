@@ -4,3 +4,4 @@
 fix-multislash.patch
 avoid-dot.patch
 00004-update-apparmor.patch
+fix-rbind-mounts.patch

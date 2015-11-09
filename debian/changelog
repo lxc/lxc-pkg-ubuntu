@@ -1,3 +1,10 @@
+lxc (1.0.7-0ubuntu0.10) trusty; urgency=medium
+
+  * Update the /proc/self/mountinfo no-symlink verification to accomodate
+    recursive mounts.  (LP: #1509752)
+
+ -- Serge Hallyn <serge.hallyn@ubuntu.com>  Wed, 28 Oct 2015 12:21:38 -0500
+
 lxc (1.0.7-0ubuntu0.9) trusty; urgency=medium
 
   * Update previous patch to include some extra apparmor rules.
