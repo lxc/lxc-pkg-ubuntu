@@ -1,4 +1,4 @@
-From 0a78dee32d977c2105584d86a985864c00d0c8d2 Mon Sep 17 00:00:00 2001
+From 30708f298d86588b98f99420dfb801a2260a1007 Mon Sep 17 00:00:00 2001
 From: =?UTF-8?q?St=C3=A9phane=20Graber?= <stgraber@ubuntu.com>
 Date: Tue, 3 Nov 2015 11:42:58 -0500
 Subject: Allocate new lxcbr0 subnet at startup time
