@@ -2,3 +2,4 @@
 0002-CVE-2014-1334.patch
 0003-CVE-2015-1335.patch
 fix-multislash.patch
+avoid-dot.patch

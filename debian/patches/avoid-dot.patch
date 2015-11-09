@@ -1,0 +1,64 @@
+Description: also avoid /./
+Author: Serge Hallyn <serge.hallyn@ubuntu.com>
+Bug-Ubuntu: https://bugs.launchpad.net/ubuntu/+source/lxc/+bug/1501491
+
+Index: lxc-1.0.7/src/lxc/utils.c
+===================================================================
+--- lxc-1.0.7.orig/src/lxc/utils.c
++++ lxc-1.0.7/src/lxc/utils.c
+@@ -1335,15 +1335,30 @@ static char *next_word(char *ws) {
+ 	return ws;
+ }
+ 
+-/* copy src to dest, collapsing multiple '/' into one */
++/*
++ * copy src to dest, collapsing multiple '/' into one and
++ * collapsing '/./' to '/'
++ */
+ static void copy_cleanedup(char *dest, const char *src)
+ {
++	char *orig = dest;
+ 	while (*src) {
+-		while (*src == '/' && *(src+1) == '/')
++		if (*src == '/' && *(src+1) == '/') {
+ 			src++;
++			continue;
++		}
++		if (*src == '/' && *(src+1) == '.' &&
++			(*(src+2) == '/' || *(src+2) == '\0')) {
++			src += 2;
++			continue;
++		}
+ 		*(dest++) = *(src++);
+ 	}
+ 	*dest = '\0';
++	/* remove trailing / */
++	dest--;
++	while (dest > orig && *dest == '/')
++		*(dest--) = '\0';
+ }
+ 
+ /*
+@@ -1395,7 +1410,7 @@ static bool ensure_not_symlink(const cha
+ 
+ 	size_t start = croot ? strlen(croot) : 0;
+ 	if (strcmp(ws + start, tgtcopy + start) != 0) {
+-		ERROR("Mount onto %s resulted in %s\n", target, ws);
++		ERROR("Mount onto %s resulted in %s, not %s\n", target, ws, tgtcopy);
+ 		goto out;
+ 	}
+ 
+Index: lxc-1.0.7/src/tests/lxc-test-symlink
+===================================================================
+--- lxc-1.0.7.orig/src/tests/lxc-test-symlink
++++ lxc-1.0.7/src/tests/lxc-test-symlink
+@@ -50,6 +50,9 @@ cat >> /var/lib/lxc/symtest1/config << E
+ lxc.mount.entry = $dirname opt/xxx/dir none bind,create=dir
+ lxc.mount.entry = $fname opt/xxx/file none bind,create=file
+ lxc.mount.entry = $fname2 opt/xxx/file2 none bind
++lxc.mount.entry = $dirname /var/lib/lxc/symtest1/rootfs/opt/xxx//././//dir2 none bind,create=dir
++lxc.mount.entry = $dirname /var/lib/lxc/symtest1/rootfs/opt/xxx//././//dir3// none bind,create=dir
++lxc.mount.entry = $dirname /var/lib/lxc/symtest1/rootfs/opt/xxx//././//dir4/. none bind,create=dir
+ EOF
+ 
+ # Regular - should succeed
