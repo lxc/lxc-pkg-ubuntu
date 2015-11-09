@@ -1,7 +1,0 @@
-0001-CVE-2015-1331.patch
-0002-CVE-2014-1334.patch
-0003-CVE-2015-1335.patch
-fix-multislash.patch
-avoid-dot.patch
-00004-update-apparmor.patch
-fix-rbind-mounts.patch
