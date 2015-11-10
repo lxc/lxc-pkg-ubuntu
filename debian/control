@@ -108,7 +108,9 @@ Description: Linux Containers userspace tools (test binaries)
  created using the Control Group and Namespace features included in the Linux
  kernel.
  .
- This package contains the test binaries.
+ This package contains the test binaries. Those binaries are primarily
+ used for autopkgtest and by some developers. They are not meant to be
+ installed on regular user systems.
 
 Package: liblxc1
 Architecture: linux-any
