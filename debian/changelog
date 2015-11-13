@@ -1,3 +1,14 @@
+lxc (1.0.8-0ubuntu0.2) trusty; urgency=medium
+
+  * Cherry-pick from upstream:
+    - Fix ubuntu-cloud template to detect compression algorithm instead
+      of hardcoding xz. Also update list of supported releases and use trusty
+      as the fallback release. (LP: #1515463)
+  * Update lxc-tests description to make it clear that this package is
+    meant to be used by developers and by automated testing.
+
+ -- Stéphane Graber <stgraber@ubuntu.com>  Fri, 13 Nov 2015 12:53:17 -0500
+
 lxc (1.0.8-0ubuntu0.1) trusty; urgency=medium
 
   * New upstream bugfix release. (MRE tracking bug: LP: #1514623)
