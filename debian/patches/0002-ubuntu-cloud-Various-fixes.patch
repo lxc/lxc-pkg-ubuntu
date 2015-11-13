@@ -1,0 +1,65 @@
+From 2452a0458c96ebbf0b14b8f9b71c581036e8fad9 Mon Sep 17 00:00:00 2001
+From: =?UTF-8?q?St=C3=A9phane=20Graber?= <stgraber@ubuntu.com>
+Date: Thu, 12 Nov 2015 12:44:38 -0500
+Subject: ubuntu-cloud: Various fixes
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+ - Update list of supported releases
+ - Make the fallback release trusty
+ - Don't specify the compression algorithm (use auto-detection) so that
+   people passing tarballs to the template don't see regressions.
+
+Signed-off-by: Stéphane Graber <stgraber@ubuntu.com>
+Acked-by: Serge E. Hallyn <serge.hallyn@ubuntu.com>
+---
+ templates/lxc-ubuntu-cloud.in | 12 ++++++------
+ 1 file changed, 6 insertions(+), 6 deletions(-)
+
+diff --git a/templates/lxc-ubuntu-cloud.in b/templates/lxc-ubuntu-cloud.in
+index 3f30a61..d277fec 100644
+--- a/templates/lxc-ubuntu-cloud.in
++++ b/templates/lxc-ubuntu-cloud.in
+@@ -25,7 +25,7 @@ STATE_DIR="@LOCALSTATEDIR@"
+ HOOK_DIR="@LXCHOOKDIR@"
+ CLONE_HOOK_FN="$HOOK_DIR/ubuntu-cloud-prep"
+ LXC_TEMPLATE_CONFIG="@LXCTEMPLATECONFIG@"
+-KNOWN_RELEASES="precise trusty utopic vivid"
++KNOWN_RELEASES="precise trusty vivid wily xenial"
+ skip_arch_check=${UCTEMPLATE_SKIP_ARCH_CHECK:-0}
+ 
+ # Make sure the usual locations are in PATH
+@@ -159,8 +159,8 @@ eval set -- "$options"
+ 
+ mapped_uid=-1
+ mapped_gid=-1
+-# default release is precise, or the systems release if recognized
+-release=precise
++# default release is trusty, or the systems release if recognized
++release=trusty
+ if [ -f /etc/lsb-release ]; then
+     . /etc/lsb-release
+     rels=$(ubuntu-distro-info --supported 2>/dev/null) ||
+@@ -183,7 +183,7 @@ else
+         arch="amd64"
+     elif [ "$arch" = "armv7l" ]; then
+         # note: arm images don't exist before oneiric;  are called armhf in
+-        # precise and later;  and are not supported by the query, so we don't actually
++        # trusty and later;  and are not supported by the query, so we don't actually
+         # support them yet (see check later on).  When Query2 is available,
+         # we'll use that to enable arm images.
+         arch="armhf"
+@@ -330,10 +330,10 @@ do_extract_rootfs() {
+     mkdir -p $rootfs
+     cd $rootfs
+     if [ $in_userns -eq 1 ]; then
+-        tar --anchored --exclude="dev/*" --numeric-owner -xpJf "$cache/$filename"
++        tar --anchored --exclude="dev/*" --numeric-owner -xpf "$cache/$filename"
+         mkdir -p $rootfs/dev/pts/
+     else
+-        tar --numeric-owner -xpJf "$cache/$filename"
++        tar --numeric-owner -xpf "$cache/$filename"
+     fi
+ }
+ 
