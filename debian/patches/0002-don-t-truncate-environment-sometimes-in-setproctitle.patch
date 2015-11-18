@@ -1,0 +1,69 @@
+From 5b7ce990b8ce2c7aef6cc0fed0f4b7765910490a Mon Sep 17 00:00:00 2001
+From: Tycho Andersen <tycho.andersen@canonical.com>
+Date: Mon, 16 Nov 2015 15:12:36 -0700
+Subject: don't truncate environment sometimes in setproctitle
+
+Instead, let's just allocate new space for the proctitle to live and point
+the kernel at that.
+
+v2: take out testing hunk
+v3: check return from realloc
+
+Signed-off-by: Tycho Andersen <tycho.andersen@canonical.com>
+Acked-by: Serge E. Hallyn <serge.hallyn@ubuntu.com>
+---
+ src/lxc/utils.c | 30 ++++++++++++------------------
+ 1 file changed, 12 insertions(+), 18 deletions(-)
+
+diff --git a/src/lxc/utils.c b/src/lxc/utils.c
+index d9e769d..1e36641 100644
+--- a/src/lxc/utils.c
++++ b/src/lxc/utils.c
+@@ -1349,6 +1349,7 @@ char *get_template_path(const char *t)
+  */
+ int setproctitle(char *title)
+ {
++	static char *proctitle = NULL;
+ 	char buf[2048], *tmp;
+ 	FILE *f;
+ 	int i, len, ret = 0;
+@@ -1413,28 +1414,21 @@ int setproctitle(char *title)
+ 	 * want to have room for it. */
+ 	len = strlen(title) + 1;
+ 
+-	/* We're truncating the environment, so we should use at most the
+-	 * length of the argument + environment for the title. */
+-	if (len > env_end - arg_start) {
+-		arg_end = env_end;
+-		len = env_end - arg_start;
+-		title[len-1] = '\0';
+-	} else {
+-		/* Only truncate the environment if we're actually going to
+-		 * overwrite part of it. */
+-		if (len >= arg_end - arg_start) {
+-			env_start = env_end;
+-		}
+-
+-		arg_end = arg_start + len;
+-
+-		/* check overflow */
+-		if (arg_end < len || arg_end < arg_start) {
++	/* If we don't have enough room by just overwriting the old proctitle,
++	 * let's allocate a new one.
++	 */
++	if (len > arg_end - arg_start) {
++		void *m;
++		m = realloc(proctitle, len);
++		if (!m)
+ 			return -1;
+-		}
++		proctitle = m;
+ 
++		arg_start = (unsigned long) proctitle;
+ 	}
+ 
++	arg_end = arg_start + len;
++
+ 	brk_val = syscall(__NR_brk, 0);
+ 
+ 	prctl_map = (struct prctl_mm_map) {

@@ -1,1 +1,3 @@
 0001-ubuntu-cloud-Various-fixes.patch
+0002-don-t-truncate-environment-sometimes-in-setproctitle.patch
+0003-Better-handle-preserve_ns-behavior.patch
