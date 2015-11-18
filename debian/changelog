@@ -1,3 +1,11 @@
+lxc (1.1.5-0ubuntu3) xenial; urgency=medium
+
+  * Cherry-pick from upstream:
+    - Fix preserve_ns to work on < 3.8 kernels. (LP: #1516971)
+    - Fix process title rewrite to not mangle the environment. (LP: #1517107)
+
+ -- Stéphane Graber <stgraber@ubuntu.com>  Wed, 18 Nov 2015 13:30:41 -0500
+
 lxc (1.1.5-0ubuntu2) xenial; urgency=medium
 
   * Cherry-pick from upstream:
