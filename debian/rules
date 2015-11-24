@@ -1,8 +1,6 @@
 #!/usr/bin/make -f
 export DEB_BUILD_HARDENING = 1
 
-DEB_DH_INSTALLINIT_ARGS = --upstart-only
-
 SHELL := sh -e
 
 DEB_HOST_MULTIARCH ?= $(shell dpkg-architecture -qDEB_HOST_MULTIARCH)
