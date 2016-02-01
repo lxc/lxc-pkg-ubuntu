@@ -49,8 +49,14 @@ struct lxc_snapshot;
 
 struct lxc_lock;
 
+struct migrate_opts;
+
 /*!
  * An LXC container.
+ *
+ * Note that changing the order of struct members is an API change, as callers
+ * will end up having the wrong offset when calling a function.  So when making
+ * changes, whenever possible stick to simply appending new members.
  */
 struct lxc_container {
 	// private fields
@@ -216,25 +222,24 @@ struct lxc_container {
 	bool (*stop)(struct lxc_container *c);
 
 	/*!
-	 * \brief Determine if the container wants to run disconnected
+	 * \brief Change whether the container wants to run disconnected
 	 * from the terminal.
 	 *
 	 * \param c Container.
 	 * \param state Value for the daemonize bit (0 or 1).
 	 *
-	 * \return \c true if container wants to be daemonised, else \c false.
+	 * \return \c true on success, else \c false.
 	 */
 	bool (*want_daemonize)(struct lxc_container *c, bool state);
 
 	/*!
-	 * \brief Determine whether container wishes all file descriptors
+	 * \brief Change whether the container wishes all file descriptors
 	 *  to be closed on startup.
 	 *
 	 * \param c Container.
 	 * \param state Value for the close_all_fds bit (0 or 1).
 	 *
-	 * \return \c true if container wants all file descriptors closed,
-	 *  else \c false.
+	 * \return \c true on success, else \c false.
 	 */
 	bool (*want_close_all_fds)(struct lxc_container *c, bool state);
 
@@ -808,6 +813,16 @@ struct lxc_container {
 	bool (*snapshot_destroy_all)(struct lxc_container *c);
 
 	/* Post LXC-1.1 additions */
+	/*!
+	 * \brief An API call to perform various migration operations
+	 *
+	 * \param cmd One of the MIGRATE_ contstants.
+	 * \param opts A migrate_opts struct filled with relevant options.
+	 * \param size The size of the migrate_opts struct, i.e. sizeof(struct migrate_opts).
+	 *
+	 * \return \c 0 on success, nonzero on failure.
+	 */
+	int (*migrate)(struct lxc_container *c, unsigned int cmd, struct migrate_opts *opts, unsigned int size);
 };
 
 /*!
@@ -842,6 +857,31 @@ struct bdev_specs {
 		char *thinpool; /*!< LVM thin pool to use, if any */
 	} lvm;
 	char *dir; /*!< Directory path */
+	struct {
+		char *rbdname; /*!< RBD image name */
+		char *rbdpool; /*!< Ceph pool name */
+	} rbd;
+};
+
+/*!
+ * \brief Commands for the migrate API call.
+ */
+enum {
+	MIGRATE_PRE_DUMP,
+	MIGRATE_DUMP,
+	MIGRATE_RESTORE,
+};
+
+/*!
+ * \brief Options for the migrate API call.
+ */
+struct migrate_opts {
+	/* new members should be added at the end */
+	char *directory;
+	bool verbose;
+
+	bool stop; /* stop the container after dump? */
+	char *predump_dir; /* relative to directory above */
 };
 
 /*!

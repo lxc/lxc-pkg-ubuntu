@@ -23,9 +23,10 @@
 #ifndef __LXC_VERSION_H
 #define __LXC_VERSION_H
 
-#define LXC_VERSION_MAJOR 1
-#define LXC_VERSION_MINOR 1
-#define LXC_VERSION_MICRO 5
-#define LXC_VERSION "1.1.5"
+#define LXC_VERSION_MAJOR 2
+#define LXC_VERSION_MINOR 0
+#define LXC_VERSION_MICRO 0
+#define LXC_VERSION_ABI "1.2.0"
+#define LXC_VERSION "2.0.0.beta2"
 
 #endif

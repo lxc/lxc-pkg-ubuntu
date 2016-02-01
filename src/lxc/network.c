@@ -36,6 +36,7 @@
 #include <sys/socket.h>
 #include <sys/param.h>
 #include <sys/ioctl.h>
+#include <sys/inotify.h>
 #include <arpa/inet.h>
 #include <net/if.h>
 #include <net/if_arp.h>
@@ -109,6 +110,8 @@ int lxc_netdev_move_by_index(int ifindex, pid_t pid, const char* ifname)
 	nlmsg->nlmsghdr->nlmsg_type = RTM_NEWLINK;
 
 	ifi = nlmsg_reserve(nlmsg, sizeof(struct ifinfomsg));
+	if (!ifi)
+		goto out;
 	ifi->ifi_family = AF_UNSPEC;
 	ifi->ifi_index = ifindex;
 
@@ -158,8 +161,10 @@ static char * is_wlan(const char *ifname)
 	physlen = ftell(f);
 	fseek(f, 0, SEEK_SET);
 	physname = malloc(physlen+1);
-	if (!physname)
+	if (!physname) {
+		fclose(f);	
 		goto bad;
+	}
 	memset(physname, 0, physlen+1);
 	ret = fread(physname, 1, physlen, f);
 	fclose(f);
@@ -274,6 +279,8 @@ int lxc_netdev_delete_by_index(int ifindex)
 	nlmsg->nlmsghdr->nlmsg_type = RTM_DELLINK;
 
 	ifi = nlmsg_reserve(nlmsg, sizeof(struct ifinfomsg));
+	if (!ifi)
+		goto out;
 	ifi->ifi_family = AF_UNSPEC;
 	ifi->ifi_index = ifindex;
 
@@ -324,6 +331,8 @@ int lxc_netdev_rename_by_index(int ifindex, const char *newname)
 	nlmsg->nlmsghdr->nlmsg_type = RTM_NEWLINK;
 
 	ifi = nlmsg_reserve(nlmsg, sizeof(struct ifinfomsg));
+	if (!ifi)
+		goto out;
 	ifi->ifi_family = AF_UNSPEC;
 	ifi->ifi_index = ifindex;
 
@@ -387,6 +396,10 @@ int netdev_set_flag(const char *name, int flag)
 	nlmsg->nlmsghdr->nlmsg_type = RTM_NEWLINK;
 
 	ifi = nlmsg_reserve(nlmsg, sizeof(struct ifinfomsg));
+	if (!ifi) {
+		err = -ENOMEM;
+		goto out;
+	}
 	ifi->ifi_family = AF_UNSPEC;
 	ifi->ifi_index = index;
 	ifi->ifi_change |= IFF_UP;
@@ -437,6 +450,10 @@ int netdev_get_flag(const char* name, int *flag)
 	nlmsg->nlmsghdr->nlmsg_type = RTM_GETLINK;
 
 	ifi = nlmsg_reserve(nlmsg, sizeof(struct ifinfomsg));
+	if (!ifi) {
+		err = -ENOMEM;
+		goto out;
+	}
 	ifi->ifi_family = AF_UNSPEC;
 	ifi->ifi_index = index;
 
@@ -511,6 +528,8 @@ int netdev_get_mtu(int ifindex)
 	nlmsg->nlmsghdr->nlmsg_type = RTM_GETLINK;
 
 	ifi = nlmsg_reserve(nlmsg, sizeof(struct ifinfomsg));
+	if (!ifi)
+		goto out;
 	ifi->ifi_family = AF_UNSPEC;
 
 	/* Send the request for addresses, which returns all addresses
@@ -622,6 +641,10 @@ int lxc_netdev_set_mtu(const char *name, int mtu)
 	nlmsg->nlmsghdr->nlmsg_type = RTM_NEWLINK;
 
 	ifi = nlmsg_reserve(nlmsg, sizeof(struct ifinfomsg));
+	if (!ifi) {
+		err = -ENOMEM;
+		goto out;
+	}
 	ifi->ifi_family = AF_UNSPEC;
 	ifi->ifi_index = index;
 
@@ -681,6 +704,8 @@ int lxc_veth_create(const char *name1, const char *name2)
 	nlmsg->nlmsghdr->nlmsg_type = RTM_NEWLINK;
 
 	ifi = nlmsg_reserve(nlmsg, sizeof(struct ifinfomsg));
+	if (!ifi)
+		goto out;
 	ifi->ifi_family = AF_UNSPEC;
 
 	err = -EINVAL;
@@ -700,8 +725,10 @@ int lxc_veth_create(const char *name1, const char *name2)
 		goto out;
 
 	ifi = nlmsg_reserve(nlmsg, sizeof(struct ifinfomsg));
-	if (!ifi)
+	if (!ifi) {
+		err = -ENOMEM;
 		goto out;
+	}
 
 	if (nla_put_string(nlmsg, IFLA_IFNAME, name2))
 		goto out;
@@ -764,6 +791,10 @@ int lxc_vlan_create(const char *master, const char *name, unsigned short vlanid)
 	nlmsg->nlmsghdr->nlmsg_type = RTM_NEWLINK;
 
 	ifi = nlmsg_reserve(nlmsg, sizeof(struct ifinfomsg));
+	if (!ifi) {
+		err = -ENOMEM;
+		goto err1;
+	}
 	ifi->ifi_family = AF_UNSPEC;
 
 	nest = nla_begin_nested(nlmsg, IFLA_LINKINFO);
@@ -840,6 +871,10 @@ int lxc_macvlan_create(const char *master, const char *name, int mode)
 	nlmsg->nlmsghdr->nlmsg_type = RTM_NEWLINK;
 
 	ifi = nlmsg_reserve(nlmsg, sizeof(struct ifinfomsg));
+	if (!ifi) {
+		err = -ENOMEM;
+		goto out;
+	}
 	ifi->ifi_family = AF_UNSPEC;
 
 	nest = nla_begin_nested(nlmsg, IFLA_LINKINFO);
@@ -1021,6 +1056,8 @@ static int ip_addr_add(int family, int ifindex,
 	nlmsg->nlmsghdr->nlmsg_type = RTM_NEWADDR;
 
 	ifa = nlmsg_reserve(nlmsg, sizeof(struct ifaddrmsg));
+	if (!ifa) 
+		goto out;
 	ifa->ifa_prefixlen = prefix;
 	ifa->ifa_index = ifindex;
 	ifa->ifa_family = family;
@@ -1142,6 +1179,8 @@ static int ip_addr_get(int family, int ifindex, void **res)
 	nlmsg->nlmsghdr->nlmsg_type = RTM_GETADDR;
 
 	ifa = nlmsg_reserve(nlmsg, sizeof(struct ifaddrmsg));
+	if (!ifa)
+		goto out;
 	ifa->ifa_family = family;
 
 	/* Send the request for addresses, which returns all addresses
@@ -1256,6 +1295,8 @@ static int ip_gateway_add(int family, int ifindex, void *gw)
 	nlmsg->nlmsghdr->nlmsg_type = RTM_NEWROUTE;
 
 	rt = nlmsg_reserve(nlmsg, sizeof(struct rtmsg));
+	if (!rt)
+		goto out;
 	rt->rtm_family = family;
 	rt->rtm_table = RT_TABLE_MAIN;
 	rt->rtm_scope = RT_SCOPE_UNIVERSE;
@@ -1320,6 +1361,8 @@ static int ip_route_dest_add(int family, int ifindex, void *dest)
 	nlmsg->nlmsghdr->nlmsg_type = RTM_NEWROUTE;
 
 	rt = nlmsg_reserve(nlmsg, sizeof(struct rtmsg));
+	if (!rt)
+		goto out;
 	rt->rtm_family = family;
 	rt->rtm_table = RT_TABLE_MAIN;
 	rt->rtm_scope = RT_SCOPE_LINK;
@@ -1361,10 +1404,25 @@ static bool is_ovs_bridge(const char *bridge)
 	return false;
 }
 
-static int attach_to_ovs_bridge(const char *bridge, const char *nic)
+/*
+ * Called from a background thread - when nic goes away, remove
+ * it from the bridge
+ */
+static void ovs_cleanup_nic(const char *lxcpath, const char *name, const char *bridge, const char *nic)
+{
+	if (lxc_check_inherited(NULL, true, -1) < 0)
+		return;
+	if (lxc_wait(name, "STOPPED", -1, lxcpath) < 0)
+		return;
+	execlp("ovs-vsctl", "ovs-vsctl", "del-port", bridge, nic, NULL);
+	exit(1); /* not reached */
+}
+
+static int attach_to_ovs_bridge(const char *lxcpath, const char *name, const char *bridge, const char *nic)
 {
 	pid_t pid;
 	char *cmd;
+	int ret;
 
 	cmd = on_path("ovs-vsctl", NULL);
 	if (!cmd)
@@ -1374,8 +1432,18 @@ static int attach_to_ovs_bridge(const char *bridge, const char *nic)
 	pid = fork();
 	if (pid < 0)
 		return -1;
-	if (pid > 0)
-		return wait_for_pid(pid);
+	if (pid > 0) {
+		ret = wait_for_pid(pid);
+		if (ret < 0)
+			return ret;
+		pid = fork();
+		if (pid < 0)
+			return -1;  // how to properly recover?
+		if (pid > 0)
+			return 0;
+		ovs_cleanup_nic(lxcpath, name, bridge, nic);
+		exit(0);
+	}
 
 	if (execlp("ovs-vsctl", "ovs-vsctl", "add-port", bridge, nic, NULL))
 		exit(1);
@@ -1387,7 +1455,7 @@ static int attach_to_ovs_bridge(const char *bridge, const char *nic)
  * There is a lxc_bridge_attach, but no need of a bridge detach
  * as automatically done by kernel when a netdev is deleted.
  */
-int lxc_bridge_attach(const char *bridge, const char *ifname)
+int lxc_bridge_attach(const char *lxcpath, const char *name, const char *bridge, const char *ifname)
 {
 	int fd, index, err;
 	struct ifreq ifr;
@@ -1400,7 +1468,7 @@ int lxc_bridge_attach(const char *bridge, const char *ifname)
 		return -EINVAL;
 
 	if (is_ovs_bridge(bridge))
-		return attach_to_ovs_bridge(bridge, ifname);
+		return attach_to_ovs_bridge(lxcpath, name, bridge, ifname);
 
 	fd = socket(AF_INET, SOCK_STREAM, 0);
 	if (fd < 0)

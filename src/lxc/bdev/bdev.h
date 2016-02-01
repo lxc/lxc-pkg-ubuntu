@@ -27,11 +27,11 @@
  * aufs, dir, raw, btrfs, overlayfs, aufs, lvm, loop, zfs, nbd (qcow2, raw, vdi, qed)
  */
 
-#include "config.h"
-#include <stdint.h>
 #include <lxc/lxccontainer.h>
+#include <stdint.h>
 #include <sys/mount.h>
 
+#include "config.h"
 
 /* define constants if the kernel/glibc headers don't define them */
 #ifndef MS_DIRSYNC
@@ -57,6 +57,9 @@
 #ifndef MS_STRICTATIME
 #define MS_STRICTATIME (1 << 24)
 #endif
+
+#define DEFAULT_FS_SIZE 1073741824
+#define DEFAULT_FSTYPE "ext3"
 
 struct bdev;
 
@@ -97,8 +100,6 @@ struct bdev {
 	int nbd_idx;
 };
 
-char *overlay_getlower(char *p);
-
 bool bdev_is_dir(struct lxc_conf *conf, const char *path);
 bool bdev_can_backup(struct lxc_conf *conf);
 
@@ -127,6 +128,17 @@ bool bdev_destroy(struct lxc_conf *conf);
 /* callback function to be used with userns_exec_1() */
 int bdev_destroy_wrapper(void *data);
 
+/* Some helpers for lvm, rdb, and/or loop:
+ * Maybe they should move to a separate implementation and header-file
+ * (bdev_utils.{c,h}) which can be included in bdev.c?
+ */
+int blk_getsize(struct bdev *bdev, uint64_t *size);
+int detect_fs(struct bdev *bdev, char *type, int len);
+int do_mkfs(const char *path, const char *fstype);
+int is_blktype(struct bdev *b);
+int mount_unknown_fs(const char *rootfs, const char *target,
+		const char *options);
+bool rootfs_is_blockdev(struct lxc_conf *conf);
 /*
  * these are really for qemu-nbd support, as container shutdown
  * must explicitly request device detach.
@@ -134,5 +146,4 @@ int bdev_destroy_wrapper(void *data);
 bool attach_block_device(struct lxc_conf *conf);
 void detach_block_device(struct lxc_conf *conf);
 
-bool rootfs_is_blockdev(struct lxc_conf *conf);
-#endif
+#endif // __LXC_BDEV_H

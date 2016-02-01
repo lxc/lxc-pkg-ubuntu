@@ -71,7 +71,8 @@
 #include "conf.h"
 #include "log.h"
 #include "caps.h"       /* for lxc_caps_last_cap() */
-#include "bdev.h"
+#include "bdev/bdev.h"
+#include "bdev/lxcoverlay.h"
 #include "cgroup.h"
 #include "lxclock.h"
 #include "namespace.h"
@@ -163,7 +164,7 @@ return -1;
 #endif
 
 char *lxchook_names[NUM_LXC_HOOKS] = {
-	"pre-start", "pre-mount", "mount", "autodev", "start", "post-stop", "clone" };
+	"pre-start", "pre-mount", "mount", "autodev", "start", "stop", "post-stop", "clone", "destroy" };
 
 typedef int (*instantiate_cb)(struct lxc_handler *, struct lxc_netdev *);
 
@@ -450,97 +451,6 @@ static int run_script(const char *name, const char *section,
 	va_end(ap);
 
 	return run_buffer(buffer);
-}
-
-static int find_fstype_cb(char* buffer, void *data)
-{
-	struct cbarg {
-		const char *rootfs;
-		const char *target;
-		const char *options;
-	} *cbarg = data;
-
-	unsigned long mntflags;
-	char *mntdata;
-	char *fstype;
-
-	/* we don't try 'nodev' entries */
-	if (strstr(buffer, "nodev"))
-		return 0;
-
-	fstype = buffer;
-	fstype += lxc_char_left_gc(fstype, strlen(fstype));
-	fstype[lxc_char_right_gc(fstype, strlen(fstype))] = '\0';
-
-	/* ignore blank line and comment */
-	if (fstype[0] == '\0' || fstype[0] == '#')
-		return 0;
-
-	DEBUG("trying to mount '%s'->'%s' with fstype '%s'",
-	      cbarg->rootfs, cbarg->target, fstype);
-
-	if (parse_mntopts(cbarg->options, &mntflags, &mntdata) < 0) {
-		free(mntdata);
-		return -1;
-	}
-
-	if (mount(cbarg->rootfs, cbarg->target, fstype, mntflags, mntdata)) {
-		DEBUG("mount failed with error: %s", strerror(errno));
-		free(mntdata);
-		return 0;
-	}
-	free(mntdata);
-
-	INFO("mounted '%s' on '%s', with fstype '%s'",
-	     cbarg->rootfs, cbarg->target, fstype);
-
-	return 1;
-}
-
-static int mount_unknown_fs(const char *rootfs, const char *target,
-			                const char *options)
-{
-	int i;
-
-	struct cbarg {
-		const char *rootfs;
-		const char *target;
-		const char *options;
-	} cbarg = {
-		.rootfs = rootfs,
-		.target = target,
-		.options = options,
-	};
-
-	/*
-	 * find the filesystem type with brute force:
-	 * first we check with /etc/filesystems, in case the modules
-	 * are auto-loaded and fall back to the supported kernel fs
-	 */
-	char *fsfile[] = {
-		"/etc/filesystems",
-		"/proc/filesystems",
-	};
-
-	for (i = 0; i < sizeof(fsfile)/sizeof(fsfile[0]); i++) {
-
-		int ret;
-
-		if (access(fsfile[i], F_OK))
-			continue;
-
-		ret = lxc_file_for_each_line(fsfile[i], find_fstype_cb, &cbarg);
-		if (ret < 0) {
-			ERROR("failed to parse '%s'", fsfile[i]);
-			return -1;
-		}
-
-		if (ret)
-			return 0;
-	}
-
-	ERROR("failed to determine fs type for '%s'", rootfs);
-	return -1;
 }
 
 static int mount_rootfs_dir(const char *rootfs, const char *target,
@@ -1170,7 +1080,7 @@ static int mount_autodev(const char *name, const struct lxc_rootfs *rootfs, cons
 		return 0;
 	}
 
-	if (safe_mount("none", path, "tmpfs", 0, "size=100000,mode=755",
+	if (safe_mount("none", path, "tmpfs", 0, "size=500000,mode=755",
 				rootfs->path ? rootfs->mount : NULL)) {
 		SYSERROR("Failed mounting tmpfs onto %s\n", path);
 		return false;
@@ -1815,107 +1725,6 @@ static void cull_mntent_opt(struct mntent *mntent)
 	}
 }
 
-static char *ovl_get_rootfs_dir(const char *rootfs_path, size_t *rootfslen)
-{
-	char *rootfsdir = NULL;
-	char *s1 = NULL;
-	char *s2 = NULL;
-	char *s3 = NULL;
-
-	if (!rootfs_path || !rootfslen)
-		return NULL;
-
-	s1 = strdup(rootfs_path);
-	if (!s1)
-		return NULL;
-
-	if ((s2 = strstr(s1, ":/"))) {
-		s2 = s2 + 1;
-		if ((s3 = strstr(s2, ":/")))
-			*s3 = '\0';
-		rootfsdir = strdup(s2);
-		if (!rootfsdir) {
-			free(s1);
-			return NULL;
-		}
-	}
-
-	if (!rootfsdir)
-		rootfsdir = s1;
-	else
-		free(s1);
-
-	*rootfslen = strlen(rootfsdir);
-
-	return rootfsdir;
-}
-
-static int mount_entry_create_overlay_dirs(const struct mntent *mntent,
-					   const struct lxc_rootfs *rootfs,
-					   const char *lxc_name,
-					   const char *lxc_path)
-{
-	char lxcpath[MAXPATHLEN];
-	char *rootfsdir = NULL;
-	char *upperdir = NULL;
-	char *workdir = NULL;
-	char **opts = NULL;
-	int fret = -1;
-	int ret = 0;
-	size_t arrlen = 0;
-	size_t dirlen = 0;
-	size_t i;
-	size_t len = 0;
-	size_t rootfslen = 0;
-
-	if (!rootfs->path || !lxc_name || !lxc_path)
-		goto err;
-
-	opts = lxc_string_split(mntent->mnt_opts, ',');
-	if (opts)
-		arrlen = lxc_array_len((void **)opts);
-	else
-		goto err;
-
-	for (i = 0; i < arrlen; i++) {
-		if (strstr(opts[i], "upperdir=") && (strlen(opts[i]) > (len = strlen("upperdir="))))
-			upperdir = opts[i] + len;
-		else if (strstr(opts[i], "workdir=") && (strlen(opts[i]) > (len = strlen("workdir="))))
-			workdir = opts[i] + len;
-	}
-
-	ret = snprintf(lxcpath, MAXPATHLEN, "%s/%s", lxc_path, lxc_name);
-	if (ret < 0 || ret >= MAXPATHLEN)
-		goto err;
-
-	rootfsdir = ovl_get_rootfs_dir(rootfs->path, &rootfslen);
-	if (!rootfsdir)
-		goto err;
-
-	dirlen = strlen(lxcpath);
-
-	/* We neither allow users to create upperdirs and workdirs outside the
-	 * containerdir nor inside the rootfs. The latter might be debatable. */
-	if (upperdir)
-		if ((strncmp(upperdir, lxcpath, dirlen) == 0) && (strncmp(upperdir, rootfsdir, rootfslen) != 0))
-			if (mkdir_p(upperdir, 0755) < 0) {
-				WARN("Failed to create upperdir");
-			}
-
-	if (workdir)
-		if ((strncmp(workdir, lxcpath, dirlen) == 0) && (strncmp(workdir, rootfsdir, rootfslen) != 0))
-			if (mkdir_p(workdir, 0755) < 0) {
-				WARN("Failed to create workdir");
-			}
-
-	fret = 0;
-
-err:
-	free(rootfsdir);
-	lxc_free_array((void **)opts, free);
-	return fret;
-}
-
 static int mount_entry_create_aufs_dirs(const struct mntent *mntent,
 					const struct lxc_rootfs *rootfs,
 					const char *lxc_name,
@@ -1958,7 +1767,7 @@ static int mount_entry_create_aufs_dirs(const struct mntent *mntent,
 	if (ret < 0 || ret >= MAXPATHLEN)
 		goto err;
 
-	rootfsdir = ovl_get_rootfs_dir(rootfs->path, &rootfslen);
+	rootfsdir = ovl_get_rootfs(rootfs->path, &rootfslen);
 	if (!rootfsdir)
 		goto err;
 
@@ -1987,7 +1796,7 @@ static int mount_entry_create_dir_file(const struct mntent *mntent,
 	FILE *pathfile = NULL;
 
 	if (strncmp(mntent->mnt_type, "overlay", 7) == 0) {
-		if (mount_entry_create_overlay_dirs(mntent, rootfs, lxc_name, lxc_path) < 0)
+		if (ovl_mkdir(mntent, rootfs, lxc_name, lxc_path) < 0)
 			return -1;
 	} else if (strncmp(mntent->mnt_type, "aufs", 4) == 0) {
 		if (mount_entry_create_aufs_dirs(mntent, rootfs, lxc_name, lxc_path) < 0)
@@ -2623,6 +2432,7 @@ void restore_phys_nics_to_netns(int netnsfd, struct lxc_conf *conf)
 {
 	int i, ret, oldfd;
 	char path[MAXPATHLEN];
+	char ifname[IFNAMSIZ];
 
 	if (netnsfd < 0)
 		return;
@@ -2643,9 +2453,13 @@ void restore_phys_nics_to_netns(int netnsfd, struct lxc_conf *conf)
 	}
 	for (i=0; i<conf->num_savednics; i++) {
 		struct saved_nic *s = &conf->saved_nics[i];
-		if (lxc_netdev_move_by_index(s->ifindex, 1, NULL))
-			WARN("Error moving nic index:%d back to host netns",
-					s->ifindex);
+		/* retrieve the name of the interface */
+		if (!if_indextoname(s->ifindex, ifname)) {
+			WARN("no interface corresponding to index '%d'", s->ifindex);
+			continue;
+		}
+		if (lxc_netdev_move_by_name(ifname, 1, NULL))
+			WARN("Error moving nic name:%s back to host netns", ifname);
 	}
 	if (setns(oldfd, 0) != 0)
 		SYSERROR("Failed to re-enter monitor's netns");
@@ -2726,6 +2540,11 @@ struct lxc_conf *lxc_conf_init(void)
 	for (i = 0; i < LXC_NS_MAX; i++)
 		new->inherit_ns_fd[i] = -1;
 
+	/* if running in a new user namespace, init and COMMAND
+	 * default to running as UID/GID 0 when using lxc-execute */
+	new->init_uid = 0;
+	new->init_gid = 0;
+
 	return new;
 }
 
@@ -2733,7 +2552,7 @@ static int instantiate_veth(struct lxc_handler *handler, struct lxc_netdev *netd
 {
 	char veth1buf[IFNAMSIZ], *veth1;
 	char veth2buf[IFNAMSIZ], *veth2;
-	int err;
+	int err, mtu = 0;
 
 	if (netdev->priv.veth_attr.pair) {
 		veth1 = netdev->priv.veth_attr.pair;
@@ -2778,30 +2597,36 @@ static int instantiate_veth(struct lxc_handler *handler, struct lxc_netdev *netd
 		goto out_delete;
 	}
 
+	netdev->ifindex = if_nametoindex(veth2);
+	if (!netdev->ifindex) {
+		ERROR("failed to retrieve the index for %s", veth2);
+		goto out_delete;
+	}
+
 	if (netdev->mtu) {
-		err = lxc_netdev_set_mtu(veth1, atoi(netdev->mtu));
+		mtu = atoi(netdev->mtu);
+	} else if (netdev->link) {
+		mtu = netdev_get_mtu(netdev->ifindex);
+	}
+
+	if (mtu) {
+		err = lxc_netdev_set_mtu(veth1, mtu);
 		if (!err)
-			err = lxc_netdev_set_mtu(veth2, atoi(netdev->mtu));
+			err = lxc_netdev_set_mtu(veth2, mtu);
 		if (err) {
-			ERROR("failed to set mtu '%s' for veth pair (%s and %s): %s",
-			      netdev->mtu, veth1, veth2, strerror(-err));
+			ERROR("failed to set mtu '%i' for veth pair (%s and %s): %s",
+			      mtu, veth1, veth2, strerror(-err));
 			goto out_delete;
 		}
 	}
 
 	if (netdev->link) {
-		err = lxc_bridge_attach(netdev->link, veth1);
+		err = lxc_bridge_attach(handler->lxcpath, handler->name, netdev->link, veth1);
 		if (err) {
 			ERROR("failed to attach '%s' to the bridge '%s': %s",
 				      veth1, netdev->link, strerror(-err));
 			goto out_delete;
 		}
-	}
-
-	netdev->ifindex = if_nametoindex(veth2);
-	if (!netdev->ifindex) {
-		ERROR("failed to retrieve the index for %s", veth2);
-		goto out_delete;
 	}
 
 	err = lxc_netdev_up(veth1);
@@ -3111,7 +2936,9 @@ void lxc_delete_network(struct lxc_handler *handler)
 		 */
 		if (netdev->ifindex != 0 &&
 		    lxc_netdev_delete_by_index(netdev->ifindex))
-			WARN("failed to remove interface '%s'", netdev->name);
+			WARN("failed to remove interface %d '%s'",
+				netdev->ifindex,
+				netdev->name ? netdev->name : "(null)");
 	}
 }
 
@@ -3119,12 +2946,14 @@ void lxc_delete_network(struct lxc_handler *handler)
 
 /* lxc-user-nic returns "interface_name:interface_name\n" */
 #define MAX_BUFFER_SIZE IFNAMSIZ*2 + 2
-static int unpriv_assign_nic(struct lxc_netdev *netdev, pid_t pid)
+static int unpriv_assign_nic(const char *lxcpath, char *lxcname,
+			     struct lxc_netdev *netdev, pid_t pid)
 {
 	pid_t child;
 	int bytes, pipefd[2];
 	char *token, *saveptr = NULL;
 	char buffer[MAX_BUFFER_SIZE];
+	char netdev_link[IFNAMSIZ+1];
 
 	if (netdev->type != LXC_NET_VETH) {
 		ERROR("nic type %d not support for unprivileged use",
@@ -3154,10 +2983,15 @@ static int unpriv_assign_nic(struct lxc_netdev *netdev, pid_t pid)
 
 		// Call lxc-user-nic pid type bridge
 		char pidstr[20];
-		char *args[] = {LXC_USERNIC_PATH, pidstr, "veth", netdev->link, netdev->name, NULL };
+		if (netdev->link) {
+			strncpy(netdev_link, netdev->link, IFNAMSIZ);
+		} else {
+			strncpy(netdev_link, "none", IFNAMSIZ);
+		}
 		snprintf(pidstr, 19, "%lu", (unsigned long) pid);
 		pidstr[19] = '\0';
-		execvp(args[0], args);
+		execlp(LXC_USERNIC_PATH, LXC_USERNIC_PATH, lxcpath, lxcname,
+				pidstr, "veth", netdev_link, netdev->name, NULL);
 		SYSERROR("execvp lxc-user-nic");
 		exit(1);
 	}
@@ -3204,10 +3038,12 @@ static int unpriv_assign_nic(struct lxc_netdev *netdev, pid_t pid)
 	return 0;
 }
 
-int lxc_assign_network(struct lxc_list *network, pid_t pid)
+int lxc_assign_network(const char *lxcpath, char *lxcname,
+		       struct lxc_list *network, pid_t pid)
 {
 	struct lxc_list *iterator;
 	struct lxc_netdev *netdev;
+	char ifname[IFNAMSIZ];
 	int am_root = (getuid() == 0);
 	int err;
 
@@ -3216,7 +3052,7 @@ int lxc_assign_network(struct lxc_list *network, pid_t pid)
 		netdev = iterator->elem;
 
 		if (netdev->type == LXC_NET_VETH && !am_root) {
-			if (unpriv_assign_nic(netdev, pid))
+			if (unpriv_assign_nic(lxcpath, lxcname, netdev, pid))
 				return -1;
 			// lxc-user-nic has moved the nic to the new ns.
 			// unpriv_assign_nic() fills in netdev->name.
@@ -3228,7 +3064,13 @@ int lxc_assign_network(struct lxc_list *network, pid_t pid)
 		if (!netdev->ifindex)
 			continue;
 
-		err = lxc_netdev_move_by_index(netdev->ifindex, pid, NULL);
+		/* retrieve the name of the interface */
+		if (!if_indextoname(netdev->ifindex, ifname)) {
+			ERROR("no interface corresponding to index '%d'", netdev->ifindex);
+			return -1;
+		}
+
+		err = lxc_netdev_move_by_name(ifname, pid, NULL);
 		if (err) {
 			ERROR("failed to move '%s' to the container : %s",
 			      netdev->link, strerror(-err));
@@ -3669,6 +3511,7 @@ int ttys_shift_ids(struct lxc_conf *c)
 	return 0;
 }
 
+/* NOTE: not to be called from inside the container namespace! */
 int tmp_proc_mount(struct lxc_conf *lxc_conf)
 {
 	int mounted;
@@ -4044,10 +3887,14 @@ int run_lxc_hooks(const char *name, char *hook, struct lxc_conf *conf,
 		which = LXCHOOK_AUTODEV;
 	else if (strcmp(hook, "start") == 0)
 		which = LXCHOOK_START;
+	else if (strcmp(hook, "stop") == 0)
+		which = LXCHOOK_STOP;
 	else if (strcmp(hook, "post-stop") == 0)
 		which = LXCHOOK_POSTSTOP;
 	else if (strcmp(hook, "clone") == 0)
 		which = LXCHOOK_CLONE;
+	else if (strcmp(hook, "destroy") == 0)
+		which = LXCHOOK_DESTROY;
 	else
 		return -1;
 	lxc_list_for_each(it, &conf->hooks[which]) {

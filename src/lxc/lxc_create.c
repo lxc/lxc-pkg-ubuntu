@@ -29,7 +29,7 @@
 
 #include "lxc.h"
 #include "log.h"
-#include "bdev.h"
+#include "bdev/bdev.h"
 #include "arguments.h"
 #include "utils.h"
 
@@ -81,6 +81,8 @@ static int my_parser(struct lxc_arguments* args, int c, char* arg)
 	case '4': args->fssize = get_fssize(arg); break;
 	case '5': args->zfsroot = arg; break;
 	case '6': args->dir = arg; break;
+	case '7': args->rbdname = arg; break;
+	case '8': args->rbdpool = arg; break;
 	}
 	return 0;
 }
@@ -96,6 +98,8 @@ static const struct option my_longopts[] = {
 	{"fssize", required_argument, 0, '4'},
 	{"zfsroot", required_argument, 0, '5'},
 	{"dir", required_argument, 0, '6'},
+	{"rbdname", required_argument, 0, '7'},
+	{"rbdpool", required_argument, 0, '8'},
 	LXC_COMMON_OPTIONS
 };
 
@@ -126,29 +130,41 @@ static struct lxc_arguments my_args = {
 	.progname = "lxc-create",
 	.helpfn   = create_helpfn,
 	.help     = "\
---name=NAME -t template [-w] [-r] [-P lxcpath]\n\
+--name=NAME --template=TEMPLATE [OPTION...]\n\
 \n\
 lxc-create creates a container\n\
 \n\
 Options :\n\
-  -n, --name=NAME    NAME of the container\n\
-  -f, --config=file  Initial configuration file\n\
-  -t, --template=t   Template to use to setup container\n\
-  -B, --bdev=BDEV    Backing store type to use\n\
-  -P, --lxcpath=PATH Place container under PATH\n\
-  --lvname=LVNAME    Use LVM lv name LVNAME\n\
-                     (Default: container name)\n\
-  --vgname=VG        Use LVM vg called VG\n\
-                     (Default: lxc)\n\
-  --thinpool=TP      Use LVM thin pool called TP\n\
-                     (Default: lxc)\n\
-  --fstype=TYPE      Create fstype TYPE\n\
-                     (Default: ext3)\n\
-  --fssize=SIZE[U]   Create filesystem of size SIZE * unit U (bBkKmMgGtT)\n\
-                     (Default: 1G, default unit: M)\n\
-  --dir=DIR          Place rootfs directory under DIR\n\
-  --zfsroot=PATH     Create zfs under given zfsroot\n\
-                     (Default: tank/lxc)\n",
+  -n, --name=NAME               NAME of the container\n\
+  -f, --config=CONFIG           Initial configuration file\n\
+  -t, --template=TEMPLATE       Template to use to setup container\n\
+  -B, --bdev=BDEV               Backing store type to use\n\
+      --dir=DIR                 Place rootfs directory under DIR\n\
+\n\
+  BDEV options for LVM (with -B/--bdev lvm):\n\
+      --lvname=LVNAME           Use LVM lv name LVNAME\n\
+                                (Default: container name)\n\
+      --vgname=VG               Use LVM vg called VG\n\
+                                (Default: lxc)\n\
+      --thinpool=TP             Use LVM thin pool called TP\n\
+                                (Default: lxc)\n\
+\n\
+  BDEV options for Ceph RBD (with -B/--bdev rbd) :\n\
+      --rbdname=RBDNAME         Use Ceph RBD name RBDNAME\n\
+                                (Default: container name)\n\
+      --rbdpool=POOL            Use Ceph RBD pool name POOL\n\
+                                (Default: lxc)\n\
+\n\
+  BDEV option for ZFS (with -B/--bdev zfs) :\n\
+      --zfsroot=PATH            Create zfs under given zfsroot\n\
+                                (Default: tank/lxc)\n\
+\n\
+  BDEV options for LVM or Loop (with -B/--bdev lvm/loop) :\n\
+      --fstype=TYPE             Create fstype TYPE\n\
+                                (Default: ext3)\n\
+      --fssize=SIZE[U]          Create filesystem of\n\
+                                size SIZE * unit U (bBkKmMgGtT)\n\
+                                (Default: 1G, default unit: M)\n",
 	.options  = my_longopts,
 	.parser   = my_parser,
 	.checker  = NULL,
@@ -159,7 +175,8 @@ static bool validate_bdev_args(struct lxc_arguments *a)
 	if (strcmp(a->bdevtype, "best") != 0) {
 		if (a->fstype || a->fssize) {
 			if (strcmp(a->bdevtype, "lvm") != 0 &&
-			    strcmp(a->bdevtype, "loop") != 0) {
+			    strcmp(a->bdevtype, "loop") != 0 &&
+			    strcmp(a->bdevtype, "rbd") != 0) {
 				fprintf(stderr, "filesystem type and size are only valid with block devices\n");
 				return false;
 			}
@@ -167,6 +184,12 @@ static bool validate_bdev_args(struct lxc_arguments *a)
 		if (strcmp(a->bdevtype, "lvm") != 0) {
 			if (a->lvname || a->vgname || a->thinpool) {
 				fprintf(stderr, "--lvname, --vgname and --thinpool are only valid with -B lvm\n");
+				return false;
+			}
+		}
+		if (strcmp(a->bdevtype, "rbd") != 0) {
+			if (a->rbdname || a->rbdpool) {
+				fprintf(stderr, "--rbdname and --rbdpool are only valid with -B rbd\n");
 				return false;
 			}
 		}
@@ -261,6 +284,12 @@ int main(int argc, char *argv[])
 			spec.lvm.vg = my_args.vgname;
 		if (my_args.thinpool)
 			spec.lvm.thinpool = my_args.thinpool;
+	}
+	if (strcmp(my_args.bdevtype, "rbd") == 0 || strcmp(my_args.bdevtype, "best") == 0) {
+		if (my_args.rbdname)
+			spec.rbd.rbdname = my_args.rbdname;
+		if (my_args.rbdpool)
+			spec.rbd.rbdpool = my_args.rbdpool;
 	}
 	if (my_args.dir) {
 		spec.dir = my_args.dir;

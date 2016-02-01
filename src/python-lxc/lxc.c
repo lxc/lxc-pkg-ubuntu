@@ -117,6 +117,12 @@ struct lxc_attach_python_payload {
 
 static int lxc_attach_python_exec(void* _payload)
 {
+    /* This function is the first one to be called after attaching to a
+     * container. As lxc_attach() calls fork() PyOS_AfterFork should be called
+     * in the new process if the Python interpreter will continue to be used.
+     */
+    PyOS_AfterFork();
+
     struct lxc_attach_python_payload *payload =
         (struct lxc_attach_python_payload *)_payload;
     PyObject *result = PyObject_CallFunctionObjArgs(payload->fn,
@@ -800,11 +806,11 @@ Container_create(Container *self, PyObject *args, PyObject *kwds)
     char** create_args = {NULL};
     PyObject *retval = NULL;
     PyObject *vargs = NULL;
+    char *bdevtype = NULL;
     int i = 0;
-    static char *kwlist[] = {"template", "flags", "args", NULL};
-
-    if (! PyArg_ParseTupleAndKeywords(args, kwds, "|siO", kwlist,
-                                      &template_name, &flags, &vargs))
+    static char *kwlist[] = {"template", "flags", "bdevtype", "args", NULL};
+    if (! PyArg_ParseTupleAndKeywords(args, kwds, "|sisO", kwlist,
+                                      &template_name, &flags, &bdevtype, &vargs))
         return NULL;
 
     if (vargs) {
@@ -820,7 +826,7 @@ Container_create(Container *self, PyObject *args, PyObject *kwds)
         }
     }
 
-    if (self->container->create(self->container, template_name, NULL, NULL,
+    if (self->container->create(self->container, template_name, bdevtype, NULL,
                                 flags, create_args))
         retval = Py_True;
     else

@@ -1,10 +1,11 @@
 #                                               -*- Autoconf -*-
 # Process this file with autoconf to produce a configure script.
 
-m4_define([lxc_version_major], 1)
-m4_define([lxc_version_minor], 1)
-m4_define([lxc_version_micro], 5)
-m4_define([lxc_version_beta], [])
+m4_define([lxc_version_major], 2)
+m4_define([lxc_version_minor], 0)
+m4_define([lxc_version_micro], 0)
+m4_define([lxc_version_beta], beta2)
+m4_define([lxc_version_abi], 1.2.0)
 
 m4_define([lxc_version_base], [lxc_version_major.lxc_version_minor.lxc_version_micro])
 m4_define([lxc_version],
@@ -21,6 +22,7 @@ AC_SUBST(LXC_VERSION_BETA, lxc_version_beta)
 AC_SUBST([LXC_VERSION_MAJOR], [lxc_version_major])
 AC_SUBST([LXC_VERSION_MINOR], [lxc_version_minor])
 AC_SUBST([LXC_VERSION_MICRO], [lxc_version_micro])
+AC_SUBST([LXC_VERSION_ABI], [lxc_version_abi])
 AC_SUBST([LXC_VERSION], [lxc_version])
 
 AC_CONFIG_SRCDIR([configure.ac])
@@ -34,13 +36,14 @@ AC_GNU_SOURCE
 # Detect the distribution. This is used for the default configuration and
 # for some distro-specific build options.
 AC_MSG_CHECKING([host distribution])
-AC_ARG_WITH(distro, AS_HELP_STRING([--with-distro=DISTRO], [Specify the Linux distribution to target: One of redhat, oracle, centos, fedora, suse, gentoo, debian, arch, slackware, paldo, openmandriva or pardus.]))
+AC_ARG_WITH(distro, AS_HELP_STRING([--with-distro=DISTRO], [Specify the Linux distribution to target: One of redhat, oracle, centos, fedora, suse, gentoo, debian, arch, slackware, plamo, paldo, openmandriva, pardus, sparclinux.]))
 if type lsb_release >/dev/null 2>&1 && test "z$with_distro" = "z"; then
 	with_distro=`lsb_release -is`
 fi
 if test "z$with_distro" = "z"; then
 	AC_CHECK_FILE(/etc/redhat-release,with_distro="redhat")
 	AC_CHECK_FILE(/etc/oracle-release,with_distro="oracle")
+	AC_CHECK_FILE(/etc/sparclinux-release,with_distro="sparclinux")
 	AC_CHECK_FILE(/etc/centos-release,with_distro="centos")
 	AC_CHECK_FILE(/etc/fedora-release,with_distro="fedora")
 	AC_CHECK_FILE(/etc/SuSE-release,with_distro="suse")
@@ -48,12 +51,17 @@ if test "z$with_distro" = "z"; then
 	AC_CHECK_FILE(/etc/debian_version,with_distro="debian")
 	AC_CHECK_FILE(/etc/arch-release,with_distro="arch")
 	AC_CHECK_FILE(/etc/slackware-version,with_distro="slackware")
+	AC_CHECK_FILE(/etc/plamo-version,with_distro="plamo")
 	AC_CHECK_FILE(/etc/frugalware-release,with_distro="frugalware")
 	AC_CHECK_FILE(/etc/mandrakelinux-release, with_distro="openmandriva")
 	AC_CHECK_FILE(/etc/mandriva-release,with_distro="openmandriva")
 	AC_CHECK_FILE(/etc/pardus-release,with_distro="pardus")
 fi
 with_distro=`echo ${with_distro} | tr '[[:upper:]]' '[[:lower:]]'`
+
+if test "z$with_distro" = "zforsparc"; then
+	with_distro="sparclinux"
+fi
 
 if test "z$with_distro" = "z"; then
 	with_distro="unknown"
@@ -63,7 +71,7 @@ case $with_distro in
 		distroconf=default.conf.lxcbr
 		distrosysconf="$sysconfdir/default"
 		;;
-	redhat|centos|fedora|oracle|oracleserver|suse|opensuse*)
+	redhat|centos|fedora|oracle|oracleserver|sparclinux|suse|opensuse*|plamo)
 		distroconf=default.conf.lxcbr
 		distrosysconf="$sysconfdir/sysconfig"
 		;;
@@ -90,7 +98,7 @@ case "$with_init_script" in
 			fedora|opensuse*)
 				init_script=systemd
 				;;
-			redhat|centos|oracle|oracleserver)
+			redhat|centos|oracle|oracleserver|sparclinux|plamo)
 				init_script=sysvinit
 				;;
 			debian|raspbian)
@@ -539,6 +547,7 @@ AS_AC_EXPAND(LXCROOTFSMOUNT, "$with_rootfs_path")
 AS_AC_EXPAND(LXCTEMPLATEDIR, "$datadir/lxc/templates")
 AS_AC_EXPAND(LXCTEMPLATECONFIG, "$datadir/lxc/config")
 AS_AC_EXPAND(LXCHOOKDIR, "$datadir/lxc/hooks")
+AS_AC_EXPAND(LXCBINHOOKDIR, "$libexecdir/lxc/hooks")
 AS_AC_EXPAND(LXCINITDIR, "$libexecdir")
 AS_AC_EXPAND(LOGPATH, "$with_log_path")
 AS_AC_EXPAND(RUNTIME_PATH, "$with_runtime_path")
@@ -588,6 +597,10 @@ AC_CHECK_FUNCS([getline],
 	AM_CONDITIONAL(HAVE_GETLINE, true)
 	AC_DEFINE(HAVE_GETLINE,1,[Have getline]),
 	AM_CONDITIONAL(HAVE_GETLINE, false))
+AC_CHECK_FUNCS([getsubopt],
+	AM_CONDITIONAL(HAVE_GETSUBOPT, true)
+	AC_DEFINE(HAVE_GETSUBOPT,1,[Have getsubopt]),
+	AM_CONDITIONAL(HAVE_GETSUBOPT, false))
 AC_CHECK_FUNCS([fgetln],
 	AM_CONDITIONAL(HAVE_FGETLN, true)
 	AC_DEFINE(HAVE_FGETLN,1,[Have fgetln]),
@@ -625,6 +638,7 @@ AC_CONFIG_FILES([
 	config/init/common/lxc-net
 	config/init/systemd/Makefile
 	config/init/systemd/lxc.service
+	config/init/systemd/lxc@.service
 	config/init/systemd/lxc-net.service
 	config/init/sysvinit/Makefile
 	config/init/sysvinit/lxc-containers
@@ -653,6 +667,8 @@ AC_CONFIG_FILES([
 	config/templates/oracle.userns.conf
 	config/templates/plamo.common.conf
 	config/templates/plamo.userns.conf
+	config/templates/slackware.common.conf
+	config/templates/slackware.userns.conf
 	config/templates/ubuntu-cloud.common.conf
 	config/templates/ubuntu-cloud.lucid.conf
 	config/templates/ubuntu-cloud.userns.conf
@@ -660,6 +676,8 @@ AC_CONFIG_FILES([
 	config/templates/ubuntu.lucid.conf
 	config/templates/ubuntu.userns.conf
 	config/templates/openwrt.common.conf
+	config/templates/sparclinux.common.conf
+	config/templates/sparclinux.userns.conf
 	config/templates/userns.conf
 	config/yum/Makefile
 	config/sysconfig/Makefile
@@ -676,6 +694,7 @@ AC_CONFIG_FILES([
 	doc/lxc-clone.sgml
 	doc/lxc-config.sgml
 	doc/lxc-console.sgml
+	doc/lxc-copy.sgml
 	doc/lxc-create.sgml
 	doc/lxc-destroy.sgml
 	doc/lxc-device.sgml
@@ -724,6 +743,7 @@ AC_CONFIG_FILES([
 	doc/ja/lxc-clone.sgml
 	doc/ja/lxc-config.sgml
 	doc/ja/lxc-console.sgml
+	doc/ja/lxc-copy.sgml
 	doc/ja/lxc-create.sgml
 	doc/ja/lxc-destroy.sgml
 	doc/ja/lxc-device.sgml
@@ -751,6 +771,44 @@ AC_CONFIG_FILES([
 	doc/ja/common_options.sgml
 	doc/ja/see_also.sgml
 
+	doc/ko/Makefile
+	doc/ko/legacy/lxc-ls.sgml
+	doc/ko/lxc-attach.sgml
+	doc/ko/lxc-autostart.sgml
+	doc/ko/lxc-cgroup.sgml
+	doc/ko/lxc-checkconfig.sgml
+	doc/ko/lxc-checkpoint.sgml
+	doc/ko/lxc-clone.sgml
+	doc/ko/lxc-config.sgml
+	doc/ko/lxc-console.sgml
+	doc/ko/lxc-copy.sgml
+	doc/ko/lxc-create.sgml
+	doc/ko/lxc-destroy.sgml
+	doc/ko/lxc-device.sgml
+	doc/ko/lxc-execute.sgml
+	doc/ko/lxc-freeze.sgml
+	doc/ko/lxc-info.sgml
+	doc/ko/lxc-ls.sgml
+	doc/ko/lxc-monitor.sgml
+	doc/ko/lxc-snapshot.sgml
+	doc/ko/lxc-start-ephemeral.sgml
+	doc/ko/lxc-start.sgml
+	doc/ko/lxc-stop.sgml
+	doc/ko/lxc-top.sgml
+	doc/ko/lxc-unfreeze.sgml
+	doc/ko/lxc-unshare.sgml
+	doc/ko/lxc-user-nic.sgml
+	doc/ko/lxc-usernsexec.sgml
+	doc/ko/lxc-wait.sgml
+
+	doc/ko/lxc.conf.sgml
+	doc/ko/lxc.container.conf.sgml
+	doc/ko/lxc.system.conf.sgml
+	doc/ko/lxc-usernet.sgml
+	doc/ko/lxc.sgml
+	doc/ko/common_options.sgml
+	doc/ko/see_also.sgml
+
 	hooks/Makefile
 
 	templates/Makefile
@@ -768,9 +826,11 @@ AC_CONFIG_FILES([
 	templates/lxc-opensuse
 	templates/lxc-oracle
 	templates/lxc-plamo
+	templates/lxc-slackware
 	templates/lxc-sshd
 	templates/lxc-ubuntu
 	templates/lxc-ubuntu-cloud
+	templates/lxc-sparclinux
 
 	src/Makefile
 	src/lxc/Makefile

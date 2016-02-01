@@ -100,11 +100,16 @@ static int config_includefile(const char *, const char *, struct lxc_conf *);
 static int config_network_nic(const char *, const char *, struct lxc_conf *);
 static int config_autodev(const char *, const char *, struct lxc_conf *);
 static int config_haltsignal(const char *, const char *, struct lxc_conf *);
+static int config_rebootsignal(const char *, const char *, struct lxc_conf *);
 static int config_stopsignal(const char *, const char *, struct lxc_conf *);
 static int config_start(const char *, const char *, struct lxc_conf *);
+static int config_monitor(const char *, const char *, struct lxc_conf *);
 static int config_group(const char *, const char *, struct lxc_conf *);
 static int config_environment(const char *, const char *, struct lxc_conf *);
 static int config_init_cmd(const char *, const char *, struct lxc_conf *);
+static int config_init_uid(const char *, const char *, struct lxc_conf *);
+static int config_init_gid(const char *, const char *, struct lxc_conf *);
+static int config_ephemeral(const char *, const char *, struct lxc_conf *);
 
 static struct lxc_config_t config[] = {
 
@@ -133,8 +138,10 @@ static struct lxc_config_t config[] = {
 	{ "lxc.hook.mount",           config_hook                 },
 	{ "lxc.hook.autodev",         config_hook                 },
 	{ "lxc.hook.start",           config_hook                 },
+	{ "lxc.hook.stop",            config_hook                 },
 	{ "lxc.hook.post-stop",       config_hook                 },
 	{ "lxc.hook.clone",           config_hook                 },
+	{ "lxc.hook.destroy",         config_hook                 },
 	{ "lxc.hook",                 config_hook                 },
 	{ "lxc.network.type",         config_network_type         },
 	{ "lxc.network.flags",        config_network_flags        },
@@ -162,13 +169,18 @@ static struct lxc_config_t config[] = {
 	{ "lxc.include",              config_includefile          },
 	{ "lxc.autodev",              config_autodev              },
 	{ "lxc.haltsignal",           config_haltsignal           },
+	{ "lxc.rebootsignal",         config_rebootsignal         },
 	{ "lxc.stopsignal",           config_stopsignal           },
 	{ "lxc.start.auto",           config_start                },
 	{ "lxc.start.delay",          config_start                },
 	{ "lxc.start.order",          config_start                },
+	{ "lxc.monitor.unshare",      config_monitor              },
 	{ "lxc.group",                config_group                },
 	{ "lxc.environment",          config_environment          },
 	{ "lxc.init_cmd",             config_init_cmd             },
+	{ "lxc.init_uid",             config_init_uid             },
+	{ "lxc.init_gid",             config_init_gid             },
+	{ "lxc.ephemeral",            config_ephemeral            },
 };
 
 struct signame {
@@ -576,6 +588,10 @@ static int network_ifname(char **valuep, const char *value)
 #  define MACVLAN_MODE_BRIDGE 4
 #endif
 
+#ifndef MACVLAN_MODE_PASSTHRU
+#  define MACVLAN_MODE_PASSTHRU 8
+#endif
+
 static int macvlan_mode(int *valuep, const char *value)
 {
 	struct mc_mode {
@@ -585,6 +601,7 @@ static int macvlan_mode(int *valuep, const char *value)
 		{ "private", MACVLAN_MODE_PRIVATE },
 		{ "vepa", MACVLAN_MODE_VEPA },
 		{ "bridge", MACVLAN_MODE_BRIDGE },
+		{ "passthru", MACVLAN_MODE_PASSTHRU },
 	};
 
 	int i;
@@ -954,7 +971,7 @@ static int config_network_ipv6_gateway(const char *key, const char *value,
 	free(netdev->ipv6_gateway);
 
 	if (!value || strlen(value) == 0) {
-		netdev->ipv4_gateway = NULL;
+		netdev->ipv6_gateway = NULL;
 	} else if (!strcmp(value, "auto")) {
 		netdev->ipv6_gateway = NULL;
 		netdev->ipv6_gateway_auto = true;
@@ -1030,11 +1047,25 @@ static int config_init_cmd(const char *key, const char *value,
 	return config_path_item(&lxc_conf->init_cmd, value);
 }
 
+static int config_init_uid(const char *key, const char *value,
+				 struct lxc_conf *lxc_conf)
+{
+	lxc_conf->init_uid = atoi(value);
+	return 0;
+}
+
+static int config_init_gid(const char *key, const char *value,
+				 struct lxc_conf *lxc_conf)
+{
+	lxc_conf->init_gid = atoi(value);
+	return 0;
+}
+
 static int config_hook(const char *key, const char *value,
 				 struct lxc_conf *lxc_conf)
 {
 	char *copy;
-	
+
 	if (!value || strlen(value) == 0)
 		return lxc_clear_hooks(lxc_conf, key);
 
@@ -1057,10 +1088,14 @@ static int config_hook(const char *key, const char *value,
 		return add_hook(lxc_conf, LXCHOOK_MOUNT, copy);
 	else if (strcmp(key, "lxc.hook.start") == 0)
 		return add_hook(lxc_conf, LXCHOOK_START, copy);
+	else if (strcmp(key, "lxc.hook.stop") == 0)
+		return add_hook(lxc_conf, LXCHOOK_STOP, copy);
 	else if (strcmp(key, "lxc.hook.post-stop") == 0)
 		return add_hook(lxc_conf, LXCHOOK_POSTSTOP, copy);
 	else if (strcmp(key, "lxc.hook.clone") == 0)
 		return add_hook(lxc_conf, LXCHOOK_CLONE, copy);
+	else if (strcmp(key, "lxc.hook.destroy") == 0)
+		return add_hook(lxc_conf, LXCHOOK_DESTROY, copy);
 	SYSERROR("Unknown key: %s", key);
 	free(copy);
 	return -1;
@@ -1102,6 +1137,17 @@ static int config_start(const char *key, const char *value,
 	}
 	else if (strcmp(key, "lxc.start.order") == 0) {
 		lxc_conf->start_order = atoi(value);
+		return 0;
+	}
+	SYSERROR("Unknown key: %s", key);
+	return -1;
+}
+
+static int config_monitor(const char *key, const char *value,
+			  struct lxc_conf *lxc_conf)
+{
+	if(strcmp(key, "lxc.monitor.unshare") == 0) {
+		lxc_conf->monitor_unshare = atoi(value);
 		return 0;
 	}
 	SYSERROR("Unknown key: %s", key);
@@ -1325,6 +1371,18 @@ static int config_haltsignal(const char *key, const char *value,
 	if (sig_n < 0)
 		return -1;
 	lxc_conf->haltsignal = sig_n;
+
+	return 0;
+}
+
+static int config_rebootsignal(const char *key, const char *value,
+			     struct lxc_conf *lxc_conf)
+{
+	int sig_n = sig_parse(value);
+
+	if (sig_n < 0)
+		return -1;
+	lxc_conf->rebootsignal = sig_n;
 
 	return 0;
 }
@@ -2305,6 +2363,7 @@ static int lxc_get_item_nic(struct lxc_conf *c, char *retv, int inlen,
 			case MACVLAN_MODE_PRIVATE: mode = "private"; break;
 			case MACVLAN_MODE_VEPA: mode = "vepa"; break;
 			case MACVLAN_MODE_BRIDGE: mode = "bridge"; break;
+			case MACVLAN_MODE_PASSTHRU: mode = "passthru"; break;
 			default: mode = "(invalid)"; break;
 			}
 			strprint(retv, inlen, "%s", mode);
@@ -2437,6 +2496,8 @@ int lxc_get_config_item(struct lxc_conf *c, const char *key, char *retv,
 		return lxc_get_conf_int(c, retv, inlen, c->start_delay);
 	else if (strcmp(key, "lxc.start.order") == 0)
 		return lxc_get_conf_int(c, retv, inlen, c->start_order);
+	else if (strcmp(key, "lxc.monitor.unshare") == 0)
+		return lxc_get_conf_int(c, retv, inlen, c->monitor_unshare);
 	else if (strcmp(key, "lxc.group") == 0)
 		return lxc_get_item_groups(c, retv, inlen);
 	else if (strcmp(key, "lxc.seccomp") == 0)
@@ -2445,6 +2506,12 @@ int lxc_get_config_item(struct lxc_conf *c, const char *key, char *retv,
 		return lxc_get_item_environment(c, retv, inlen);
 	else if (strcmp(key, "lxc.init_cmd") == 0)
 		v = c->init_cmd;
+	else if (strcmp(key, "lxc.init_uid") == 0)
+		return lxc_get_conf_int(c, retv, inlen, c->init_uid);
+	else if (strcmp(key, "lxc.init_gid") == 0)
+		return lxc_get_conf_int(c, retv, inlen, c->init_gid);
+	else if (strcmp(key, "lxc.ephemeral") == 0)
+		return lxc_get_conf_int(c, retv, inlen, c->ephemeral);
 	else return -1;
 
 	if (!v)
@@ -2466,7 +2533,7 @@ int lxc_clear_config_item(struct lxc_conf *c, const char *key)
 		return lxc_clear_config_keepcaps(c);
 	else if (strncmp(key, "lxc.cgroup", 10) == 0)
 		return lxc_clear_cgroups(c, key);
-	else if (strcmp(key, "lxc.mount.entries") == 0)
+	else if (strcmp(key, "lxc.mount.entry") == 0)
 		return lxc_clear_mount_entries(c);
 	else if (strcmp(key, "lxc.mount.auto") == 0)
 		return lxc_clear_automounts(c);
@@ -2808,3 +2875,19 @@ bool network_new_hwaddrs(struct lxc_conf *conf)
 	}
 	return true;
 }
+
+static int config_ephemeral(const char *key, const char *value,
+			    struct lxc_conf *lxc_conf)
+{
+	int v = atoi(value);
+
+	if (v != 0 && v != 1) {
+		ERROR("Wrong value for lxc.ephemeral. Can only be set to 0 or 1");
+		return -1;
+	} else {
+		lxc_conf->ephemeral = v;
+	}
+
+	return 0;
+}
+

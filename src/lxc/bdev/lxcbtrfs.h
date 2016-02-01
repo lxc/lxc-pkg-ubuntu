@@ -1,3 +1,35 @@
+/*
+ * lxc: linux Container library
+ *
+ * (C) Copyright IBM Corp. 2007, 2008
+ *
+ * Authors:
+ * Daniel Lezcano <daniel.lezcano at free.fr>
+ *
+ * This library is free software; you can redistribute it and/or
+ * modify it under the terms of the GNU Lesser General Public
+ * License as published by the Free Software Foundation; either
+ * version 2.1 of the License, or (at your option) any later version.
+ *
+ * This library is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
+ * Lesser General Public License for more details.
+ *
+ * You should have received a copy of the GNU Lesser General Public
+ * License along with this library; if not, write to the Free Software
+ * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA
+ */
+
+#ifndef __LXC_BTRFS_H
+#define __LXC_BTRFS_H
+
+#define _GNU_SOURCE
+#include <linux/types.h> /* __le64, __l32 ... */
+#include <stdbool.h>
+#include <stdint.h>
+#include <byteswap.h>
+
 typedef uint8_t u8;
 typedef uint16_t u16;
 typedef uint32_t u32;
@@ -12,7 +44,7 @@ struct btrfs_ioctl_space_info {
 struct btrfs_ioctl_space_args {
 	unsigned long long space_slots;
 	unsigned long long total_spaces;
-	struct btrfs_ioctl_space_info spaces[0];
+	struct btrfs_ioctl_space_info spaces[];
 };
 
 #define BTRFS_IOCTL_MAGIC 0x94
@@ -285,3 +317,95 @@ struct btrfs_ioctl_ino_lookup_args {
 #define BTRFS_FIRST_FREE_OBJECTID 256ULL
 #define BTRFS_LAST_FREE_OBJECTID -256ULL
 #define BTRFS_FIRST_CHUNK_TREE_OBJECTID 256ULL
+
+/*
+ * The followings are macro for correctly getting member of
+ * structures in both low and big endian platforms as per
+ * btrfs-progs
+ */
+#ifdef __CHECKER__
+#define __force    __attribute__((force))
+#else
+#define __force
+#endif
+
+#if __BYTE_ORDER == __BIG_ENDIAN
+#define cpu_to_le64(x) ((__force __le64)(u64)(bswap_64(x)))
+#define le64_to_cpu(x) ((__force u64)(__le64)(bswap_64(x)))
+#define cpu_to_le32(x) ((__force __le32)(u32)(bswap_32(x)))
+#define le32_to_cpu(x) ((__force u32)(__le32)(bswap_32(x)))
+#define cpu_to_le16(x) ((__force __le16)(u16)(bswap_16(x)))
+#define le16_to_cpu(x) ((__force u16)(__le16)(bswap_16(x)))
+#else
+#define cpu_to_le64(x) ((__force __le64)(u64)(x))
+#define le64_to_cpu(x) ((__force u64)(__le64)(x))
+#define cpu_to_le32(x) ((__force __le32)(u32)(x))
+#define le32_to_cpu(x) ((__force u32)(__le32)(x))
+#define cpu_to_le16(x) ((__force __le16)(u16)(x))
+#define le16_to_cpu(x) ((__force u16)(__le16)(x))
+#endif
+
+#define BTRFS_SETGET_STACK_FUNCS(name, type, member, bits)              \
+static inline u##bits btrfs_##name(type *s)                             \
+{                                                                       \
+        return le##bits##_to_cpu(s->member);                            \
+}                                                                       \
+static inline void btrfs_set_##name(type *s, u##bits val)               \
+{                                                                       \
+        s->member = cpu_to_le##bits(val);                               \
+}
+
+/* defined as btrfs_stack_root_ref_dirid */
+BTRFS_SETGET_STACK_FUNCS(stack_root_ref_dirid, struct btrfs_root_ref, dirid, 64);
+/* defined as btrfs_stack_root_ref_sequence */
+BTRFS_SETGET_STACK_FUNCS(stack_root_ref_sequence, struct btrfs_root_ref, sequence, 64);
+/* defined as btrfs_stack_root_ref_name_len */
+BTRFS_SETGET_STACK_FUNCS(stack_root_ref_name_len, struct btrfs_root_ref, name_len, 16);
+
+/* defined in bdev.h */
+struct bdev;
+
+/* defined in lxccontainer.h */
+struct bdev_specs;
+
+/* defined conf.h */
+struct lxc_conf;
+
+struct mytree_node {
+	u64 objid;
+	u64 parentid;
+	char *name;
+	char *dirname;
+};
+
+struct my_btrfs_tree {
+	struct mytree_node *nodes;
+	int num;
+};
+
+/*
+ * Functions associated with a btrfs bdev struct.
+ */
+int btrfs_clonepaths(struct bdev *orig, struct bdev *new, const char *oldname,
+		     const char *cname, const char *oldpath,
+		     const char *lxcpath, int snap, uint64_t newsize,
+		     struct lxc_conf *conf);
+int btrfs_create(struct bdev *bdev, const char *dest, const char *n,
+		 struct bdev_specs *specs);
+int btrfs_destroy(struct bdev *orig);
+int btrfs_detect(const char *path);
+int btrfs_mount(struct bdev *bdev);
+int btrfs_umount(struct bdev *bdev);
+
+/*
+ * Helper functions
+ */
+char *get_btrfs_subvol_path(int fd, u64 dir_id, u64 objid, char *name,
+			    int name_len);
+int btrfs_list_get_path_rootid(int fd, u64 *treeid);
+bool is_btrfs_fs(const char *path);
+bool btrfs_try_remove_subvol(const char *path);
+int btrfs_same_fs(const char *orig, const char *new);
+int btrfs_snapshot(const char *orig, const char *new);
+
+#endif // __LXC_BTRFS_H

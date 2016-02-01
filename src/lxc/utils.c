@@ -1185,6 +1185,11 @@ bool file_exists(const char *f)
 	return stat(f, &statbuf) == 0;
 }
 
+bool cgns_supported(void)
+{
+	return file_exists("/proc/self/ns/cgroup");
+}
+
 /* historically lxc-init has been under /usr/lib/lxc and under
  * /usr/lib/$ARCH/lxc.  It now lives as $prefix/sbin/init.lxc.
  */
@@ -1349,6 +1354,7 @@ char *get_template_path(const char *t)
  */
 int setproctitle(char *title)
 {
+	static char *proctitle = NULL;
 	char buf[2048], *tmp;
 	FILE *f;
 	int i, len, ret = 0;
@@ -1413,27 +1419,20 @@ int setproctitle(char *title)
 	 * want to have room for it. */
 	len = strlen(title) + 1;
 
-	/* We're truncating the environment, so we should use at most the
-	 * length of the argument + environment for the title. */
-	if (len > env_end - arg_start) {
-		arg_end = env_end;
-		len = env_end - arg_start;
-		title[len-1] = '\0';
-	} else {
-		/* Only truncate the environment if we're actually going to
-		 * overwrite part of it. */
-		if (len >= arg_end - arg_start) {
-			env_start = env_end;
-		}
-
-		arg_end = arg_start + len;
-
-		/* check overflow */
-		if (arg_end < len || arg_end < arg_start) {
+	/* If we don't have enough room by just overwriting the old proctitle,
+	 * let's allocate a new one.
+	 */
+	if (len > arg_end - arg_start) {
+		void *m;
+		m = realloc(proctitle, len);
+		if (!m)
 			return -1;
-		}
+		proctitle = m;
 
+		arg_start = (unsigned long) proctitle;
 	}
+
+	arg_end = arg_start + len;
 
 	brk_val = syscall(__NR_brk, 0);
 
@@ -1458,7 +1457,7 @@ int setproctitle(char *title)
 	if (ret == 0)
 		strcpy((char*)arg_start, title);
 	else
-		SYSERROR("setting cmdline failed");
+		INFO("setting cmdline failed - %s", strerror(errno));
 
 	return ret;
 }
@@ -1576,7 +1575,7 @@ static int open_without_symlink(const char *target, const char *prefix_skip)
 	fulllen = strlen(target);
 
 	/* make sure prefix-skip makes sense */
-	if (prefix_skip) {
+	if (prefix_skip && strlen(prefix_skip) > 0) {
 		curlen = strlen(prefix_skip);
 		if (!is_subdir(target, prefix_skip, curlen)) {
 			ERROR("WHOA there - target '%s' didn't start with prefix '%s'",
@@ -1705,6 +1704,8 @@ int safe_mount(const char *src, const char *dest, const char *fstype,
  *
  * Returns < 0 on failure, 0 if the correct proc was already mounted
  * and 1 if a new proc was mounted.
+ *
+ * NOTE: not to be called from inside the container namespace!
  */
 int mount_proc_if_needed(const char *rootfs)
 {
@@ -1738,8 +1739,14 @@ int mount_proc_if_needed(const char *rootfs)
 	return 0;
 
 domount:
-	if (safe_mount("proc", path, "proc", 0, NULL, rootfs) < 0)
+	if (!strcmp(rootfs,"")) /* rootfs is NULL */
+		ret = mount("proc", path, "proc", 0, NULL);
+	else
+		ret = safe_mount("proc", path, "proc", 0, NULL, rootfs);
+
+	if (ret < 0)
 		return -1;
+
 	INFO("Mounted /proc in container for security transition");
 	return 1;
 }

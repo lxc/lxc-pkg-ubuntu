@@ -47,6 +47,10 @@ extern void lxc_setup_fs(void)
 	if (mount_fs("proc", "/proc", "proc"))
 		INFO("failed to remount proc");
 
+	/* if /dev has been populated by us, /dev/shm does not exist */
+	if (access("/dev/shm", F_OK) && mkdir("/dev/shm", 0777))
+		INFO("failed to create /dev/shm");
+
 	/* if we can't mount /dev/shm, continue anyway */
 	if (mount_fs("shmfs", "/dev/shm", "tmpfs"))
 		INFO("failed to mount /dev/shm");
@@ -87,6 +91,7 @@ const char *lxc_global_config_value(const char *option_name)
 		{ "lxc.bdev.lvm.vg",        DEFAULT_VG      },
 		{ "lxc.bdev.lvm.thin_pool", DEFAULT_THIN_POOL },
 		{ "lxc.bdev.zfs.root",      DEFAULT_ZFSROOT },
+		{ "lxc.bdev.rbd.rbdpool",   DEFAULT_RBDPOOL },
 		{ "lxc.lxcpath",            NULL            },
 		{ "lxc.default_config",     NULL            },
 		{ "lxc.cgroup.pattern",     NULL            },

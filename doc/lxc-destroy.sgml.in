@@ -51,6 +51,7 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA
       <command>lxc-destroy</command>
       <arg choice="req">-n <replaceable>name</replaceable></arg>
       <arg choice="opt">-f</arg>
+      <arg choice="opt">-s</arg>
     </cmdsynopsis>
   </refsynopsisdiv>
 
@@ -80,6 +81,14 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA
 	    <command>lxc-destroy</command> will be aborted.
 	  </para>
 	</listitem>
+      </varlistentry>
+      <varlistentry>
+        <term><option>-s, --snapshots</option></term>
+        <listitem>
+          <para>
+            destroy the specified container including all its snapshots.
+          </para>
+        </listitem>
       </varlistentry>
     </variablelist>
 

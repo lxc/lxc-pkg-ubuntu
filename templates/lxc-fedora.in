@@ -570,8 +570,8 @@ but appears to be non-functional.  Skipping...  It should be removed.
 #       mount image to "squashfs"
 #       mount contained LiveOS to stage0
 
-# We're going to use the kernel.org mirror for the initial stages...
-#       1 - It's generally up to date and comnplete
+# We're going to use the archives.fedoraproject.org mirror for the initial stages...
+#       1 - It's generally up to date and complete
 #       2 - It's has high bandwidth access
 #       3 - It supports rsync and wildcarding (and we need both)
 #       4 - Not all the mirrors carry the LiveOS images
@@ -579,7 +579,7 @@ but appears to be non-functional.  Skipping...  It should be removed.
     if [[ ! -f ../LiveOS/squashfs.img ]]
     then
         echo "
-Downloading stage 0 LiveOS squashfs file system from mirrors.kernel.org...
+Downloading stage 0 LiveOS squashfs file system from archives.fedoraproject.org...
 Have a beer or a cup of coffee.  This will take a bit (~300MB).
 "
         sleep 3 # let him read it...
@@ -1282,7 +1282,8 @@ then
     fi
 fi
 
-cache_base=@LOCALSTATEDIR@/cache/lxc/fedora/$basearch
+# Allow the cache base to be set by environment variable
+cache_base=${LXC_CACHE_PATH:-"@LOCALSTATEDIR@/cache/lxc"}/fedora/$basearch
 
 # Let's do something better for the initial root password.
 # It's not perfect but it will defeat common scanning brute force
@@ -1467,7 +1468,16 @@ then
 else
     if [ ${root_expire_password} = "yes" ]
     then
-        echo "
+        if ( mountpoint -q -- "${rootfs_path}" )
+        then
+            echo "To reset the root password, you can do:
+
+        lxc-start -n ${name}
+        lxc-attach -n ${name} -- passwd
+        lxc-stop -n ${name}
+"
+        else
+           echo "
 The root password is set up as "expired" and will require it to be changed
 at first login, which you should do as soon as possible.  If you lose the
 root password or wish to change it without starting the container, you
@@ -1476,5 +1486,6 @@ also reset the expired flag):
 
         chroot ${rootfs_path} passwd
 "
+        fi
     fi
 fi

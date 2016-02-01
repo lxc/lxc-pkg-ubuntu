@@ -15,6 +15,8 @@ templates_SCRIPTS = \
 	lxc-opensuse \
 	lxc-oracle \
 	lxc-plamo \
+	lxc-slackware \
 	lxc-sshd \
 	lxc-ubuntu \
-	lxc-ubuntu-cloud
+	lxc-ubuntu-cloud \
+	lxc-sparclinux

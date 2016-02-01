@@ -34,9 +34,10 @@
 
 #include "config.h"
 
-#include "bdev.h"
+#include "bdev/bdev.h"
 #include "cgroup.h"
 #include "conf.h"
+#include "commands.h"
 #include "criu.h"
 #include "log.h"
 #include "lxc.h"
@@ -55,6 +56,18 @@ void exec_criu(struct criu_opts *opts)
 
 	char buf[4096];
 
+	/* If we are currently in a cgroup /foo/bar, and the container is in a
+	 * cgroup /lxc/foo, lxcfs will give us an ENOENT if some task in the
+	 * container has an open fd that points to one of the cgroup files
+	 * (systemd always opens its "root" cgroup). So, let's escape to the
+	 * /actual/ root cgroup so that lxcfs thinks criu has enough rights to
+	 * see all cgroups.
+	 */
+	if (!cgroup_escape()) {
+		ERROR("failed to escape cgroups");
+		return;
+	}
+
 	/* The command line always looks like:
 	 * criu $(action) --tcp-established --file-locks --link-remap --force-irmap \
 	 * --manage-cgroups action-script foo.sh -D $(directory) \
@@ -63,17 +76,23 @@ void exec_criu(struct criu_opts *opts)
 	 * --enable-fs hugetlbfs --enable-fs tracefs
 	 * +1 for final NULL */
 
-	if (strcmp(opts->action, "dump") == 0) {
-		/* -t pid */
-		static_args += 2;
+	if (strcmp(opts->action, "dump") == 0 || strcmp(opts->action, "pre-dump") == 0) {
+		/* -t pid --freeze-cgroup /lxc/ct */
+		static_args += 4;
 
-		/* --leave-running */
-		if (!opts->stop)
+		/* --prev-images-dir <path-to-directory-A-relative-to-B> */
+		if (opts->predump_dir)
+			static_args += 2;
+
+		/* --leave-running (only for final dump) */
+		if (strcmp(opts->action, "dump") == 0 && !opts->stop)
 			static_args++;
 	} else if (strcmp(opts->action, "restore") == 0) {
 		/* --root $(lxc_mount_point) --restore-detached
-		 * --restore-sibling --pidfile $foo --cgroup-root $foo */
-		static_args += 8;
+		 * --restore-sibling --pidfile $foo --cgroup-root $foo
+		 * --lsm-profile apparmor:whatever
+		 */
+		static_args += 10;
 	} else {
 		return;
 	}
@@ -132,19 +151,42 @@ void exec_criu(struct criu_opts *opts)
 	if (opts->verbose)
 		DECLARE_ARG("-vvvvvv");
 
-	if (strcmp(opts->action, "dump") == 0) {
-		char pid[32];
+	if (strcmp(opts->action, "dump") == 0 || strcmp(opts->action, "pre-dump") == 0) {
+		char pid[32], *freezer_relative;
 
 		if (sprintf(pid, "%d", opts->c->init_pid(opts->c)) < 0)
 			goto err;
 
 		DECLARE_ARG("-t");
 		DECLARE_ARG(pid);
-		if (!opts->stop)
+
+		freezer_relative = lxc_cmd_get_cgroup_path(opts->c->name,
+							   opts->c->config_path,
+							   "freezer");
+		if (!freezer_relative) {
+			ERROR("failed getting freezer path");
+			goto err;
+		}
+
+		ret = snprintf(log, sizeof(log), "/sys/fs/cgroup/freezer/%s", freezer_relative);
+		if (ret < 0 || ret >= sizeof(log))
+			goto err;
+
+		DECLARE_ARG("--freeze-cgroup");
+		DECLARE_ARG(log);
+
+		if (opts->predump_dir) {
+			DECLARE_ARG("--prev-images-dir");
+			DECLARE_ARG(opts->predump_dir);
+		}
+
+		/* only for final dump */
+		if (strcmp(opts->action, "dump") == 0 && !opts->stop)
 			DECLARE_ARG("--leave-running");
 	} else if (strcmp(opts->action, "restore") == 0) {
 		void *m;
 		int additional;
+		struct lxc_conf *lxc_conf = opts->c->lxc_conf;
 
 		DECLARE_ARG("--root");
 		DECLARE_ARG(opts->c->lxc_conf->rootfs.mount);
@@ -155,11 +197,25 @@ void exec_criu(struct criu_opts *opts)
 		DECLARE_ARG("--cgroup-root");
 		DECLARE_ARG(opts->cgroup_path);
 
+		if (lxc_conf->lsm_aa_profile || lxc_conf->lsm_se_context) {
+
+			if (lxc_conf->lsm_aa_profile)
+				ret = snprintf(buf, sizeof(buf), "apparmor:%s", lxc_conf->lsm_aa_profile);
+			else
+				ret = snprintf(buf, sizeof(buf), "selinux:%s", lxc_conf->lsm_se_context);
+
+			if (ret < 0 || ret >= sizeof(buf))
+				goto err;
+
+			DECLARE_ARG("--lsm-profile");
+			DECLARE_ARG(buf);
+		}
+
 		additional = lxc_list_len(&opts->c->lxc_conf->network) * 2;
 
-		m = realloc(argv, (argc + additional + 1) * sizeof(*argv));	\
-		if (!m)								\
-			goto err;						\
+		m = realloc(argv, (argc + additional + 1) * sizeof(*argv));
+		if (!m)
+			goto err;
 		argv = m;
 
 		lxc_list_for_each(it, &opts->c->lxc_conf->network) {
@@ -259,7 +315,7 @@ static bool criu_version_ok()
 			return false;
 		}
 
-		if (fscanf(f, "Version: %1024[^\n]s", version) != 1)
+		if (fscanf(f, "Version: %1023[^\n]s", version) != 1)
 			goto version_error;
 
 		if (fgetc(f) != '\n')
@@ -268,7 +324,7 @@ static bool criu_version_ok()
 		if (strcmp(version, CRIU_VERSION) >= 0)
 			goto version_match;
 
-		if (fscanf(f, "GitID: v%1024[^-]s", version) != 1)
+		if (fscanf(f, "GitID: v%1023[^-]s", version) != 1)
 			goto version_error;
 
 		if (fgetc(f) != '-')
@@ -384,6 +440,8 @@ out_unlock:
 	return !has_error;
 }
 
+// do_restore never returns, the calling process is used as the
+// monitor process. do_restore calls exit() if it fails.
 void do_restore(struct lxc_container *c, int pipe, char *directory, bool verbose)
 {
 	pid_t pid;
@@ -484,6 +542,7 @@ void do_restore(struct lxc_container *c, int pipe, char *directory, bool verbose
 
 		if (WIFEXITED(status)) {
 			if (WEXITSTATUS(status)) {
+				ERROR("criu process exited %d\n", WEXITSTATUS(status));
 				goto out_fini_handler;
 			} else {
 				int ret;
@@ -503,8 +562,10 @@ void do_restore(struct lxc_container *c, int pipe, char *directory, bool verbose
 					goto out_fini_handler;
 				}
 
-				if (lxc_set_state(c->name, handler, RUNNING))
+				if (lxc_set_state(c->name, handler, RUNNING)) {
+					ERROR("error setting running state after restore");
 					goto out_fini_handler;
+				}
 			}
 		} else {
 			ERROR("CRIU was killed with signal %d\n", WTERMSIG(status));
@@ -541,4 +602,136 @@ out:
 	}
 
 	exit(1);
+}
+
+/* do one of either predump or a regular dump */
+static bool do_dump(struct lxc_container *c, char *mode, char *directory,
+		    bool stop, bool verbose, char *predump_dir)
+{
+	pid_t pid;
+
+	if (!criu_ok(c))
+		return false;
+
+	if (mkdir_p(directory, 0700) < 0)
+		return false;
+
+	pid = fork();
+	if (pid < 0) {
+		SYSERROR("fork failed");
+		return false;
+	}
+
+	if (pid == 0) {
+		struct criu_opts os;
+
+		os.action = mode;
+		os.directory = directory;
+		os.c = c;
+		os.stop = stop;
+		os.verbose = verbose;
+		os.predump_dir = predump_dir;
+
+		/* exec_criu() returning is an error */
+		exec_criu(&os);
+		exit(1);
+	} else {
+		int status;
+		pid_t w = waitpid(pid, &status, 0);
+		if (w == -1) {
+			SYSERROR("waitpid");
+			return false;
+		}
+
+		if (WIFEXITED(status)) {
+			if (WEXITSTATUS(status)) {
+				ERROR("dump failed with %d\n", WEXITSTATUS(status));
+				return false;
+			}
+
+			return true;
+		} else if (WIFSIGNALED(status)) {
+			ERROR("dump signaled with %d\n", WTERMSIG(status));
+			return false;
+		} else {
+			ERROR("unknown dump exit %d\n", status);
+			return false;
+		}
+	}
+}
+
+bool pre_dump(struct lxc_container *c, char *directory, bool verbose, char *predump_dir)
+{
+	return do_dump(c, "pre-dump", directory, false, verbose, predump_dir);
+}
+
+bool dump(struct lxc_container *c, char *directory, bool stop, bool verbose, char *predump_dir)
+{
+	char path[PATH_MAX];
+	int ret;
+
+	ret = snprintf(path, sizeof(path), "%s/inventory.img", directory);
+	if (ret < 0 || ret >= sizeof(path))
+		return false;
+
+	if (access(path, F_OK) == 0) {
+		ERROR("please use a fresh directory for the dump directory\n");
+		return false;
+	}
+
+	return do_dump(c, "dump", directory, stop, verbose, predump_dir);
+}
+
+bool restore(struct lxc_container *c, char *directory, bool verbose)
+{
+	pid_t pid;
+	int status, nread;
+	int pipefd[2];
+
+	if (!criu_ok(c))
+		return false;
+
+	if (geteuid()) {
+		ERROR("Must be root to restore\n");
+		return false;
+	}
+
+	if (pipe(pipefd)) {
+		ERROR("failed to create pipe");
+		return false;
+	}
+
+	pid = fork();
+	if (pid < 0) {
+		close(pipefd[0]);
+		close(pipefd[1]);
+		return false;
+	}
+
+	if (pid == 0) {
+		close(pipefd[0]);
+		// this never returns
+		do_restore(c, pipefd[1], directory, verbose);
+	}
+
+	close(pipefd[1]);
+
+	nread = read(pipefd[0], &status, sizeof(status));
+	close(pipefd[0]);
+	if (sizeof(status) != nread) {
+		ERROR("reading status from pipe failed");
+		goto err_wait;
+	}
+
+	// If the criu process was killed or exited nonzero, wait() for the
+	// handler, since the restore process died. Otherwise, we don't need to
+	// wait, since the child becomes the monitor process.
+	if (!WIFEXITED(status) || WEXITSTATUS(status))
+		goto err_wait;
+	return true;
+
+err_wait:
+	if (wait_for_pid(pid))
+		ERROR("restore process died");
+	return false;
 }
