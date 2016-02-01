@@ -19,7 +19,7 @@ Build-Depends: autotools-dev,
                linux-libc-dev,
                pkg-config,
                python3-all-dev (>= 3.2.3)
-Standards-Version: 3.9.5
+Standards-Version: 3.9.6
 Homepage: https://linuxcontainers.org
 Vcs-Git: git://github.com/lxc/lxc-pkg-ubuntu
 Vcs-Browser: https://github.com/lxc/lxc-pkg-ubuntu
@@ -39,7 +39,7 @@ Depends: adduser,
          ${lxc:Depends},
          ${misc:Depends},
          ${shlibs:Depends}
-Recommends: lxc-templates (>= 0.8.0~rc1-4ubuntu43)
+Recommends: lxc-templates (>= 0.8.0~rc1-4ubuntu43), libpam-cgfs
 Suggests: btrfs-tools, lvm2, lxctl
 Description: Linux Containers userspace tools
  Containers are insulated areas inside a system, which have their own namespace
