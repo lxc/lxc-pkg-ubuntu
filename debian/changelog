@@ -1,4 +1,4 @@
-lxc (2.0.0~beta1-0ubuntu1) xenial; urgency=medium
+lxc (2.0.0~beta2-0ubuntu1) xenial; urgency=medium
 
   * New upstream snapshot (2.0.0~beta2)
     - Drop all patches except for the fix for LP: #1509414
