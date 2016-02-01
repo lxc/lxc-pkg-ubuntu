@@ -6,7 +6,17 @@ pkginclude_HEADERS = \
 noinst_HEADERS = \
 	arguments.h \
 	attach.h \
-	bdev.h \
+	bdev/bdev.h \
+	bdev/lxcaufs.h \
+	bdev/lxcbtrfs.h \
+	bdev/lxcdir.h \
+	bdev/lxcloop.h \
+	bdev/lxclvm.h \
+	bdev/lxcnbd.h \
+	bdev/lxcoverlay.h \
+	bdev/lxcrbd.h \
+	bdev/lxcrsync.h \
+	bdev/lxczfs.h \
 	caps.h \
 	cgroup.h \
 	conf.h \
@@ -16,7 +26,6 @@ noinst_HEADERS = \
 	list.h \
 	log.h \
 	lxc.h \
-	lxc-btrfs.h \
 	lxclock.h \
 	monitor.h \
 	namespace.h \
@@ -38,6 +47,10 @@ noinst_HEADERS += ../include/getline.h
 endif
 endif
 
+if !HAVE_GETSUBOPT
+noinst_HEADERS += ../include/getsubopt.h
+endif
+
 sodir=$(libdir)
 # use PROGRAMS to avoid complains from automake
 so_PROGRAMS = liblxc.so
@@ -56,7 +69,17 @@ endif
 
 liblxc_so_SOURCES = \
 	arguments.c arguments.h \
-	bdev.c bdev.h lxc-btrfs.h \
+	bdev/bdev.c bdev/bdev.h \
+	bdev/lxcaufs.c bdev/lxcaufs.h \
+	bdev/lxcbtrfs.c bdev/lxcbtrfs.h \
+	bdev/lxcdir.c bdev/lxcdir.h \
+	bdev/lxcloop.c bdev/lxcloop.h \
+	bdev/lxclvm.c bdev/lxclvm.h \
+	bdev/lxcnbd.c bdev/lxcnbd.h \
+	bdev/lxcoverlay.c bdev/lxcoverlay.h \
+	bdev/lxcrbd.c bdev/lxcrbd.h \
+	bdev/lxcrsync.c bdev/lxcrsync.h \
+	bdev/lxczfs.c bdev/lxczfs.h \
 	commands.c commands.h \
 	start.c start.h \
 	execute.c \
@@ -155,7 +178,7 @@ liblxc_so_CFLAGS = -fPIC -DPIC $(AM_CFLAGS) -pthread
 liblxc_so_LDFLAGS = \
 	-pthread \
 	-shared \
-	-Wl,-soname,liblxc.so.$(firstword $(subst ., ,$(VERSION)))
+	-Wl,-soname,liblxc.so.$(firstword $(subst ., ,@LXC_VERSION_ABI@))
 
 liblxc_so_LDADD = $(CAP_LIBS) $(APPARMOR_LIBS) $(SELINUX_LIBS) $(SECCOMP_LIBS)
 
@@ -183,6 +206,7 @@ bin_PROGRAMS = \
 	lxc-cgroup \
 	lxc-checkpoint \
 	lxc-clone \
+	lxc-copy \
 	lxc-config \
 	lxc-console \
 	lxc-create \
@@ -191,6 +215,7 @@ bin_PROGRAMS = \
 	lxc-execute \
 	lxc-freeze \
 	lxc-info \
+	lxc-ls \
 	lxc-monitor \
 	lxc-snapshot \
 	lxc-start \
@@ -226,6 +251,8 @@ init_lxc_SOURCES = lxc_init.c
 lxc_monitor_SOURCES = lxc_monitor.c
 lxc_monitord_SOURCES = lxc_monitord.c
 lxc_clone_SOURCES = lxc_clone.c
+lxc_ls_SOURCES = lxc_ls.c
+lxc_copy_SOURCES = lxc_copy.c
 lxc_start_SOURCES = lxc_start.c
 lxc_stop_SOURCES = lxc_stop.c
 lxc_top_SOURCES = lxc_top.c
@@ -237,6 +264,10 @@ lxc_snapshot_SOURCES = lxc_snapshot.c
 lxc_usernsexec_SOURCES = lxc_usernsexec.c
 lxc_user_nic_SOURCES = lxc_user_nic.c network.c network.h
 lxc_checkpoint_SOURCES = lxc_checkpoint.c
+
+if !HAVE_GETSUBOPT
+lxc_copy_SOURCES += ../include/getsubopt.c ../include/getsubopt.h
+endif
 
 if HAVE_STATIC_LIBCAP
 sbin_PROGRAMS += init.lxc.static
@@ -257,10 +288,10 @@ endif
 install-exec-local: install-soPROGRAMS
 	mkdir -p $(DESTDIR)$(datadir)/lxc
 	install -c -m 644 lxc.functions $(DESTDIR)$(datadir)/lxc
-	mv $(DESTDIR)$(libdir)/liblxc.so $(DESTDIR)$(libdir)/liblxc.so.$(VERSION)
+	mv $(DESTDIR)$(libdir)/liblxc.so $(DESTDIR)$(libdir)/liblxc.so.@LXC_VERSION_ABI@
 	cd $(DESTDIR)$(libdir); \
-	ln -sf liblxc.so.$(VERSION) liblxc.so.$(firstword $(subst ., ,$(VERSION))); \
-	ln -sf liblxc.so.$(firstword $(subst ., ,$(VERSION))) liblxc.so
+	ln -sf liblxc.so.@LXC_VERSION_ABI@ liblxc.so.$(firstword $(subst ., ,@LXC_VERSION_ABI@)); \
+	ln -sf liblxc.so.$(firstword $(subst ., ,@LXC_VERSION_ABI@)) liblxc.so
 
 install-exec-hook:
 	chmod u+s $(DESTDIR)$(libexecdir)/lxc/lxc-user-nic

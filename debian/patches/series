@@ -1,4 +1,1 @@
 0001-Allocate-new-lxcbr0-subnet-at-startup-time.patch
-0002-ubuntu-cloud-Various-fixes.patch
-0003-don-t-truncate-environment-sometimes-in-setproctitle.patch
-0004-Better-handle-preserve_ns-behavior.patch

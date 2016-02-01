@@ -100,7 +100,7 @@ struct ifla_vlan {
 };
 
 struct ifla_macvlan {
-	int mode; /* private, vepa, bridge */
+	int mode; /* private, vepa, bridge, passthru */
 };
 
 union netdev_p {
@@ -279,7 +279,8 @@ enum {
  */
 enum lxchooks {
 	LXCHOOK_PRESTART, LXCHOOK_PREMOUNT, LXCHOOK_MOUNT, LXCHOOK_AUTODEV,
-	LXCHOOK_START, LXCHOOK_POSTSTOP, LXCHOOK_CLONE, NUM_LXC_HOOKS};
+	LXCHOOK_START, LXCHOOK_STOP, LXCHOOK_POSTSTOP, LXCHOOK_CLONE, LXCHOOK_DESTROY,
+	NUM_LXC_HOOKS};
 extern char *lxchook_names[NUM_LXC_HOOKS];
 
 struct saved_nic {
@@ -324,6 +325,7 @@ struct lxc_conf {
 	int maincmd_fd;
 	int autodev;  // if 1, mount and fill a /dev at start
 	int haltsignal; // signal used to halt container
+	int rebootsignal; // signal used to reboot container
 	int stopsignal; // signal used to hard stop container
 	int kmsg;  // if 1, create /dev/kmsg symlink
 	char *rcfile;	// Copy of the top level rcfile we read
@@ -345,6 +347,9 @@ struct lxc_conf {
 	struct lxc_list groups;
 	int nbd_idx;
 
+	/* unshare the mount namespace in the monitor */
+	int monitor_unshare;
+
 	/* set to true when rootfs has been setup */
 	bool rootfs_setup;
 
@@ -363,6 +368,14 @@ struct lxc_conf {
 
 	/* init command */
 	char *init_cmd;
+
+	/* if running in a new user namespace, the UID/GID that init and COMMAND
+	 * should run under when using lxc-execute */
+	uid_t init_uid;
+	gid_t init_gid;
+
+	/* indicator if the container will be destroyed on shutdown */
+	int ephemeral;
 };
 
 #ifdef HAVE_TLS
@@ -387,7 +400,8 @@ extern int pin_rootfs(const char *rootfs);
 extern int lxc_requests_empty_network(struct lxc_handler *handler);
 extern int lxc_create_network(struct lxc_handler *handler);
 extern void lxc_delete_network(struct lxc_handler *handler);
-extern int lxc_assign_network(struct lxc_list *networks, pid_t pid);
+extern int lxc_assign_network(const char *lxcpath, char *lxcname,
+			      struct lxc_list *networks, pid_t pid);
 extern int lxc_map_ids(struct lxc_list *idmap, pid_t pid);
 extern int lxc_find_gateway_addresses(struct lxc_handler *handler);
 

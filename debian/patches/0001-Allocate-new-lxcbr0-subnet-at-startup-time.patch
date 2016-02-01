@@ -1,4 +1,4 @@
-From 30708f298d86588b98f99420dfb801a2260a1007 Mon Sep 17 00:00:00 2001
+From 89d7991209678c995ec6a7a98815b839d8caf6d1 Mon Sep 17 00:00:00 2001
 From: =?UTF-8?q?St=C3=A9phane=20Graber?= <stgraber@ubuntu.com>
 Date: Tue, 3 Nov 2015 11:42:58 -0500
 Subject: Allocate new lxcbr0 subnet at startup time
@@ -8,7 +8,7 @@ Subject: Allocate new lxcbr0 subnet at startup time
  1 file changed, 90 insertions(+), 8 deletions(-)
 
 diff --git a/config/init/common/lxc-net.in b/config/init/common/lxc-net.in
-index efe64c1..3e10c8e 100644
+index d457e78..adff477 100644
 --- a/config/init/common/lxc-net.in
 +++ b/config/init/common/lxc-net.in
 @@ -22,6 +22,85 @@ LXC_IPV6_MASK=""

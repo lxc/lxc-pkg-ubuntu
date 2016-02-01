@@ -1,8 +1,8 @@
 SUBDIRS = examples rootfs
-DIST_SUBDIRS = examples rootfs ja api
+DIST_SUBDIRS = examples rootfs ja ko api
 
 if USE_DOCBOOK2X
-SUBDIRS += ja
+SUBDIRS += ja ko
 endif
 
 if ENABLE_API_DOCS
@@ -24,8 +24,10 @@ man_MANS = \
 	lxc-clone.1 \
 	lxc-config.1 \
 	lxc-console.1 \
+	lxc-copy.1 \
 	lxc-create.1 \
 	lxc-destroy.1 \
+	lxc-device.1 \
 	lxc-execute.1 \
 	lxc-freeze.1 \
 	lxc-info.1 \
@@ -48,7 +50,6 @@ man_MANS = \
 	lxc.7
 
 if ENABLE_PYTHON
-    man_MANS += lxc-device.1
     man_MANS += lxc-ls.1
     man_MANS += lxc-start-ephemeral.1
 else

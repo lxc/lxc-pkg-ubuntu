@@ -35,6 +35,9 @@
 /* Define to 1 if you have the `getline' function. */
 #undef HAVE_GETLINE
 
+/* Define to 1 if you have the `getsubopt' function. */
+#undef HAVE_GETSUBOPT
+
 /* Define to 1 if you have the `hasmntopt' function. */
 #undef HAVE_HASMNTOPT
 

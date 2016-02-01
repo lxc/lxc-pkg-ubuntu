@@ -52,15 +52,15 @@ BuildRequires: systemd
 # RPM needs alpha/beta/rc in Release: not Version: to ensure smooth
 # package upgrades from alpha->beta->rc->release. For more info see:
 # http://fedoraproject.org/wiki/Packaging%3aNamingGuidelines#NonNumericRelease
-%if "x" != "x"
-%global beta_rel 
+%if "xbeta2" != "x"
+%global beta_rel beta2
 %global beta_dot .%{beta_rel}
 %else
 %global norm_rel 1
 %endif
 
 Name: lxc
-Version: 1.1.5
+Version: 2.0.0
 Release: %{?beta_rel:0.1.%{beta_rel}}%{?!beta_rel:%{norm_rel}}%{?dist}
 URL: http://linuxcontainers.org
 Source: http://linuxcontainers.org/downloads/%{name}-%{version}%{?beta_dot}.tar.gz
@@ -244,6 +244,9 @@ fi
 %{_mandir}/ja/man1/lxc*
 %{_mandir}/ja/man5/lxc*
 %{_mandir}/ja/man7/lxc*
+%{_mandir}/ko/man1/lxc*
+%{_mandir}/ko/man5/lxc*
+%{_mandir}/ko/man7/lxc*
 %endif
 %{_datadir}/doc/*
 %{_datadir}/lxc/*

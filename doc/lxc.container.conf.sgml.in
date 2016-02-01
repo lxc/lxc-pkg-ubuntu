@@ -72,7 +72,9 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA
     <para>
       Each option in the configuration file has the form <command>key
       = value</command> fitting in one line. The '#' character means
-      the line is a comment.
+      the line is a comment. List options, like capabilities and cgroups
+      options, can be used with no value to clear any previously
+      defined values of that option.
     </para>
 
     <refsect2>
@@ -158,46 +160,68 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA
     <refsect2>
       <title>Halt signal</title>
       <para>
-    Allows one to specify signal name or number, sent by lxc-stop to the
-    container's init process to cleanly shutdown the container. Different
-    init systems could use different signals to perform clean shutdown
-    sequence. This option allows the signal to be specified in kill(1)
-    fashion, e.g. SIGPWR, SIGRTMIN+14, SIGRTMAX-10 or plain number. The
-    default signal is SIGPWR.
+        Allows one to specify signal name or number, sent by lxc-stop to the
+        container's init process to cleanly shutdown the container. Different
+        init systems could use different signals to perform clean shutdown
+        sequence. This option allows the signal to be specified in kill(1)
+        fashion, e.g. SIGPWR, SIGRTMIN+14, SIGRTMAX-10 or plain number. The
+        default signal is SIGPWR.
       </para>
       <variablelist>
-    <varlistentry>
-      <term>
-        <option>lxc.haltsignal</option>
-      </term>
-      <listitem>
-        <para>
-          specify the signal used to halt the container
-        </para>
-      </listitem>
-    </varlistentry>
+        <varlistentry>
+          <term>
+            <option>lxc.haltsignal</option>
+          </term>
+          <listitem>
+            <para>
+              specify the signal used to halt the container
+            </para>
+          </listitem>
+        </varlistentry>
+      </variablelist>
+    </refsect2>
+
+    <refsect2>
+      <title>Reboot signal</title>
+      <para>
+        Allows one to specify signal name or number, sent by lxc-stop to
+        reboot the container. This option allows signal to be specified in
+        kill(1) fashion, e.g. SIGTERM, SIGRTMIN+14, SIGRTMAX-10 or plain number.
+        The default signal is SIGINT.
+          </para>
+          <variablelist>
+        <varlistentry>
+          <term>
+            <option>lxc.rebootsignal</option>
+          </term>
+          <listitem>
+            <para>
+              specify the signal used to reboot the container
+            </para>
+          </listitem>
+        </varlistentry>
       </variablelist>
     </refsect2>
 
     <refsect2>
       <title>Stop signal</title>
       <para>
-    Allows one to specify signal name or number, sent by lxc-stop to forcibly
-    shutdown the container. This option allows signal to be specified in
-    kill(1) fashion, e.g. SIGKILL, SIGRTMIN+14, SIGRTMAX-10 or plain number.
-    The default signal is SIGKILL.
-      </para>
-      <variablelist>
-    <varlistentry>
-      <term>
-        <option>lxc.stopsignal</option>
-      </term>
-      <listitem>
-        <para>
-          specify the signal used to stop the container
-        </para>
-      </listitem>
-    </varlistentry>
+        Allows one to specify signal name or number, sent by lxc-stop to forcibly
+        shutdown the container. This option allows signal to be specified in
+        kill(1) fashion, e.g. SIGKILL, SIGRTMIN+14, SIGRTMAX-10 or plain number.
+        The default signal is SIGKILL.
+          </para>
+          <variablelist>
+        <varlistentry>
+          <term>
+            <option>lxc.stopsignal</option>
+          </term>
+          <listitem>
+            <para>
+              specify the signal used to stop the container
+            </para>
+          </listitem>
+        </varlistentry>
       </variablelist>
     </refsect2>
 
@@ -211,16 +235,69 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA
         Defaults to: /sbin/init
       </para>
       <variablelist>
-    <varlistentry>
-      <term>
-        <option>lxc.init_cmd</option>
-      </term>
-      <listitem>
-        <para>
-          Absolute path from container rootfs to the binary to use as init.
-        </para>
-      </listitem>
-    </varlistentry>
+        <varlistentry>
+          <term>
+            <option>lxc.init_cmd</option>
+          </term>
+          <listitem>
+            <para>
+              Absolute path from container rootfs to the binary to use as init.
+            </para>
+          </listitem>
+        </varlistentry>
+      </variablelist>
+    </refsect2>
+
+    <refsect2>
+      <title>Init ID</title>
+      <para>
+        Sets the UID/GID to use for the init system, and subsequent command, executed by lxc-execute.
+
+        These options are only used when lxc-execute is started in a private user namespace.
+
+        Defaults to: UID(0), GID(0)
+      </para>
+      <variablelist>
+        <varlistentry>
+          <term>
+            <option>lxc.init_uid</option>
+          </term>
+          <listitem>
+            <para>
+              UID to use within a private user namesapce for init.
+            </para>
+          </listitem>
+        </varlistentry>
+        <varlistentry>
+          <term>
+            <option>lxc.init_gid</option>
+          </term>
+          <listitem>
+            <para>
+              GID to use within a private user namesapce for init.
+            </para>
+          </listitem>
+        </varlistentry>
+      </variablelist>
+    </refsect2>
+
+    <refsect2>
+      <title>Ephemeral</title>
+      <para>
+        Allows one to specify whether a container will be destroyed on shutdown.
+      </para>
+      <variablelist>
+        <varlistentry>
+          <term>
+            <option>lxc.ephemeral</option>
+          </term>
+          <listitem>
+            <para>
+              The only allowed values are 0 and 1. Set this to 1 to destroy a
+              container on shutdown. 
+            </para>
+          </listitem>
+        </varlistentry>
       </variablelist>
     </refsect2>
 
@@ -236,6 +313,16 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA
         network interface.
       </para>
       <variablelist>
+        <varlistentry>
+          <term>
+            <option>lxc.network</option>
+          </term>
+          <listitem>
+            <para>
+              may be used without a value to clear all previous network options.
+            </para>
+          </listitem>
+        </varlistentry>
         <varlistentry>
           <term>
             <option>lxc.network.type</option>
@@ -303,16 +390,18 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA
               <option>lxc.network.macvlan.mode</option> specifies the
               mode the macvlan will use to communicate between
               different macvlan on the same upper device. The accepted
-              modes are <option>private</option>, the device never
-              communicates with any other device on the same upper_dev (default),
-              <option>vepa</option>, the new Virtual Ethernet Port
+              modes are <option>private</option>, <option>vepa</option>,
+              <option>bridge</option> and <option>passthru</option>.
+	      In <option>private</option> mode, the device never
+              communicates with any other device on the same upper_dev (default).
+              In <option>vepa</option> mode, the new Virtual Ethernet Port
               Aggregator (VEPA) mode, it assumes that the adjacent
               bridge returns all frames where both source and
               destination are local to the macvlan port, i.e. the
               bridge is set up as a reflective relay.  Broadcast
               frames coming in from the upper_dev get flooded to all
               macvlan interfaces in VEPA mode, local frames are not
-              delivered locally, or <option>bridge</option>, it
+              delivered locally. In <option>bridge</option> mode, it
               provides the behavior of a simple bridge between
               different macvlan interfaces on the same port. Frames
               from one interface to another one get delivered directly
@@ -321,7 +410,11 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA
               interface, but when they come back from a reflective
               relay, we don't deliver them again.  Since we know all
               the MAC addresses, the macvlan bridge mode does not
-              require learning or STP like the bridge module does.
+              require learning or STP like the bridge module does. In
+              <option>passthru</option> mode, all frames received by
+              the physical interface are forwarded to the macvlan
+              interface. Only one macvlan interface in <option>passthru</option>
+              mode is possible for one physical interface.
             </para>
 
             <para>
@@ -650,7 +743,7 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA
         <filename>/dev</filename> to be set up as needed in the container
         rootfs.  If lxc.autodev is set to 1, then after mounting the container's
         rootfs LXC will mount a fresh tmpfs under <filename>/dev</filename>
-        (limited to 100k) and fill in a minimal set of initial devices.
+        (limited to 500k) and fill in a minimal set of initial devices.
         This is generally required when starting a container containing
         a "systemd" based "init" but may be optional at other times.  Additional
         devices in the containers /dev directory may be created through the
@@ -955,7 +1048,9 @@ proc proc proc nodev,noexec,nosuid 0 0
           specifies that the rootfs should be an overlay with <filename>/upper</filename>
           being mounted read-write over a read-only mount of <filename>/lower</filename>.
           <filename>aufs:/lower:/upper</filename> does the same using aufs in place
-          of overlayfs. <filename>loop:/file</filename> tells lxc to attach
+          of overlayfs. For both <filename>overlayfs</filename> and
+          <filename>aufs</filename> multiple <filename>/lower</filename>
+          directories can be specified. <filename>loop:/file</filename> tells lxc to attach
           <filename>/file</filename> to a loop device and mount the loop device.
             </para>
           </listitem>
@@ -1045,7 +1140,9 @@ proc proc proc nodev,noexec,nosuid 0 0
               <citerefentry>
                 <refentrytitle><command>capabilities</command></refentrytitle>
                 <manvolnum>7</manvolnum>
-              </citerefentry>,
+              </citerefentry>.
+              If used with no value, lxc will clear any drop capabilities
+              specified up to this point.
             </para>
           </listitem>
         </varlistentry>
@@ -1231,9 +1328,12 @@ mknod errno 0
           <listitem><para> Container name. </para></listitem>
           <listitem><para> Section (always 'lxc'). </para></listitem>
           <listitem><para> The hook type (i.e. 'clone' or 'pre-mount'). </para></listitem>
-          <listitem><para> Additional arguments In the
+          <listitem><para> Additional arguments. In the
           case of the clone hook, any extra arguments passed to
-          lxc-clone will appear as further arguments to the hook. </para></listitem>
+          lxc-clone will appear as further arguments to the hook.
+          In the case of the stop hook, paths to filedescriptors
+          for each of the container's namespaces along with their types
+          are passed. </para></listitem>
         </itemizedlist>
         The following environment variables are set:
         <itemizedlist>
@@ -1330,6 +1430,26 @@ mknod errno 0
       <variablelist>
         <varlistentry>
           <term>
+            <option>lxc.hook.stop</option>
+          </term>
+          <listitem>
+            <para>
+              A hook to be run in the host's namespace with references
+              to the container's namespaces after the container has been shut
+              down. For each namespace an extra argument is passed to the hook
+              containing the namespace's type and a filename that can be used to
+              obtain a file descriptor to the corresponding namespace, separated
+              by a colon. The type is the name as it would appear in the
+              <filename>/proc/PID/ns</filename> directory.
+              For instance for the mount namespace the argument usually looks
+              like <filename>mnt:/proc/PID/fd/12</filename>.
+            </para>
+          </listitem>
+        </varlistentry>
+      </variablelist>
+      <variablelist>
+        <varlistentry>
+          <term>
             <option>lxc.hook.post-stop</option>
           </term>
           <listitem>
@@ -1350,6 +1470,18 @@ mknod errno 0
               A hook to be run when the container is cloned to a new one.
               See <citerefentry><refentrytitle><command>lxc-clone</command></refentrytitle>
               <manvolnum>1</manvolnum></citerefentry> for more information.
+            </para>
+          </listitem>
+        </varlistentry>
+      </variablelist>
+      <variablelist>
+        <varlistentry>
+          <term>
+            <option>lxc.hook.destroy</option>
+          </term>
+          <listitem>
+            <para>
+              A hook to be run when the container is destroyed.
             </para>
           </listitem>
         </varlistentry>
@@ -1450,7 +1582,47 @@ mknod errno 0
           </listitem>
         </varlistentry>
       </variablelist>
-
+      <variablelist>
+        <varlistentry>
+          <term>
+            <option>LXC_SRC_NAME</option>
+          </term>
+          <listitem>
+            <para>
+              Only for the clone hook. Is set to the original container name.
+            </para>
+          </listitem>
+        </varlistentry>
+      </variablelist>
+      <variablelist>
+        <varlistentry>
+          <term>
+            <option>LXC_TARGET</option>
+          </term>
+          <listitem>
+            <para>
+              Only for the stop hook. Is set to "stop" for a container
+              shutdown or "reboot" for a container reboot.
+            </para>
+          </listitem>
+        </varlistentry>
+      </variablelist>
+      <variablelist>
+        <varlistentry>
+          <term>
+            <option>LXC_CGNS_AWARE</option>
+          </term>
+          <listitem>
+            <para>
+	      If unset, then this version of lxc is not aware of cgroup
+	      namespaces.  If set, it will be set to 1, and lxc is aware
+	      of cgroup namespaces.  Note this does not guarantee that
+	      cgroup namespaces are enabled in the kernel.  This is used
+	      by the lxcfs mount hook.
+            </para>
+          </listitem>
+        </varlistentry>
+      </variablelist>
     </refsect2>
     <refsect2>
     <title>Logging</title>
@@ -1540,6 +1712,19 @@ mknod errno 0
             <para>
               An integer used to sort the containers when auto-starting
               a series of containers at once.
+            </para>
+          </listitem>
+        </varlistentry>
+        <varlistentry>
+          <term>
+            <option>lxc.monitor.unshare</option>
+          </term>
+          <listitem>
+            <para>
+              If not zero the mount namespace will be unshared from the host
+              before initializing the container (before running any pre-start
+              hooks). This requires the CAP_SYS_ADMIN capability at startup.
+              Default is 0.
             </para>
           </listitem>
         </varlistentry>

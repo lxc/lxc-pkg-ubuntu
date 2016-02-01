@@ -91,10 +91,13 @@ by KATOH Yasufumi <karma at jazz.email.ne.jp>
       <!--
       Each option in the configuration file has the form <command>key
       = value</command> fitting in one line. The '#' character means
-      the line is a comment.
+      the line is a comment. List options, like capabilities and cgroups
+      options, can be used with no value to clear any previously
+      defined values of that option.
       -->
       設定ファイルのオプション一つを、<command>key = value</command> の形で一行で表します。
       '#' は、その行はコメントであることを示します。
+      ケーパビリティや cgroup のオプションのような、リスト形式で指定するオプションでは、value がない形式で指定できます。このように使うと、それ以前に定義した値をすべてクリアします。
     </para>
 
     <refsect2>
@@ -213,32 +216,62 @@ by KATOH Yasufumi <karma at jazz.email.ne.jp>
       <title><!-- Halt signal -->クリーンなシャットダウン時のシグナル</title>
       <para>
         <!--
-    Allows one to specify signal name or number, sent by lxc-stop to the
-    container's init process to cleanly shutdown the container. Different
-    init systems could use different signals to perform clean shutdown
-    sequence. This option allows the signal to be specified in kill(1)
-    fashion, e.g. SIGPWR, SIGRTMIN+14, SIGRTMAX-10 or plain number. The
-    default signal is SIGPWR.
+        Allows one to specify signal name or number, sent by lxc-stop to the
+        container's init process to cleanly shutdown the container. Different
+        init systems could use different signals to perform clean shutdown
+        sequence. This option allows the signal to be specified in kill(1)
+        fashion, e.g. SIGPWR, SIGRTMIN+14, SIGRTMAX-10 or plain number. The
+        default signal is SIGPWR.
           -->
-        lxc-stop がコンテナをクリーンにシャットダウンするためにコンテナの init プロセスに送るシグナル名か番号を指定することができます。
+        lxc-stop がコンテナをクリーンにシャットダウンするためにコンテナの init プロセスに送るシグナル名か番号を指定できます。
         init システムによって、クリーンなシャットダウンを行うために使うシグナルは異なります。
         このオプションではシグナルとして kill(1) で使う形式を指定することができます。
         例えば SIGKILL, SIGRTMIN+14, SIGRTMAX-10 のような形式、もしくは数字を指定します。デフォルトのシグナルは SIGPWR です。
       </para>
       <variablelist>
-    <varlistentry>
-      <term>
-        <option>lxc.haltsignal</option>
-      </term>
-      <listitem>
-        <para>
-          <!--
-          specify the signal used to halt the container
+        <varlistentry>
+          <term>
+            <option>lxc.haltsignal</option>
+          </term>
+          <listitem>
+            <para>
+              <!--
+              specify the signal used to halt the container
+              -->
+              コンテナをシャットダウンするために使うシグナルを指定します。
+            </para>
+          </listitem>
+        </varlistentry>
+      </variablelist>
+    </refsect2>
+
+    <refsect2>
+      <title>リブート時のシグナル <!-- Reboot signal --></title>
+      <para>
+        <!--
+        Allows one to specify signal name or number, sent by lxc-stop to
+        reboot the container. This option allows signal to be specified in
+        kill(1) fashion, e.g. SIGTERM, SIGRTMIN+14, SIGRTMAX-10 or plain number.
+        The default signal is SIGINT.
           -->
-          コンテナをシャットダウンするのに使うシグナルを指定します
-        </para>
-      </listitem>
-    </varlistentry>
+        lxc-stop がコンテナをリブートするために送るシグナル名か番号を指定できます。
+        このオプションではシグナルとして kill(1) で使う形式を指定することができます。
+        例えば SIGKILL, SIGRTMIN+14, SIGRTMAX-10 のような形式、もしくは数字を指定します。デフォルトのシグナルは SIGINT です。
+          </para>
+          <variablelist>
+        <varlistentry>
+          <term>
+            <option>lxc.rebootsignal</option>
+          </term>
+          <listitem>
+            <para>
+              <!--
+              specify the signal used to reboot the container
+                -->
+              コンテナをリブートするために使うシグナルを指定します。
+            </para>
+          </listitem>
+        </varlistentry>
       </variablelist>
     </refsect2>
 
@@ -246,29 +279,29 @@ by KATOH Yasufumi <karma at jazz.email.ne.jp>
       <title><!-- Stop signal -->強制停止時のシグナル</title>
       <para>
         <!--
-    Allows one to specify signal name or number, sent by lxc-stop to forcibly
-    shutdown the container. This option allows signal to be specified in
-    kill(1) fashion, e.g. SIGKILL, SIGRTMIN+14, SIGRTMAX-10 or plain number.
-    The default signal is SIGKILL.
-    -->
+        Allows one to specify signal name or number, sent by lxc-stop to forcibly
+        shutdown the container. This option allows signal to be specified in
+        kill(1) fashion, e.g. SIGKILL, SIGRTMIN+14, SIGRTMAX-10 or plain number.
+        The default signal is SIGKILL.
+          -->
         lxc-stop がコンテナを強制的にシャットダウンするために送るシグナル名か番号を指定することができます。
         このオプションではシグナルとして kill(1) で使う形式を指定することができます。
         例えば SIGKILL, SIGRTMIN+14, SIGRTMAX-10 のような形式、もしくは数字を指定します。デフォルトのシグナルは SIGKILL です。
       </para>
       <variablelist>
-    <varlistentry>
-      <term>
-        <option>lxc.stopsignal</option>
-      </term>
-      <listitem>
-        <para>
-          <!--
-          specify the signal used to stop the container
-          -->
-          コンテナを停止するのに使用するシグナルを指定します。
-        </para>
-      </listitem>
-    </varlistentry>
+        <varlistentry>
+          <term>
+            <option>lxc.stopsignal</option>
+          </term>
+          <listitem>
+            <para>
+              <!--
+                  specify the signal used to stop the container
+                -->
+              コンテナを停止するのに使用するシグナルを指定します。
+            </para>
+          </listitem>
+        </varlistentry>
       </variablelist>
     </refsect2>
 
@@ -304,6 +337,80 @@ by KATOH Yasufumi <karma at jazz.email.ne.jp>
     </refsect2>
 
     <refsect2>
+      <title><!-- Init ID -->Init が使う ID</title>
+      <para>
+        <!--
+        Sets the UID/GID to use for the init system, and subsequent command, executed by lxc-execute.
+        -->
+        lxc-execute が実行するコンテナの init と、その後に起動するコマンドが使用する UID/GID を設定します。
+
+        <!--
+        These options are only used when lxc-execute is started in a private user namespace.
+        -->
+        このオプションは lxc-execute がユーザ名前空間内で起動するときのみ使われます。
+
+        <!--
+        Defaults to: UID(0), GID(0)
+        -->
+        デフォルト値は UID(0), GID(0) です。
+      </para>
+      <variablelist>
+        <varlistentry>
+          <term>
+            <option>lxc.init_uid</option>
+          </term>
+          <listitem>
+            <para>
+              <!--
+              UID to use within a private user namesapce for init.
+                -->
+              ユーザ名前空間内で init が使う UID です。
+            </para>
+          </listitem>
+        </varlistentry>
+        <varlistentry>
+          <term>
+            <option>lxc.init_gid</option>
+          </term>
+          <listitem>
+            <para>
+              <!--
+              GID to use within a private user namesapce for init.
+                -->
+              ユーザ名前空間内で init が使う GID です。
+            </para>
+          </listitem>
+        </varlistentry>
+      </variablelist>
+    </refsect2>
+
+    <refsect2>
+      <title><!-- Ephemeral -->一時的なコンテナ</title>
+      <para>
+        <!--
+        Allows one to specify whether a container will be destroyed on shutdown.
+          -->
+        シャットダウン後にコンテナを削除するかどうかを指定できます。
+      </para>
+      <variablelist>
+        <varlistentry>
+          <term>
+            <option>lxc.ephemeral</option>
+          </term>
+          <listitem>
+            <para>
+              <!--
+              The only allowed values are 0 and 1. Set this to 1 to destroy a
+              container on shutdown. 
+                -->
+              指定できる値は 0 または 1 のみです。この値を 1 に設定すると、シャットダウン後にコンテナを削除します。
+            </para>
+          </listitem>
+        </varlistentry>
+      </variablelist>
+    </refsect2>
+
+    <refsect2>
       <title><!-- Network -->ネットワーク</title>
       <para>
         <!--
@@ -322,6 +429,19 @@ by KATOH Yasufumi <karma at jazz.email.ne.jp>
         そして、仮に物理ネットワークインターフェースが一つしかなくても、コンテナ内でいくつもの仮想インターフェースを使うことができます。
       </para>
       <variablelist>
+        <varlistentry>
+          <term>
+            <option>lxc.network</option>
+          </term>
+          <listitem>
+            <para>
+              <!--
+              may be used without a value to clear all previous network options.
+              -->
+              値を指定せずに使い、それ以前に定義されたすべてのネットワークオプションをクリアできます。
+            </para>
+          </listitem>
+        </varlistentry>
 	<varlistentry>
 	  <term>
 	    <option>lxc.network.type</option>
@@ -416,16 +536,18 @@ by KATOH Yasufumi <karma at jazz.email.ne.jp>
 	      <option>lxc.network.macvlan.mode</option> specifies the
 	      mode the macvlan will use to communicate between
 	      different macvlan on the same upper device. The accepted
-	      modes are <option>private</option>, the device never
-	      communicates with any other device on the same upper_dev (default),
-	      <option>vepa</option>, the new Virtual Ethernet Port
+              modes are <option>private</option>, <option>vepa</option>,
+              <option>bridge</option> and <option>passthru</option>.
+	      In <option>private</option> mode, the device never
+              communicates with any other device on the same upper_dev (default).
+              In <option>vepa</option> mode, the new Virtual Ethernet Port
 	      Aggregator (VEPA) mode, it assumes that the adjacent
 	      bridge returns all frames where both source and
 	      destination are local to the macvlan port, i.e. the
 	      bridge is set up as a reflective relay.  Broadcast
 	      frames coming in from the upper_dev get flooded to all
 	      macvlan interfaces in VEPA mode, local frames are not
-	      delivered locally, or <option>bridge</option>, it
+              delivered locally. In <option>bridge</option> mode, it
 	      provides the behavior of a simple bridge between
 	      different macvlan interfaces on the same port. Frames
 	      from one interface to another one get delivered directly
@@ -434,20 +556,26 @@ by KATOH Yasufumi <karma at jazz.email.ne.jp>
 	      interface, but when they come back from a reflective
 	      relay, we don't deliver them again.  Since we know all
 	      the MAC addresses, the macvlan bridge mode does not
-	      require learning or STP like the bridge module does.
+              require learning or STP like the bridge module does. In
+              <option>passthru</option> mode, all frames received by
+              the physical interface are forwarded to the macvlan
+              interface. Only one macvlan interface in <option>passthru</option>
+              mode is possible for one physical interface.
               -->
               <option>macvlan:</option> macvlan インターフェースは <option>lxc.network.link</option> により指定されるインターフェースとリンクし、コンテナに割り当てられます。
               <option>lxc.network.macvlan.mode</option> でモードを指定すると、その macvlan の指定を、同じ上位デバイスで異なる macvlan の間の通信をする時に使います。
-              受け入れられたモードが <option>private</option> であれば、デバイスは同じ上位デバイスの他のデバイスとの通信を行いません (デフォルト)。
-              新しい仮想イーサネットポート集約モード (Virtual Ethernet Port Aggregator (VEPA)) である <option>vepa</option> は、隣接したポートが、ソースとデスティネーションの両方が macvlan ポートに対してローカルであるフレームを全て返すと仮定します。
+              指定できるモードは <option>private</option>、<option>vepa</option>、<option>bridge</option>、<option>passthru</option> のいずれかです。
+              <option>private</option> モードの場合、デバイスは同じ上位デバイスの他のデバイスとの通信を行いません (デフォルト)。
+              新しい仮想イーサネットポート集約モード (Virtual Ethernet Port Aggregator (VEPA)) である <option>vepa</option> モードの場合、隣接したポートが、ソースとデスティネーションの両方が macvlan ポートに対してローカルであるフレームを全て返すと仮定します。
               すなわち、ブリッジが reflective relay として設定されているということです。
               上位デバイスから入ってくるブロードキャストフレームは、VEPA モードである全ての macvlan インターフェースに送りつけられます。
               ローカルのフレームはローカルには配送されません。
-              <option>bridge</option> の指定は、同じポートの異なる macvlan インターフェースの間のシンプルなブリッジとして動作します。
+              <option>bridge</option> モードの場合、同じポートの異なる macvlan インターフェースの間のシンプルなブリッジとして動作します。
               あるインターフェースから他のインターフェースへのフレームは、直接配送され、外部には送出されません。
               ブロードキャストフレームは、全ての他のブリッジと外部のインターフェースに対して送られます。
               しかし、reflective relay からフレームが返ってきたときは、再度それを配送することはしません。
               全ての MAC アドレスを知っているので、ブリッジモジュールのように、macvlan ブリッジモードは学習や STP の必要はありません。
+              <option>passthru</option> モードの場合、物理インターフェースで受け取った全てのフレームは macvlan インターフェースに転送されます。<option>passthru</option> モードの場合、ひとつの macvlan インターフェースだけが、ひとつの物理インターフェースに対して設定できます。
 	    </para>
 
 	    <para>
@@ -895,7 +1023,7 @@ by KATOH Yasufumi <karma at jazz.email.ne.jp>
 	<filename>/dev</filename> to be set up as needed in the container
 	rootfs.  If lxc.autodev is set to 1, then after mounting the container's
 	rootfs LXC will mount a fresh tmpfs under <filename>/dev</filename>
-	(limited to 100k) and fill in a minimal set of initial devices.
+	(limited to 500k) and fill in a minimal set of initial devices.
         This is generally required when starting a container containing
         a "systemd" based "init" but may be optional at other times.  Additional
         devices in the containers /dev directory may be created through the
@@ -903,7 +1031,7 @@ by KATOH Yasufumi <karma at jazz.email.ne.jp>
         -->
         デフォルトでは、lxc はコンテナの <filename>/dev</filename> 以下に fd, stdin, stdout, stderr のシンボリックリンクを作成しますが、自動的にはデバイスノードのエントリは作成しません。
         これは、コンテナの rootfs で必要な設定を行えるようにするものです。
-        lxc.autodev が 1 に設定されている場合、コンテナの rootfs をマウントした後、LXC は新しい tmpfs を <filename>/dev</filename> 以下にマウントします (100k 制限の)。
+        lxc.autodev が 1 に設定されている場合、コンテナの rootfs をマウントした後、LXC は新しい tmpfs を <filename>/dev</filename> 以下にマウントします (500k 制限の)。
         そして初期デバイスの最小限のセットを作成します。
         これは、"systemd" ベースの "init" 環境のコンテナを起動する時に通常必要ですが、他の環境の場合はオプショナルなものです。
         コンテナの /dev ディレクトリ内の追加デバイスは <option>lxc.hook.autodev</option> フックを使用して作成されます。
@@ -964,6 +1092,23 @@ by KATOH Yasufumi <karma at jazz.email.ne.jp>
         マウントポイントセクションは、マウントするための区別された場所を指定します。
         これらのマウントポイントは、コンテナだけに見え、コンテナ外で実行されるプロセスから見えることはありません。
         例えば、/etc や /var や /home をマウントするときに役に立つでしょう。
+      </para>
+      <para>
+	<!--
+	NOTE - LXC will generally ensure that mount targets and relative
+	bind-mount sources are properly confined under the container
+	root, to avoid attacks involving over-mounting host directories
+	and files.  (Symbolic links in absolute mount sources are ignored)
+	However, if the container configuration first mounts a directory which
+	is under the control of the container user, such as /home/joe, into
+        the container at some <filename>path</filename>, and then mounts
+        under <filename>path</filename>, then a TOCTTOU attack would be
+        possible where the container user modifies a symbolic link under
+        his home directory at just the right time.
+	  -->
+	注意: 通常 LXC は、マウント対象と相対パス指定のバインドマウントを、適切にコンテナルート以下に閉じ込めます。
+	これは、ホストのディレクトリやファイルに対して重ね合わせを行うようなマウントによる攻撃を防ぎます。(絶対パス指定のマウントソース中の各パスがシンボリックリンクである場合は無視されます。)
+	しかし、もしコンテナの設定が最初に、/home/joe のようなコンテナユーザのコントロール配下にあるディレクトリを、コンテナ中のある <filename>path</filename> にマウントし、その後 <filename>path</filename> 以下でマウントが行われるような場合、コンテナユーザがタイミングを見計らって自身のホームディレクトリ以下でシンボリックリンクを操作するような TOCTTOU 攻撃が成立する可能性があります。
       </para>
       <variablelist>
 	<varlistentry>
@@ -1338,14 +1483,16 @@ proc proc proc nodev,noexec,nosuid 0 0
           specifies that the rootfs should be an overlay with <filename>/upper</filename>
           being mounted read-write over a read-only mount of <filename>/lower</filename>.
           <filename>aufs:/lower:/upper</filename> does the same using aufs in place
-          of overlayfs. <filename>loop:/file</filename> tells lxc to attach
+          of overlayfs. For both <filename>overlayfs</filename> and
+          <filename>aufs</filename> multiple <filename>/lower</filename>
+          directories can be specified. <filename>loop:/file</filename> tells lxc to attach
           <filename>/file</filename> to a loop device and mount the loop device.
           -->
               ディレクトリ、単純なブロックデバイスのバックエンドを持つコンテナの場合、パス名を使うことができます。
               もし rootfs が nbd デバイスの場合、<filename>nbd:file:1</filename> という指定は <filename>file</filename> を nbd デバイスとして使用し、その 1 番目のパーティションが rootfs としてマウントされます。
               <filename>nbd:file</filename> という指定は、nbd デバイス自身をマウントします。
               <filename>overlayfs:/lower:/upper</filename> という指定は、rootfs は <filename>/lower</filename> という読み込み専用でマウントされるディレクトリの上に、<filename>/upper</filename> というディレクトリを読み書き可能で重ね合わせてマウントします。
-              <filename>aufs:/lower:/upper</filename> は overlayfs で指定している部分を aufs と指定すれば同じことになります。
+              <filename>aufs:/lower:/upper</filename> は overlayfs で指定している部分を aufs と指定すれば同じことになります。<filename>overlayfs</filename> と <filename>aufs</filename> は両方とも、複数の <filename>/lower</filename> ディレクトリを指定できます。
               <filename>loop:/file</filename> は <filename>/file</filename> を loop デバイスとして使用し、loop デバイスをマウントします。
 	    </para>
 	  </listitem>
@@ -1463,6 +1610,8 @@ proc proc proc nodev,noexec,nosuid 0 0
 		<refentrytitle><command>capabilities</command></refentrytitle>
 		<manvolnum>7</manvolnum>
 	      </citerefentry>,
+              If used with no value, lxc will clear any drop capabilities
+              specified up to this point.
               -->
               コンテナ内で削除するケーパビリティ (capability) を指定します。
               一行でスペース区切りで複数のケーパビリティを指定することも可能です。
@@ -1473,6 +1622,7 @@ proc proc proc nodev,noexec,nosuid 0 0
 		<refentrytitle><command>capabilities</command></refentrytitle>
 		<manvolnum>7</manvolnum>
 	      </citerefentry>
+	      この設定を、値を指定しない状態で使った場合、それ以前に指定された削除対象のケーパビリティの指定をすべてクリアします (lxc.cap.drop に何も指定しない状態になります)。
 	    </para>
 	  </listitem>
 	</varlistentry>
@@ -1721,9 +1871,12 @@ mknod errno 0
 	  <listitem><para> Container name. </para></listitem>
 	  <listitem><para> Section (always 'lxc'). </para></listitem>
 	  <listitem><para> The hook type (i.e. 'clone' or 'pre-mount'). </para></listitem>
-	  <listitem><para> Additional arguments In the
+	  <listitem><para> Additional arguments. In the
 	  case of the clone hook, any extra arguments passed to
-	  lxc-clone will appear as further arguments to the hook. </para></listitem>
+          lxc-clone will appear as further arguments to the hook.
+          In the case of the stop hook, paths to filedescriptors
+          for each of the container's namespaces along with their types
+          are passed. </para></listitem>
 	</itemizedlist>
 	The following environment variables are set:
 	<itemizedlist>
@@ -1739,7 +1892,7 @@ mknod errno 0
 	  <listitem><para>コンテナ名</para></listitem>
 	  <listitem><para>セクション (常に 'lxc')</para></listitem>
 	  <listitem><para>フックのタイプ ('clone' や 'pre-mount' など)</para></listitem>
-	  <listitem><para>追加の引数。clone フックの場合、lxc-clone に渡される追加の引数は、フックへの引数として追加されます。</para></listitem>
+	  <listitem><para>追加の引数。clone フックの場合、lxc-clone に渡される追加の引数は、フックへの引数として追加されます。stop フックの場合は、コンテナの名前空間のそれぞれに対するファイルディスクリプタへのパスが、名前空間名とともに渡されます。</para></listitem>
 	</itemizedlist>
         以下の環境変数がセットされます。
 	<itemizedlist>
@@ -1860,6 +2013,32 @@ mknod errno 0
 	</varlistentry>
       </variablelist>
       <variablelist>
+        <varlistentry>
+          <term>
+            <option>lxc.hook.stop</option>
+          </term>
+          <listitem>
+            <para>
+	      <!--
+              A hook to be run in the host's namespace with references
+              to the container's namespaces after the container has been shut
+              down. For each namespace an extra argument is passed to the hook
+              containing the namespace's type and a filename that can be used to
+              obtain a file descriptor to the corresponding namespace, separated
+              by a colon. The type is the name as it would appear in the
+              <filename>/proc/PID/ns</filename> directory.
+              For instance for the mount namespace the argument usually looks
+              like <filename>mnt:/proc/PID/fd/12</filename>.
+	      -->
+	      コンテナのシャットダウン後、コンテナの名前空間への参照とともに、ホストの名前空間で実行されるフックです。
+	      それぞれの名前空間に対応する追加の引数がフックに渡されます。その引数にはコロンで区切られた名前空間のタイプ名とファイル名が含まれており、ファイル名は名前空間に対するファイルディスクリプタを取得するのに使えます。
+	      タイプ名は <filename>/proc/PID/ns</filename> ディレクトリ内のファイル名です。
+	      例えば、マウント名前空間に対応する引数は通常は <filename>mnt:/proc/PID/fd/12</filename> のようになります。
+            </para>
+          </listitem>
+        </varlistentry>
+      </variablelist>
+      <variablelist>
 	<varlistentry>
 	  <term>
 	    <option>lxc.hook.post-stop</option>
@@ -1894,6 +2073,21 @@ mknod errno 0
 	    </para>
 	  </listitem>
 	</varlistentry>
+      </variablelist>
+      <variablelist>
+        <varlistentry>
+          <term>
+            <option>lxc.hook.destroy</option>
+          </term>
+          <listitem>
+            <para>
+              <!--
+              A hook to be run when the container is destroyed.
+                -->
+              コンテナを破壊する際に実行されるフックです。
+            </para>
+          </listitem>
+        </varlistentry>
       </variablelist>
     </refsect2>
 
@@ -2015,11 +2209,42 @@ mknod errno 0
 	      [<option>lxc.rootfs</option>]
               -->
               rootfs.mount へマウントされるコンテナのルートへのホスト上のパスです。
+	      [<option>lxc.rootfs</option>]
 	    </para>
 	  </listitem>
 	</varlistentry>
       </variablelist>
-
+      <variablelist>
+        <varlistentry>
+          <term>
+            <option>LXC_SRC_NAME</option>
+          </term>
+          <listitem>
+            <para>
+              <!--
+              Only for the clone hook. Is set to the original container name.
+              -->
+              clone フックの場合のみ使われます。クローン元のコンテナ名が設定されます。
+            </para>
+          </listitem>
+        </varlistentry>
+      </variablelist>
+      <variablelist>
+        <varlistentry>
+          <term>
+            <option>LXC_TARGET</option>
+          </term>
+          <listitem>
+            <para>
+	      <!--
+              Only for the stop hook. Is set to "stop" for a container
+              shutdown or "reboot" for a container reboot.
+	      -->
+	      stop フックの場合のみ使われます。コンテナのシャットダウンの場合は "stop"、リブートの場合は "reboot" が設定されます。
+            </para>
+          </listitem>
+        </varlistentry>
+      </variablelist>
     </refsect2>
 
     <refsect2>
@@ -2145,6 +2370,22 @@ mknod errno 0
               a series of containers at once.
               -->
               多数の自動起動させるコンテナがある場合のコンテナの起動順を決めるのに使う整数を指定します。
+            </para>
+          </listitem>
+        </varlistentry>
+        <varlistentry>
+          <term>
+            <option>lxc.monitor.unshare</option>
+          </term>
+          <listitem>
+            <para>
+              <!--
+              If not zero the mount namespace will be unshared from the host
+              before initializing the container (before running any pre-start
+              hooks). This requires the CAP_SYS_ADMIN capability at startup.
+              Default is 0.
+                -->
+              この値が 0 でない場合、コンテナが初期化される前 (pre-start フックが実行される前) にマウント名前空間がホストから unshare されます。この機能を使う場合、スタート時に CAP_SYS_ADMIN ケーパビリティが必要です。デフォルト値は 0 です。
             </para>
           </listitem>
         </varlistentry>

@@ -1185,6 +1185,11 @@ bool file_exists(const char *f)
 	return stat(f, &statbuf) == 0;
 }
 
+bool cgns_supported(void)
+{
+	return file_exists("/proc/self/ns/cgroup");
+}
+
 /* historically lxc-init has been under /usr/lib/lxc and under
  * /usr/lib/$ARCH/lxc.  It now lives as $prefix/sbin/init.lxc.
  */
@@ -1452,7 +1457,7 @@ int setproctitle(char *title)
 	if (ret == 0)
 		strcpy((char*)arg_start, title);
 	else
-		SYSERROR("setting cmdline failed");
+		INFO("setting cmdline failed - %s", strerror(errno));
 
 	return ret;
 }
@@ -1570,7 +1575,7 @@ static int open_without_symlink(const char *target, const char *prefix_skip)
 	fulllen = strlen(target);
 
 	/* make sure prefix-skip makes sense */
-	if (prefix_skip) {
+	if (prefix_skip && strlen(prefix_skip) > 0) {
 		curlen = strlen(prefix_skip);
 		if (!is_subdir(target, prefix_skip, curlen)) {
 			ERROR("WHOA there - target '%s' didn't start with prefix '%s'",
@@ -1699,6 +1704,8 @@ int safe_mount(const char *src, const char *dest, const char *fstype,
  *
  * Returns < 0 on failure, 0 if the correct proc was already mounted
  * and 1 if a new proc was mounted.
+ *
+ * NOTE: not to be called from inside the container namespace!
  */
 int mount_proc_if_needed(const char *rootfs)
 {
@@ -1732,8 +1739,14 @@ int mount_proc_if_needed(const char *rootfs)
 	return 0;
 
 domount:
-	if (safe_mount("proc", path, "proc", 0, NULL, rootfs) < 0)
+	if (!strcmp(rootfs,"")) /* rootfs is NULL */
+		ret = mount("proc", path, "proc", 0, NULL);
+	else
+		ret = safe_mount("proc", path, "proc", 0, NULL, rootfs);
+
+	if (ret < 0)
 		return -1;
+
 	INFO("Mounted /proc in container for security transition");
 	return 1;
 }

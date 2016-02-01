@@ -21,11 +21,14 @@
  * License along with this library; if not, write to the Free Software
  * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA
  */
+
 #ifndef __LXC_ARGUMENTS_H
 #define __LXC_ARGUMENTS_H
 
 #include <getopt.h>
+#include <stdbool.h>
 #include <stdint.h>
+#include <sys/types.h>
 
 struct lxc_arguments;
 
@@ -86,13 +89,47 @@ struct lxc_arguments {
 	char *fstype;
 	uint64_t fssize;
 	char *lvname, *vgname, *thinpool;
+	char *rbdname, *rbdpool;
 	char *zfsroot, *lowerdir, *dir;
+
+	/* lxc-execute */
+	uid_t uid;
+	gid_t gid;
 
 	/* auto-start */
 	int all;
 	int ignore_auto;
 	int list;
-	char *groups;
+	char *groups; /* also used by lxc-ls */
+
+	/* lxc-snapshot and lxc-clone */
+	enum task {
+		CLONE,
+		DESTROY,
+		LIST,
+		RESTORE,
+		SNAP,
+		RENAME,
+	} task;
+	int print_comments;
+	char *commentfile;
+	char *newname;
+	char *newpath;
+	char *snapname;
+	int keepdata;
+	int keepname;
+	int keepmac;
+
+	/* lxc-ls */
+	char *ls_fancy_format;
+	char *ls_filter;
+	unsigned int ls_nesting; /* maximum allowed nesting level */
+	bool ls_active;
+	bool ls_fancy;
+	bool ls_frozen;
+	bool ls_line;
+	bool ls_running;
+	bool ls_stopped;
 
 	/* remaining arguments */
 	char *const *argv;
