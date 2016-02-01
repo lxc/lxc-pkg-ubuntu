@@ -39,7 +39,7 @@ Depends: adduser,
          ${lxc:Depends},
          ${misc:Depends},
          ${shlibs:Depends}
-Recommends: lxc-templates (>= 0.8.0~rc1-4ubuntu43), libpam-cgm
+Recommends: lxc-templates (>= 0.8.0~rc1-4ubuntu43), libpam-cgfs
 Suggests: btrfs-tools, lvm2, lxctl
 Description: Linux Containers userspace tools
  Containers are insulated areas inside a system, which have their own namespace

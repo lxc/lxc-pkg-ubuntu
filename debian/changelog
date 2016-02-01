@@ -1,3 +1,9 @@
+lxc (1.1.5-0ubuntu6) xenial; urgency=medium
+
+  * Switch recommends from libpam-cgm to libpam-cgfs.
+
+ -- Serge Hallyn <serge.hallyn@ubuntu.com>  Fri, 29 Jan 2016 11:32:16 +0100
+
 lxc (1.1.5-0ubuntu5) xenial; urgency=medium
 
   * No-change rebuild to drop python3.4 support.
