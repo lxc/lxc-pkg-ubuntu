@@ -1,3 +1,10 @@
+lxc (2.0.0~beta1-0ubuntu1) xenial; urgency=medium
+
+  * New upstream snapshot (2.0.0~beta2)
+    - Drop all patches except for the fix for LP: #1509414
+
+ -- Stéphane Graber <stgraber@ubuntu.com>  Mon, 01 Feb 2016 17:25:03 +0100
+
 lxc (1.1.5-0ubuntu6) xenial; urgency=medium
 
   * Switch recommends from libpam-cgm to libpam-cgfs.
