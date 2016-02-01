@@ -1,3 +1,12 @@
+lxc (1.1.5-0ubuntu4) xenial; urgency=medium
+
+  * Add libpam-cgm to Recommends
+  * Cherrypick upstream patches to support starting containers when not all
+    cgroups are writeable.
+  * Cherrypick upstream patch to avoid null dereference in failure case.
+
+ -- Serge Hallyn <serge.hallyn@ubuntu.com>  Tue, 12 Jan 2016 18:01:07 -0800
+
 lxc (1.1.5-0ubuntu3) xenial; urgency=medium
 
   * Cherry-pick from upstream:

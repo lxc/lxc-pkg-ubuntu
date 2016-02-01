@@ -2,3 +2,8 @@
 0002-ubuntu-cloud-Various-fixes.patch
 0003-don-t-truncate-environment-sometimes-in-setproctitle.patch
 0004-Better-handle-preserve_ns-behavior.patch
+0005-detect-which-cgroups-we-cannot-use.patch
+0006-avoid-null-deref.patch
+0007-fix-detecting-all-mounts.patch
+0008-cgmescape.patch
+0009-silence-warnings.patch
