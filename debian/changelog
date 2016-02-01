@@ -1,3 +1,9 @@
+lxc (1.1.5-0ubuntu5) xenial; urgency=medium
+
+  * No-change rebuild to drop python3.4 support.
+
+ -- Matthias Klose <doko@ubuntu.com>  Tue, 19 Jan 2016 13:33:28 +0000
+
 lxc (1.1.5-0ubuntu4) xenial; urgency=medium
 
   * Add libpam-cgm to Recommends
