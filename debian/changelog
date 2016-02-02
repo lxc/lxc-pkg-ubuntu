@@ -1,3 +1,10 @@
+lxc (2.0.0~beta2-0ubuntu2) xenial; urgency=medium
+
+  * Cherry-pick upstream bugfix for lxc-ls behavior.
+    This should fix the current juju test regression.
+
+ -- Stéphane Graber <stgraber@ubuntu.com>  Tue, 02 Feb 2016 14:53:40 +0100
+
 lxc (2.0.0~beta2-0ubuntu1) xenial; urgency=medium
 
   * New upstream snapshot (2.0.0~beta2)
