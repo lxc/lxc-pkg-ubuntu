@@ -20,6 +20,8 @@
  * License along with this library; if not, write to the Free Software
  * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA
  */
+
+#define _GNU_SOURCE
 #include "config.h"
 
 #include <stdio.h>
@@ -36,6 +38,7 @@
 #include <pwd.h>
 #include <grp.h>
 #include <time.h>
+
 #ifdef HAVE_STATVFS
 #include <sys/statvfs.h>
 #endif
@@ -72,6 +75,7 @@
 #include "log.h"
 #include "caps.h"       /* for lxc_caps_last_cap() */
 #include "bdev/bdev.h"
+#include "bdev/lxcaufs.h"
 #include "bdev/lxcoverlay.h"
 #include "cgroup.h"
 #include "lxclock.h"
@@ -993,7 +997,7 @@ static int setup_tty(struct lxc_conf *conf)
 }
 
 
-static int setup_rootfs_pivot_root(const char *rootfs, const char *pivotdir)
+static int setup_rootfs_pivot_root(const char *rootfs)
 {
 	int oldroot = -1, newroot = -1;
 
@@ -1080,10 +1084,11 @@ static int mount_autodev(const char *name, const struct lxc_rootfs *rootfs, cons
 		return 0;
 	}
 
-	if (safe_mount("none", path, "tmpfs", 0, "size=500000,mode=755",
-				rootfs->path ? rootfs->mount : NULL)) {
+	ret = safe_mount("none", path, "tmpfs", 0, "size=500000,mode=755",
+			rootfs->path ? rootfs->mount : NULL);
+	if (ret != 0) {
 		SYSERROR("Failed mounting tmpfs onto %s\n", path);
-		return false;
+		return -1;
 	}
 
 	INFO("Mounted tmpfs onto %s",  path);
@@ -1140,7 +1145,7 @@ static int fill_autodev(const struct lxc_rootfs *rootfs)
 		return -1;
 	}
 
-	if (!dir_exists(path))  // ignore, just don't try to fill in
+	if (!dir_exists(path)) // ignore, just don't try to fill in
 		return 0;
 
 	INFO("Populating container /dev");
@@ -1314,7 +1319,7 @@ static int setup_pivot_root(const struct lxc_rootfs *rootfs)
 	if (detect_ramfs_rootfs()) {
 		if (prepare_ramfs_root(rootfs->mount))
 			return -1;
-	} else if (setup_rootfs_pivot_root(rootfs->mount, rootfs->pivot)) {
+	} else if (setup_rootfs_pivot_root(rootfs->mount)) {
 		ERROR("failed to setup pivot root");
 		return -1;
 	}
@@ -1725,68 +1730,6 @@ static void cull_mntent_opt(struct mntent *mntent)
 	}
 }
 
-static int mount_entry_create_aufs_dirs(const struct mntent *mntent,
-					const struct lxc_rootfs *rootfs,
-					const char *lxc_name,
-					const char *lxc_path)
-{
-	char lxcpath[MAXPATHLEN];
-	char *rootfsdir = NULL;
-	char *scratch = NULL;
-	char *tmp = NULL;
-	char *upperdir = NULL;
-	char **opts = NULL;
-	int fret = -1;
-	int ret = 0;
-	size_t arrlen = 0;
-	size_t i;
-	size_t len = 0;
-	size_t rootfslen = 0;
-
-	if (!rootfs->path || !lxc_name || !lxc_path)
-		goto err;
-
-	opts = lxc_string_split(mntent->mnt_opts, ',');
-	if (opts)
-		arrlen = lxc_array_len((void **)opts);
-	else
-		goto err;
-
-	for (i = 0; i < arrlen; i++) {
-		if (strstr(opts[i], "br=") && (strlen(opts[i]) > (len = strlen("br="))))
-			tmp = opts[i] + len;
-	}
-	if (!tmp)
-		goto err;
-
-	upperdir = strtok_r(tmp, ":=", &scratch);
-	if (!upperdir)
-		goto err;
-
-	ret = snprintf(lxcpath, MAXPATHLEN, "%s/%s", lxc_path, lxc_name);
-	if (ret < 0 || ret >= MAXPATHLEN)
-		goto err;
-
-	rootfsdir = ovl_get_rootfs(rootfs->path, &rootfslen);
-	if (!rootfsdir)
-		goto err;
-
-	/* We neither allow users to create upperdirs outside the containerdir
-	 * nor inside the rootfs. The latter might be debatable. */
-	if ((strncmp(upperdir, lxcpath, strlen(lxcpath)) == 0) && (strncmp(upperdir, rootfsdir, rootfslen) != 0))
-		if (mkdir_p(upperdir, 0755) < 0) {
-			WARN("Failed to create upperdir");
-		}
-
-	fret = 0;
-
-err:
-	free(rootfsdir);
-	lxc_free_array((void **)opts, free);
-	return fret;
-}
-
-
 static int mount_entry_create_dir_file(const struct mntent *mntent,
 				       const char* path, const struct lxc_rootfs *rootfs,
 				       const char *lxc_name, const char *lxc_path)
@@ -1799,7 +1742,7 @@ static int mount_entry_create_dir_file(const struct mntent *mntent,
 		if (ovl_mkdir(mntent, rootfs, lxc_name, lxc_path) < 0)
 			return -1;
 	} else if (strncmp(mntent->mnt_type, "aufs", 4) == 0) {
-		if (mount_entry_create_aufs_dirs(mntent, rootfs, lxc_name, lxc_path) < 0)
+		if (aufs_mkdir(mntent, rootfs, lxc_name, lxc_path) < 0)
 			return -1;
 	}
 
@@ -1828,6 +1771,8 @@ static int mount_entry_create_dir_file(const struct mntent *mntent,
 	return ret;
 }
 
+/* rootfs, lxc_name, and lxc_path can be NULL when the container is created
+ * without a rootfs. */
 static inline int mount_entry_on_generic(struct mntent *mntent,
                  const char* path, const struct lxc_rootfs *rootfs,
 		 const char *lxc_name, const char *lxc_path)
@@ -1836,6 +1781,10 @@ static inline int mount_entry_on_generic(struct mntent *mntent,
 	char *mntdata;
 	int ret;
 	bool optional = hasmntopt(mntent, "optional") != NULL;
+
+	char *rootfs_path = NULL;
+	if (rootfs && rootfs->path)
+		rootfs_path = rootfs->mount;
 
 	ret = mount_entry_create_dir_file(mntent, path, rootfs, lxc_name, lxc_path);
 
@@ -1850,8 +1799,7 @@ static inline int mount_entry_on_generic(struct mntent *mntent,
 	}
 
 	ret = mount_entry(mntent->mnt_fsname, path, mntent->mnt_type, mntflags,
-			  mntdata, optional,
-			  rootfs->path ? rootfs->mount : NULL);
+			  mntdata, optional, rootfs_path);
 
 	free(mntdata);
 	return ret;
@@ -1859,7 +1807,22 @@ static inline int mount_entry_on_generic(struct mntent *mntent,
 
 static inline int mount_entry_on_systemfs(struct mntent *mntent)
 {
-  return mount_entry_on_generic(mntent, mntent->mnt_dir, NULL, NULL, NULL);
+	char path[MAXPATHLEN];
+	int ret;
+
+	/* For containers created without a rootfs all mounts are treated as
+	 * absolute paths starting at / on the host. */
+	if (mntent->mnt_dir[0] != '/')
+		ret = snprintf(path, sizeof(path), "/%s", mntent->mnt_dir);
+	else
+		ret = snprintf(path, sizeof(path), "%s", mntent->mnt_dir);
+
+	if (ret < 0 || ret >= sizeof(path)) {
+		ERROR("path name too long");
+		return -1;
+	}
+
+	return mount_entry_on_generic(mntent, path, NULL, NULL, NULL);
 }
 
 static int mount_entry_on_absolute_rootfs(struct mntent *mntent,
@@ -1920,7 +1883,7 @@ static int mount_entry_on_relative_rootfs(struct mntent *mntent,
 
 	/* relative to root mount point */
 	ret = snprintf(path, sizeof(path), "%s/%s", rootfs->mount, mntent->mnt_dir);
-	if (ret >= sizeof(path)) {
+	if (ret < 0 || ret >= sizeof(path)) {
 		ERROR("path name too long");
 		return -1;
 	}
@@ -4176,7 +4139,6 @@ void lxc_conf_free(struct lxc_conf *conf)
 	free(conf->rootfs.mount);
 	free(conf->rootfs.options);
 	free(conf->rootfs.path);
-	free(conf->rootfs.pivot);
 	free(conf->logfile);
 	if (conf->logfd != -1)
 		close(conf->logfd);
