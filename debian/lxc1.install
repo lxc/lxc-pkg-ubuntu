@@ -1,0 +1,17 @@
+etc/apparmor.d/usr.bin.lxc-start
+etc/default
+etc/dnsmasq.d-available
+etc/init
+etc/lxc
+lib/systemd
+usr/bin
+usr/lib/*/lxc/lxc-containers
+usr/lib/*/lxc/lxc-devsetup
+usr/lib/*/lxc/lxc-net
+usr/sbin/*
+usr/share/apport
+usr/share/bash-completion
+usr/share/lxc/lxc.functions
+usr/share/man
+var/cache/lxc
+var/lib/lxc
