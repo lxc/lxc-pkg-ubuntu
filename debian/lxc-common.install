@@ -1,6 +1,4 @@
-etc/apparmor.d/abstractions/lxc/
-etc/apparmor.d/lxc-containers
-etc/apparmor.d/lxc/
+etc/apparmor.d
 usr/lib/*/lxc/lxc-apparmor-load
 usr/lib/*/lxc/lxc-monitord
 usr/lib/*/lxc/lxc-user-nic
