@@ -27,6 +27,17 @@ X-Python3-Version: >= 3.2
 XS-Testsuite: autopkgtest
 
 Package: lxc
+Architecture: all
+Depends: lxc1, ${misc:Depends}
+Priority: extra
+Section: oldlibs
+Description: Transitional package for lxc1
+ This is a transitional dummy package. It can safely be removed.
+ .
+ The currently recommened LXC experience is available as lxc2 and is
+ provided by LXD using the LXC backend.
+
+Package: lxc1
 Architecture: linux-any
 Pre-Depends: ${misc:Pre-Depends}
 Depends: adduser,
@@ -36,11 +47,12 @@ Depends: adduser,
          liblxc1 (= ${binary:Version}),
          python3,
          python3-lxc,
-         ${lxc:Depends},
          ${misc:Depends},
          ${shlibs:Depends}
-Recommends: lxc-templates (>= 0.8.0~rc1-4ubuntu43), libpam-cgfs
+Recommends: libpam-cgfs, lxc-templates (>= 0.8.0~rc1-4ubuntu43)
 Suggests: btrfs-tools, lvm2, lxctl
+Replaces: lxc (<< 2.0.0~rc1-0ubuntu2~)
+Breaks: lxc (<< 2.0.0~rc1-0ubuntu2~)
 Description: Linux Containers userspace tools
  Containers are insulated areas inside a system, which have their own namespace
  for filesystem, network, PID, IPC, CPU and memory allocation and which can be
@@ -51,25 +63,27 @@ Description: Linux Containers userspace tools
  daemon in a container, or to boot an entire "containerized" system, and to
  manage and debug your containers.
 
-Package: lxc-dbg
-Section: debug
-Priority: extra
+Package: lxc-common
 Architecture: linux-any
-Depends: lxc (= ${binary:Version}),
-         lxc-dev (= ${binary:Version}),
-         ${misc:Depends}
-Description: Linux Containers userspace tools (debug)
+Depends: liblxc1 (= ${binary:Version}),
+         ${lxc:Depends},
+         ${misc:Depends},
+         ${shlibs:Depends}
+Replaces: lxc (<< 2.0.0~rc1-0ubuntu2~)
+Breaks: lxc (<< 2.0.0~rc1-0ubuntu2~)
+Description: Linux Containers userspace tools (common tools)
  Containers are insulated areas inside a system, which have their own namespace
  for filesystem, network, PID, IPC, CPU and memory allocation and which can be
  created using the Control Group and Namespace features included in the Linux
  kernel.
  .
- This package contains the debugging symbols.
+ This package contains a few binaries and security profiles required by
+ all liblxc1 users.
 
 Package: lxc-dev
 Section: libdevel
 Architecture: linux-any
-Depends: lxc (= ${binary:Version}), ${misc:Depends}
+Depends: liblxc1 (= ${binary:Version}), ${misc:Depends}
 Description: Linux Containers userspace tools (development)
  Containers are insulated areas inside a system, which have their own namespace
  for filesystem, network, PID, IPC, CPU and memory allocation and which can be
@@ -80,7 +94,7 @@ Description: Linux Containers userspace tools (development)
 
 Package: lxc-templates
 Architecture: linux-any
-Depends: lxc (>= 0.8.0~rc1-4ubuntu43), ${misc:Depends}
+Depends: lxc (>= 0.8.0~rc1-4ubuntu43), ${misc:Depends}, ${shlibs:Depends}
 Recommends: busybox-static,
             cloud-image-utils | cloud-utils,
             debootstrap | cdebootstrap,
@@ -90,8 +104,8 @@ Recommends: busybox-static,
             uuid-runtime,
             xz-utils
 Suggests: qemu-user-static
-Replaces: lxc (<< 0.8.0~rc1-4ubuntu43)
-Breaks: lxc (<< 0.8.0~rc1-4ubuntu43)
+Replaces: lxc (<< 2.0.0~rc1-0ubuntu2~)
+Breaks: lxc (<< 2.0.0~rc1-0ubuntu2~)
 Description: Linux Containers userspace tools (templates)
  Containers are insulated areas inside a system, which have their own namespace
  for filesystem, network, PID, IPC, CPU and memory allocation and which can be
@@ -117,7 +131,11 @@ Description: Linux Containers userspace tools (test binaries)
 Package: liblxc1
 Architecture: linux-any
 Pre-Depends: ${misc:Pre-Depends}
-Depends: cgmanager | cgroup-lite, rsync, ${misc:Depends}, ${shlibs:Depends}
+Depends: cgmanager | cgroup-lite,
+         lxc-common (= ${binary:Version}),
+         rsync,
+         ${misc:Depends},
+         ${shlibs:Depends}
 Recommends: cgmanager, uidmap
 Replaces: liblxc0, lxc (<< 0.9.0~alpha3-0ubuntu1~)
 Breaks: lxc (<< 0.9.0~alpha3-0ubuntu1~)
