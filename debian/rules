@@ -49,7 +49,7 @@ override_dh_install:
 		sed -i "s/^\( *\)\(unix.*,\)/\\1#\\2/g" debian/tmp/etc/apparmor.d/abstractions/lxc/start-container; \
 	fi
 	if [ -x /usr/bin/dh_apparmor ]; then \
-		dh_apparmor -p lxc1 --profile-name=usr.bin.lxc-start; \
+		dh_apparmor -p lxc-common --profile-name=usr.bin.lxc-start; \
 	fi
 
 	# copy apport hook
