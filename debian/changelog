@@ -1,5 +1,7 @@
-lxc (2.0.0~rc1-0ubuntu2) UNRELEASED; urgency=medium
+lxc (2.0.0~rc2-0ubuntu1) xenial; urgency=medium
 
+  * New upstream snapshot (2.0.0~rc2)
+    - Support upstream Linux cgns. (LP: #1548440)
   * Move bash completion profile to /usr/share/bash-completion
   * Update a bunch of lintian overrides
   * Update packaging for the LTS
@@ -20,7 +22,7 @@ lxc (2.0.0~rc1-0ubuntu2) UNRELEASED; urgency=medium
 
 lxc (2.0.0~rc1-0ubuntu1) xenial; urgency=medium
 
-  * New upstream snapshot (2.0.0~beta2)
+  * New upstream snapshot (2.0.0~rc1)
     - Drop all patches except for the fix for LP: #1509414
   * Add logic to fix bash completion on 12.04 backports.
 
