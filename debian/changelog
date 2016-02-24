@@ -1,3 +1,13 @@
+lxc (2.0.0~rc2-0ubuntu3) xenial; urgency=medium
+
+  * Use versioned dependencies against the various binary packages.
+  * Update lxc-templates to depend on lxc1 not lxc. (LP: #1549136)
+  * Move the lxcfs recommends from lxc-templates to liblxc1.
+  * Drop cgmanager, use the cgfs backend instead.
+  * Have liblxc1 depend on systemd | cgroup-lite for cgfs backend.
+
+ -- Stéphane Graber <stgraber@ubuntu.com>  Wed, 24 Feb 2016 11:34:25 -0500
+
 lxc (2.0.0~rc2-0ubuntu2) xenial; urgency=medium
 
   * Fix apparmor profile loading order.
