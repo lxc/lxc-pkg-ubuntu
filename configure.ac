@@ -4,7 +4,7 @@
 m4_define([lxc_version_major], 2)
 m4_define([lxc_version_minor], 0)
 m4_define([lxc_version_micro], 0)
-m4_define([lxc_version_beta], rc2)
+m4_define([lxc_version_beta], rc3)
 m4_define([lxc_version_abi], 1.2.0)
 
 m4_define([lxc_version_base], [lxc_version_major.lxc_version_minor.lxc_version_micro])
@@ -146,6 +146,13 @@ fi
 if test "x$with_systemdsystemunitdir" != "xno"; then
   AC_SUBST([SYSTEMD_UNIT_DIR], [$with_systemdsystemunitdir])
 fi
+
+# Allow enabling deprecated executables
+AC_ARG_ENABLE([deprecated],
+	[AC_HELP_STRING([--enable-deprecated],
+	[enable deprecated executables [default=no]])],
+	[], [enable_deprecated=false])
+AM_CONDITIONAL([ENABLE_DEPRECATED], [test "x$enable_deprecated" = "xyes"])
 
 # Allow disabling rpath
 AC_ARG_ENABLE([rpath],

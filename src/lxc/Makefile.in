@@ -115,22 +115,23 @@ so_PROGRAMS = liblxc.so$(EXEEXT)
 @ENABLE_SECCOMP_TRUE@am__append_14 = seccomp.c
 @ENABLE_CGMANAGER_TRUE@am__append_15 = $(CGMANAGER_LIBS) $(DBUS_LIBS) $(NIH_LIBS) $(NIH_DBUS_LIBS)
 @ENABLE_CGMANAGER_TRUE@am__append_16 = $(CGMANAGER_CFLAGS) $(DBUS_CFLAGS) $(NIH_CFLAGS) $(NIH_DBUS_CFLAGS)
-@ENABLE_PYTHON_TRUE@am__append_17 = lxc-start-ephemeral
+@ENABLE_DEPRECATED_TRUE@@ENABLE_PYTHON_TRUE@am__append_17 = lxc-start-ephemeral
 bin_PROGRAMS = lxc-attach$(EXEEXT) lxc-autostart$(EXEEXT) \
-	lxc-cgroup$(EXEEXT) lxc-checkpoint$(EXEEXT) lxc-clone$(EXEEXT) \
-	lxc-copy$(EXEEXT) lxc-config$(EXEEXT) lxc-console$(EXEEXT) \
-	lxc-create$(EXEEXT) lxc-destroy$(EXEEXT) lxc-device$(EXEEXT) \
-	lxc-execute$(EXEEXT) lxc-freeze$(EXEEXT) lxc-info$(EXEEXT) \
-	lxc-ls$(EXEEXT) lxc-monitor$(EXEEXT) lxc-snapshot$(EXEEXT) \
-	lxc-start$(EXEEXT) lxc-stop$(EXEEXT) lxc-top$(EXEEXT) \
-	lxc-unfreeze$(EXEEXT) lxc-unshare$(EXEEXT) \
-	lxc-usernsexec$(EXEEXT) lxc-wait$(EXEEXT)
-sbin_PROGRAMS = init.lxc$(EXEEXT) $(am__EXEEXT_1)
+	lxc-cgroup$(EXEEXT) lxc-checkpoint$(EXEEXT) lxc-copy$(EXEEXT) \
+	lxc-config$(EXEEXT) lxc-console$(EXEEXT) lxc-create$(EXEEXT) \
+	lxc-destroy$(EXEEXT) lxc-device$(EXEEXT) lxc-execute$(EXEEXT) \
+	lxc-freeze$(EXEEXT) lxc-info$(EXEEXT) lxc-ls$(EXEEXT) \
+	lxc-monitor$(EXEEXT) lxc-snapshot$(EXEEXT) lxc-start$(EXEEXT) \
+	lxc-stop$(EXEEXT) lxc-top$(EXEEXT) lxc-unfreeze$(EXEEXT) \
+	lxc-unshare$(EXEEXT) lxc-usernsexec$(EXEEXT) lxc-wait$(EXEEXT) \
+	$(am__EXEEXT_1)
+@ENABLE_DEPRECATED_TRUE@am__append_18 = lxc-clone
+sbin_PROGRAMS = init.lxc$(EXEEXT) $(am__EXEEXT_2)
 pkglibexec_PROGRAMS = lxc-monitord$(EXEEXT) lxc-user-nic$(EXEEXT)
-@ENABLE_RPATH_TRUE@am__append_18 = -Wl,-rpath -Wl,$(libdir)
-@HAVE_GETSUBOPT_FALSE@am__append_19 = ../include/getsubopt.c ../include/getsubopt.h
-@HAVE_STATIC_LIBCAP_TRUE@am__append_20 = init.lxc.static
-@HAVE_FGETLN_TRUE@@HAVE_GETLINE_FALSE@@HAVE_STATIC_LIBCAP_TRUE@am__append_21 = ../include/getline.c
+@ENABLE_RPATH_TRUE@am__append_19 = -Wl,-rpath -Wl,$(libdir)
+@HAVE_GETSUBOPT_FALSE@am__append_20 = ../include/getsubopt.c ../include/getsubopt.h
+@HAVE_STATIC_LIBCAP_TRUE@am__append_21 = init.lxc.static
+@HAVE_FGETLN_TRUE@@HAVE_GETLINE_FALSE@@HAVE_STATIC_LIBCAP_TRUE@am__append_22 = ../include/getline.c
 subdir = src/lxc
 ACLOCAL_M4 = $(top_srcdir)/aclocal.m4
 am__aclocal_m4_deps = $(top_srcdir)/config/acinclude.m4 \
@@ -144,10 +145,11 @@ CONFIG_HEADER = $(top_builddir)/src/config.h
 CONFIG_CLEAN_FILES = lxc-checkconfig lxc-start-ephemeral lxc.functions \
 	version.h
 CONFIG_CLEAN_VPATH_FILES =
+@ENABLE_DEPRECATED_TRUE@am__EXEEXT_1 = lxc-clone$(EXEEXT)
 am__installdirs = "$(DESTDIR)$(bindir)" "$(DESTDIR)$(pkglibexecdir)" \
 	"$(DESTDIR)$(sbindir)" "$(DESTDIR)$(sodir)" \
 	"$(DESTDIR)$(bindir)" "$(DESTDIR)$(pkgincludedir)"
-@HAVE_STATIC_LIBCAP_TRUE@am__EXEEXT_1 = init.lxc.static$(EXEEXT)
+@HAVE_STATIC_LIBCAP_TRUE@am__EXEEXT_2 = init.lxc.static$(EXEEXT)
 PROGRAMS = $(bin_PROGRAMS) $(pkglibexec_PROGRAMS) $(sbin_PROGRAMS) \
 	$(so_PROGRAMS)
 am_init_lxc_OBJECTS = lxc_init.$(OBJEXT)
@@ -257,7 +259,8 @@ am_lxc_checkpoint_OBJECTS = lxc_checkpoint.$(OBJEXT)
 lxc_checkpoint_OBJECTS = $(am_lxc_checkpoint_OBJECTS)
 lxc_checkpoint_LDADD = $(LDADD)
 lxc_checkpoint_DEPENDENCIES = liblxc.so
-am_lxc_clone_OBJECTS = lxc_clone.$(OBJEXT)
+am__lxc_clone_SOURCES_DIST = lxc_clone.c
+@ENABLE_DEPRECATED_TRUE@am_lxc_clone_OBJECTS = lxc_clone.$(OBJEXT)
 lxc_clone_OBJECTS = $(am_lxc_clone_OBJECTS)
 lxc_clone_LDADD = $(LDADD)
 lxc_clone_DEPENDENCIES = liblxc.so
@@ -425,7 +428,7 @@ SOURCES = $(init_lxc_SOURCES) $(init_lxc_static_SOURCES) \
 DIST_SOURCES = $(init_lxc_SOURCES) $(am__init_lxc_static_SOURCES_DIST) \
 	$(am__liblxc_so_SOURCES_DIST) $(lxc_attach_SOURCES) \
 	$(lxc_autostart_SOURCES) $(lxc_cgroup_SOURCES) \
-	$(lxc_checkpoint_SOURCES) $(lxc_clone_SOURCES) \
+	$(lxc_checkpoint_SOURCES) $(am__lxc_clone_SOURCES_DIST) \
 	$(lxc_config_SOURCES) $(lxc_console_SOURCES) \
 	$(am__lxc_copy_SOURCES_DIST) $(lxc_create_SOURCES) \
 	$(lxc_destroy_SOURCES) $(lxc_device_SOURCES) \
@@ -697,7 +700,7 @@ bin_SCRIPTS = lxc-checkconfig $(am__append_17)
 EXTRA_DIST = \
 	lxc-top.lua
 
-AM_LDFLAGS = -Wl,-E $(am__append_18)
+AM_LDFLAGS = -Wl,-E $(am__append_19)
 LDADD = liblxc.so @CAP_LIBS@ @APPARMOR_LIBS@ @SELINUX_LIBS@ @SECCOMP_LIBS@
 lxc_attach_SOURCES = lxc_attach.c
 lxc_autostart_SOURCES = lxc_autostart.c
@@ -712,9 +715,8 @@ lxc_info_SOURCES = lxc_info.c
 init_lxc_SOURCES = lxc_init.c
 lxc_monitor_SOURCES = lxc_monitor.c
 lxc_monitord_SOURCES = lxc_monitord.c
-lxc_clone_SOURCES = lxc_clone.c
 lxc_ls_SOURCES = lxc_ls.c
-lxc_copy_SOURCES = lxc_copy.c $(am__append_19)
+lxc_copy_SOURCES = lxc_copy.c $(am__append_20)
 lxc_start_SOURCES = lxc_start.c
 lxc_stop_SOURCES = lxc_stop.c
 lxc_top_SOURCES = lxc_top.c
@@ -726,9 +728,10 @@ lxc_snapshot_SOURCES = lxc_snapshot.c
 lxc_usernsexec_SOURCES = lxc_usernsexec.c
 lxc_user_nic_SOURCES = lxc_user_nic.c network.c network.h
 lxc_checkpoint_SOURCES = lxc_checkpoint.c
+@ENABLE_DEPRECATED_TRUE@lxc_clone_SOURCES = lxc_clone.c
 @HAVE_STATIC_LIBCAP_TRUE@init_lxc_static_SOURCES = lxc_init.c error.c \
 @HAVE_STATIC_LIBCAP_TRUE@	log.c initutils.c caps.c \
-@HAVE_STATIC_LIBCAP_TRUE@	$(am__append_21)
+@HAVE_STATIC_LIBCAP_TRUE@	$(am__append_22)
 @HAVE_STATIC_LIBCAP_TRUE@init_lxc_static_LDFLAGS = -static
 @HAVE_STATIC_LIBCAP_TRUE@init_lxc_static_LDADD = @CAP_LIBS@
 @HAVE_STATIC_LIBCAP_TRUE@init_lxc_static_CFLAGS = $(AM_CFLAGS) -DNO_LXC_CONF
