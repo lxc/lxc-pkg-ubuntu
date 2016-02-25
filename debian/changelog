@@ -1,3 +1,10 @@
+lxc (2.0.0~rc3-0ubuntu2) xenial; urgency=medium
+
+  * Cherry-pick bugfix from upstream:
+    - cgfs: make sure we use valid cgroup mountpoints
+
+ -- Stéphane Graber <stgraber@ubuntu.com>  Thu, 25 Feb 2016 14:40:08 -0500
+
 lxc (2.0.0~rc3-0ubuntu1) xenial; urgency=medium
 
   * New upstream release (2.0.0~rc3)
