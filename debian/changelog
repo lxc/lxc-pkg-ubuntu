@@ -1,3 +1,13 @@
+lxc (2.0.0~rc3-0ubuntu1) xenial; urgency=medium
+
+  * New upstream release (2.0.0~rc3)
+    - Make the cgfs backend and cgns work without cgmanager
+    - Manpage updates
+    - Mark lxc-clone and lxc-start-ephemeral deprecated (still included)
+  * Set --enable-deprecated so we still ship lxc-clone and lxc-start-ephemeral
+
+ -- Stéphane Graber <stgraber@ubuntu.com>  Wed, 24 Feb 2016 21:16:50 -0500
+
 lxc (2.0.0~rc2-0ubuntu3) xenial; urgency=medium
 
   * Use versioned dependencies against the various binary packages.
