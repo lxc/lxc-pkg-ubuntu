@@ -1,0 +1,68 @@
+From 40fc0f84b21d49d22f2a6ae5ffee149e573120be Mon Sep 17 00:00:00 2001
+From: Serge Hallyn <serge.hallyn@ubuntu.com>
+Date: Thu, 25 Feb 2016 11:01:12 -0800
+Subject: cgfs: make sure we use valid cgroup mountpoints
+
+If lxcfs starts before cgroup-lite, then the first cgroup mountpoints in
+/proc/self/mountinfo are /run/lxcfs/*.  Unprivileged users cannot access
+these.  So privileged containers are ok, and unprivileged containers are ok
+since they won't cache those to begin with.  But unprivileged root-owned
+containers cache /run/lxcfs/* and then try to use them.
+
+So when doing cgroup automounting check whether the mountpoints we have
+stored are accessible, and if not look for a new one to use.
+
+Signed-off-by: Serge Hallyn <serge.hallyn@ubuntu.com>
+---
+ src/lxc/cgfs.c | 15 ++++++++++++---
+ 1 file changed, 12 insertions(+), 3 deletions(-)
+
+diff --git a/src/lxc/cgfs.c b/src/lxc/cgfs.c
+index 97a4e6d..e2d8934 100644
+--- a/src/lxc/cgfs.c
++++ b/src/lxc/cgfs.c
+@@ -636,6 +636,11 @@ static struct cgroup_hierarchy *lxc_cgroup_find_hierarchy(struct cgroup_meta_dat
+ 	return NULL;
+ }
+ 
++static bool mountpoint_is_accessible(struct cgroup_mount_point *mp)
++{
++	return mp && access(mp->mount_point, F_OK) == 0;
++}
++
+ static struct cgroup_mount_point *lxc_cgroup_find_mount_point(struct cgroup_hierarchy *hierarchy, const char *group, bool should_be_writable)
+ {
+ 	struct cgroup_mount_point **mps;
+@@ -643,9 +648,9 @@ static struct cgroup_mount_point *lxc_cgroup_find_mount_point(struct cgroup_hier
+ 	ssize_t quality = -1;
+ 
+ 	/* trivial case */
+-	if (hierarchy->rw_absolute_mount_point)
++	if (mountpoint_is_accessible(hierarchy->rw_absolute_mount_point))
+ 		return hierarchy->rw_absolute_mount_point;
+-	if (!should_be_writable && hierarchy->ro_absolute_mount_point)
++	if (!should_be_writable && mountpoint_is_accessible(hierarchy->ro_absolute_mount_point))
+ 		return hierarchy->ro_absolute_mount_point;
+ 
+ 	for (mps = hierarchy->all_mount_points; mps && *mps; mps++) {
+@@ -655,6 +660,9 @@ static struct cgroup_mount_point *lxc_cgroup_find_mount_point(struct cgroup_hier
+ 		if (prefix_len == 1 && mp->mount_prefix[0] == '/')
+ 			prefix_len = 0;
+ 
++		if (!mountpoint_is_accessible(mp))
++			continue;
++
+ 		if (should_be_writable && mp->read_only)
+ 			continue;
+ 
+@@ -1396,8 +1404,9 @@ static bool cgroupfs_mount_cgroup(void *hdata, const char *root, int type)
+ 	for (info = base_info; info; info = info->next) {
+ 		size_t subsystem_count, i;
+ 		struct cgroup_mount_point *mp = info->designated_mount_point;
+-		if (!mp)
++		if (!mountpoint_is_accessible(mp))
+ 			mp = lxc_cgroup_find_mount_point(info->hierarchy, info->cgroup_path, true);
++
+ 		if (!mp) {
+ 			SYSERROR("could not find original mount point for cgroup hierarchy while trying to mount cgroup filesystem");
+ 			goto out_error;
