@@ -1,39 +1,19 @@
 #!/bin/sh
-# postinst script for lxc
-#
-# see: dh_installdeb(1)
-
 set -e
-
-# summary of how this script can be called:
-#        * <postinst> `configure' <most-recently-configured-version>
-#        * <old-postinst> `abort-upgrade' <new version>
-#        * <conflictor's-postinst> `abort-remove' `in-favour' <package>
-#          <new-version>
-#        * <postinst> `abort-remove'
-#        * <deconfigured's-postinst> `abort-deconfigure' `in-favour'
-#          <failed-install-package> <version> `removing'
-#          <conflicting-package> <version>
-# for details, see http://www.debian.org/doc/debian-policy/ or
-# the debian-policy package
-
-apparmor_load() {
-    # don't load profiles if mount mediation is not supported
-    SYSF=/sys/kernel/security/apparmor/features/mount/mask
-    if [ ! -f $SYSF ]; then
-        return
-    fi
-
-    if [ -x /lib/init/apparmor-profile-load ]; then
-        /lib/init/apparmor-profile-load lxc-containers
-    elif [ -x /etc/init.d/apparmor ]; then
-        invoke-rc.d apparmor reload || true
-    fi
-}
 
 case "$1" in
     configure)
-        apparmor_load
+        # There appears to be some cases where apparmor gets confused
+        # about the freshness of its cache, so lets just wipe it.
+        rm -f /etc/apparmor.d/cache/lxc-containers
+
+        # lxc-containers must be manually loaded as dh_apparmor doesn't
+        # know what to do with it
+        if [ -x /lib/init/apparmor-profile-load ]; then
+            /lib/init/apparmor-profile-load lxc-containers
+        elif [ -x /etc/init.d/apparmor ]; then
+            invoke-rc.d apparmor reload || true
+        fi
     ;;
 
     abort-upgrade|abort-remove|abort-deconfigure)

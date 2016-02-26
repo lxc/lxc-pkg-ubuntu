@@ -18,7 +18,7 @@ override_dh_auto_configure:
 		--with-rootfs-path=\$${prefix}/lib/$(DEB_HOST_MULTIARCH)/lxc \
 		--enable-python $(shell dpkg-buildflags --export=configure) \
 		--enable-doc --disable-rpath --enable-apparmor --enable-selinux \
-		--enable-lua --enable-tests --enable-cgmanager --with-distro=ubuntu
+		--enable-lua --enable-tests --enable-deprecated --with-distro=ubuntu
 
 override_dh_auto_build:
 	dh_auto_build

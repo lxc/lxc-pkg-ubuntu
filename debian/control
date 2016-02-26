@@ -11,7 +11,6 @@ Build-Depends: autotools-dev,
                hardening-wrapper,
                libapparmor-dev,
                libcap-dev,
-               libcgmanager-dev,
                libgnutls-dev,
                liblua5.2-dev,
                libseccomp-dev,
@@ -46,13 +45,13 @@ Depends: adduser,
          iptables,
          liblxc1 (= ${binary:Version}),
          python3,
-         python3-lxc,
+         python3-lxc (= ${binary:Version}),
          ${misc:Depends},
          ${shlibs:Depends}
 Recommends: libpam-cgfs, lxc-templates (>= 0.8.0~rc1-4ubuntu43)
 Suggests: btrfs-tools, lvm2, lxctl
-Replaces: lxc (<< 2.0.0~rc1-0ubuntu2~)
-Breaks: lxc (<< 2.0.0~rc1-0ubuntu2~)
+Replaces: lxc (<< 2.0.0~rc2-0ubuntu1~)
+Breaks: lxc (<< 2.0.0~rc2-0ubuntu1~)
 Description: Linux Containers userspace tools
  Containers are insulated areas inside a system, which have their own namespace
  for filesystem, network, PID, IPC, CPU and memory allocation and which can be
@@ -69,8 +68,8 @@ Depends: liblxc1 (= ${binary:Version}),
          ${lxc:Depends},
          ${misc:Depends},
          ${shlibs:Depends}
-Replaces: lxc (<< 2.0.0~rc1-0ubuntu2~)
-Breaks: lxc (<< 2.0.0~rc1-0ubuntu2~)
+Replaces: lxc (<< 2.0.0~rc2-0ubuntu1~)
+Breaks: lxc (<< 2.0.0~rc2-0ubuntu1~)
 Description: Linux Containers userspace tools (common tools)
  Containers are insulated areas inside a system, which have their own namespace
  for filesystem, network, PID, IPC, CPU and memory allocation and which can be
@@ -94,18 +93,17 @@ Description: Linux Containers userspace tools (development)
 
 Package: lxc-templates
 Architecture: linux-any
-Depends: lxc (>= 0.8.0~rc1-4ubuntu43), ${misc:Depends}, ${shlibs:Depends}
+Depends: lxc1, ${misc:Depends}, ${shlibs:Depends}
 Recommends: busybox-static,
             cloud-image-utils | cloud-utils,
             debootstrap | cdebootstrap,
-            lxcfs,
             openssl,
             rsync,
             uuid-runtime,
             xz-utils
 Suggests: qemu-user-static
-Replaces: lxc (<< 2.0.0~rc1-0ubuntu2~)
-Breaks: lxc (<< 2.0.0~rc1-0ubuntu2~)
+Replaces: lxc (<< 2.0.0~rc2-0ubuntu1~)
+Breaks: lxc (<< 2.0.0~rc2-0ubuntu1~)
 Description: Linux Containers userspace tools (templates)
  Containers are insulated areas inside a system, which have their own namespace
  for filesystem, network, PID, IPC, CPU and memory allocation and which can be
@@ -116,8 +114,11 @@ Description: Linux Containers userspace tools (templates)
 
 Package: lxc-tests
 Architecture: linux-any
-Depends: liblxc1 (= ${binary:Version}), ${misc:Depends}, ${shlibs:Depends}
-Recommends: lxc, lxc-templates
+Depends: liblxc1 (= ${binary:Version}),
+         lxc-templates (= ${binary:Version}),
+         lxc1 (= ${binary:Version}),
+         ${misc:Depends},
+         ${shlibs:Depends}
 Description: Linux Containers userspace tools (test binaries)
  Containers are insulated areas inside a system, which have their own namespace
  for filesystem, network, PID, IPC, CPU and memory allocation and which can be
@@ -131,12 +132,12 @@ Description: Linux Containers userspace tools (test binaries)
 Package: liblxc1
 Architecture: linux-any
 Pre-Depends: ${misc:Pre-Depends}
-Depends: cgmanager | cgroup-lite,
-         lxc-common (= ${binary:Version}),
+Depends: lxc-common (= ${binary:Version}),
          rsync,
+         systemd | cgroup-lite,
          ${misc:Depends},
          ${shlibs:Depends}
-Recommends: cgmanager, uidmap
+Recommends: uidmap, lxcfs
 Replaces: liblxc0, lxc (<< 0.9.0~alpha3-0ubuntu1~)
 Breaks: lxc (<< 0.9.0~alpha3-0ubuntu1~)
 Provides: liblxc0
