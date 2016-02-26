@@ -3,6 +3,10 @@ set -e
 
 case "$1" in
     configure)
+        # There appears to be some cases where apparmor gets confused
+        # about the freshness of its cache, so lets just wipe it.
+        rm -f /etc/apparmor.d/cache/lxc-containers
+
         # lxc-containers must be manually loaded as dh_apparmor doesn't
         # know what to do with it
         if [ -x /lib/init/apparmor-profile-load ]; then
