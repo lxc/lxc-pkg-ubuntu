@@ -97,17 +97,17 @@ am__configure_deps = $(am__aclocal_m4_deps) $(CONFIGURE_DEPENDENCIES) \
 DIST_COMMON = $(srcdir)/Makefile.am $(am__DIST_COMMON)
 mkinstalldirs = $(install_sh) -d
 CONFIG_HEADER = $(top_builddir)/src/config.h
-CONFIG_CLEAN_FILES = archlinux.common.conf archlinux.userns.conf \
-	centos.common.conf centos.userns.conf common.conf \
-	debian.common.conf debian.userns.conf fedora.common.conf \
-	fedora.userns.conf gentoo.common.conf gentoo.moresecure.conf \
-	gentoo.userns.conf nesting.conf opensuse.common.conf \
-	opensuse.userns.conf oracle.common.conf oracle.userns.conf \
-	plamo.common.conf plamo.userns.conf slackware.common.conf \
-	slackware.userns.conf ubuntu-cloud.common.conf \
-	ubuntu-cloud.lucid.conf ubuntu-cloud.userns.conf \
-	ubuntu.common.conf ubuntu.lucid.conf ubuntu.userns.conf \
-	openwrt.common.conf sparclinux.common.conf \
+CONFIG_CLEAN_FILES = alpine.common.conf alpine.userns.conf \
+	archlinux.common.conf archlinux.userns.conf centos.common.conf \
+	centos.userns.conf common.conf debian.common.conf \
+	debian.userns.conf fedora.common.conf fedora.userns.conf \
+	gentoo.common.conf gentoo.moresecure.conf gentoo.userns.conf \
+	nesting.conf opensuse.common.conf opensuse.userns.conf \
+	oracle.common.conf oracle.userns.conf plamo.common.conf \
+	plamo.userns.conf slackware.common.conf slackware.userns.conf \
+	ubuntu-cloud.common.conf ubuntu-cloud.lucid.conf \
+	ubuntu-cloud.userns.conf ubuntu.common.conf ubuntu.lucid.conf \
+	ubuntu.userns.conf openwrt.common.conf sparclinux.common.conf \
 	sparclinux.userns.conf userns.conf
 CONFIG_CLEAN_VPATH_FILES =
 AM_V_P = $(am__v_P_@AM_V@)
@@ -195,6 +195,8 @@ ETAGS = etags
 CTAGS = ctags
 DIST_SUBDIRS = $(SUBDIRS)
 am__DIST_COMMON = $(srcdir)/Makefile.in \
+	$(srcdir)/alpine.common.conf.in \
+	$(srcdir)/alpine.userns.conf.in \
 	$(srcdir)/archlinux.common.conf.in \
 	$(srcdir)/archlinux.userns.conf.in \
 	$(srcdir)/centos.common.conf.in \
@@ -417,6 +419,8 @@ templatesconfigdir = @LXCTEMPLATECONFIG@
 EXTRA_DIST = common.seccomp
 SUBDIRS = common.conf.d
 templatesconfig_DATA = \
+	alpine.common.conf \
+	alpine.userns.conf \
 	archlinux.common.conf \
 	archlinux.userns.conf \
 	centos.common.conf \
@@ -482,6 +486,10 @@ $(top_srcdir)/configure:  $(am__configure_deps)
 $(ACLOCAL_M4):  $(am__aclocal_m4_deps)
 	cd $(top_builddir) && $(MAKE) $(AM_MAKEFLAGS) am--refresh
 $(am__aclocal_m4_deps):
+alpine.common.conf: $(top_builddir)/config.status $(srcdir)/alpine.common.conf.in
+	cd $(top_builddir) && $(SHELL) ./config.status $(subdir)/$@
+alpine.userns.conf: $(top_builddir)/config.status $(srcdir)/alpine.userns.conf.in
+	cd $(top_builddir) && $(SHELL) ./config.status $(subdir)/$@
 archlinux.common.conf: $(top_builddir)/config.status $(srcdir)/archlinux.common.conf.in
 	cd $(top_builddir) && $(SHELL) ./config.status $(subdir)/$@
 archlinux.userns.conf: $(top_builddir)/config.status $(srcdir)/archlinux.userns.conf.in

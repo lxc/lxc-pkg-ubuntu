@@ -4,7 +4,7 @@
 m4_define([lxc_version_major], 2)
 m4_define([lxc_version_minor], 0)
 m4_define([lxc_version_micro], 0)
-m4_define([lxc_version_beta], rc3)
+m4_define([lxc_version_beta], rc4)
 m4_define([lxc_version_abi], 1.2.0)
 
 m4_define([lxc_version_base], [lxc_version_major.lxc_version_minor.lxc_version_micro])
@@ -654,6 +654,8 @@ AC_CONFIG_FILES([
 	config/init/upstart/Makefile
 	config/etc/Makefile
 	config/templates/Makefile
+	config/templates/alpine.common.conf
+	config/templates/alpine.userns.conf
 	config/templates/archlinux.common.conf
 	config/templates/archlinux.userns.conf
 	config/templates/centos.common.conf
