@@ -1,3 +1,11 @@
+lxc (2.0.0~rc4-0ubuntu1) xenial; urgency=medium
+
+  * New usptream release (2.0.0~rc4)
+    - Various cgfs fixes
+    - Updated documentation
+
+ -- Stéphane Graber <stgraber@ubuntu.com>  Fri, 26 Feb 2016 22:38:43 -0500
+
 lxc (2.0.0~rc3-0ubuntu3) xenial; urgency=medium
 
   * Tweak the apparmor part of the lxc postinst:
