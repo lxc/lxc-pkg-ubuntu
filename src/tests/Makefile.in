@@ -113,6 +113,7 @@ host_triplet = @host@
 @ENABLE_TESTS_TRUE@	lxc-test-device-add-remove$(EXEEXT) \
 @ENABLE_TESTS_TRUE@	lxc-test-apparmor$(EXEEXT)
 @DISTRO_UBUNTU_TRUE@@ENABLE_TESTS_TRUE@am__append_3 = \
+@DISTRO_UBUNTU_TRUE@@ENABLE_TESTS_TRUE@	lxc-test-lxc-attach \
 @DISTRO_UBUNTU_TRUE@@ENABLE_TESTS_TRUE@	lxc-test-apparmor-mount \
 @DISTRO_UBUNTU_TRUE@@ENABLE_TESTS_TRUE@	lxc-test-checkpoint-restore \
 @DISTRO_UBUNTU_TRUE@@ENABLE_TESTS_TRUE@	lxc-test-snapdeps \
@@ -588,6 +589,7 @@ EXTRA_DIST = \
 	list.c \
 	locktests.c \
 	lxcpath.c \
+	lxc-test-lxc-attach \
 	lxc-test-autostart \
 	lxc-test-apparmor-mount \
 	lxc-test-checkpoint-restore \

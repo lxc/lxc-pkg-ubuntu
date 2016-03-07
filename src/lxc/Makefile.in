@@ -179,12 +179,12 @@ am__liblxc_so_SOURCES_DIST = arguments.c arguments.h bdev/bdev.c \
 	bdev/lxcrbd.c bdev/lxcrbd.h bdev/lxcrsync.c bdev/lxcrsync.h \
 	bdev/lxczfs.c bdev/lxczfs.h commands.c commands.h start.c \
 	start.h execute.c monitor.c monitor.h console.c freezer.c \
-	error.h error.c parse.c parse.h cgfs.c cgroup.c cgroup.h lxc.h \
-	initutils.c initutils.h utils.c utils.h sync.c sync.h \
-	namespace.h namespace.c conf.c conf.h confile.c confile.h \
-	list.h state.c state.h log.c log.h attach.c attach.h criu.c \
-	criu.h network.c network.h nl.c nl.h rtnl.c rtnl.h genl.c \
-	genl.h caps.c caps.h lxcseccomp.h mainloop.c mainloop.h \
+	error.h error.c parse.c parse.h cgfs.c cgfsng.c cgroup.c \
+	cgroup.h lxc.h initutils.c initutils.h utils.c utils.h sync.c \
+	sync.h namespace.h namespace.c conf.c conf.h confile.c \
+	confile.h list.h state.c state.h log.c log.h attach.c attach.h \
+	criu.c criu.h network.c network.h nl.c nl.h rtnl.c rtnl.h \
+	genl.c genl.h caps.c caps.h lxcseccomp.h mainloop.c mainloop.h \
 	af_unix.c af_unix.h lxcutmp.c lxcutmp.h lxclock.h lxclock.c \
 	lxccontainer.c lxccontainer.h version.h lsm/nop.c lsm/lsm.h \
 	lsm/lsm.c lsm/apparmor.c lsm/selinux.c cgmanager.c \
@@ -219,19 +219,19 @@ am_liblxc_so_OBJECTS = liblxc_so-arguments.$(OBJEXT) \
 	liblxc_so-monitor.$(OBJEXT) liblxc_so-console.$(OBJEXT) \
 	liblxc_so-freezer.$(OBJEXT) liblxc_so-error.$(OBJEXT) \
 	liblxc_so-parse.$(OBJEXT) liblxc_so-cgfs.$(OBJEXT) \
-	liblxc_so-cgroup.$(OBJEXT) liblxc_so-initutils.$(OBJEXT) \
-	liblxc_so-utils.$(OBJEXT) liblxc_so-sync.$(OBJEXT) \
-	liblxc_so-namespace.$(OBJEXT) liblxc_so-conf.$(OBJEXT) \
-	liblxc_so-confile.$(OBJEXT) liblxc_so-state.$(OBJEXT) \
-	liblxc_so-log.$(OBJEXT) liblxc_so-attach.$(OBJEXT) \
-	liblxc_so-criu.$(OBJEXT) liblxc_so-network.$(OBJEXT) \
-	liblxc_so-nl.$(OBJEXT) liblxc_so-rtnl.$(OBJEXT) \
-	liblxc_so-genl.$(OBJEXT) liblxc_so-caps.$(OBJEXT) \
-	liblxc_so-mainloop.$(OBJEXT) liblxc_so-af_unix.$(OBJEXT) \
-	liblxc_so-lxcutmp.$(OBJEXT) liblxc_so-lxclock.$(OBJEXT) \
-	liblxc_so-lxccontainer.$(OBJEXT) $(am__objects_4) \
-	$(am__objects_5) $(am__objects_6) $(am__objects_7) \
-	$(am__objects_8)
+	liblxc_so-cgfsng.$(OBJEXT) liblxc_so-cgroup.$(OBJEXT) \
+	liblxc_so-initutils.$(OBJEXT) liblxc_so-utils.$(OBJEXT) \
+	liblxc_so-sync.$(OBJEXT) liblxc_so-namespace.$(OBJEXT) \
+	liblxc_so-conf.$(OBJEXT) liblxc_so-confile.$(OBJEXT) \
+	liblxc_so-state.$(OBJEXT) liblxc_so-log.$(OBJEXT) \
+	liblxc_so-attach.$(OBJEXT) liblxc_so-criu.$(OBJEXT) \
+	liblxc_so-network.$(OBJEXT) liblxc_so-nl.$(OBJEXT) \
+	liblxc_so-rtnl.$(OBJEXT) liblxc_so-genl.$(OBJEXT) \
+	liblxc_so-caps.$(OBJEXT) liblxc_so-mainloop.$(OBJEXT) \
+	liblxc_so-af_unix.$(OBJEXT) liblxc_so-lxcutmp.$(OBJEXT) \
+	liblxc_so-lxclock.$(OBJEXT) liblxc_so-lxccontainer.$(OBJEXT) \
+	$(am__objects_4) $(am__objects_5) $(am__objects_6) \
+	$(am__objects_7) $(am__objects_8)
 liblxc_so_OBJECTS = $(am_liblxc_so_OBJECTS)
 am__DEPENDENCIES_1 =
 @ENABLE_CGMANAGER_TRUE@am__DEPENDENCIES_2 = $(am__DEPENDENCIES_1) \
@@ -666,15 +666,16 @@ liblxc_so_SOURCES = arguments.c arguments.h bdev/bdev.c bdev/bdev.h \
 	bdev/lxcrbd.h bdev/lxcrsync.c bdev/lxcrsync.h bdev/lxczfs.c \
 	bdev/lxczfs.h commands.c commands.h start.c start.h execute.c \
 	monitor.c monitor.h console.c freezer.c error.h error.c \
-	parse.c parse.h cgfs.c cgroup.c cgroup.h lxc.h initutils.c \
-	initutils.h utils.c utils.h sync.c sync.h namespace.h \
-	namespace.c conf.c conf.h confile.c confile.h list.h state.c \
-	state.h log.c log.h attach.c attach.h criu.c criu.h network.c \
-	network.h nl.c nl.h rtnl.c rtnl.h genl.c genl.h caps.c caps.h \
-	lxcseccomp.h mainloop.c mainloop.h af_unix.c af_unix.h \
-	lxcutmp.c lxcutmp.h lxclock.h lxclock.c lxccontainer.c \
-	lxccontainer.h version.h $(LSM_SOURCES) $(am__append_6) \
-	$(am__append_7) $(am__append_8) $(am__append_14)
+	parse.c parse.h cgfs.c cgfsng.c cgroup.c cgroup.h lxc.h \
+	initutils.c initutils.h utils.c utils.h sync.c sync.h \
+	namespace.h namespace.c conf.c conf.h confile.c confile.h \
+	list.h state.c state.h log.c log.h attach.c attach.h criu.c \
+	criu.h network.c network.h nl.c nl.h rtnl.c rtnl.h genl.c \
+	genl.h caps.c caps.h lxcseccomp.h mainloop.c mainloop.h \
+	af_unix.c af_unix.h lxcutmp.c lxcutmp.h lxclock.h lxclock.c \
+	lxccontainer.c lxccontainer.h version.h $(LSM_SOURCES) \
+	$(am__append_6) $(am__append_7) $(am__append_8) \
+	$(am__append_14)
 AM_CFLAGS = -I$(top_srcdir)/src -DLXCROOTFSMOUNT=\"$(LXCROOTFSMOUNT)\" \
 	-DLXCPATH=\"$(LXCPATH)\" \
 	-DLXC_GLOBAL_CONF=\"$(LXC_GLOBAL_CONF)\" \
@@ -1182,6 +1183,7 @@ distclean-compile:
 @AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/liblxc_so-attach.Po@am__quote@
 @AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/liblxc_so-caps.Po@am__quote@
 @AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/liblxc_so-cgfs.Po@am__quote@
+@AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/liblxc_so-cgfsng.Po@am__quote@
 @AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/liblxc_so-cgmanager.Po@am__quote@
 @AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/liblxc_so-cgroup.Po@am__quote@
 @AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/liblxc_so-commands.Po@am__quote@
@@ -1647,6 +1649,20 @@ liblxc_so-cgfs.obj: cgfs.c
 @AMDEP_TRUE@@am__fastdepCC_FALSE@	$(AM_V_CC)source='cgfs.c' object='liblxc_so-cgfs.obj' libtool=no @AMDEPBACKSLASH@
 @AMDEP_TRUE@@am__fastdepCC_FALSE@	DEPDIR=$(DEPDIR) $(CCDEPMODE) $(depcomp) @AMDEPBACKSLASH@
 @am__fastdepCC_FALSE@	$(AM_V_CC@am__nodep@)$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(liblxc_so_CFLAGS) $(CFLAGS) -c -o liblxc_so-cgfs.obj `if test -f 'cgfs.c'; then $(CYGPATH_W) 'cgfs.c'; else $(CYGPATH_W) '$(srcdir)/cgfs.c'; fi`
+
+liblxc_so-cgfsng.o: cgfsng.c
+@am__fastdepCC_TRUE@	$(AM_V_CC)$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(liblxc_so_CFLAGS) $(CFLAGS) -MT liblxc_so-cgfsng.o -MD -MP -MF $(DEPDIR)/liblxc_so-cgfsng.Tpo -c -o liblxc_so-cgfsng.o `test -f 'cgfsng.c' || echo '$(srcdir)/'`cgfsng.c
+@am__fastdepCC_TRUE@	$(AM_V_at)$(am__mv) $(DEPDIR)/liblxc_so-cgfsng.Tpo $(DEPDIR)/liblxc_so-cgfsng.Po
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	$(AM_V_CC)source='cgfsng.c' object='liblxc_so-cgfsng.o' libtool=no @AMDEPBACKSLASH@
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	DEPDIR=$(DEPDIR) $(CCDEPMODE) $(depcomp) @AMDEPBACKSLASH@
+@am__fastdepCC_FALSE@	$(AM_V_CC@am__nodep@)$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(liblxc_so_CFLAGS) $(CFLAGS) -c -o liblxc_so-cgfsng.o `test -f 'cgfsng.c' || echo '$(srcdir)/'`cgfsng.c
+
+liblxc_so-cgfsng.obj: cgfsng.c
+@am__fastdepCC_TRUE@	$(AM_V_CC)$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(liblxc_so_CFLAGS) $(CFLAGS) -MT liblxc_so-cgfsng.obj -MD -MP -MF $(DEPDIR)/liblxc_so-cgfsng.Tpo -c -o liblxc_so-cgfsng.obj `if test -f 'cgfsng.c'; then $(CYGPATH_W) 'cgfsng.c'; else $(CYGPATH_W) '$(srcdir)/cgfsng.c'; fi`
+@am__fastdepCC_TRUE@	$(AM_V_at)$(am__mv) $(DEPDIR)/liblxc_so-cgfsng.Tpo $(DEPDIR)/liblxc_so-cgfsng.Po
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	$(AM_V_CC)source='cgfsng.c' object='liblxc_so-cgfsng.obj' libtool=no @AMDEPBACKSLASH@
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	DEPDIR=$(DEPDIR) $(CCDEPMODE) $(depcomp) @AMDEPBACKSLASH@
+@am__fastdepCC_FALSE@	$(AM_V_CC@am__nodep@)$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(liblxc_so_CFLAGS) $(CFLAGS) -c -o liblxc_so-cgfsng.obj `if test -f 'cgfsng.c'; then $(CYGPATH_W) 'cgfsng.c'; else $(CYGPATH_W) '$(srcdir)/cgfsng.c'; fi`
 
 liblxc_so-cgroup.o: cgroup.c
 @am__fastdepCC_TRUE@	$(AM_V_CC)$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(liblxc_so_CFLAGS) $(CFLAGS) -MT liblxc_so-cgroup.o -MD -MP -MF $(DEPDIR)/liblxc_so-cgroup.Tpo -c -o liblxc_so-cgroup.o `test -f 'cgroup.c' || echo '$(srcdir)/'`cgroup.c
