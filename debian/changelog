@@ -1,3 +1,16 @@
+lxc (2.0.0~rc6-0ubuntu1) xenial; urgency=medium
+
+  * New upstream release (2.0.0~rc6)
+    - Update documentation and manpages
+    - Tweak to init scripts
+    - Fix lxc-attach pts handling for stderr
+    - Add a test for lxc-attach pts handling
+    - Implement a new, more reliable cgfs backend
+    - Fix to the ALTLinux template
+    - Fix to the AppArmor profile for systemd
+
+ -- Stéphane Graber <stgraber@ubuntu.com>  Mon, 07 Mar 2016 18:23:02 -0500
+
 lxc (2.0.0~rc5-0ubuntu1) xenial; urgency=medium
 
   * New usptream release (2.0.0~rc5)
