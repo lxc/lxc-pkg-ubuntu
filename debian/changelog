@@ -1,3 +1,15 @@
+lxc (2.0.0~rc5-0ubuntu1) xenial; urgency=medium
+
+  * New usptream release (2.0.0~rc5)
+    - Fix a number of cgfs issues (LP: #1549363, LP: #1543697, LP: #1552355)
+    - Fix attach failing to allocate a tty (LP: #1551960)
+    - Fix LXC rebooting the container despite post-stop failure
+    - Fix lxc-copy output (LP: #1551935)
+    - Documentation, manpagen and manpage translations update
+    - Update to the plamo template
+
+ -- Stéphane Graber <stgraber@ubuntu.com>  Thu, 03 Mar 2016 11:05:25 -0500
+
 lxc (2.0.0~rc4-0ubuntu1) xenial; urgency=medium
 
   * New usptream release (2.0.0~rc4)
