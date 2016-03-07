@@ -1,3 +1,10 @@
+lxc (2.0.0~rc7-0ubuntu1) xenial; urgency=medium
+
+  * New upstream release (2.0.0~rc6)
+    - Fix upstream tarball to include lxc-devsetup
+
+ -- Stéphane Graber <stgraber@ubuntu.com>  Mon, 07 Mar 2016 18:52:29 -0500
+
 lxc (2.0.0~rc6-0ubuntu1) xenial; urgency=medium
 
   * New upstream release (2.0.0~rc6)
