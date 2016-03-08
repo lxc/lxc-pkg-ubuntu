@@ -1,6 +1,15 @@
+lxc (2.0.0~rc8-0ubuntu1) xenial; urgency=medium
+
+  * New upstream release (2.0.0~rc7)
+    - Prevent writes to /sys/kernel/debug
+    - Fix debug output from cgfsng
+    - Set clone_children to 1 in cgfsng (fixes adt)
+
+ -- Stéphane Graber <stgraber@ubuntu.com>  Tue, 08 Mar 2016 17:47:24 -0500
+
 lxc (2.0.0~rc7-0ubuntu1) xenial; urgency=medium
 
-  * New upstream release (2.0.0~rc6)
+  * New upstream release (2.0.0~rc7)
     - Fix upstream tarball to include lxc-devsetup
 
  -- Stéphane Graber <stgraber@ubuntu.com>  Mon, 07 Mar 2016 18:52:29 -0500
