@@ -259,6 +259,111 @@ struct hierarchy *get_hierarchy(struct cgfsng_handler_data *d, const char *c)
 	return NULL;
 }
 
+static char *must_make_path(const char *first, ...) __attribute__((sentinel));
+
+/* Copy contents of parent(@path)/@file to @path/@file */
+static bool copy_parent_file(char *path, char *file)
+{
+	char *lastslash, *value = NULL, *fpath, oldv;
+	int len = 0;
+	int ret;
+
+	lastslash = strrchr(path, '/');
+	if (!lastslash) { // bug...  this shouldn't be possible
+		ERROR("cgfsng:copy_parent_file: bad path %s", path);
+		return false;
+	}
+	oldv = *lastslash;
+	*lastslash = '\0';
+	fpath = must_make_path(path, file, NULL);
+	len = lxc_read_from_file(fpath, NULL, 0);
+	if (len <= 0)
+		goto bad;
+	value = must_alloc(len + 1);
+	if (lxc_read_from_file(fpath, value, len) != len)
+		goto bad;
+	free(fpath);
+	*lastslash = oldv;
+	fpath = must_make_path(path, file, NULL);
+	ret = lxc_write_to_file(fpath, value, len, false);
+	if (ret < 0)
+		SYSERROR("Unable to write %s to %s", value, fpath);
+	free(fpath);
+	free(value);
+	return ret >= 0;
+
+bad:
+	SYSERROR("Error reading '%s'", fpath);
+	free(fpath);
+	free(value);
+	return false;
+}
+
+/*
+ * Initialize the cpuset hierarchy in first directory of @gname and
+ * set cgroup.clone_children so that children inherit settings.
+ * Since the h->base_path is populated by init or ourselves, we know
+ * it is already initialized.
+ */
+bool handle_cpuset_hierarchy(struct hierarchy *h, char *cgname)
+{
+	char *cgpath, *clonechildrenpath, v, *slash;
+
+	if (!string_in_list(h->controllers, "cpuset"))
+		return true;
+
+	if (*cgname == '/')
+		cgname++;
+	slash = strchr(cgname, '/');
+	if (slash)
+		*slash = '\0';
+
+	cgpath = must_make_path(h->mountpoint, h->base_cgroup, cgname, NULL);
+	if (slash)
+		*slash = '/';
+	if (mkdir(cgpath, 0755) < 0 && errno != EEXIST) {
+		SYSERROR("Failed to create '%s'", cgpath);
+		free(cgpath);
+		return false;
+	}
+	clonechildrenpath = must_make_path(cgpath, "cgroup.clone_children", NULL);
+	if (!file_exists(clonechildrenpath)) { /* unified hierarchy doesn't have clone_children */
+		free(clonechildrenpath);
+		free(cgpath);
+		return true;
+	}
+	if (lxc_read_from_file(clonechildrenpath, &v, 1) < 0) {
+		SYSERROR("Failed to read '%s'", clonechildrenpath);
+		free(clonechildrenpath);
+		free(cgpath);
+		return false;
+	}
+
+	if (v == '1') {  /* already set for us by someone else */
+		free(clonechildrenpath);
+		free(cgpath);
+		return true;
+	}
+
+	/* copy parent's settings */
+	if (!copy_parent_file(cgpath, "cpuset.cpus") ||
+			!copy_parent_file(cgpath, "cpuset.mems")) {
+		free(cgpath);
+		free(clonechildrenpath);
+		return false;
+	}
+	free(cgpath);
+
+	if (lxc_write_to_file(clonechildrenpath, "1", 1, false) < 0) {
+		/* Set clone_children so children inherit our settings */
+		SYSERROR("Failed to write 1 to %s", clonechildrenpath);
+		free(clonechildrenpath);
+		return false;
+	}
+	free(clonechildrenpath);
+	return true;
+}
+
 /*
  * Given two null-terminated lists of strings, return true if any string
  * is in both.
@@ -544,8 +649,6 @@ static char *read_file(char *fnam)
 	return buf;
 }
 
-static char *must_make_path(const char *first, ...) __attribute__((sentinel));
-
 /*
  * Given a hierarchy @mountpoint and base @path, verify that we can create
  * directories underneath it.
@@ -672,7 +775,7 @@ static bool parse_hierarchies(struct cgfsng_handler_data *d)
 		return false;
 
 	if ((f = fopen("/proc/self/mountinfo", "r")) == NULL) {
-		ERROR("Failed opening /proc/self/mountinfo");
+		SYSERROR("Failed opening /proc/self/mountinfo");
 		return false;
 	}
 
@@ -830,7 +933,7 @@ static int cgroup_rmdir(char *dirname)
 
 		if (lstat(pathname, &mystat)) {
 			if (!r)
-				WARN("failed to stat %s\n", pathname);
+				WARN("failed to stat %s", pathname);
 			r = -1;
 			goto next;
 		}
@@ -880,7 +983,7 @@ void recursive_destroy(char *path, struct lxc_conf *conf)
 		r = cgroup_rmdir(path);
 
 	if (r < 0)
-		ERROR("Error destroying %s\n", path);
+		ERROR("Error destroying %s", path);
 }
 
 static void cgfsng_destroy(void *hdata, struct lxc_conf *conf)
@@ -915,12 +1018,10 @@ struct cgroup_ops *cgfsng_ops_init(void)
 
 static bool create_path_for_hierarchy(struct hierarchy *h, char *cgname)
 {
-	char *fullpath = must_make_path(h->mountpoint, h->base_cgroup, cgname, NULL);
-	int ret;
-
-	ret = mkdir_p(fullpath, 0755);
-	h->fullcgpath = fullpath;
-	return ret == 0;
+	h->fullcgpath = must_make_path(h->mountpoint, h->base_cgroup, cgname, NULL);
+	if (!handle_cpuset_hierarchy(h, cgname))
+		return false;
+	return mkdir_p(h->fullcgpath, 0755) == 0;
 }
 
 static void remove_path_for_hierarchy(struct hierarchy *h, char *cgname)
@@ -1009,7 +1110,7 @@ static bool cgfsng_enter(void *hdata, pid_t pid)
 		char *fullpath = must_make_path(d->hierarchies[i]->fullcgpath,
 						"cgroup.procs", NULL);
 		if (lxc_write_to_file(fullpath, pidstr, len, false) != 0) {
-			ERROR("Failed to enter %s\n", fullpath);
+			SYSERROR("Failed to enter %s", fullpath);
 			free(fullpath);
 			return false;
 		}
@@ -1178,7 +1279,7 @@ static bool cgfsng_escape(void *hdata)
 						d->hierarchies[i]->base_cgroup,
 						"cgroup.procs", NULL);
 		if (lxc_write_to_file(fullpath, "0", 2, false) != 0) {
-			ERROR("Failed to enter %s\n", fullpath);
+			SYSERROR("Failed to escape to %s", fullpath);
 			free(fullpath);
 			return false;
 		}
@@ -1385,7 +1486,7 @@ static bool cgfsng_setup_limits(void *hdata, struct lxc_list *cgroup_settings,
 	if (do_devices) {
 		h = get_hierarchy(d, "devices");
 		if (!h) {
-			ERROR("No devices cgroup setup for %s\n", d->name);
+			ERROR("No devices cgroup setup for %s", d->name);
 			return false;
 		}
 		listpath = must_make_path(h->fullcgpath, "devices.list", NULL);
