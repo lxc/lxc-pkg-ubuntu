@@ -1,2 +1,3 @@
 0001-Allocate-new-lxcbr0-subnet-at-startup-time.patch
 0002-cgfsng-set-cpuset-clone_children-if-needed.patch
+0003-tests-set-clone_children-if-need-be.patch
