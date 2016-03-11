@@ -1009,7 +1009,7 @@ static void cgfsng_destroy(void *hdata, struct lxc_conf *conf)
 		int i;
 		for (i = 0; d->hierarchies[i]; i++) {
 			struct hierarchy *h = d->hierarchies[i];
-			if (!h->fullcgpath) {
+			if (h->fullcgpath) {
 				recursive_destroy(h->fullcgpath, conf);
 				free(h->fullcgpath);
 				h->fullcgpath = NULL;
@@ -1167,24 +1167,34 @@ static int chown_cgroup_wrapper(void *data)
 		char *fullpath, *path = d->hierarchies[i]->fullcgpath;
 
 		if (chown(path, destuid, 0) < 0) {
-			SYSERROR("Error chowning %s to %d: %m", path, (int) destuid);
+			SYSERROR("Error chowning %s to %d", path, (int) destuid);
 			return -1;
 		}
 
 		if (chmod(path, 0775) < 0) {
-			SYSERROR("Error chmoding %s: %m", path);
+			SYSERROR("Error chmoding %s", path);
 			return -1;
 		}
 
-		/* Failures to chown these are inconvenient but not detrimental */
+		/*
+		 * Failures to chown these are inconvenient but not detrimental
+		 * We leave these owned by the container launcher, so that container
+		 * root can write to the files to attach.  We chmod them 664 so that
+		 * container systemd can write to the files (which systemd in wily
+		 * insists on doing)
+		 */
 		fullpath = must_make_path(path, "tasks", NULL);
 		if (chown(fullpath, destuid, 0) < 0 && errno != ENOENT)
 			WARN("Failed chowning %s to %d: %m", fullpath, (int) destuid);
+		if (chmod(fullpath, 0664) < 0)
+			WARN("Error chmoding %s: %m", path);
 		free(fullpath);
 
 		fullpath = must_make_path(path, "cgroup.procs", NULL);
 		if (chown(fullpath, destuid, 0) < 0 && errno != ENOENT)
 			WARN("Failed chowning %s to %d: %m", fullpath, (int) destuid);
+		if (chmod(fullpath, 0664) < 0)
+			WARN("Error chmoding %s: %m", path);
 		free(fullpath);
 	}
 
@@ -1280,13 +1290,20 @@ static int cgfsng_nrtasks(void *hdata) {
 }
 
 /* Only root needs to escape to the cgroup of its init */
-static bool cgfsng_escape(void *hdata)
+static bool cgfsng_escape()
 {
-	struct cgfsng_handler_data *d = hdata;
+	struct cgfsng_handler_data *d;
 	int i;
+	bool ret = false;
 
 	if (geteuid())
 		return true;
+
+	d = cgfsng_init("criu-temp-cgfsng");
+	if (!d) {
+		ERROR("cgfsng_init failed");
+		return false;
+	}
 
 	for (i = 0; d->hierarchies[i]; i++) {
 		char *fullpath = must_make_path(d->hierarchies[i]->mountpoint,
@@ -1295,12 +1312,15 @@ static bool cgfsng_escape(void *hdata)
 		if (lxc_write_to_file(fullpath, "0", 2, false) != 0) {
 			SYSERROR("Failed to escape to %s", fullpath);
 			free(fullpath);
-			return false;
+			goto out;
 		}
 		free(fullpath);
 	}
 
-	return true;
+	ret = true;
+out:
+	free_handler_data(d);
+	return ret;
 }
 
 #define THAWED "THAWED"
@@ -1334,7 +1354,25 @@ static const char *cgfsng_get_cgroup(void *hdata, const char *subsystem)
 	if (!h)
 		return NULL;
 
-	return h->fullcgpath;
+	return h->fullcgpath ? h->fullcgpath + strlen(h->mountpoint) : NULL;
+}
+
+/*
+ * Given a cgroup path returned from lxc_cmd_get_cgroup_path, build a
+ * full path, which must be freed by the caller.
+ */
+static char *build_full_cgpath_from_monitorpath(struct hierarchy *h,
+						const char *inpath,
+						const char *filename)
+{
+	/*
+	 * XXX Remove this case after 2.0 release.  It's for dealing with
+	 * containers spawned under the old buggy cgfsng which wasn't around
+	 * for long.
+	 */
+	if (strncmp(inpath, "/sys/fs/cgroup/", 15) == 0)
+		return must_make_path(inpath, filename, NULL);
+	return must_make_path(h->mountpoint, inpath, filename, NULL);
 }
 
 static bool cgfsng_attach(const char *name, const char *lxcpath, pid_t pid)
@@ -1359,15 +1397,14 @@ static bool cgfsng_attach(const char *name, const char *lxcpath, pid_t pid)
 		if (!path) // not running
 			continue;
 
-		fullpath = must_make_path(path, "cgroup.procs", NULL);
+		fullpath = build_full_cgpath_from_monitorpath(h, path, "cgroup.procs");
+		free(path);
 		if (lxc_write_to_file(fullpath, pidstr, len, false) != 0) {
 			SYSERROR("Failed to attach %d to %s", (int)pid, fullpath);
 			free(fullpath);
-			free(path);
 			free_handler_data(d);
 			return false;
 		}
-		free(path);
 		free(fullpath);
 	}
 
@@ -1404,7 +1441,7 @@ static int cgfsng_get(const char *filename, char *value, size_t len, const char 
 
 	h = get_hierarchy(d, subsystem);
 	if (h) {
-		char *fullpath = must_make_path(path, filename, NULL);
+		char *fullpath = build_full_cgpath_from_monitorpath(h, path, filename);
 		ret = lxc_read_from_file(fullpath, value, len);
 		free(fullpath);
 	}
@@ -1444,7 +1481,7 @@ static int cgfsng_set(const char *filename, const char *value, const char *name,
 
 	h = get_hierarchy(d, subsystem);
 	if (h) {
-		char *fullpath = must_make_path(path, filename, NULL);
+		char *fullpath = build_full_cgpath_from_monitorpath(h, path, filename);
 		ret = lxc_write_to_file(fullpath, value, strlen(value), false);
 		free(fullpath);
 	}
