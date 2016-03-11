@@ -1,3 +1,14 @@
+lxc (2.0.0~rc10-0ubuntu2) xenial; urgency=medium
+
+  * Re-order the systemd | cgroup-lite dependency to be
+    cgroup-lite | systemd instead.
+
+    Systems using systemd will already have it installed, satisfying the
+    condition and systems that don't have it installed want cgroup-lite
+    pulled in instead of systemd.
+
+ -- Stéphane Graber <stgraber@ubuntu.com>  Fri, 11 Mar 2016 12:07:21 -0500
+
 lxc (2.0.0~rc10-0ubuntu1) xenial; urgency=medium
 
   * New upstream release (2.0.0~rc10)
