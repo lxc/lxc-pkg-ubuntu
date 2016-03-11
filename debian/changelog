@@ -1,3 +1,15 @@
+lxc (2.0.0~rc10-0ubuntu1) xenial; urgency=medium
+
+  * New upstream release (2.0.0~rc10)
+    - Improve the lxc-attach tests
+    - Make the exec_criu function static
+    - cgfsng: Fix cgroup_escape for CRIU
+    - cgfsng: Return the cgroup path, not the full mounted path
+    - cgfsng: Fix mode of tasks and procs
+    - cgfsng: Fix cgroup removal on stop
+
+ -- Stéphane Graber <stgraber@ubuntu.com>  Fri, 11 Mar 2016 01:19:24 -0500
+
 lxc (2.0.0~rc9-0ubuntu1) xenial; urgency=medium
 
   * New upstream release (2.0.0~rc9)
