@@ -134,7 +134,7 @@ Architecture: linux-any
 Pre-Depends: ${misc:Pre-Depends}
 Depends: lxc-common (= ${binary:Version}),
          rsync,
-         systemd | cgroup-lite,
+         cgroup-lite | systemd,
          ${misc:Depends},
          ${shlibs:Depends}
 Recommends: uidmap, lxcfs
