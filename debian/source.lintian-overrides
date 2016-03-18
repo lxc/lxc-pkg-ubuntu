@@ -3,6 +3,3 @@ lxc source: xs-testsuite-header-in-debian-control xs-testsuite
 
 # Not quite true yet in Ubuntu
 lxc source: build-depends-on-obsolete-package build-depends: hardening-wrapper => use dpkg-buildflags instead
-
-# Don't really have a choice there
-lxc source: intra-source-package-circular-dependency liblxc1 lxc-common
