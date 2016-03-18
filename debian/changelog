@@ -1,3 +1,20 @@
+lxc (2.0.0~rc11-0ubuntu1) xenial; urgency=medium
+
+  * New upstream release (2.0.0~rc11)
+    - download: Bump to compat level 3
+    - autodev: don't always create /dev/console
+    - cgfsng: two fixes for cgroup-full
+    - use hierarchy base path not just controller cgroup
+    - cgroups: try to load cgmanager first
+    - implement lxc.mount.auto = cgroup for cgfsng
+    - Prevent access to pci devices
+    - nesting: remove the nesting hint from configuration templates
+    - nesting: document how to enable nesting in container configurations
+    - c/r: drop lxc.console=none config requirement
+    - criu: hide more stuff in criu.c
+
+ -- Stéphane Graber <stgraber@ubuntu.com>  Thu, 17 Mar 2016 23:26:54 -0400
+
 lxc (2.0.0~rc10-0ubuntu2) xenial; urgency=medium
 
   * Re-order the systemd | cgroup-lite dependency to be
