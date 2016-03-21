@@ -1,3 +1,11 @@
+lxc (2.0.0~rc12-0ubuntu1) xenial; urgency=medium
+
+  * New upstream release (2.0.0~rc12)
+    - c/r: print criu's stdout when it fails
+    - c/r: log the exact command we exec
+
+ -- Stéphane Graber <stgraber@ubuntu.com>  Mon, 21 Mar 2016 16:48:24 -0400
+
 lxc (2.0.0~rc11-0ubuntu1) xenial; urgency=medium
 
   * New upstream release (2.0.0~rc11)
