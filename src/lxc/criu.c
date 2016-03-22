@@ -259,9 +259,10 @@ static void exec_criu(struct criu_opts *opts)
 		DECLARE_ARG("--freeze-cgroup");
 		DECLARE_ARG(log);
 
-		DECLARE_ARG("--ext-mount-map");
-		DECLARE_ARG("/dev/console:console");
 		if (opts->tty_id[0]) {
+			DECLARE_ARG("--ext-mount-map");
+			DECLARE_ARG("/dev/console:console");
+
 			DECLARE_ARG("--external");
 			DECLARE_ARG(opts->tty_id);
 		}
@@ -289,6 +290,11 @@ static void exec_criu(struct criu_opts *opts)
 		DECLARE_ARG(opts->cgroup_path);
 
 		if (tty_info[0]) {
+			if (opts->console_fd < 0) {
+				ERROR("lxc.console configured on source host but not target");
+				goto err;
+			}
+
 			ret = snprintf(buf, sizeof(buf), "fd[%d]:%s", opts->console_fd, tty_info);
 			if (ret < 0 || ret >= sizeof(buf))
 				goto err;
@@ -623,20 +629,22 @@ void do_restore(struct lxc_container *c, int status_pipe, char *directory, bool 
 		os.cgroup_path = cgroup_canonical_path(handler);
 		os.console_fd = c->lxc_conf->console.slave;
 
-		/* Twiddle the FD_CLOEXEC bit. We want to pass this FD to criu
-		 * via --inherit-fd, so we don't want it to close.
-		 */
-		flags = fcntl(os.console_fd, F_GETFD);
-		if (flags < 0) {
-			SYSERROR("F_GETFD failed");
-			goto out_fini_handler;
-		}
+		if (os.console_fd >= 0) {
+			/* Twiddle the FD_CLOEXEC bit. We want to pass this FD to criu
+			 * via --inherit-fd, so we don't want it to close.
+			 */
+			flags = fcntl(os.console_fd, F_GETFD);
+			if (flags < 0) {
+				SYSERROR("F_GETFD failed: %d", os.console_fd);
+				goto out_fini_handler;
+			}
 
-		flags &= ~FD_CLOEXEC;
+			flags &= ~FD_CLOEXEC;
 
-		if (fcntl(os.console_fd, F_SETFD, flags) < 0) {
-			SYSERROR("F_SETFD failed");
-			goto out_fini_handler;
+			if (fcntl(os.console_fd, F_SETFD, flags) < 0) {
+				SYSERROR("F_SETFD failed");
+				goto out_fini_handler;
+			}
 		}
 		os.console_name = c->lxc_conf->console.name;
 
@@ -860,12 +868,12 @@ static bool do_dump(struct lxc_container *c, char *mode, char *directory,
 	}
 }
 
-bool pre_dump(struct lxc_container *c, char *directory, bool verbose, char *predump_dir)
+bool __criu_pre_dump(struct lxc_container *c, char *directory, bool verbose, char *predump_dir)
 {
 	return do_dump(c, "pre-dump", directory, false, verbose, predump_dir);
 }
 
-bool dump(struct lxc_container *c, char *directory, bool stop, bool verbose, char *predump_dir)
+bool __criu_dump(struct lxc_container *c, char *directory, bool stop, bool verbose, char *predump_dir)
 {
 	char path[PATH_MAX];
 	int ret;
@@ -882,7 +890,7 @@ bool dump(struct lxc_container *c, char *directory, bool stop, bool verbose, cha
 	return do_dump(c, "dump", directory, stop, verbose, predump_dir);
 }
 
-bool restore(struct lxc_container *c, char *directory, bool verbose)
+bool __criu_restore(struct lxc_container *c, char *directory, bool verbose)
 {
 	pid_t pid;
 	int status, nread;
