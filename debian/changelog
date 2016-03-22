@@ -1,3 +1,13 @@
+lxc (2.0.0~rc13-0ubuntu1) xenial; urgency=medium
+
+  * New usptream release (2.0.0~rc13)
+    - c/r: don't pass --ext-mount-map flag when console=none
+    - c/r: don't fail if there is no console_fd on restore
+    - lxc-checkpoint: make things static when they can be
+    - c/r: rename restore & friends to __criu_restore
+
+ -- Stéphane Graber <stgraber@ubuntu.com>  Tue, 22 Mar 2016 17:24:32 -0400
+
 lxc (2.0.0~rc12-0ubuntu1) xenial; urgency=medium
 
   * New upstream release (2.0.0~rc12)
