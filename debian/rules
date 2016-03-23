@@ -66,6 +66,10 @@ override_dh_install:
 	# move the bash completion profile
 	mkdir -p debian/tmp/usr/share/bash-completion
 	mv debian/tmp/etc/bash_completion.d debian/tmp/usr/share/bash-completion/completions
+	mv debian/tmp/usr/share/bash-completion/completions/lxc debian/tmp/usr/share/bash-completion/completions/lxc1
+	grep complete debian/tmp/usr/share/bash-completion/completions/lxc1 | sed "s/.* //g" | while read cmd; do \
+		ln -s lxc1 debian/tmp/usr/share/bash-completion/completions/$${cmd}; \
+	done
 
 	dh_install --fail-missing
 
