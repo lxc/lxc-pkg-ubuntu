@@ -1,3 +1,12 @@
+lxc (2.0.0~rc13-0ubuntu2) xenial; urgency=medium
+
+  * Fix the bash completion profiles.
+    Now that it's in /usr/share, we need it to match the command name,
+    so rename the main profile to lxc1 and add a symlink for each supported
+    command.
+
+ -- Stéphane Graber <stgraber@ubuntu.com>  Wed, 23 Mar 2016 13:17:02 -0400
+
 lxc (2.0.0~rc13-0ubuntu1) xenial; urgency=medium
 
   * New usptream release (2.0.0~rc13)
