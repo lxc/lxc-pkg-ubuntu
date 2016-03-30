@@ -1,3 +1,26 @@
+lxc (2.0.0~rc14-0ubuntu1) xenial; urgency=medium
+
+  * New upstream release (2.0.0~rc14)
+    - open_without_symlink: Don't SYSERROR on something else than ELOOP
+    - lxc-busybox: Touch /etc/fstab in the container rootfs
+    - lxc.spec.in: fixed hardcoded path to lxc-net config file
+    - sync: add LXC_SYNC_ERROR to report errors from another process.
+    - start: use LXC_SYNC_ERROR to report errors.
+    - lxc-busybox: Remove warning for dynamically linked Busybox
+    - utils: split null_stdfds() to open_devnull() and set_stdfds()
+    - start: open /dev/null from "host" /dev
+    - Fix installation of out-of-tree (VPATH) builds
+    - Timezone inside the container is not the same as the host
+    - use httpredir.debian.org as the default Debian mirror
+    - always provide a default mirror for debootstraping Ubuntu
+    - only enable Debian's main repository by default
+    - start: only use host's /dev/null when absolutely necessary
+    - add funs to mmap() files to \0-terminated strings
+    - use lxc_mmap() and lxc_munmap()
+    - better naming for mmap helpers
+
+ -- Stéphane Graber <stgraber@ubuntu.com>  Tue, 29 Mar 2016 21:35:55 -0400
+
 lxc (2.0.0~rc13-0ubuntu2) xenial; urgency=medium
 
   * Fix the bash completion profiles.
