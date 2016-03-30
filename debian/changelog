@@ -1,3 +1,10 @@
+lxc (2.0.0~rc14-0ubuntu2) xenial; urgency=medium
+
+  * Cherry-pick tentative upstream fix:
+    - lxc-ubuntu: Fix building on secondary architectures
+
+ -- Stéphane Graber <stgraber@ubuntu.com>  Wed, 30 Mar 2016 01:29:09 -0400
+
 lxc (2.0.0~rc14-0ubuntu1) xenial; urgency=medium
 
   * New upstream release (2.0.0~rc14)
