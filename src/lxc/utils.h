@@ -252,6 +252,14 @@ extern void lxc_free_array(void **array, lxc_free_fn element_free_fn);
 extern size_t lxc_array_len(void **array);
 
 extern void **lxc_append_null_to_array(void **array, size_t count);
+
+/* mmap() wrapper. lxc_mmap() will take care to \0-terminate files so that
+ * normal string-handling functions can be used on the buffer. */
+extern void *lxc_strmmap(void *addr, size_t length, int prot, int flags, int fd,
+			 off_t offset);
+/* munmap() wrapper. Use it to free memory mmap()ed with lxc_mmap(). */
+extern int lxc_strmunmap(void *addr, size_t length);
+
 //initialize rand with urandom
 extern int randseed(bool);
 
@@ -283,6 +291,8 @@ int setproctitle(char *title);
 int safe_mount(const char *src, const char *dest, const char *fstype,
 		unsigned long flags, const void *data, const char *rootfs);
 int mount_proc_if_needed(const char *rootfs);
+int open_devnull(void);
+int set_stdfds(int fd);
 int null_stdfds(void);
 int lxc_count_file_lines(const char *fn);
 #endif /* __LXC_UTILS_H */

@@ -52,8 +52,8 @@ BuildRequires: systemd
 # RPM needs alpha/beta/rc in Release: not Version: to ensure smooth
 # package upgrades from alpha->beta->rc->release. For more info see:
 # http://fedoraproject.org/wiki/Packaging%3aNamingGuidelines#NonNumericRelease
-%if "xrc13" != "x"
-%global beta_rel rc13
+%if "xrc14" != "x"
+%global beta_rel rc14
 %global beta_dot .%{beta_rel}
 %else
 %global norm_rel 1
@@ -169,7 +169,7 @@ fi
 
 %post
 # This test should trigger a network configure on a new install.
-if [ ! -f %{_sysconfdir}/sysconfig/lxc-net ] || ! grep -q 'USE_LXC_BRIDGE=' %{_sysconfdir}/sysconfig/lxc-net
+if [ ! -f /usr/local/etc/default/lxc-net ] || ! grep -q 'USE_LXC_BRIDGE=' /usr/local/etc/default/lxc-net
 then
 	# Grab a random 10net subnet.  Need to add test logic...
 	while [ true ]
@@ -181,7 +181,7 @@ then
 		fi
 	done
 
-	cat >  %{_sysconfdir}/sysconfig/lxc-net <<EOF
+	cat >  /usr/local/etc/default/lxc-net <<EOF
 # Leave USE_LXC_BRIDGE as "true" if you want to use lxcbr0 for your
 # containers.  Set to "false" if you'll use virbr0 or another existing
 # bridge, or mavlan to your host's NIC.

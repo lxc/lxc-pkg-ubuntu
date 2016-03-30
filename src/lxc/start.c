@@ -710,6 +710,8 @@ static int do_start(void *data)
 {
 	struct lxc_list *iterator;
 	struct lxc_handler *handler = data;
+	int devnull_fd = -1, ret;
+	char path[PATH_MAX];
 
 	if (sigprocmask(SIG_SETMASK, &handler->oldmask, NULL)) {
 		SYSERROR("failed to set sigprocmask");
@@ -788,6 +790,30 @@ static int do_start(void *data)
 	}
 	#endif
 
+	ret = sprintf(path, "%s/dev/null", handler->conf->rootfs.mount);
+	if (ret < 0 || ret >= sizeof(path)) {
+		SYSERROR("sprintf'd too many chars");
+		goto out_warn_father;
+	}
+
+	/* In order to checkpoint restore, we need to have everything in the
+	 * same mount namespace. However, some containers may not have a
+	 * reasonable /dev (in particular, they may not have /dev/null), so we
+	 * can't set init's std fds to /dev/null by opening it from inside the
+	 * container.
+	 *
+	 * If that's the case, fall back to using the host's /dev/null. This
+	 * means that migration won't work, but at least we won't spew output
+	 * where it isn't wanted.
+	 */
+	if (handler->backgrounded && !handler->conf->autodev && access(path, F_OK) < 0) {
+		devnull_fd = open_devnull();
+
+		if (devnull_fd < 0)
+			goto out_warn_father;
+		WARN("using host's /dev/null for container init's std fds, migraiton won't work");
+	}
+
 	/* Setup the container, ip, names, utsname, ... */
 	if (lxc_setup(handler)) {
 		ERROR("failed to setup the container");
@@ -796,7 +822,7 @@ static int do_start(void *data)
 
 	/* ask father to setup cgroups and wait for him to finish */
 	if (lxc_sync_barrier_parent(handler, LXC_SYNC_CGROUP))
-		return -1;
+		goto out_error;
 
 	/* Set the label to change to when we exec(2) the container's init */
 	if (lsm_process_label_set(NULL, handler->conf, 1, 1) < 0)
@@ -853,8 +879,20 @@ static int do_start(void *data)
 
 	close(handler->sigfd);
 
-	if (handler->backgrounded && null_stdfds() < 0)
+	if (devnull_fd < 0) {
+		devnull_fd = open_devnull();
+
+		if (devnull_fd < 0)
+			goto out_warn_father;
+	}
+
+	if (handler->backgrounded && set_stdfds(devnull_fd))
 		goto out_warn_father;
+
+	if (devnull_fd >= 0) {
+		close(devnull_fd);
+		devnull_fd = -1;
+	}
 
 	if (cgns_supported() && unshare(CLONE_NEWCGROUP) != 0) {
 		SYSERROR("Failed to unshare cgroup namespace");
@@ -868,9 +906,14 @@ static int do_start(void *data)
 	handler->ops->start(handler, handler->data);
 
 out_warn_father:
-	/* we want the parent to know something went wrong, so any
-	 * value other than what it expects is ok. */
-	lxc_sync_wake_parent(handler, LXC_SYNC_POST_CONFIGURE);
+	/* we want the parent to know something went wrong, so we return a special
+	 * error code. */
+	lxc_sync_wake_parent(handler, LXC_SYNC_ERROR);
+
+out_error:
+	if (devnull_fd >= 0)
+		close(devnull_fd);
+
 	return -1;
 }
 
