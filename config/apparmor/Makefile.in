@@ -403,8 +403,8 @@ distclean-generic:
 maintainer-clean-generic:
 	@echo "This command is intended for maintainers to use"
 	@echo "it deletes files that may require special tools to rebuild."
-@ENABLE_APPARMOR_FALSE@install-data-local:
 @ENABLE_APPARMOR_FALSE@uninstall-local:
+@ENABLE_APPARMOR_FALSE@install-data-local:
 clean: clean-am
 
 clean-am: clean-generic mostlyclean-am
@@ -491,14 +491,14 @@ uninstall-am: uninstall-local
 @ENABLE_APPARMOR_TRUE@	$(MKDIR_P) $(DESTDIR)$(sysconfdir)/apparmor.d/
 @ENABLE_APPARMOR_TRUE@	$(MKDIR_P) $(DESTDIR)$(sysconfdir)/apparmor.d/abstractions/lxc/
 @ENABLE_APPARMOR_TRUE@	$(MKDIR_P) $(DESTDIR)$(sysconfdir)/apparmor.d/lxc/
-@ENABLE_APPARMOR_TRUE@	$(INSTALL_DATA) abstractions/container-base $(DESTDIR)$(sysconfdir)/apparmor.d/abstractions/lxc/
-@ENABLE_APPARMOR_TRUE@	$(INSTALL_DATA) abstractions/start-container $(DESTDIR)$(sysconfdir)/apparmor.d/abstractions/lxc/
-@ENABLE_APPARMOR_TRUE@	$(INSTALL_DATA) profiles/lxc-default $(DESTDIR)$(sysconfdir)/apparmor.d/lxc/
-@ENABLE_APPARMOR_TRUE@	$(INSTALL_DATA) profiles/lxc-default-cgns $(DESTDIR)$(sysconfdir)/apparmor.d/lxc/
-@ENABLE_APPARMOR_TRUE@	$(INSTALL_DATA) profiles/lxc-default-with-mounting $(DESTDIR)$(sysconfdir)/apparmor.d/lxc/
-@ENABLE_APPARMOR_TRUE@	$(INSTALL_DATA) profiles/lxc-default-with-nesting $(DESTDIR)$(sysconfdir)/apparmor.d/lxc/
-@ENABLE_APPARMOR_TRUE@	$(INSTALL_DATA) lxc-containers $(DESTDIR)$(sysconfdir)/apparmor.d/
-@ENABLE_APPARMOR_TRUE@	$(INSTALL_DATA) usr.bin.lxc-start $(DESTDIR)$(sysconfdir)/apparmor.d/
+@ENABLE_APPARMOR_TRUE@	$(INSTALL_DATA) $(srcdir)/abstractions/container-base $(DESTDIR)$(sysconfdir)/apparmor.d/abstractions/lxc/
+@ENABLE_APPARMOR_TRUE@	$(INSTALL_DATA) $(srcdir)/abstractions/start-container $(DESTDIR)$(sysconfdir)/apparmor.d/abstractions/lxc/
+@ENABLE_APPARMOR_TRUE@	$(INSTALL_DATA) $(srcdir)/profiles/lxc-default $(DESTDIR)$(sysconfdir)/apparmor.d/lxc/
+@ENABLE_APPARMOR_TRUE@	$(INSTALL_DATA) $(srcdir)/profiles/lxc-default-cgns $(DESTDIR)$(sysconfdir)/apparmor.d/lxc/
+@ENABLE_APPARMOR_TRUE@	$(INSTALL_DATA) $(srcdir)/profiles/lxc-default-with-mounting $(DESTDIR)$(sysconfdir)/apparmor.d/lxc/
+@ENABLE_APPARMOR_TRUE@	$(INSTALL_DATA) $(srcdir)/profiles/lxc-default-with-nesting $(DESTDIR)$(sysconfdir)/apparmor.d/lxc/
+@ENABLE_APPARMOR_TRUE@	$(INSTALL_DATA) $(srcdir)/lxc-containers $(DESTDIR)$(sysconfdir)/apparmor.d/
+@ENABLE_APPARMOR_TRUE@	$(INSTALL_DATA) $(srcdir)/usr.bin.lxc-start $(DESTDIR)$(sysconfdir)/apparmor.d/
 
 @ENABLE_APPARMOR_TRUE@uninstall-apparmor:
 @ENABLE_APPARMOR_TRUE@	rm -f $(DESTDIR)$(sysconfdir)/apparmor.d/usr.bin.lxc-start

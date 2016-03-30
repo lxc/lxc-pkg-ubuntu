@@ -69,7 +69,7 @@ struct prctl_mm_map {
         uint64_t   *auxv;
         uint32_t   auxv_size;
         uint32_t   exe_fd;
-};              
+};
 #endif
 
 #ifndef O_PATH
@@ -1621,8 +1621,6 @@ static int open_without_symlink(const char *target, const char *prefix_skip)
 			errno = saved_errno;
 			if (errno == ELOOP)
 				SYSERROR("%s in %s was a symbolic link!", nextpath, target);
-			else
-				SYSERROR("Error examining %s in %s", nextpath, target);
 			goto out;
 		}
 	}
@@ -1667,8 +1665,11 @@ int safe_mount(const char *src, const char *dest, const char *fstype,
 
 	destfd = open_without_symlink(dest, rootfs);
 	if (destfd < 0) {
-		if (srcfd != -1)
+		if (srcfd != -1) {
+			saved_errno = errno;
 			close(srcfd);
+			errno = saved_errno;
+		}
 		return destfd;
 	}
 
@@ -1751,24 +1752,41 @@ domount:
 	return 1;
 }
 
-int null_stdfds(void)
+int open_devnull(void)
 {
-	int fd, ret = -1;
+	int fd = open("/dev/null", O_RDWR);
 
-	fd = open("/dev/null", O_RDWR);
+	if (fd < 0)
+		SYSERROR("Can't open /dev/null");
+
+	return fd;
+}
+
+int set_stdfds(int fd)
+{
 	if (fd < 0)
 		return -1;
 
 	if (dup2(fd, 0) < 0)
-		goto err;
+		return -1;
 	if (dup2(fd, 1) < 0)
-		goto err;
+		return -1;
 	if (dup2(fd, 2) < 0)
-		goto err;
+		return -1;
 
-	ret = 0;
-err:
-	close(fd);
+	return 0;
+}
+
+int null_stdfds(void)
+{
+	int ret = -1;
+	int fd = open_devnull();
+
+	if (fd >= 0) {
+		ret = set_stdfds(fd);
+		close(fd);
+	}
+
 	return ret;
 }
 
@@ -1792,4 +1810,32 @@ int lxc_count_file_lines(const char *fn)
 	free(line);
 	fclose(f);
 	return n;
+}
+
+void *lxc_strmmap(void *addr, size_t length, int prot, int flags, int fd,
+		  off_t offset)
+{
+	void *tmp = NULL, *overlap = NULL;
+
+	/* We establish an anonymous mapping that is one byte larger than the
+	 * underlying file. The pages handed to us are zero filled. */
+	tmp = mmap(addr, length + 1, PROT_READ, MAP_PRIVATE | MAP_ANONYMOUS, -1, 0);
+	if (tmp == MAP_FAILED)
+		goto out;
+
+	/* Now we establish a fixed-address mapping starting at the address we
+	 * received from our anonymous mapping and replace all bytes excluding
+	 * the additional \0-byte with the file. This allows us to use normal
+	 * string-handling function. */
+	overlap = mmap(tmp, length, prot, MAP_FIXED | flags, fd, offset);
+	if (overlap == MAP_FAILED)
+		goto out;
+
+out:
+	return overlap;
+}
+
+int lxc_strmunmap(void *addr, size_t length)
+{
+	return munmap(addr, length + 1);
 }

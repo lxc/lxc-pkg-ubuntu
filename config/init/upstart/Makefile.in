@@ -482,7 +482,7 @@ uninstall-am: uninstall-local
 @INIT_SCRIPT_UPSTART_TRUE@install-upstart: lxc.conf lxc-instance.conf lxc-net.conf
 @INIT_SCRIPT_UPSTART_TRUE@	$(MKDIR_P) $(DESTDIR)$(sysconfdir)/init/
 @INIT_SCRIPT_UPSTART_TRUE@	$(INSTALL_DATA) lxc.conf $(DESTDIR)$(sysconfdir)/init/
-@INIT_SCRIPT_UPSTART_TRUE@	$(INSTALL_DATA) lxc-instance.conf $(DESTDIR)$(sysconfdir)/init/
+@INIT_SCRIPT_UPSTART_TRUE@	$(INSTALL_DATA) $(srcdir)/lxc-instance.conf $(DESTDIR)$(sysconfdir)/init/
 @INIT_SCRIPT_UPSTART_TRUE@	$(INSTALL_DATA) lxc-net.conf $(DESTDIR)$(sysconfdir)/init/
 
 @INIT_SCRIPT_UPSTART_TRUE@uninstall-upstart:
