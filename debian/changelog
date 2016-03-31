@@ -1,3 +1,24 @@
+lxc (2.0.0~rc15-0ubuntu1) xenial; urgency=medium
+
+  * New upstream release (2.0.0~rc15)
+    - lxc-debian: Update supported release names
+    - lxc-ubuntu: Fix building on secondary architectures
+    - Update .gitignore for *.so.*
+    - Use smarter error handling for lxc_strmmap()
+    - Use common lxc ordering for included headers
+    - Fix possible buffer overflow strncat only returns its first
+      argument and not the end of the written string. Thus "buf-pos" is always
+      0 and consquently no range check is performed.
+    - Use snprintf instead of strncat
+    - CRIU: Support using the CRIU page server for faster migrations.
+      This optimization isn't used by default, it requires a custom liblxc1
+      client.
+    - Fix buffer overflow in do_start()
+    - Fixed indentation and comments
+  * Drop previously cherry-picked change, now upstream.
+
+ -- Stéphane Graber <stgraber@ubuntu.com>  Thu, 31 Mar 2016 18:14:44 -0400
+
 lxc (2.0.0~rc14-0ubuntu2) xenial; urgency=medium
 
   * Cherry-pick tentative upstream fix:
