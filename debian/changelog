@@ -1,3 +1,19 @@
+lxc (2.0.0-0ubuntu1) xenial; urgency=medium
+
+  * New upstream release (2.0.0 final)
+    - Upstream announcement: https://linuxcontainers.org/lxc/news
+    - Change from last rc:
+      + Allow bypassing bdev auto detection by setting lxc.rootfs.backend
+        This fixes a longstanding performance issue caused by LXC having
+        to run through all its backends and forking sub-processes to
+        perform the detection.
+  * Make new lintian happy:
+    - Bump to 3.9.7 standards
+    - Update git URL to https
+    - Override systemd Documentation field warning (upstream units)
+
+ -- Stéphane Graber <stgraber@ubuntu.com>  Wed, 06 Apr 2016 14:42:39 -0400
+
 lxc (2.0.0~rc15-0ubuntu1) xenial; urgency=medium
 
   * New upstream release (2.0.0~rc15)
