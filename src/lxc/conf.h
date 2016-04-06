@@ -220,11 +220,13 @@ struct lxc_console {
  * @path       : the rootfs source (directory or device)
  * @mount      : where it is mounted
  * @options    : mount options
+ * @bev_type   : optional backing store type
  */
 struct lxc_rootfs {
 	char *path;
 	char *mount;
 	char *options;
+	char *bdev_type;
 };
 
 /*
