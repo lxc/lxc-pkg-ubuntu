@@ -10,3 +10,6 @@ non-standard-dir-perm var/lib/lxc/ 0700 != 0755
 binary-without-manpage usr/sbin/init.lxc
 binary-without-manpage usr/sbin/init.lxc.static
 systemd-service-file-refers-to-obsolete-target lib/systemd/system/lxc.service syslog.target
+systemd-service-file-missing-documentation-key lib/systemd/system/lxc-net.service
+systemd-service-file-missing-documentation-key lib/systemd/system/lxc.service
+systemd-service-file-missing-documentation-key lib/systemd/system/lxc@.service
