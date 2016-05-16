@@ -36,7 +36,7 @@ lxc_log_define(lxc_sync, lxc);
 static int __sync_wait(int fd, int sequence)
 {
 	int sync = -1;
-	int ret;
+	ssize_t ret;
 
 	ret = read(fd, &sync, sizeof(sync));
 	if (ret < 0) {
@@ -46,6 +46,11 @@ static int __sync_wait(int fd, int sequence)
 
 	if (!ret)
 		return 0;
+
+	if ((size_t)ret != sizeof(sync)) {
+		ERROR("unexpected sync size: %zu expected %zu", (size_t)ret, sizeof(sync));
+		return -1;
+	}
 
 	if (sync == LXC_SYNC_ERROR) {
 		ERROR("An error occurred in another process "
@@ -92,6 +97,11 @@ int lxc_sync_barrier_child(struct lxc_handler *handler, int sequence)
 int lxc_sync_wake_parent(struct lxc_handler *handler, int sequence)
 {
 	return __sync_wake(handler->sv[0], sequence);
+}
+
+int lxc_sync_wait_parent(struct lxc_handler *handler, int sequence)
+{
+	return __sync_wait(handler->sv[0], sequence);
 }
 
 int lxc_sync_wait_child(struct lxc_handler *handler, int sequence)
