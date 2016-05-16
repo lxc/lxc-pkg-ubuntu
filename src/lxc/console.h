@@ -47,7 +47,9 @@ struct lxc_tty_state
 	const char *winch_proxy;
 	/* Path of the container to forward the SIGWINCH event to. */
 	const char *winch_proxy_lxcpath;
-	/* File descriptor that accepts SIGWINCH signals. */
+	/* File descriptor that accepts SIGWINCH signals. If set to -1 no
+	 * SIGWINCH handler could be installed. This also means that
+	 * the sigset_t oldmask member is meaningless. */
 	int sigfd;
 	sigset_t oldmask;
 };
@@ -100,7 +102,7 @@ extern void lxc_console_free(struct lxc_conf *conf, int fd);
 /*
  * Register pty event handlers in an open mainloop
  */
-extern int  lxc_console_mainloop_add(struct lxc_epoll_descr *, struct lxc_handler *);
+extern int  lxc_console_mainloop_add(struct lxc_epoll_descr *, struct lxc_conf *);
 
 /*
  * Handle SIGWINCH events on the allocated ptys.

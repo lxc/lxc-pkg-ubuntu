@@ -27,10 +27,10 @@
 #include <signal.h>
 #include <stdio.h>
 #include <stdlib.h>
-#include <sys/epoll.h>
-#include <sys/types.h>
 #include <termios.h>
 #include <unistd.h>
+#include <sys/epoll.h>
+#include <sys/types.h>
 
 #include <lxc/lxccontainer.h>
 
@@ -118,9 +118,9 @@ struct lxc_tty_state *lxc_console_sigwinch_init(int srcfd, int dstfd)
 		return NULL;
 
 	memset(ts, 0, sizeof(*ts));
-	ts->stdinfd  = srcfd;
+	ts->stdinfd = srcfd;
 	ts->masterfd = dstfd;
-	ts->sigfd    = -1;
+	ts->sigfd = -1;
 
 	/* add tty to list to be scanned at SIGWINCH time */
 	lxc_list_add_elem(&ts->node, ts);
@@ -129,26 +129,20 @@ struct lxc_tty_state *lxc_console_sigwinch_init(int srcfd, int dstfd)
 	sigemptyset(&mask);
 	sigaddset(&mask, SIGWINCH);
 	if (sigprocmask(SIG_BLOCK, &mask, &ts->oldmask)) {
-		SYSERROR("failed to block SIGWINCH");
-		goto err1;
+		SYSERROR("failed to block SIGWINCH.");
+		ts->sigfd = -1;
+		return ts;
 	}
 
 	ts->sigfd = signalfd(-1, &mask, 0);
 	if (ts->sigfd < 0) {
-		SYSERROR("failed to get signalfd");
-		goto err2;
+		SYSERROR("failed to get signalfd.");
+		sigprocmask(SIG_SETMASK, &ts->oldmask, NULL);
+		ts->sigfd = -1;
+		return ts;
 	}
 
 	DEBUG("%d got SIGWINCH fd %d", getpid(), ts->sigfd);
-	goto out;
-
-err2:
-	sigprocmask(SIG_SETMASK, &ts->oldmask, NULL);
-err1:
-	lxc_list_del(&ts->node);
-	free(ts);
-	ts = NULL;
-out:
 	return ts;
 }
 
@@ -167,30 +161,25 @@ static int lxc_console_cb_con(int fd, uint32_t events, void *data,
 {
 	struct lxc_console *console = (struct lxc_console *)data;
 	char buf[1024];
-	int r,w;
+	int r, w;
 
-	w = r = read(fd, buf, sizeof(buf));
-	if (r < 0) {
-		SYSERROR("failed to read");
-		return 1;
-	}
-
-	if (!r) {
+	w = r = lxc_read_nointr(fd, buf, sizeof(buf));
+	if (r <= 0) {
 		INFO("console client on fd %d has exited", fd);
 		lxc_mainloop_del_handler(descr, fd);
 		close(fd);
-		return 0;
+		return 1;
 	}
 
 	if (fd == console->peer)
-		w = write(console->master, buf, r);
+		w = lxc_write_nointr(console->master, buf, r);
 
 	if (fd == console->master) {
 		if (console->log_fd >= 0)
-			w = write(console->log_fd, buf, r);
+			w = lxc_write_nointr(console->log_fd, buf, r);
 
 		if (console->peer >= 0)
-			w = write(console->peer, buf, r);
+			w = lxc_write_nointr(console->peer, buf, r);
 	}
 
 	if (w != r)
@@ -207,7 +196,7 @@ static void lxc_console_mainloop_add_peer(struct lxc_console *console)
 			WARN("console peer not added to mainloop");
 	}
 
-	if (console->tty_state) {
+	if (console->tty_state && console->tty_state->sigfd != -1) {
 		if (lxc_mainloop_add_handler(console->descr,
 					     console->tty_state->sigfd,
 					     lxc_console_cb_sigwinch_fd,
@@ -218,10 +207,9 @@ static void lxc_console_mainloop_add_peer(struct lxc_console *console)
 	}
 }
 
-int lxc_console_mainloop_add(struct lxc_epoll_descr *descr,
-			     struct lxc_handler *handler)
+extern int lxc_console_mainloop_add(struct lxc_epoll_descr *descr,
+				    struct lxc_conf *conf)
 {
-	struct lxc_conf *conf = handler->conf;
 	struct lxc_console *console = &conf->console;
 
 	if (conf->is_execute) {
@@ -272,15 +260,21 @@ int lxc_setup_tios(int fd, struct termios *oldtios)
 
 	newtios = *oldtios;
 
-	/* Remove the echo characters and signal reception, the echo
-	 * will be done with master proxying */
-	newtios.c_iflag &= ~IGNBRK;
-	newtios.c_iflag &= BRKINT;
-	newtios.c_lflag &= ~(ECHO|ICANON|ISIG);
+	/* We use the same settings that ssh does. */
+	newtios.c_iflag |= IGNPAR;
+	newtios.c_iflag &= ~(ISTRIP | INLCR | IGNCR | ICRNL | IXON | IXANY | IXOFF);
+#ifdef IUCLC
+	newtios.c_iflag &= ~IUCLC;
+#endif
+	newtios.c_lflag &= ~(ISIG | ICANON | ECHO | ECHOE | ECHOK | ECHONL);
+#ifdef IEXTEN
+	newtios.c_lflag &= ~IEXTEN;
+#endif
+	newtios.c_oflag &= ~OPOST;
 	newtios.c_cc[VMIN] = 1;
 	newtios.c_cc[VTIME] = 0;
 
-	/* Set new attributes */
+	/* Set new attributes. */
 	if (tcsetattr(fd, TCSAFLUSH, &newtios)) {
 		ERROR("failed to set new terminal settings");
 		return -1;
@@ -291,7 +285,7 @@ int lxc_setup_tios(int fd, struct termios *oldtios)
 
 static void lxc_console_peer_proxy_free(struct lxc_console *console)
 {
-	if (console->tty_state) {
+	if (console->tty_state && console->tty_state->sigfd != -1) {
 		lxc_console_sigwinch_fini(console->tty_state);
 		console->tty_state = NULL;
 	}
@@ -446,9 +440,11 @@ static void lxc_console_peer_default(struct lxc_console *console)
 		goto err1;
 
 	ts = lxc_console_sigwinch_init(console->peer, console->master);
-	if (!ts)
-		WARN("Unable to install SIGWINCH");
 	console->tty_state = ts;
+	if (!ts) {
+		WARN("Unable to install SIGWINCH");
+		goto err1;
+	}
 
 	lxc_console_winsz(console->peer, console->master);
 
@@ -471,6 +467,7 @@ err1:
 	console->peer = -1;
 out:
 	DEBUG("no console peer");
+	return;
 }
 
 void lxc_console_delete(struct lxc_console *console)
@@ -580,14 +577,9 @@ int lxc_console_cb_tty_stdin(int fd, uint32_t events, void *cbdata,
 	struct lxc_tty_state *ts = cbdata;
 	char c;
 
-	if (events & EPOLLHUP)
-		return 1;
-
 	assert(fd == ts->stdinfd);
-	if (read(ts->stdinfd, &c, 1) < 0) {
-		SYSERROR("failed to read");
+	if (lxc_read_nointr(ts->stdinfd, &c, 1) <= 0)
 		return 1;
-	}
 
 	if (ts->escape != -1) {
 		/* we want to exit the console with Ctrl+a q */
@@ -602,10 +594,8 @@ int lxc_console_cb_tty_stdin(int fd, uint32_t events, void *cbdata,
 		ts->saw_escape = 0;
 	}
 
-	if (write(ts->masterfd, &c, 1) < 0) {
-		SYSERROR("failed to write");
+	if (lxc_write_nointr(ts->masterfd, &c, 1) <= 0)
 		return 1;
-	}
 
 	return 0;
 }
@@ -617,18 +607,15 @@ int lxc_console_cb_tty_master(int fd, uint32_t events, void *cbdata,
 	char buf[1024];
 	int r, w;
 
-	if (events & EPOLLHUP)
-		return 1;
-
 	assert(fd == ts->masterfd);
-	r = read(fd, buf, sizeof(buf));
-	if (r < 0) {
-		SYSERROR("failed to read");
+	r = lxc_read_nointr(fd, buf, sizeof(buf));
+	if (r <= 0)
 		return 1;
-	}
 
-	w = write(ts->stdoutfd, buf, r);
-	if (w < 0 || w != r) {
+	w = lxc_write_nointr(ts->stdoutfd, buf, r);
+	if (w <= 0) {
+		return 1;
+	} else if (w != r) {
 		SYSERROR("failed to write");
 		return 1;
 	}
@@ -695,11 +682,13 @@ int lxc_console(struct lxc_container *c, int ttynum,
 		goto err3;
 	}
 
-	ret = lxc_mainloop_add_handler(&descr, ts->sigfd,
-				       lxc_console_cb_sigwinch_fd, ts);
-	if (ret) {
-		ERROR("failed to add handler for SIGWINCH fd");
-		goto err4;
+	if (ts->sigfd != -1) {
+		ret = lxc_mainloop_add_handler(&descr, ts->sigfd,
+				lxc_console_cb_sigwinch_fd, ts);
+		if (ret) {
+			ERROR("failed to add handler for SIGWINCH fd");
+			goto err4;
+		}
 	}
 
 	ret = lxc_mainloop_add_handler(&descr, ts->stdinfd,
@@ -727,7 +716,8 @@ int lxc_console(struct lxc_container *c, int ttynum,
 err4:
 	lxc_mainloop_close(&descr);
 err3:
-	lxc_console_sigwinch_fini(ts);
+	if (ts->sigfd != -1)
+		lxc_console_sigwinch_fini(ts);
 err2:
 	close(masterfd);
 	close(ttyfd);
