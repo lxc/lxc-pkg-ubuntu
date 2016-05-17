@@ -21,7 +21,8 @@
  * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA
  */
 
-#define _GNU_SOURCE
+#include "config.h"
+
 #include <assert.h>
 #include <errno.h>
 #include <fcntl.h>
@@ -38,7 +39,6 @@
 #include "attach.h"
 #include "arguments.h"
 #include "caps.h"
-#include "config.h"
 #include "confile.h"
 #include "console.h"
 #include "log.h"
@@ -64,6 +64,7 @@ static const struct option my_longopts[] = {
 	{"keep-env", no_argument, 0, 501},
 	{"keep-var", required_argument, 0, 502},
 	{"set-var", required_argument, 0, 'v'},
+	{"pty-log", required_argument, 0, 'L'},
 	LXC_COMMON_OPTIONS
 };
 
@@ -149,6 +150,9 @@ static int my_parser(struct lxc_arguments* args, int c, char* arg)
 			return -1;
 		}
 		break;
+	case 'L':
+		args->console_log = arg;
+		break;
 	}
 
 	return 0;
@@ -191,6 +195,8 @@ Options :\n\
       --keep-env    Keep all current environment variables. This\n\
                     is the current default behaviour, but is likely to\n\
                     change in the future.\n\
+  -L, --pty-log=FILE\n\
+		    Log pty output to FILE\n\
   -v, --set-var     Set an additional variable that is seen by the\n\
                     attached program in the container. May be specified\n\
                     multiple times.\n\
@@ -248,13 +254,16 @@ static int get_pty_on_host(struct lxc_container *c, struct wrapargs *wrap, int *
 	INFO("Trying to allocate a pty on the host");
 
 	if (!isatty(args->ptyfd)) {
-		ERROR("stdin is not a tty");
+		ERROR("Standard file descriptor does not refer to a pty\n.");
 		return -1;
 	}
 
 	conf = c->lxc_conf;
 	free(conf->console.log_path);
-	conf->console.log_path = NULL;
+	if (my_args.console_log)
+		conf->console.log_path = strdup(my_args.console_log);
+	else
+		conf->console.log_path = NULL;
 
 	/* In the case of lxc-attach our peer pty will always be the current
 	 * controlling terminal. We clear whatever was set by the user for
@@ -264,7 +273,6 @@ static int get_pty_on_host(struct lxc_container *c, struct wrapargs *wrap, int *
 	 * always do the correct thing. strdup() must be used since console.path
 	 * is free()ed when we call lxc_container_put(). */
 	free(conf->console.path);
-	conf->console.path = NULL;
 	conf->console.path = strdup("/dev/tty");
 	if (!conf->console.path)
 		return -1;
@@ -273,39 +281,6 @@ static int get_pty_on_host(struct lxc_container *c, struct wrapargs *wrap, int *
 	if (lxc_console_create(conf) < 0)
 		return -1;
 	ts = conf->console.tty_state;
-	/*
-	 * We need to make sure that the ouput that is produced inside the
-	 * container is received on the host. Suppose we want to run
-	 *
-	 *	lxc-attach -n a -- /bin/sh -c 'hostname >&2' > /dev/null
-	 *
-	 * This command produces output on stderr inside the container. On the
-	 * host we close stdout by redirecting it to /dev/null. But stderr is,
-	 * as expected, still connected to a tty. We receive the output produced
-	 * on stderr in the container on stderr on the host.
-	 *
-	 * For the command
-	 *
-	 *	lxc-attach -n a -- /bin/sh -c 'hostname >&2' 2> /dev/null
-	 *
-	 * the logic is analogous but because we now have closed stderr on the
-	 * host no output will be received.
-	 *
-	 * Finally, imagine a more complicated case
-	 *
-	 *	lxc-attach -n a -- /bin/sh -c 'echo OUT; echo ERR >&2' > /tmp/out 2> /tmp/err
-	 *
-	 * Here, we produce output in the container on stdout and stderr. On the
-	 * host we redirect stdout and stderr to files. Because of that stdout
-	 * and stderr are not dup2()ed. Thus, they are not connected to a pty
-	 * and output on stdout and stderr is redirected to the corresponding
-	 * files as expected.
-	 */
-	if (!isatty(STDOUT_FILENO) && isatty(STDERR_FILENO))
-		ts->stdoutfd = STDERR_FILENO;
-	else
-		ts->stdoutfd = STDOUT_FILENO;
-
 	conf->console.descr = &descr;
 
 	/* Shift ttys to container. */
@@ -326,26 +301,8 @@ static int get_pty_on_host(struct lxc_container *c, struct wrapargs *wrap, int *
 		goto err2;
 	}
 
-	/* Register sigwinch handler in mainloop. */
-	ret = lxc_mainloop_add_handler(&descr, ts->sigfd,
-			lxc_console_cb_sigwinch_fd, ts);
-	if (ret) {
-		ERROR("failed to add handler for SIGWINCH fd");
-		goto err3;
-	}
-
-	/* Register i/o callbacks in mainloop. */
-	ret = lxc_mainloop_add_handler(&descr, ts->stdinfd,
-			lxc_console_cb_tty_stdin, ts);
-	if (ret) {
-		ERROR("failed to add handler for stdinfd");
-		goto err3;
-	}
-
-	ret = lxc_mainloop_add_handler(&descr, ts->masterfd,
-			lxc_console_cb_tty_master, ts);
-	if (ret) {
-		ERROR("failed to add handler for masterfd");
+	if (lxc_console_mainloop_add(&descr, conf) < 0) {
+		ERROR("Failed to add handlers to lxc mainloop.");
 		goto err3;
 	}
 
@@ -359,35 +316,48 @@ static int get_pty_on_host(struct lxc_container *c, struct wrapargs *wrap, int *
 err3:
 	lxc_mainloop_close(&descr);
 err2:
-	lxc_console_sigwinch_fini(ts);
+	if (ts->sigfd != -1)
+		lxc_console_sigwinch_fini(ts);
 err1:
 	lxc_console_delete(&conf->console);
 
 	return ret;
 }
 
+static int stdfd_is_pty(void)
+{
+	if (isatty(STDIN_FILENO))
+		return STDIN_FILENO;
+	if (isatty(STDOUT_FILENO))
+		return STDOUT_FILENO;
+	if (isatty(STDERR_FILENO))
+		return STDERR_FILENO;
+
+	return -1;
+}
+
 int main(int argc, char *argv[])
 {
-	int ret = -1;
+	int ret = -1, r;
 	int wexit = 0;
 	pid_t pid;
 	lxc_attach_options_t attach_options = LXC_ATTACH_OPTIONS_DEFAULT;
 	lxc_attach_command_t command = (lxc_attach_command_t){.program = NULL};
 
-	ret = lxc_caps_init();
-	if (ret)
+	r = lxc_caps_init();
+	if (r)
 		exit(EXIT_FAILURE);
 
-	ret = lxc_arguments_parse(&my_args, argc, argv);
-	if (ret)
+	r = lxc_arguments_parse(&my_args, argc, argv);
+	if (r)
 		exit(EXIT_FAILURE);
 
 	if (!my_args.log_file)
 		my_args.log_file = "none";
 
-	ret = lxc_log_init(my_args.name, my_args.log_file, my_args.log_priority,
+	r = lxc_log_init(my_args.name, my_args.log_file, my_args.log_priority,
 			   my_args.progname, my_args.quiet, my_args.lxcpath[0]);
-	if (ret)
+	if (r)
 		exit(EXIT_FAILURE);
 	lxc_log_options_no_override();
 
@@ -430,19 +400,23 @@ int main(int argc, char *argv[])
 		command.argv = (char**)my_args.argv;
 	}
 
-	if (isatty(STDIN_FILENO) || isatty(STDOUT_FILENO) || isatty(STDERR_FILENO)) {
-		struct wrapargs wrap = (struct wrapargs){
-			.command = &command,
+	struct wrapargs wrap = (struct wrapargs){
+		.command = &command,
 			.options = &attach_options
-		};
-		if (isatty(STDIN_FILENO))
-			wrap.ptyfd = STDIN_FILENO;
-		else if (isatty(STDOUT_FILENO))
-			wrap.ptyfd = STDOUT_FILENO;
-		else if (isatty(STDERR_FILENO))
-			wrap.ptyfd = STDERR_FILENO;
+	};
+
+	wrap.ptyfd = stdfd_is_pty();
+	if (wrap.ptyfd >= 0) {
+		if ((!isatty(STDOUT_FILENO) || !isatty(STDERR_FILENO)) && my_args.console_log) {
+			fprintf(stderr, "-L/--pty-log can only be used when stdout and stderr refer to a pty.\n");
+			goto out;
+		}
 		ret = get_pty_on_host(c, &wrap, &pid);
 	} else {
+		if (my_args.console_log) {
+			fprintf(stderr, "-L/--pty-log can only be used when stdout and stderr refer to a pty.\n");
+			goto out;
+		}
 		if (command.program)
 			ret = c->attach(c, lxc_attach_run_command, &command, &attach_options, &pid);
 		else
