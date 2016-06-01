@@ -17,7 +17,8 @@ Build-Depends: autotools-dev,
                libselinux1-dev,
                linux-libc-dev,
                pkg-config,
-               python3-all-dev (>= 3.2.3)
+               python3-all-dev (>= 3.2.3),
+               python3-setuptools
 Standards-Version: 3.9.7
 Homepage: https://linuxcontainers.org
 Vcs-Git: https://github.com/lxc/lxc-pkg-ubuntu
@@ -132,12 +133,12 @@ Description: Linux Containers userspace tools (test binaries)
 Package: liblxc1
 Architecture: linux-any
 Pre-Depends: ${misc:Pre-Depends}
-Depends: lxc-common (= ${binary:Version}),
+Depends: cgroup-lite | systemd,
+         lxc-common (= ${binary:Version}),
          rsync,
-         cgroup-lite | systemd,
          ${misc:Depends},
          ${shlibs:Depends}
-Recommends: uidmap, lxcfs
+Recommends: lxcfs, uidmap
 Replaces: liblxc0, lxc (<< 0.9.0~alpha3-0ubuntu1~)
 Breaks: lxc (<< 0.9.0~alpha3-0ubuntu1~)
 Provides: liblxc0
