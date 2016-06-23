@@ -1,3 +1,10 @@
+lxc (2.0.1-0ubuntu2) yakkety; urgency=medium
+
+  * On yakkety, skip the lxc-test-ubuntu test as it requires root.tar.xz
+    images to be available over simplestreams which don't exist anymore.
+
+ -- Stéphane Graber <stgraber@ubuntu.com>  Thu, 23 Jun 2016 15:41:40 -0400
+
 lxc (2.0.1-0ubuntu1) yakkety; urgency=medium
 
   * New upstream bugfix release (2.0.1)
