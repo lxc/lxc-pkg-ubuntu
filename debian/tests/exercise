@@ -44,6 +44,9 @@ summary() {
     echo "SUMMARY: pass=$TEST_PASS, fail=$TEST_FAIL, ignored=$TEST_IGNORED"
 }
 
+# Source distro information
+[ -e /etc/lsb-release ] && . /etc/lsb-release
+
 # The actual tests
 ## Default testsuite
 for testbin in /usr/bin/lxc-test-*; do
@@ -52,6 +55,12 @@ for testbin in /usr/bin/lxc-test-*; do
 
     # Some tests can't be run standalone
     [ "$testbin" = "/usr/bin/lxc-test-may-control" ] && continue
+
+    # Skip ubuntu tests on yakkety
+    if [ "${DISTRIB_CODENAME}" = "yakkety" ]; then
+        [ "$testbin" = "/usr/bin/lxc-test-ubuntu" ] && \
+            ignore "$STRING" && continue
+    fi
 
     # Skip some tests when running in a container
     if [ -f /run/container_type ] || (type systemd-detect-virt >/dev/null 2>&1 && systemd-detect-virt  --container >/dev/null 2>&1); then
