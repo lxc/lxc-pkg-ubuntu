@@ -1,4 +1,32 @@
-lxc (2.0.1-0ubuntu1~16.04.1) xenial; urgency=medium
+lxc (2.0.3-0ubuntu1~ubuntu16.04.1) xenial; urgency=medium
+
+  * New upstream bugfix release (2.0.3) (LP: #1597523):
+    - apparmor: Refresh generated file
+
+  * New upstream bugfix release (2.0.2):
+    - apparmor: add make-rslave to usr.bin.lxc-start
+    - apparmor: Allow bind-mounts
+    - apparmor: Allow mount move
+    - apparmor: Update mount states handling
+    - core: Drop lxc-devsetup as unneeded by current autodev
+    - core: Fix redefinition of struct in6_addr
+    - core: Include all lxcmntent.h function declarations on Bionic
+    - c/r: c/r: use criu's "full" mode for cgroups
+    - systemd: start containers in foreground when using the lxc@.service
+    - templates: debian: Make sure init is installed
+    - templates: oracle: Fix console login
+    - templates: plamo: Fix various issues
+    - templates: ubuntu: Install apt-transport-https by default
+    - travis: ensure 'make install' doesn't fail
+    - travis: test VPATH builds
+    - upstart: Force lxc-instance to behave like a good Upstart client
+
+  * Tighten versioned dependencies between the various binary packages.
+  * Drop lxc-devsetup as it was removed upstream (unneeded with LXC 2.0).
+
+ -- Stéphane Graber <stgraber@ubuntu.com>  Wed, 29 Jun 2016 17:31:18 -0400
+
+lxc (2.0.1-0ubuntu1~ubuntu16.04.1) xenial; urgency=medium
 
   * New upstream bugfix release (2.0.1) (LP: #1582887)
     - apparmor: Also allow fstype=fuse for fuse filesystems
