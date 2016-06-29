@@ -27,7 +27,7 @@ XS-Testsuite: autopkgtest
 
 Package: lxc
 Architecture: all
-Depends: lxc1, ${misc:Depends}
+Depends: lxc1 (>= ${source:Version}), ${misc:Depends}
 Priority: extra
 Section: oldlibs
 Description: Transitional package for lxc1
@@ -48,7 +48,7 @@ Depends: adduser,
          python3-lxc (= ${binary:Version}),
          ${misc:Depends},
          ${shlibs:Depends}
-Recommends: libpam-cgfs, lxc-templates (>= 0.8.0~rc1-4ubuntu43)
+Recommends: libpam-cgfs, lxc-templates (= ${binary:Version})
 Suggests: btrfs-tools, lvm2, lxctl
 Replaces: lxc (<< 2.0.0~rc2-0ubuntu1~)
 Breaks: lxc (<< 2.0.0~rc2-0ubuntu1~)
@@ -93,7 +93,7 @@ Description: Linux Containers userspace tools (development)
 
 Package: lxc-templates
 Architecture: linux-any
-Depends: lxc1, ${misc:Depends}, ${shlibs:Depends}
+Depends: lxc1 (= ${binary:Version}), ${misc:Depends}, ${shlibs:Depends}
 Recommends: busybox-static,
             cloud-image-utils | cloud-utils,
             debootstrap | cdebootstrap,
@@ -132,12 +132,12 @@ Description: Linux Containers userspace tools (test binaries)
 Package: liblxc1
 Architecture: linux-any
 Pre-Depends: ${misc:Pre-Depends}
-Depends: lxc-common (= ${binary:Version}),
+Depends: cgroup-lite | systemd,
+         lxc-common (= ${binary:Version}),
          rsync,
-         cgroup-lite | systemd,
          ${misc:Depends},
          ${shlibs:Depends}
-Recommends: uidmap, lxcfs
+Recommends: lxcfs, uidmap
 Replaces: liblxc0, lxc (<< 0.9.0~alpha3-0ubuntu1~)
 Breaks: lxc (<< 0.9.0~alpha3-0ubuntu1~)
 Provides: liblxc0
@@ -153,11 +153,11 @@ Description: Linux Containers userspace tools (library)
 Package: python3-lxc
 Architecture: linux-any
 Section: python
-Depends: liblxc1 (=${binary:Version}),
+Depends: liblxc1 (= ${binary:Version}),
          ${misc:Depends},
          ${python3:Depends},
          ${shlibs:Depends}
-Recommends: lxc-templates (>= 0.8.0~rc1-4ubuntu43)
+Recommends: lxc-templates (= ${binary:Version})
 Description: Linux Containers userspace tools (Python 3.x bindings)
  Containers are insulated areas inside a system, which have their own namespace
  for filesystem, network, PID, IPC, CPU and memory allocation and which can be
@@ -170,12 +170,12 @@ Package: lua-lxc
 Architecture: linux-any
 Section: interpreters
 Depends: liblua5.2-0,
-         liblxc1 (=${binary:Version}),
+         liblxc1 (= ${binary:Version}),
          lua-filesystem,
          lua5.2,
          ${misc:Depends},
          ${shlibs:Depends}
-Recommends: lxc-templates (>= 0.8.0~rc1-4ubuntu43)
+Recommends: lxc-templates (= ${binary:Version})
 Description: Linux Containers userspace tools (LUA bindings)
  Containers are insulated areas inside a system, which have their own namespace
  for filesystem, network, PID, IPC, CPU and memory allocation and which can be
