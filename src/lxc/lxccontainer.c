@@ -39,9 +39,9 @@
 #include <sys/wait.h>
 
 #include "attach.h"
-#include "bdev/bdev.h"
-#include "bdev/lxcoverlay.h"
-#include "bdev/lxcbtrfs.h"
+#include "bdev.h"
+#include "lxcoverlay.h"
+#include "lxcbtrfs.h"
 #include "cgroup.h"
 #include "conf.h"
 #include "config.h"
@@ -623,7 +623,7 @@ WRAP_API_1(bool, wait_on_daemonized_start, int)
 
 static bool am_single_threaded(void)
 {
-	struct dirent dirent, *direntp;
+	struct dirent *direntp;
 	DIR *dir;
 	int count=0;
 
@@ -633,7 +633,7 @@ static bool am_single_threaded(void)
 		return false;
 	}
 
-	while (!readdir_r(dir, &dirent, &direntp)) {
+	while ((direntp = readdir(dir))) {
 		if (!direntp)
 			break;
 
@@ -2284,7 +2284,7 @@ out:
 static bool has_snapshots(struct lxc_container *c)
 {
 	char path[MAXPATHLEN];
-	struct dirent dirent, *direntp;
+	struct dirent *direntp;
 	int count=0;
 	DIR *dir;
 
@@ -2293,7 +2293,7 @@ static bool has_snapshots(struct lxc_container *c)
 	dir = opendir(path);
 	if (!dir)
 		return false;
-	while (!readdir_r(dir, &dirent, &direntp)) {
+	while ((direntp = readdir(dir))) {
 		if (!direntp)
 			break;
 
@@ -2826,11 +2826,15 @@ bool should_default_to_snapshot(struct lxc_container *c0,
 	size_t l1 = strlen(c1->config_path) + strlen(c1->name) + 2;
 	char *p0 = alloca(l0 + 1);
 	char *p1 = alloca(l1 + 1);
+	char *rootfs = c0->lxc_conf->rootfs.path;
 
 	snprintf(p0, l0, "%s/%s", c0->config_path, c0->name);
 	snprintf(p1, l1, "%s/%s", c1->config_path, c1->name);
 
 	if (!is_btrfs_fs(p0) || !is_btrfs_fs(p1))
+		return false;
+
+	if (is_btrfs_subvol(rootfs) <= 0)
 		return false;
 
 	return btrfs_same_fs(p0, p1) == 0;
@@ -3503,7 +3507,7 @@ static int do_lxcapi_snapshot_list(struct lxc_container *c, struct lxc_snapshot 
 {
 	char snappath[MAXPATHLEN], path2[MAXPATHLEN];
 	int count = 0, ret;
-	struct dirent dirent, *direntp;
+	struct dirent *direntp;
 	struct lxc_snapshot *snaps =NULL, *nsnaps;
 	DIR *dir;
 
@@ -3520,7 +3524,7 @@ static int do_lxcapi_snapshot_list(struct lxc_container *c, struct lxc_snapshot 
 		return 0;
 	}
 
-	while (!readdir_r(dir, &dirent, &direntp)) {
+	while ((direntp = readdir(dir))) {
 		if (!direntp)
 			break;
 
@@ -3666,7 +3670,7 @@ err:
 static bool remove_all_snapshots(const char *path)
 {
 	DIR *dir;
-	struct dirent dirent, *direntp;
+	struct dirent *direntp;
 	bool bret = true;
 
 	dir = opendir(path);
@@ -3674,7 +3678,7 @@ static bool remove_all_snapshots(const char *path)
 		SYSERROR("opendir on snapshot path %s", path);
 		return false;
 	}
-	while (!readdir_r(dir, &dirent, &direntp)) {
+	while ((direntp = readdir(dir))) {
 		if (!direntp)
 			break;
 		if (!strcmp(direntp->d_name, "."))
@@ -3996,11 +4000,13 @@ WRAP_API_3(int, lxcapi_migrate, unsigned int, struct migrate_opts *, unsigned in
 
 static bool do_lxcapi_checkpoint(struct lxc_container *c, char *directory, bool stop, bool verbose)
 {
-	struct migrate_opts opts = {
-		.directory = directory,
-		.stop = stop,
-		.verbose = verbose,
-	};
+	struct migrate_opts opts;
+
+	memset(&opts, 0, sizeof(opts));
+
+	opts.directory = directory;
+	opts.stop = stop;
+	opts.verbose = verbose;
 
 	return !do_lxcapi_migrate(c, MIGRATE_DUMP, &opts, sizeof(opts));
 }
@@ -4009,10 +4015,12 @@ WRAP_API_3(bool, lxcapi_checkpoint, char *, bool, bool)
 
 static bool do_lxcapi_restore(struct lxc_container *c, char *directory, bool verbose)
 {
-	struct migrate_opts opts = {
-		.directory = directory,
-		.verbose = verbose,
-	};
+	struct migrate_opts opts;
+
+	memset(&opts, 0, sizeof(opts));
+
+	opts.directory = directory;
+	opts.verbose = verbose;
 
 	return !do_lxcapi_migrate(c, MIGRATE_RESTORE, &opts, sizeof(opts));
 }
@@ -4187,7 +4195,7 @@ int list_defined_containers(const char *lxcpath, char ***names, struct lxc_conta
 {
 	DIR *dir;
 	int i, cfound = 0, nfound = 0;
-	struct dirent dirent, *direntp;
+	struct dirent *direntp;
 	struct lxc_container *c;
 
 	if (!lxcpath)
@@ -4204,7 +4212,7 @@ int list_defined_containers(const char *lxcpath, char ***names, struct lxc_conta
 	if (names)
 		*names = NULL;
 
-	while (!readdir_r(dir, &dirent, &direntp)) {
+	while ((direntp = readdir(dir))) {
 		if (!direntp)
 			break;
 

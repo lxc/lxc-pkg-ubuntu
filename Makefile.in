@@ -104,7 +104,8 @@ am__CONFIG_DISTCLEAN_FILES = config.status config.cache config.log \
  configure.lineno config.status.lineno
 mkinstalldirs = $(install_sh) -d
 CONFIG_HEADER = $(top_builddir)/src/config.h
-CONFIG_CLEAN_FILES = lxc.pc lxc.spec
+CONFIG_CLEAN_FILES = lxc.pc lxc.spec src/lxc/tools/lxc-checkconfig \
+	src/lxc/tools/lxc-start-ephemeral
 CONFIG_CLEAN_VPATH_FILES =
 AM_V_P = $(am__v_P_@AM_V@)
 am__v_P_ = $(am__v_P_@AM_DEFAULT_V@)
@@ -195,7 +196,9 @@ am__DIST_COMMON = $(srcdir)/Makefile.in $(srcdir)/lxc.pc.in \
 	$(top_srcdir)/config/config.guess \
 	$(top_srcdir)/config/config.sub \
 	$(top_srcdir)/config/install-sh $(top_srcdir)/config/missing \
-	AUTHORS COPYING ChangeLog INSTALL NEWS README
+	$(top_srcdir)/src/lxc/tools/lxc-checkconfig.in \
+	$(top_srcdir)/src/lxc/tools/lxc-start-ephemeral.in AUTHORS \
+	COPYING ChangeLog INSTALL NEWS README
 DISTFILES = $(DIST_COMMON) $(DIST_SOURCES) $(TEXINFOS) $(EXTRA_DIST)
 distdir = $(PACKAGE)-$(VERSION)
 top_distdir = $(distdir)
@@ -455,6 +458,10 @@ $(am__aclocal_m4_deps):
 lxc.pc: $(top_builddir)/config.status $(srcdir)/lxc.pc.in
 	cd $(top_builddir) && $(SHELL) ./config.status $@
 lxc.spec: $(top_builddir)/config.status $(srcdir)/lxc.spec.in
+	cd $(top_builddir) && $(SHELL) ./config.status $@
+src/lxc/tools/lxc-checkconfig: $(top_builddir)/config.status $(top_srcdir)/src/lxc/tools/lxc-checkconfig.in
+	cd $(top_builddir) && $(SHELL) ./config.status $@
+src/lxc/tools/lxc-start-ephemeral: $(top_builddir)/config.status $(top_srcdir)/src/lxc/tools/lxc-start-ephemeral.in
 	cd $(top_builddir) && $(SHELL) ./config.status $@
 install-pcdataDATA: $(pcdata_DATA)
 	@$(NORMAL_INSTALL)

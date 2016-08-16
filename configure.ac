@@ -3,7 +3,7 @@
 
 m4_define([lxc_version_major], 2)
 m4_define([lxc_version_minor], 0)
-m4_define([lxc_version_micro], 3)
+m4_define([lxc_version_micro], 4)
 m4_define([lxc_version_beta], [])
 m4_define([lxc_version_abi], 1.2.0)
 
@@ -842,9 +842,9 @@ AC_CONFIG_FILES([
 
 	src/Makefile
 	src/lxc/Makefile
-	src/lxc/lxc-checkconfig
-	src/lxc/lxc-start-ephemeral
 	src/lxc/lxc.functions
+	src/lxc/tools/lxc-checkconfig
+	src/lxc/tools/lxc-start-ephemeral
 	src/lxc/version.h
 	src/python-lxc/Makefile
 	src/python-lxc/setup.py
