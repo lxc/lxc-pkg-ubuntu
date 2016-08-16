@@ -1,3 +1,10 @@
+lxc (2.0.4-0ubuntu2) yakkety; urgency=medium
+
+  * Cherry-pick from upstream (for 4.6 kernel):
+    - 0002-bdev-use-correct-overlay-module-name
+
+ -- Stéphane Graber <stgraber@ubuntu.com>  Tue, 16 Aug 2016 19:28:50 -0400
+
 lxc (2.0.4-0ubuntu1) yakkety; urgency=medium
 
   * New upstream bugfix release (2.0.4):
