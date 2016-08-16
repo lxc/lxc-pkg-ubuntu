@@ -1,3 +1,10 @@
+lxc (2.0.3-0ubuntu2) yakkety; urgency=medium
+
+  * Build-depend on libgnutls28-dev, not libgnutls-dev which was never
+    renamed in Debian.
+
+ -- Steve Langasek <steve.langasek@ubuntu.com>  Thu, 14 Jul 2016 22:56:04 -0700
+
 lxc (2.0.3-0ubuntu1) yakkety; urgency=medium
 
   * New upstream bugfix release (2.0.3):
