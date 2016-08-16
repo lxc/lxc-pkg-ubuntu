@@ -66,6 +66,7 @@
 #include <net/if.h>
 #include <libgen.h>
 
+#include "bdev.h"
 #include "network.h"
 #include "error.h"
 #include "af_unix.h"
@@ -74,9 +75,8 @@
 #include "conf.h"
 #include "log.h"
 #include "caps.h"       /* for lxc_caps_last_cap() */
-#include "bdev/bdev.h"
-#include "bdev/lxcaufs.h"
-#include "bdev/lxcoverlay.h"
+#include "lxcaufs.h"
+#include "lxcoverlay.h"
 #include "cgroup.h"
 #include "lxclock.h"
 #include "namespace.h"
@@ -510,7 +510,7 @@ out:
 static int mount_rootfs_file(const char *rootfs, const char *target,
 				             const char *options)
 {
-	struct dirent dirent, *direntp;
+	struct dirent *direntp;
 	struct loop_info64 loinfo;
 	int ret = -1, fd = -1, rc;
 	DIR *dir;
@@ -522,7 +522,7 @@ static int mount_rootfs_file(const char *rootfs, const char *target,
 		return -1;
 	}
 
-	while (!readdir_r(dir, &dirent, &direntp)) {
+	while ((direntp = readdir(dir))) {
 
 		if (!direntp)
 			break;
@@ -1634,7 +1634,7 @@ static char *get_field(char *src, int nfields)
 
 static int mount_entry(const char *fsname, const char *target,
 		       const char *fstype, unsigned long mountflags,
-		       const char *data, int optional, const char *rootfs)
+		       const char *data, int optional, int dev, const char *rootfs)
 {
 #ifdef HAVE_STATVFS
 	struct statvfs sb;
@@ -1663,7 +1663,7 @@ static int mount_entry(const char *fsname, const char *target,
 			unsigned long required_flags = rqd_flags;
 			if (sb.f_flag & MS_NOSUID)
 				required_flags |= MS_NOSUID;
-			if (sb.f_flag & MS_NODEV)
+			if (sb.f_flag & MS_NODEV && !dev)
 				required_flags |= MS_NODEV;
 			if (sb.f_flag & MS_RDONLY)
 				required_flags |= MS_RDONLY;
@@ -1785,6 +1785,7 @@ static inline int mount_entry_on_generic(struct mntent *mntent,
 	char *mntdata;
 	int ret;
 	bool optional = hasmntopt(mntent, "optional") != NULL;
+	bool dev = hasmntopt(mntent, "dev") != NULL;
 
 	char *rootfs_path = NULL;
 	if (rootfs && rootfs->path)
@@ -1803,7 +1804,7 @@ static inline int mount_entry_on_generic(struct mntent *mntent,
 	}
 
 	ret = mount_entry(mntent->mnt_fsname, path, mntent->mnt_type, mntflags,
-			  mntdata, optional, rootfs_path);
+			  mntdata, optional, dev, rootfs_path);
 
 	free(mntdata);
 	return ret;
@@ -2741,6 +2742,15 @@ static int instantiate_vlan(struct lxc_handler *handler, struct lxc_netdev *netd
 
 	DEBUG("instantiated vlan '%s', ifindex is '%d'", " vlan1000",
 	      netdev->ifindex);
+	if (netdev->mtu) {
+		err = lxc_netdev_set_mtu(peer, atoi(netdev->mtu));
+		if (err) {
+			ERROR("failed to set mtu '%s' for %s : %s",
+			      netdev->mtu, peer, strerror(-err));
+			lxc_netdev_delete_by_name(peer);
+			return -1;
+		}
+	}
 
 	return 0;
 }
@@ -3317,6 +3327,7 @@ void lxc_delete_tty(struct lxc_tty_info *tty_info)
 	}
 
 	free(tty_info->pty_info);
+	tty_info->pty_info = NULL;
 	tty_info->nbtty = 0;
 }
 

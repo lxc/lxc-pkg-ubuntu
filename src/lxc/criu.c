@@ -22,6 +22,7 @@
  */
 #define _GNU_SOURCE
 #include <assert.h>
+#include <inttypes.h>
 #include <linux/limits.h>
 #include <sched.h>
 #include <stdio.h>
@@ -34,7 +35,7 @@
 
 #include "config.h"
 
-#include "bdev/bdev.h"
+#include "bdev.h"
 #include "cgroup.h"
 #include "conf.h"
 #include "commands.h"
@@ -45,10 +46,12 @@
 #include "network.h"
 #include "utils.h"
 
-#define CRIU_VERSION 		"2.0"
+#define CRIU_VERSION		"2.0"
 
 #define CRIU_GITID_VERSION	"2.0"
 #define CRIU_GITID_PATCHLEVEL	0
+
+#define CRIU_IN_FLIGHT_SUPPORT	"2.4"
 
 lxc_log_define(lxc_criu, lxc);
 
@@ -75,6 +78,9 @@ struct criu_opts {
 	 * different) on the target host. NULL if lxc.console = "none".
 	 */
 	char *console_name;
+
+	/* The detected version of criu */
+	char *criu_version;
 };
 
 static int load_tty_major_minor(char *directory, char *output, int len)
@@ -164,6 +170,10 @@ static void exec_criu(struct criu_opts *opts)
 		/* --force-irmap */
 		if (!opts->user->preserves_inodes)
 			static_args++;
+
+		/* --ghost-limit 1024 */
+		if (opts->user->ghost_limit)
+			static_args += 2;
 	} else if (strcmp(opts->action, "restore") == 0) {
 		/* --root $(lxc_mount_point) --restore-detached
 		 * --restore-sibling --pidfile $foo --cgroup-root $foo
@@ -184,6 +194,9 @@ static void exec_criu(struct criu_opts *opts)
 
 	if (opts->user->verbose)
 		static_args++;
+
+	if (opts->user->action_script)
+		static_args += 2;
 
 	ret = snprintf(log, PATH_MAX, "%s/%s.log", opts->user->directory, opts->action);
 	if (ret < 0 || ret >= PATH_MAX) {
@@ -235,6 +248,11 @@ static void exec_criu(struct criu_opts *opts)
 	if (opts->user->verbose)
 		DECLARE_ARG("-vvvvvv");
 
+	if (opts->user->action_script) {
+		DECLARE_ARG("--action-script");
+		DECLARE_ARG(opts->user->action_script);
+	}
+
 	if (strcmp(opts->action, "dump") == 0 || strcmp(opts->action, "pre-dump") == 0) {
 		char pid[32], *freezer_relative;
 
@@ -255,6 +273,10 @@ static void exec_criu(struct criu_opts *opts)
 		ret = snprintf(log, sizeof(log), "/sys/fs/cgroup/freezer/%s", freezer_relative);
 		if (ret < 0 || ret >= sizeof(log))
 			goto err;
+
+		if (!opts->user->disable_skip_in_flight &&
+				strcmp(opts->criu_version, CRIU_IN_FLIGHT_SUPPORT) >= 0)
+			DECLARE_ARG("--skip-in-flight");
 
 		DECLARE_ARG("--freeze-cgroup");
 		DECLARE_ARG(log);
@@ -282,6 +304,19 @@ static void exec_criu(struct criu_opts *opts)
 
 		if (!opts->user->preserves_inodes)
 			DECLARE_ARG("--force-irmap");
+
+		if (opts->user->ghost_limit) {
+			char ghost_limit[32];
+
+			ret = sprintf(ghost_limit, "%"PRIu64, opts->user->ghost_limit);
+			if (ret < 0 || ret >= sizeof(ghost_limit)) {
+				ERROR("failed to print ghost limit %"PRIu64, opts->user->ghost_limit);
+				goto err;
+			}
+
+			DECLARE_ARG("--ghost-limit");
+			DECLARE_ARG(ghost_limit);
+		}
 
 		/* only for final dump */
 		if (strcmp(opts->action, "dump") == 0 && !opts->user->stop)
@@ -402,8 +437,11 @@ err:
  *
  * The intent is that when criu development slows down, we can drop this, but
  * for now we shouldn't attempt to c/r with versions that we know won't work.
+ *
+ * Note: If version != NULL criu_version() stores the detected criu version in
+ * version. Allocates memory for version which must be freed by caller.
  */
-static bool criu_version_ok()
+static bool criu_version_ok(char **version)
 {
 	int pipes[2];
 	pid_t pid;
@@ -436,7 +474,7 @@ static bool criu_version_ok()
 		exit(1);
 	} else {
 		FILE *f;
-		char version[1024];
+		char *tmp;
 		int patch;
 
 		close(pipes[1]);
@@ -452,16 +490,22 @@ static bool criu_version_ok()
 			return false;
 		}
 
-		if (fscanf(f, "Version: %1023[^\n]s", version) != 1)
+		tmp = malloc(1024);
+		if (!tmp) {
+			fclose(f);
+			return false;
+		}
+
+		if (fscanf(f, "Version: %1023[^\n]s", tmp) != 1)
 			goto version_error;
 
 		if (fgetc(f) != '\n')
 			goto version_error;
 
-		if (strcmp(version, CRIU_VERSION) >= 0)
+		if (strcmp(tmp, CRIU_VERSION) >= 0)
 			goto version_match;
 
-		if (fscanf(f, "GitID: v%1023[^-]s", version) != 1)
+		if (fscanf(f, "GitID: v%1023[^-]s", tmp) != 1)
 			goto version_error;
 
 		if (fgetc(f) != '-')
@@ -470,7 +514,7 @@ static bool criu_version_ok()
 		if (fscanf(f, "%d", &patch) != 1)
 			goto version_error;
 
-		if (strcmp(version, CRIU_GITID_VERSION) < 0)
+		if (strcmp(tmp, CRIU_GITID_VERSION) < 0)
 			goto version_error;
 
 		if (patch < CRIU_GITID_PATCHLEVEL)
@@ -478,10 +522,15 @@ static bool criu_version_ok()
 
 version_match:
 		fclose(f);
+		if (!version)
+			free(tmp);
+		else
+			*version = tmp;
 		return true;
 
 version_error:
 		fclose(f);
+		free(tmp);
 		ERROR("must have criu " CRIU_VERSION " or greater to checkpoint/restore\n");
 		return false;
 	}
@@ -489,11 +538,11 @@ version_error:
 
 /* Check and make sure the container has a configuration that we know CRIU can
  * dump. */
-static bool criu_ok(struct lxc_container *c)
+static bool criu_ok(struct lxc_container *c, char **criu_version)
 {
 	struct lxc_list *it;
 
-	if (!criu_version_ok())
+	if (!criu_version_ok(criu_version))
 		return false;
 
 	if (geteuid()) {
@@ -551,14 +600,16 @@ out_unlock:
 
 // do_restore never returns, the calling process is used as the
 // monitor process. do_restore calls exit() if it fails.
-void do_restore(struct lxc_container *c, int status_pipe, struct migrate_opts *opts)
+static void do_restore(struct lxc_container *c, int status_pipe, struct migrate_opts *opts, char *criu_version)
 {
 	pid_t pid;
-	char pidfile[L_tmpnam];
 	struct lxc_handler *handler;
-	int status, pipes[2] = {-1, -1};
+	int fd, status;
+	int pipes[2] = {-1, -1};
+	char pidfile[] = "criu_restore_XXXXXX";
 
-	if (!tmpnam(pidfile))
+	fd = mkstemp(pidfile);
+	if (fd < 0)
 		goto out;
 
 	handler = lxc_init(c->name, c->lxc_conf, c->config_path);
@@ -642,6 +693,7 @@ void do_restore(struct lxc_container *c, int status_pipe, struct migrate_opts *o
 		os.pidfile = pidfile;
 		os.cgroup_path = cgroup_canonical_path(handler);
 		os.console_fd = c->lxc_conf->console.slave;
+		os.criu_version = criu_version;
 
 		if (os.console_fd >= 0) {
 			/* Twiddle the FD_CLOEXEC bit. We want to pass this FD to criu
@@ -706,11 +758,12 @@ void do_restore(struct lxc_container *c, int status_pipe, struct migrate_opts *o
 				goto out_fini_handler;
 			} else {
 				int ret;
-				FILE *f = fopen(pidfile, "r");
+				FILE *f = fdopen(fd, "r");
 				if (!f) {
 					SYSERROR("couldn't read restore's init pidfile %s\n", pidfile);
 					goto out_fini_handler;
 				}
+				fd = -1;
 
 				ret = fscanf(f, "%d", (int*) &handler->pid);
 				fclose(f);
@@ -767,6 +820,9 @@ out:
 		}
 		close(status_pipe);
 	}
+
+	if (fd > 0)
+		close(fd);
 
 	exit(1);
 }
@@ -826,8 +882,9 @@ static int save_tty_major_minor(char *directory, struct lxc_container *c, char *
 static bool do_dump(struct lxc_container *c, char *mode, struct migrate_opts *opts)
 {
 	pid_t pid;
+	char *criu_version = NULL;
 
-	if (!criu_ok(c))
+	if (!criu_ok(c, &criu_version))
 		return false;
 
 	if (mkdir_p(opts->directory, 0700) < 0)
@@ -846,6 +903,7 @@ static bool do_dump(struct lxc_container *c, char *mode, struct migrate_opts *op
 		os.user = opts;
 		os.c = c;
 		os.console_name = c->lxc_conf->console.path;
+		os.criu_version = criu_version;
 
 		if (save_tty_major_minor(opts->directory, c, os.tty_id, sizeof(os.tty_id)) < 0)
 			exit(1);
@@ -905,8 +963,9 @@ bool __criu_restore(struct lxc_container *c, struct migrate_opts *opts)
 	pid_t pid;
 	int status, nread;
 	int pipefd[2];
+	char *criu_version = NULL;
 
-	if (!criu_ok(c))
+	if (!criu_ok(c, &criu_version))
 		return false;
 
 	if (geteuid()) {
@@ -929,7 +988,7 @@ bool __criu_restore(struct lxc_container *c, struct migrate_opts *opts)
 	if (pid == 0) {
 		close(pipefd[0]);
 		// this never returns
-		do_restore(c, pipefd[1], opts);
+		do_restore(c, pipefd[1], opts, criu_version);
 	}
 
 	close(pipefd[1]);
