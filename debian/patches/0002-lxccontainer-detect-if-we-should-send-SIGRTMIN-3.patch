@@ -1,0 +1,94 @@
+From c9158e0c2309bb5ef6a1946d4ab32f03c364d341 Mon Sep 17 00:00:00 2001
+From: Christian Brauner <cbrauner@suse.de>
+Date: Mon, 18 Jul 2016 22:21:56 +0200
+Subject: lxccontainer: detect if we should send SIGRTMIN+3
+
+This is required by systemd to cleanly shutdown. Other init systems should not
+have SIGRTMIN+3 in the blocked signals set.
+
+Signed-off-by: Christian Brauner <cbrauner@suse.de>
+---
+ src/lxc/lxccontainer.c |  8 ++++++++
+ src/lxc/utils.c        | 38 ++++++++++++++++++++++++++++++++++++++
+ src/lxc/utils.h        |  3 +++
+ 3 files changed, 49 insertions(+)
+
+diff --git a/src/lxc/lxccontainer.c b/src/lxc/lxccontainer.c
+index 8bd9b8e..9b80031 100644
+--- a/src/lxc/lxccontainer.c
++++ b/src/lxc/lxccontainer.c
+@@ -1604,8 +1604,16 @@ static bool do_lxcapi_shutdown(struct lxc_container *c, int timeout)
+ 	pid = do_lxcapi_init_pid(c);
+ 	if (pid <= 0)
+ 		return true;
++
++	/* Detect whether we should send SIGRTMIN + 3 (e.g. systemd). */
++	if (task_blocking_signal(pid, (SIGRTMIN + 3)))
++		haltsignal = (SIGRTMIN + 3);
++
+ 	if (c->lxc_conf && c->lxc_conf->haltsignal)
+ 		haltsignal = c->lxc_conf->haltsignal;
++
++	INFO("Using signal number '%d' as halt signal.", haltsignal);
++
+ 	kill(pid, haltsignal);
+ 	retv = do_lxcapi_wait(c, "STOPPED", timeout);
+ 	return retv;
+diff --git a/src/lxc/utils.c b/src/lxc/utils.c
+index 5c35ae8..614add5 100644
+--- a/src/lxc/utils.c
++++ b/src/lxc/utils.c
+@@ -1838,3 +1838,41 @@ int lxc_strmunmap(void *addr, size_t length)
+ {
+ 	return munmap(addr, length + 1);
+ }
++
++/* Check whether a signal is blocked by a process. */
++bool task_blocking_signal(pid_t pid, int signal)
++{
++	bool bret = false;
++	char *line = NULL;
++	long unsigned int sigblk = 0;
++	size_t n = 0;
++	int ret;
++	FILE *f;
++
++	/* The largest integer that can fit into long int is 2^64. This is a
++	 * 20-digit number. */
++	size_t len = /* /proc */ 5 + /* /pid-to-str */ 21 + /* /status */ 7 + /* \0 */ 1;
++	char status[len];
++
++	ret = snprintf(status, len, "/proc/%d/status", pid);
++	if (ret < 0 || ret >= len)
++		return bret;
++
++	f = fopen(status, "r");
++	if (!f)
++		return bret;
++
++	while (getline(&line, &n, f) != -1) {
++		if (!strncmp(line, "SigBlk:\t", 8))
++			if (sscanf(line + 8, "%lx", &sigblk) != 1)
++				goto out;
++	}
++
++	if (sigblk & signal)
++		bret = true;
++
++out:
++	free(line);
++	fclose(f);
++	return bret;
++}
+diff --git a/src/lxc/utils.h b/src/lxc/utils.h
+index 22161cb..b541e07 100644
+--- a/src/lxc/utils.h
++++ b/src/lxc/utils.h
+@@ -296,4 +296,7 @@ int open_devnull(void);
+ int set_stdfds(int fd);
+ int null_stdfds(void);
+ int lxc_count_file_lines(const char *fn);
++
++/* Check whether a signal is blocked by a process. */
++bool task_blocking_signal(pid_t pid, int signal);
+ #endif /* __LXC_UTILS_H */
