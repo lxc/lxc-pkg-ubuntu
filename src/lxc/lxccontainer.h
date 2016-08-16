@@ -891,6 +891,23 @@ struct migrate_opts {
 	 * won't if e.g. you rsync the filesystems between two machines.
 	 */
 	bool preserves_inodes;
+
+	/* Path to an executable script that will be registered as a criu
+	 * "action script"
+	 */
+	char *action_script;
+
+	/* If CRIU >= 2.4 is detected the option to skip in-flight connections
+	 * will be enabled by default. The flag 'disable_skip_in_flight' will
+	 * unconditionally disable this feature. In-flight connections are
+	 * not fully established TCP connections: SYN, SYN-ACK */
+	bool disable_skip_in_flight;
+
+	/* This is the maximum file size for deleted files (which CRIU calls
+	 * "ghost" files) that will be handled. 0 indicates the CRIU default,
+	 * which at this time is 1MB.
+	 */
+	uint64_t ghost_limit;
 };
 
 /*!

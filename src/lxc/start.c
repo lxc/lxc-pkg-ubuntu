@@ -55,6 +55,7 @@
 #endif
 
 #include "af_unix.h"
+#include "bdev.h"
 #include "caps.h"
 #include "cgroup.h"
 #include "commands.h"
@@ -71,7 +72,6 @@
 #include "start.h"
 #include "sync.h"
 #include "utils.h"
-#include "bdev/bdev.h"
 #include "lsm/lsm.h"
 
 lxc_log_define(lxc_start, lxc);
@@ -82,7 +82,8 @@ const struct ns_info ns_info[LXC_NS_MAX] = {
 	[LXC_NS_UTS] = {"uts", CLONE_NEWUTS},
 	[LXC_NS_IPC] = {"ipc", CLONE_NEWIPC},
 	[LXC_NS_USER] = {"user", CLONE_NEWUSER},
-	[LXC_NS_NET] = {"net", CLONE_NEWNET}
+	[LXC_NS_NET] = {"net", CLONE_NEWNET},
+	[LXC_NS_CGROUP] = {"cgroup", CLONE_NEWCGROUP}
 };
 
 extern void mod_all_rdeps(struct lxc_container *c, bool inc);
@@ -208,7 +209,7 @@ static int match_fd(int fd)
  */
 int lxc_check_inherited(struct lxc_conf *conf, bool closeall, int fd_to_ignore)
 {
-	struct dirent dirent, *direntp;
+	struct dirent *direntp;
 	int fd, fddir;
 	DIR *dir;
 
@@ -224,7 +225,7 @@ restart:
 
 	fddir = dirfd(dir);
 
-	while (!readdir_r(dir, &dirent, &direntp)) {
+	while ((direntp = readdir(dir))) {
 		if (!direntp)
 			break;
 
