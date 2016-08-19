@@ -43,11 +43,11 @@
 #include <dirent.h>
 #include <grp.h>
 
+#include "bdev.h"
 #include "log.h"
 #include "cgroup.h"
 #include "utils.h"
 #include "commands.h"
-#include "bdev/bdev.h"
 
 lxc_log_define(lxc_cgfsng, lxc);
 
@@ -438,7 +438,7 @@ static bool is_lxcfs(const char *line)
 	char *p = strstr(line, " - ");
 	if (!p)
 		return false;
-	return strncmp(p, " - fuse.lxcfs ", 14);
+	return strncmp(p, " - fuse.lxcfs ", 14) == 0;
 }
 
 /*
@@ -488,7 +488,7 @@ static bool is_cgroupfs(char *line)
 	char *p = strstr(line, " - ");
 	if (!p)
 		return false;
-	return strncmp(p, " - cgroup ", 10);
+	return strncmp(p, " - cgroup ", 10) == 0;
 }
 
 /* Add a controller to our list of hierarchies */
@@ -907,7 +907,7 @@ static char *must_make_path(const char *first, ...)
 
 static int cgroup_rmdir(char *dirname)
 {
-	struct dirent dirent, *direntp;
+	struct dirent *direntp;
 	DIR *dir;
 	int r = 0;
 
@@ -915,7 +915,7 @@ static int cgroup_rmdir(char *dirname)
 	if (!dir)
 		return -1;
 
-	while (!readdir_r(dir, &dirent, &direntp)) {
+	while ((direntp = readdir(dir))) {
 		struct stat mystat;
 		char *pathname;
 
@@ -1350,7 +1350,7 @@ static bool cgfsng_mount(void *hdata, const char *root, int type)
 			free(controllerpath);
 			goto bad;
 		}
-		
+
 		r = do_secondstage_mounts_if_needed(type, h, controllerpath, path2,
 						    d->container_cgroup);
 		free(controllerpath);
@@ -1367,7 +1367,7 @@ bad:
 
 static int recursive_count_nrtasks(char *dirname)
 {
-	struct dirent dirent, *direntp;
+	struct dirent *direntp;
 	DIR *dir;
 	int count = 0, ret;
 	char *path;
@@ -1376,7 +1376,7 @@ static int recursive_count_nrtasks(char *dirname)
 	if (!dir)
 		return 0;
 
-	while (!readdir_r(dir, &dirent, &direntp)) {
+	while ((direntp = readdir(dir))) {
 		struct stat mystat;
 
 		if (!direntp)
@@ -1627,8 +1627,6 @@ static bool cgfsng_setup_limits(void *hdata, struct lxc_list *cgroup_settings,
 	struct cgfsng_handler_data *d = hdata;
 	struct lxc_list *iterator, *sorted_cgroup_settings, *next;
 	struct lxc_cgroup *cg;
-	struct hierarchy *h;
-	char *listpath = NULL;
 	bool ret = false;
 
 	if (lxc_list_empty(cgroup_settings))
@@ -1637,15 +1635,6 @@ static bool cgfsng_setup_limits(void *hdata, struct lxc_list *cgroup_settings,
 	sorted_cgroup_settings = sort_cgroup_settings(cgroup_settings);
 	if (!sorted_cgroup_settings) {
 		return false;
-	}
-
-	if (do_devices) {
-		h = get_hierarchy("devices");
-		if (!h) {
-			ERROR("No devices cgroup setup for %s", d->name);
-			return false;
-		}
-		listpath = must_make_path(h->fullcgpath, "devices.list", NULL);
 	}
 
 	lxc_list_for_each(iterator, sorted_cgroup_settings) {
@@ -1670,7 +1659,6 @@ static bool cgfsng_setup_limits(void *hdata, struct lxc_list *cgroup_settings,
 	ret = true;
 	INFO("cgroup has been setup");
 out:
-	free(listpath);
 	lxc_list_for_each_safe(iterator, sorted_cgroup_settings, next) {
 		lxc_list_del(iterator);
 		free(iterator);

@@ -111,7 +111,8 @@ host_triplet = @host@
 @ENABLE_TESTS_TRUE@	lxc-test-list$(EXEEXT) \
 @ENABLE_TESTS_TRUE@	lxc-test-attach$(EXEEXT) \
 @ENABLE_TESTS_TRUE@	lxc-test-device-add-remove$(EXEEXT) \
-@ENABLE_TESTS_TRUE@	lxc-test-apparmor$(EXEEXT)
+@ENABLE_TESTS_TRUE@	lxc-test-apparmor$(EXEEXT) \
+@ENABLE_TESTS_TRUE@	lxc-test-utils$(EXEEXT)
 @DISTRO_UBUNTU_TRUE@@ENABLE_TESTS_TRUE@am__append_3 = \
 @DISTRO_UBUNTU_TRUE@@ENABLE_TESTS_TRUE@	lxc-test-lxc-attach \
 @DISTRO_UBUNTU_TRUE@@ENABLE_TESTS_TRUE@	lxc-test-apparmor-mount \
@@ -260,6 +261,12 @@ am__lxc_test_startone_SOURCES_DIST = startone.c
 lxc_test_startone_OBJECTS = $(am_lxc_test_startone_OBJECTS)
 lxc_test_startone_LDADD = $(LDADD)
 @ENABLE_TESTS_TRUE@lxc_test_startone_DEPENDENCIES = ../lxc/liblxc.so
+am__lxc_test_utils_SOURCES_DIST = lxc-test-utils.c lxctest.h
+@ENABLE_TESTS_TRUE@am_lxc_test_utils_OBJECTS =  \
+@ENABLE_TESTS_TRUE@	lxc-test-utils.$(OBJEXT)
+lxc_test_utils_OBJECTS = $(am_lxc_test_utils_OBJECTS)
+lxc_test_utils_LDADD = $(LDADD)
+@ENABLE_TESTS_TRUE@lxc_test_utils_DEPENDENCIES = ../lxc/liblxc.so
 am__vpath_adj_setup = srcdirstrip=`echo "$(srcdir)" | sed 's|.|.|g'`;
 am__vpath_adj = case $$p in \
     $(srcdir)/*) f=`echo "$$p" | sed "s|^$$srcdirstrip/||"`;; \
@@ -327,7 +334,7 @@ SOURCES = $(lxc_test_apparmor_SOURCES) $(lxc_test_attach_SOURCES) \
 	$(lxc_test_lxcpath_SOURCES) $(lxc_test_may_control_SOURCES) \
 	$(lxc_test_reboot_SOURCES) $(lxc_test_saveconfig_SOURCES) \
 	$(lxc_test_shutdowntest_SOURCES) $(lxc_test_snapshot_SOURCES) \
-	$(lxc_test_startone_SOURCES)
+	$(lxc_test_startone_SOURCES) $(lxc_test_utils_SOURCES)
 DIST_SOURCES = $(am__lxc_test_apparmor_SOURCES_DIST) \
 	$(am__lxc_test_attach_SOURCES_DIST) \
 	$(am__lxc_test_cgpath_SOURCES_DIST) \
@@ -348,7 +355,8 @@ DIST_SOURCES = $(am__lxc_test_apparmor_SOURCES_DIST) \
 	$(am__lxc_test_saveconfig_SOURCES_DIST) \
 	$(am__lxc_test_shutdowntest_SOURCES_DIST) \
 	$(am__lxc_test_snapshot_SOURCES_DIST) \
-	$(am__lxc_test_startone_SOURCES_DIST)
+	$(am__lxc_test_startone_SOURCES_DIST) \
+	$(am__lxc_test_utils_SOURCES_DIST)
 am__can_run_installinfo = \
   case $$AM_UPDATE_INFO_DIR in \
     n|no|NO) false;; \
@@ -564,14 +572,18 @@ top_srcdir = @top_srcdir@
 @ENABLE_TESTS_TRUE@lxc_test_attach_SOURCES = attach.c
 @ENABLE_TESTS_TRUE@lxc_test_device_add_remove_SOURCES = device_add_remove.c
 @ENABLE_TESTS_TRUE@lxc_test_apparmor_SOURCES = aa.c
-@ENABLE_TESTS_TRUE@AM_CFLAGS = -I$(top_srcdir)/src \
-@ENABLE_TESTS_TRUE@	-DLXCROOTFSMOUNT=\"$(LXCROOTFSMOUNT)\" \
+@ENABLE_TESTS_TRUE@lxc_test_utils_SOURCES = lxc-test-utils.c lxctest.h
+@ENABLE_TESTS_TRUE@AM_CFLAGS = -DLXCROOTFSMOUNT=\"$(LXCROOTFSMOUNT)\" \
 @ENABLE_TESTS_TRUE@	-DLXCPATH=\"$(LXCPATH)\" \
 @ENABLE_TESTS_TRUE@	-DLXC_GLOBAL_CONF=\"$(LXC_GLOBAL_CONF)\" \
 @ENABLE_TESTS_TRUE@	-DLXCINITDIR=\"$(LXCINITDIR)\" \
 @ENABLE_TESTS_TRUE@	-DLXC_DEFAULT_CONFIG=\"$(LXC_DEFAULT_CONFIG)\" \
-@ENABLE_TESTS_TRUE@	-DRUNTIME_PATH=\"$(RUNTIME_PATH)\" \
-@ENABLE_TESTS_TRUE@	$(am__append_1) $(am__append_2)
+@ENABLE_TESTS_TRUE@	-DRUNTIME_PATH=\"$(RUNTIME_PATH)\" -I \
+@ENABLE_TESTS_TRUE@	$(top_srcdir)/src -I $(top_srcdir)/src/lxc \
+@ENABLE_TESTS_TRUE@	-I $(top_srcdir)/src/lxc/bdev -I \
+@ENABLE_TESTS_TRUE@	$(top_srcdir)/src/lxc/cgroups -I \
+@ENABLE_TESTS_TRUE@	$(top_srcdir)/src/lxc/tools $(am__append_1) \
+@ENABLE_TESTS_TRUE@	$(am__append_2)
 @ENABLE_TESTS_TRUE@bin_SCRIPTS = lxc-test-automount lxc-test-autostart \
 @ENABLE_TESTS_TRUE@	lxc-test-cloneconfig lxc-test-createconfig \
 @ENABLE_TESTS_TRUE@	$(am__append_3)
@@ -600,6 +612,7 @@ EXTRA_DIST = \
 	lxc-test-symlink \
 	lxc-test-ubuntu \
 	lxc-test-unpriv \
+	lxc-test-utils.c \
 	may_control.c \
 	saveconfig.c \
 	shutdowntest.c \
@@ -767,6 +780,10 @@ lxc-test-snapshot$(EXEEXT): $(lxc_test_snapshot_OBJECTS) $(lxc_test_snapshot_DEP
 lxc-test-startone$(EXEEXT): $(lxc_test_startone_OBJECTS) $(lxc_test_startone_DEPENDENCIES) $(EXTRA_lxc_test_startone_DEPENDENCIES) 
 	@rm -f lxc-test-startone$(EXEEXT)
 	$(AM_V_CCLD)$(LINK) $(lxc_test_startone_OBJECTS) $(lxc_test_startone_LDADD) $(LIBS)
+
+lxc-test-utils$(EXEEXT): $(lxc_test_utils_OBJECTS) $(lxc_test_utils_DEPENDENCIES) $(EXTRA_lxc_test_utils_DEPENDENCIES) 
+	@rm -f lxc-test-utils$(EXEEXT)
+	$(AM_V_CCLD)$(LINK) $(lxc_test_utils_OBJECTS) $(lxc_test_utils_LDADD) $(LIBS)
 install-binSCRIPTS: $(bin_SCRIPTS)
 	@$(NORMAL_INSTALL)
 	@list='$(bin_SCRIPTS)'; test -n "$(bindir)" || list=; \
@@ -823,6 +840,7 @@ distclean-compile:
 @AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/getkeys.Po@am__quote@
 @AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/list.Po@am__quote@
 @AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/locktests.Po@am__quote@
+@AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/lxc-test-utils.Po@am__quote@
 @AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/lxcpath.Po@am__quote@
 @AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/may_control.Po@am__quote@
 @AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/reboot.Po@am__quote@
