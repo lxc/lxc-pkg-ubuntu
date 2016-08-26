@@ -1,0 +1,26 @@
+From c58f31889807a929b1fd5299feb5ec5109ebae09 Mon Sep 17 00:00:00 2001
+From: =?UTF-8?q?St=C3=A9phane=20Graber?= <stgraber@ubuntu.com>
+Date: Fri, 26 Aug 2016 15:41:34 -0400
+Subject: c/r: Fix pid_t on some arches
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+Signed-off-by: Stéphane Graber <stgraber@ubuntu.com>
+---
+ src/lxc/criu.c | 2 +-
+ 1 file changed, 1 insertion(+), 1 deletion(-)
+
+diff --git a/src/lxc/criu.c b/src/lxc/criu.c
+index 76d7080..c20c00a 100644
+--- a/src/lxc/criu.c
++++ b/src/lxc/criu.c
+@@ -751,7 +751,7 @@ static void do_restore(struct lxc_container *c, int status_pipe, struct migrate_
+ 			} else {
+ 				int ret;
+ 
+-				ret = snprintf(buf, sizeof(buf), "/proc/self/task/%" PRId64 "/children", syscall(__NR_gettid));
++				ret = snprintf(buf, sizeof(buf), "/proc/self/task/%lu/children", (unsigned long)syscall(__NR_gettid));
+ 				if (ret < 0 || ret >= sizeof(buf)) {
+ 					ERROR("snprintf'd too many characters: %d", ret);
+ 					goto out_fini_handler;
