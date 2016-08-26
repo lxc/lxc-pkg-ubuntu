@@ -1,3 +1,11 @@
+lxc (2.0.4-0ubuntu1~ubuntu16.04.2) xenial; urgency=medium
+
+  * Cherry-pick from upstream (fixes checkpoint/restore regression):
+    - 0003-c-r-use-proc-self-tid-children-instead-of-pidfile.patch
+    - 0004-c-r-Fix-pid_t-on-some-arches.patch
+
+ -- Stéphane Graber <stgraber@ubuntu.com>  Fri, 26 Aug 2016 16:31:18 -0400
+
 lxc (2.0.4-0ubuntu1~ubuntu16.04.1) xenial; urgency=medium
 
   * New upstream bugfix release (2.0.4) (LP: #1615099):
