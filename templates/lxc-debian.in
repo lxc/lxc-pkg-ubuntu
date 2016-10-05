@@ -219,7 +219,7 @@ configure_debian_systemd()
     fi
 
     # just in case systemd is not installed
-    mkdir -p "${rootfs}/{lib,etc}/systemd/system"
+    mkdir -p "${rootfs}/lib/systemd/system"
     mkdir -p "${rootfs}/etc/systemd/system/getty.target.wants"
 
     # Fix getty-static-service as debootstrap does not install dbus
@@ -236,8 +236,6 @@ configure_debian_systemd()
     chroot "${rootfs}" ln -s /dev/null /etc/systemd/system/udev.service
     chroot "${rootfs}" ln -s /dev/null /etc/systemd/system/systemd-udevd.service
     chroot "${rootfs}" ln -s /lib/systemd/system/multi-user.target /etc/systemd/system/default.target
-    # Make systemd honor SIGPWR
-    chroot "${rootfs}" ln -s /lib/systemd/system/halt.target /etc/systemd/system/sigpwr.target
     # Setup getty service on the ttys we are going to allow in the
     # default config.  Number should match lxc.tty
     ( cd "${rootfs}/etc/systemd/system/getty.target.wants"
@@ -543,6 +541,8 @@ if [ $? -ne 0 ]; then
 fi
 eval set -- "$options"
 
+littleendian=$(lscpu | grep '^Byte Order' | grep -q Little && echo yes)
+
 arch=$(uname -m)
 if [ "$arch" = "i686" ]; then
     arch="i386"
@@ -550,6 +550,12 @@ elif [ "$arch" = "x86_64" ]; then
     arch="amd64"
 elif [ "$arch" = "armv7l" ]; then
     arch="armhf"
+elif [ "$arch" = "ppc64le" ]; then
+    arch="ppc64el"
+elif [ "$arch" = "mips" -a "$littleendian" = "yes" ]; then
+    arch="mipsel"
+elif [ "$arch" = "mips64" -a "$littleendian" = "yes" ]; then
+    arch="mips64el"
 fi
 hostarch=$arch
 mainonly=1
