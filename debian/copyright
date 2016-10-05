@@ -7,7 +7,7 @@ Files: *
 Copyright: 2007-2013 various LXC contributors (see headers for details)
 License: LGPL-2.1+
 
-Files: src/lxc/lxc_clone.c src/lxc/lxc_create.c src/lxc/lxc_destroy.c src/lxc/lxc_snapshot.c src/lxc/lxc_user_nic.c src/tests/cgpath.c src/tests/clonetest.c src/tests/console.c src/tests/containertests.c src/tests/createtest.c src/tests/destroytest.c src/tests/get_item.c src/tests/getkeys.c src/tests/locktests.c src/tests/lxcpath.c src/tests/saveconfig.c src/tests/shutdowntest.c src/tests/snapshot.c src/tests/startone.c
+Files: src/lxc/tools/*
 Copyright: 2007-2013 various LXC contributors (see headers for details)
 License: GPL-2
 
