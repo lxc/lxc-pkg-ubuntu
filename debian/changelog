@@ -1,3 +1,76 @@
+lxc (2.0.5-0ubuntu1) yakkety; urgency=medium
+
+  * New upstream bugfix release (2.0.5):
+    - Fix .gitignore after /tools/ split
+    - Add lxc-test-utils to .gitignore
+    - bdev: use correct overlay module name
+    - cleanup: tools: remove --name from lxc-top usage message
+    - cleanup: whitespaces in option alignment for lxc-execute
+    - Use full GPG fingerprint instead of long IDs.
+    - tools: move --rcfile to the common options list
+    - tools: set configfile after load_config
+    - doc: add --rcfile to common opts
+    - doc: Update Korean lxc-attach(1)
+    - doc: Add --rcfile to Korean common opts
+    - doc: Add --rcfile to Japanese common opts
+    - tools: use exit(EXIT_*) everywhere
+    - tools: unify exit() calls outside of main()
+    - utils: Add mips signalfd syscall numbers
+    - seccomp: Implement MIPS seccomp handling
+    - seccomp: Add mips and mips64 entries to lxc_config_parse_arch
+    - seccomp: fix strerror()
+    - confile: add more archs to lxc_config_parse_arch()
+    - seccomp: add support for s390x
+    - seccomp: remove double include and order includes
+    - seccomp: non functional changes
+    - templates: use fd 9 instead of 200
+    - templates: fedora requires openssl binary
+    - tools: use boolean for ret in lxc_device.c
+    - c/r: use /proc/self/tid/children instead of pidfile
+    - c/r: Fix pid_t on some arches
+    - templates: Add mips hostarch detection to debian
+    - cleanup: replace tabs wth spaces in usage strings
+    - remove extra 'ret'
+    - c/r: write status only after trying to parse the pid
+    - set FULL_PATH_NAMES=NO in doc/api/Doxyfile
+    - templates: rm halt.target -> sigpwr.target symlink
+    - templates: remove creation of bogus directory
+    - console: use correct log name
+    - configure: add --disable-werror
+    - tests: fix get_item tests
+    - templates: use correct cron version in alpine template
+    - c/r: zero a smaller than known migrate_opts struct
+    - lxczfs: small fixes
+    - c/r: free valid_opts if necessary
+    - make rsync deal with sparse files efficiently
+    - lxc-create -t debian fails on ppc64el arch
+    - c/r: fix typo in comment
+    - cgroup: add new functions for interacting with hierachies
+    - utils: add lxc_deslashify
+    - c/r: pass --cgroup-roots on checkpoint
+    - cgroup: get rid of weird hack in cgfsng_escape
+    - cgroup: drop cgroup_canonical_path
+    - c/r: check that cgroup_num_hierarchies > 0
+    - tools: do not add trailing spaces on lxc-ls -1
+    - conf: retrieve mtu from netdev->link
+    - conf: try to retrieve mtu from veth
+    - c/r: detatch from controlling tty on restore
+    - Fix null derefence if attach is called without access to any tty
+    - utils: fix lxc_string_split()
+    - tools: lxc_deslashify() handle special cases
+    - tests: add unit tests for lxc_deslashify()
+    - Fix for ALTLinux container creation in all branches
+    - utils: lxc_deslashify() free memory
+    - Fix spelling of CentOS in the templates
+    - Define LXC_DEVEL to detect development releases
+    - tools: lxc-checkconfig conditionalize devpts check
+  * Drop all cherry-pick patches, now upstream.
+  * Update to newer standards. Drop un-needed debian/control field.
+  * Address all lintian messages.
+  * Revert the previous upload as it caused FTBFS.
+
+ -- Stéphane Graber <stgraber@ubuntu.com>  Wed, 05 Oct 2016 13:56:58 +0200
+
 lxc (2.0.4-0ubuntu5) yakkety; urgency=medium
 
   * Build-depend on dpkg-dev (>= 1.16.1~) | hardening-wrapper. LP: #1620313.
