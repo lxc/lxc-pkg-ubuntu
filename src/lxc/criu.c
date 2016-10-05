@@ -69,7 +69,7 @@ struct criu_opts {
 	char tty_id[32]; /* the criu tty id for /dev/console, i.e. "tty[${rdev}:${dev}]" */
 
 	/* restore: the file to write the init process' pid into */
-	const char *cgroup_path;
+	struct lxc_handler *handler;
 	int console_fd;
 	/* The path that is bind mounted from /dev/console, if any. We don't
 	 * want to use `--ext-mount-map auto`'s result here because the pts
@@ -140,7 +140,7 @@ static void exec_criu(struct criu_opts *opts)
 
 	/* The command line always looks like:
 	 * criu $(action) --tcp-established --file-locks --link-remap \
-	 * --manage-cgroups=full action-script foo.sh -D $(directory) \
+	 * --manage-cgroups=full --action-script foo.sh -D $(directory) \
 	 * -o $(directory)/$(action).log --ext-mount-map auto
 	 * --enable-external-sharing --enable-external-masters
 	 * --enable-fs hugetlbfs --enable-fs tracefs --ext-mount-map console:/dev/pts/n
@@ -175,10 +175,10 @@ static void exec_criu(struct criu_opts *opts)
 			static_args += 2;
 	} else if (strcmp(opts->action, "restore") == 0) {
 		/* --root $(lxc_mount_point) --restore-detached
-		 * --restore-sibling --cgroup-root $foo
+		 * --restore-sibling
 		 * --lsm-profile apparmor:whatever
 		 */
-		static_args += 8;
+		static_args += 6;
 
 		tty_info[0] = 0;
 		if (load_tty_major_minor(opts->user->directory, tty_info, sizeof(tty_info)))
@@ -190,6 +190,9 @@ static void exec_criu(struct criu_opts *opts)
 	} else {
 		return;
 	}
+
+	if (cgroup_num_hierarchies() > 0)
+		static_args += 2 * cgroup_num_hierarchies();
 
 	if (opts->user->verbose)
 		static_args++;
@@ -243,6 +246,66 @@ static void exec_criu(struct criu_opts *opts)
 	DECLARE_ARG(opts->user->directory);
 	DECLARE_ARG("-o");
 	DECLARE_ARG(log);
+
+	for (i = 0; i < cgroup_num_hierarchies(); i++) {
+		char **controllers = NULL, *fullname;
+		char *path;
+
+		if (!cgroup_get_hierarchies(i, &controllers)) {
+			ERROR("failed to get hierarchy %d", i);
+			goto err;
+		}
+
+		/* if we are in a dump, we have to ask the monitor process what
+		 * the right cgroup is. if this is a restore, we can just use
+		 * the handler the restore task created.
+		 */
+		if (!strcmp(opts->action, "dump") || !strcmp(opts->action, "pre-dump")) {
+			path = lxc_cmd_get_cgroup_path(opts->c->name, opts->c->config_path, controllers[0]);
+			if (!path) {
+				ERROR("failed to get cgroup path for %s", controllers[0]);
+				goto err;
+			}
+		} else {
+			const char *p;
+
+			p = cgroup_get_cgroup(opts->handler, controllers[0]);
+			if (!p) {
+				ERROR("failed to get cgroup path for %s", controllers[0]);
+				goto err;
+			}
+
+			path = strdup(p);
+			if (!path) {
+				ERROR("strdup failed");
+				goto err;
+			}
+		}
+
+		if (!lxc_deslashify(&path)) {
+			ERROR("failed to deslashify %s", path);
+			free(path);
+			goto err;
+		}
+
+		fullname = lxc_string_join(",", (const char **) controllers, false);
+		if (!fullname) {
+			ERROR("failed to join controllers");
+			free(path);
+			goto err;
+		}
+
+		ret = sprintf(buf, "%s:%s", fullname, path);
+		free(path);
+		free(fullname);
+		if (ret < 0 || ret >= sizeof(buf)) {
+			ERROR("sprintf of cgroup root arg failed");
+			goto err;
+		}
+
+		DECLARE_ARG("--cgroup-root");
+		DECLARE_ARG(buf);
+	}
 
 	if (opts->user->verbose)
 		DECLARE_ARG("-vvvvvv");
@@ -329,8 +392,6 @@ static void exec_criu(struct criu_opts *opts)
 		DECLARE_ARG(opts->c->lxc_conf->rootfs.mount);
 		DECLARE_ARG("--restore-detached");
 		DECLARE_ARG("--restore-sibling");
-		DECLARE_ARG("--cgroup-root");
-		DECLARE_ARG(opts->cgroup_path);
 
 		if (tty_info[0]) {
 			if (opts->console_fd < 0) {
@@ -601,8 +662,21 @@ static void do_restore(struct lxc_container *c, int status_pipe, struct migrate_
 {
 	pid_t pid;
 	struct lxc_handler *handler;
-	int status;
+	int status, fd;
 	int pipes[2] = {-1, -1};
+
+	/* Try to detach from the current controlling tty if it exists.
+	 * Othwerise, lxc_init (via lxc_console) will attach the container's
+	 * console output to the current tty, which is probably not what any
+	 * library user wants, and if they do, they can just manually configure
+	 * it :)
+	 */
+	fd = open("/dev/tty", O_RDWR);
+	if (fd >= 0) {
+		if (ioctl(fd, TIOCNOTTY, NULL) < 0)
+			SYSERROR("couldn't detach from tty");
+		close(fd);
+	}
 
 	handler = lxc_init(c->name, c->lxc_conf, c->config_path);
 	if (!handler)
@@ -682,9 +756,9 @@ static void do_restore(struct lxc_container *c, int status_pipe, struct migrate_
 		os.action = "restore";
 		os.user = opts;
 		os.c = c;
-		os.cgroup_path = cgroup_canonical_path(handler);
 		os.console_fd = c->lxc_conf->console.slave;
 		os.criu_version = criu_version;
+		os.handler = handler;
 
 		if (os.console_fd >= 0) {
 			/* Twiddle the FD_CLOEXEC bit. We want to pass this FD to criu
@@ -723,15 +797,6 @@ static void do_restore(struct lxc_container *c, int status_pipe, struct migrate_
 			goto out_fini_handler;
 		}
 
-		ret = write(status_pipe, &status, sizeof(status));
-		close(status_pipe);
-		status_pipe = -1;
-
-		if (sizeof(status) != ret) {
-			SYSERROR("failed to write all of status");
-			goto out_fini_handler;
-		}
-
 		if (WIFEXITED(status)) {
 			char buf[4096];
 
@@ -749,8 +814,6 @@ static void do_restore(struct lxc_container *c, int status_pipe, struct migrate_
 				ERROR("criu process exited %d, output:\n%s\n", WEXITSTATUS(status), buf);
 				goto out_fini_handler;
 			} else {
-				int ret;
-
 				ret = snprintf(buf, sizeof(buf), "/proc/self/task/%lu/children", (unsigned long)syscall(__NR_gettid));
 				if (ret < 0 || ret >= sizeof(buf)) {
 					ERROR("snprintf'd too many characters: %d", ret);
@@ -782,6 +845,15 @@ static void do_restore(struct lxc_container *c, int status_pipe, struct migrate_
 
 		close(pipes[0]);
 
+		ret = write(status_pipe, &status, sizeof(status));
+		close(status_pipe);
+		status_pipe = -1;
+
+		if (sizeof(status) != ret) {
+			SYSERROR("failed to write all of status");
+			goto out_fini_handler;
+		}
+
 		/*
 		 * See comment in lxcapi_start; we don't care if these
 		 * fail because it's just a beauty thing. We just
@@ -807,7 +879,12 @@ out_fini_handler:
 
 out:
 	if (status_pipe >= 0) {
-		status = 1;
+		/* ensure getting here was a failure, e.g. if we failed to
+		 * parse the child pid or something, even after a successful
+		 * restore
+		 */
+		if (!status)
+			status = 1;
 		if (write(status_pipe, &status, sizeof(status)) != sizeof(status)) {
 			SYSERROR("writing status failed");
 		}
@@ -888,6 +965,13 @@ static bool do_dump(struct lxc_container *c, char *mode, struct migrate_opts *op
 
 	if (pid == 0) {
 		struct criu_opts os;
+		struct lxc_handler h;
+
+		h.name = c->name;
+		if (!cgroup_init(&h)) {
+			ERROR("failed to cgroup_init()");
+			exit(1);
+		}
 
 		os.action = mode;
 		os.user = opts;

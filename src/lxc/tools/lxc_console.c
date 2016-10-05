@@ -80,7 +80,8 @@ lxc-console logs on the container with the identifier NAME\n\
 Options :\n\
   -n, --name=NAME      NAME of the container\n\
   -t, --tty=NUMBER     console tty number\n\
-  -e, --escape=PREFIX  prefix for escape command\n",
+  -e, --escape=PREFIX  prefix for escape command\n\
+  --rcfile=FILE        Load configuration file FILE\n",
 	.options  = my_longopts,
 	.parser   = my_parser,
 	.checker  = NULL,
@@ -112,6 +113,21 @@ int main(int argc, char *argv[])
 		exit(EXIT_FAILURE);
 	}
 
+	if (my_args.rcfile) {
+		c->clear_config(c);
+		if (!c->load_config(c, my_args.rcfile)) {
+			fprintf(stderr, "Failed to load rcfile\n");
+			lxc_container_put(c);
+			exit(EXIT_FAILURE);
+		}
+		c->configfile = strdup(my_args.rcfile);
+		if (!c->configfile) {
+			fprintf(stderr, "Out of memory setting new config filename\n");
+			lxc_container_put(c);
+			exit(EXIT_FAILURE);
+		}
+	}
+
 	if (!c->may_control(c)) {
 		fprintf(stderr, "Insufficent privileges to control %s\n", my_args.name);
 		lxc_container_put(c);
@@ -130,5 +146,5 @@ int main(int argc, char *argv[])
 		exit(EXIT_FAILURE);
 	}
 	lxc_container_put(c);
-	return EXIT_SUCCESS;
+	exit(EXIT_SUCCESS);
 }
