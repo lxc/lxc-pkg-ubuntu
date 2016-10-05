@@ -91,7 +91,7 @@ static const struct option my_longopts[] = {
 static struct lxc_arguments my_args = {
 	.progname = "lxc-top",
 	.help     = "\
-[--name=NAME]\n\
+\n\
 \n\
 lxc-top monitors the state of the active containers\n\
 \n\
@@ -506,5 +506,5 @@ int main(int argc, char *argv[])
 err1:
 	lxc_mainloop_close(&descr);
 out:
-	return ret;
+	exit(EXIT_FAILURE);
 }
