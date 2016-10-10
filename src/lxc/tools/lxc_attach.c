@@ -321,7 +321,7 @@ static int get_pty_on_host(struct lxc_container *c, struct wrapargs *wrap, int *
 err3:
 	lxc_mainloop_close(&descr);
 err2:
-	if (ts->sigfd != -1)
+	if (ts && ts->sigfd != -1)
 		lxc_console_sigwinch_fini(ts);
 err1:
 	lxc_console_delete(&conf->console);
@@ -382,6 +382,12 @@ int main(int argc, char *argv[])
 		c->clear_config(c);
 		if (!c->load_config(c, my_args.rcfile)) {
 			ERROR("Failed to load rcfile");
+			lxc_container_put(c);
+			exit(EXIT_FAILURE);
+		}
+		c->configfile = strdup(my_args.rcfile);
+		if (!c->configfile) {
+			ERROR("Out of memory setting new config filename");
 			lxc_container_put(c);
 			exit(EXIT_FAILURE);
 		}

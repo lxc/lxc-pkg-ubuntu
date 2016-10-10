@@ -1,9 +1,10 @@
 #                                               -*- Autoconf -*-
 # Process this file with autoconf to produce a configure script.
 
+m4_define([lxc_devel], 0)
 m4_define([lxc_version_major], 2)
 m4_define([lxc_version_minor], 0)
-m4_define([lxc_version_micro], 4)
+m4_define([lxc_version_micro], 5)
 m4_define([lxc_version_beta], [])
 m4_define([lxc_version_abi], 1.2.0)
 
@@ -24,6 +25,7 @@ AC_SUBST([LXC_VERSION_MINOR], [lxc_version_minor])
 AC_SUBST([LXC_VERSION_MICRO], [lxc_version_micro])
 AC_SUBST([LXC_VERSION_ABI], [lxc_version_abi])
 AC_SUBST([LXC_VERSION], [lxc_version])
+AC_SUBST([LXC_DEVEL], [lxc_devel])
 
 AC_CONFIG_SRCDIR([configure.ac])
 AC_CONFIG_AUX_DIR([config])
@@ -147,6 +149,11 @@ fi
 if test "x$with_systemdsystemunitdir" != "xno"; then
   AC_SUBST([SYSTEMD_UNIT_DIR], [$with_systemdsystemunitdir])
 fi
+
+AC_ARG_ENABLE([werror],
+	[AC_HELP_STRING([--disable-werror],
+	[do not treat warnings as errors])],
+	[], [enable_werror=yes])
 
 # Allow enabling deprecated executables
 AC_ARG_ENABLE([deprecated],
@@ -626,7 +633,10 @@ AC_PROG_SED
 LXC_CHECK_TLS
 
 if test "x$GCC" = "xyes"; then
-	CFLAGS="$CFLAGS -Wall -Werror"
+	CFLAGS="$CFLAGS -Wall"
+	if test "x$enable_werror" = "xyes"; then
+		CFLAGS="$CFLAGS -Werror"
+	fi
 fi
 
 # Files requiring some variable expansion

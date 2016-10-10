@@ -716,6 +716,49 @@ char **lxc_normalize_path(const char *path)
 	return components;
 }
 
+bool lxc_deslashify(char **path)
+{
+	bool ret = false;
+	char *p;
+	char **parts = NULL;
+	size_t n, len;
+
+	parts = lxc_normalize_path(*path);
+	if (!parts)
+		return false;
+
+	/* We'll end up here if path == "///" or path == "". */
+	if (!*parts) {
+		len = strlen(*path);
+		if (!len) {
+			ret = true;
+			goto out;
+		}
+		n = strcspn(*path, "/");
+		if (n == len) {
+			p = strdup("/");
+			if (!p)
+				goto out;
+			free(*path);
+			*path = p;
+			ret = true;
+			goto out;
+		}
+	}
+
+	p = lxc_string_join("/", (const char **)parts, **path == '/');
+	if (!p)
+		goto out;
+
+	free(*path);
+	*path = p;
+	ret = true;
+
+out:
+	lxc_free_array((void **)parts, free);
+	return ret;
+}
+
 char *lxc_append_paths(const char *first, const char *second)
 {
 	size_t len = strlen(first) + strlen(second) + 1;
@@ -756,8 +799,8 @@ bool lxc_string_in_list(const char *needle, const char *haystack, char _sep)
 char **lxc_string_split(const char *string, char _sep)
 {
 	char *token, *str, *saveptr = NULL;
-	char sep[2] = { _sep, '\0' };
-	char **result = NULL;
+	char sep[2] = {_sep, '\0'};
+	char **tmp = NULL, **result = NULL;
 	size_t result_capacity = 0;
 	size_t result_count = 0;
 	int r, saved_errno;
@@ -765,7 +808,7 @@ char **lxc_string_split(const char *string, char _sep)
 	if (!string)
 		return calloc(1, sizeof(char *));
 
-	str = alloca(strlen(string)+1);
+	str = alloca(strlen(string) + 1);
 	strcpy(str, string);
 	for (; (token = strtok_r(str, sep, &saveptr)); str = NULL) {
 		r = lxc_grow_array((void ***)&result, &result_capacity, result_count + 1, 16);
@@ -778,7 +821,14 @@ char **lxc_string_split(const char *string, char _sep)
 	}
 
 	/* if we allocated too much, reduce it */
-	return realloc(result, (result_count + 1) * sizeof(char *));
+	tmp = realloc(result, (result_count + 1) * sizeof(char *));
+	if (!tmp)
+		goto error_out;
+	result = tmp;
+	/* Make sure we don't return uninitialized memory. */
+	if (result_count == 0)
+		*result = NULL;
+	return result;
 error_out:
 	saved_errno = errno;
 	lxc_free_array((void **)result, free);

@@ -53,7 +53,8 @@ static struct lxc_arguments my_args = {
 lxc-device attach or detach DEV to or from container.\n\
 \n\
 Options :\n\
-  -n, --name=NAME      NAME of the container",
+  -n, --name=NAME      NAME of the container\n\
+  --rcfile=FILE        Load configuration file FILE\n",
 	.options  = my_longopts,
 	.parser   = NULL,
 	.checker  = NULL,
@@ -65,7 +66,7 @@ static bool is_interface(const char* dev_name, pid_t pid)
 
 	if (p < 0) {
 		SYSERROR("failed to fork task.");
-		exit(1);
+		exit(EXIT_FAILURE);
 	}
 
 	if (p == 0) {
@@ -85,10 +86,10 @@ static bool is_interface(const char* dev_name, pid_t pid)
 		/* Iterate through the interfaces */
 		for (tempIfAddr = interfaceArray; tempIfAddr != NULL; tempIfAddr = tempIfAddr->ifa_next) {
 			if (strcmp(tempIfAddr->ifa_name, dev_name) == 0) {
-				exit(0);
+				exit(EXIT_SUCCESS);
 			}
 		}
-		exit(1);
+		exit(EXIT_FAILURE);
 	}
 
 	if (wait_for_pid(p) == 0) {
@@ -101,11 +102,11 @@ int main(int argc, char *argv[])
 {
 	struct lxc_container *c;
 	char *cmd, *dev_name, *dst_name;
-	int ret = 1;
+	bool ret = false;
 
 	if (geteuid() != 0) {
 		ERROR("%s must be run as root", argv[0]);
-		exit(1);
+		exit(EXIT_FAILURE);
 	}
 
 	if (lxc_arguments_parse(&my_args, argc, argv))
@@ -123,6 +124,19 @@ int main(int argc, char *argv[])
 	if (!c) {
 		ERROR("%s doesn't exist", my_args.name);
 		goto err;
+	}
+
+	if (my_args.rcfile) {
+		c->clear_config(c);
+		if (!c->load_config(c, my_args.rcfile)) {
+			ERROR("Failed to load rcfile");
+			goto err1;
+		}
+		c->configfile = strdup(my_args.rcfile);
+		if (!c->configfile) {
+			ERROR("Out of memory setting new config filename");
+			goto err1;
+		}
 	}
 
 	if (!c->is_running(c)) {
@@ -150,7 +164,6 @@ int main(int argc, char *argv[])
 		}
 		if (ret != true) {
 			ERROR("Failed to add %s to %s.", dev_name, c->name);
-			ret = 1;
 			goto err1;
 		}
 		INFO("Add %s to %s.", dev_name, c->name);
@@ -162,7 +175,6 @@ int main(int argc, char *argv[])
 		}
 		if (ret != true) {
 			ERROR("Failed to del %s from %s.", dev_name, c->name);
-			ret = 1;
 			goto err1;
 		}
 		INFO("Delete %s from %s.", dev_name, c->name);
@@ -170,9 +182,9 @@ int main(int argc, char *argv[])
 		ERROR("Error: Please use add or del (Please see --help output)");
 		goto err1;
 	}
-	exit(0);
+	exit(EXIT_SUCCESS);
 err1:
 	lxc_container_put(c);
 err:
-	exit(ret);
+	exit(EXIT_FAILURE);
 }
