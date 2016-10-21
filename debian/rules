@@ -52,6 +52,9 @@ override_dh_install:
 		dh_apparmor -p lxc-common --profile-name=usr.bin.lxc-start; \
 	fi
 
+	# cleanup .la files
+	find debian/tmp/ -type f -name \*.la -delete
+
 	# copy apport hook
 	mkdir -p debian/tmp/usr/share/apport/package-hooks
 	cp debian/lxc1.apport debian/tmp/usr/share/apport/package-hooks/source_lxc.py
