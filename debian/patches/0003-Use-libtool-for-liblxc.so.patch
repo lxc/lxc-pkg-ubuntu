@@ -1,0 +1,299 @@
+From c3febc83ddd2af439bff1ce9cd0100cc465c606a Mon Sep 17 00:00:00 2001
+From: =?UTF-8?q?St=C3=A9phane=20Graber?= <stgraber@ubuntu.com>
+Date: Fri, 21 Oct 2016 14:07:29 -0400
+Subject: Use libtool for liblxc.so
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+This should allow proper filtering of build flags for libraries and make
+it easier to use PIE/PIC.
+
+Signed-off-by: Stéphane Graber <stgraber@ubuntu.com>
+---
+ Makefile.am                |  4 ++++
+ autogen.sh                 |  1 +
+ configure.ac               | 16 ++++++++++++++--
+ src/lua-lxc/Makefile.am    | 19 +++++++++++++------
+ src/lxc/Makefile.am        | 37 +++++++++++++++++++------------------
+ src/lxc/version.h.in       |  2 +-
+ src/python-lxc/setup.py.in | 18 +++++++++++++++++-
+ src/tests/Makefile.am      |  2 +-
+ 8 files changed, 70 insertions(+), 29 deletions(-)
+
+diff --git a/Makefile.am b/Makefile.am
+index 83714cb..4071ec9 100644
+--- a/Makefile.am
++++ b/Makefile.am
+@@ -2,6 +2,7 @@
+ 
+ ACLOCAL_AMFLAGS = -I config
+ 
++LIBTOOL_DEPS = @LIBTOOL_DEPS@
+ SUBDIRS = config src templates doc hooks
+ DIST_SUBDIRS = config src templates doc hooks
+ EXTRA_DIST = \
+@@ -23,6 +24,9 @@ endif
+ pcdatadir = $(libdir)/pkgconfig
+ pcdata_DATA = lxc.pc
+ 
++libtool: $(LIBTOOL_DEPS)
++	$(SHELL) ./config.status libtool
++
+ install-data-local:
+ 	$(MKDIR_P) $(DESTDIR)$(LXCPATH)
+ 	$(MKDIR_P) $(DESTDIR)$(localstatedir)/cache/lxc
+diff --git a/autogen.sh b/autogen.sh
+index ca71ac5..4e9f1d8 100755
+--- a/autogen.sh
++++ b/autogen.sh
+@@ -24,6 +24,7 @@
+ set -x
+ 
+ test -d autom4te.cache && rm -rf autom4te.cache
++libtoolize || exit 1
+ aclocal -I config || exit 1
+ autoheader || exit 1
+ autoconf || exit 1
+diff --git a/configure.ac b/configure.ac
+index 0c0a211..287e5d6 100644
+--- a/configure.ac
++++ b/configure.ac
+@@ -6,7 +6,11 @@ m4_define([lxc_version_major], 2)
+ m4_define([lxc_version_minor], 0)
+ m4_define([lxc_version_micro], 5)
+ m4_define([lxc_version_beta], [])
+-m4_define([lxc_version_abi], 1.2.0)
++
++m4_define([lxc_abi_major], 1)
++m4_define([lxc_abi_minor], 2)
++m4_define([lxc_abi_micro], 0)
++m4_define([lxc_abi], [lxc_abi_major.lxc_abi_minor.lxc_abi_micro])
+ 
+ m4_define([lxc_version_base], [lxc_version_major.lxc_version_minor.lxc_version_micro])
+ m4_define([lxc_version],
+@@ -23,10 +27,14 @@ AC_SUBST(LXC_VERSION_BETA, lxc_version_beta)
+ AC_SUBST([LXC_VERSION_MAJOR], [lxc_version_major])
+ AC_SUBST([LXC_VERSION_MINOR], [lxc_version_minor])
+ AC_SUBST([LXC_VERSION_MICRO], [lxc_version_micro])
+-AC_SUBST([LXC_VERSION_ABI], [lxc_version_abi])
+ AC_SUBST([LXC_VERSION], [lxc_version])
+ AC_SUBST([LXC_DEVEL], [lxc_devel])
+ 
++AC_SUBST([LXC_ABI_MAJOR], [lxc_abi_major])
++AC_SUBST([LXC_ABI_MINOR], [lxc_abi_minor])
++AC_SUBST([LXC_ABI_MICRO], [lxc_abi_micro])
++AC_SUBST([LXC_ABI], [lxc_abi])
++
+ AC_CONFIG_SRCDIR([configure.ac])
+ AC_CONFIG_AUX_DIR([config])
+ AC_CONFIG_HEADERS([src/config.h])
+@@ -35,6 +43,10 @@ AC_CANONICAL_HOST
+ AM_PROG_CC_C_O
+ AC_GNU_SOURCE
+ 
++# libtool
++LT_INIT
++AC_SUBST([LIBTOOL_DEPS])
++
+ # Detect the distribution. This is used for the default configuration and
+ # for some distro-specific build options.
+ AC_MSG_CHECKING([host distribution])
+diff --git a/src/lua-lxc/Makefile.am b/src/lua-lxc/Makefile.am
+index 9b73df1..348de8d 100644
+--- a/src/lua-lxc/Makefile.am
++++ b/src/lua-lxc/Makefile.am
+@@ -7,20 +7,27 @@ sodir=$(lualibdir)/lxc
+ 
+ lua_DATA=lxc.lua
+ 
+-so_PROGRAMS = core.so
+-
+-core_so_SOURCES = core.c
++lib_LTLIBRARIES = libcore.la
++libcore_la_SOURCES = core.c
+ 
+ AM_CFLAGS=-I$(top_builddir)/src -I$(top_srcdir)/src $(LUA_CFLAGS) -DVERSION=\"$(VERSION)\" -DLXCPATH=\"$(LXCPATH)\"
+ 
+-core_so_CFLAGS = -fPIC -DPIC $(AM_CFLAGS)
++libcore_la_CFLAGS = -fPIC -DPIC $(AM_CFLAGS)
+ 
+-core_so_LDFLAGS = \
++libcore_la_LDFLAGS = \
+ 	-shared \
+ 	-L$(top_builddir)/src/lxc \
+ 	-Wl,-soname,core.so.$(firstword $(subst ., ,$(VERSION)))
+ 
+-core_so_LDADD = -llxc
++libcore_la_LIBADD = -llxc
++
++install-exec-local: install-libLTLIBRARIES
++	mkdir -p $(DESTDIR)$(lualibdir)/lxc/
++	mv $(DESTDIR)$(libdir)/libcore.so.0.0.0 $(DESTDIR)$(lualibdir)/lxc/core.so
++	rm $(DESTDIR)$(libdir)/libcore.*
++
++uninstall-local:
++	$(RM) $(DESTDIR)$(lualibdir)/lxc/core.so*
+ 
+ lxc.lua:
+ 
+diff --git a/src/lxc/Makefile.am b/src/lxc/Makefile.am
+index c38320f..8138a56 100644
+--- a/src/lxc/Makefile.am
++++ b/src/lxc/Makefile.am
+@@ -53,8 +53,6 @@ noinst_HEADERS += ../include/getsubopt.h
+ endif
+ 
+ sodir=$(libdir)
+-# use PROGRAMS to avoid complains from automake
+-so_PROGRAMS = liblxc.so
+ 
+ LSM_SOURCES = \
+ 	lsm/nop.c \
+@@ -68,7 +66,8 @@ if ENABLE_SELINUX
+ LSM_SOURCES += lsm/selinux.c
+ endif
+ 
+-liblxc_so_SOURCES = \
++lib_LTLIBRARIES = liblxc.la
++liblxc_la_SOURCES = \
+ 	arguments.c arguments.h \
+ 	bdev/bdev.c bdev/bdev.h \
+ 	bdev/lxcaufs.c bdev/lxcaufs.h \
+@@ -123,11 +122,11 @@ liblxc_so_SOURCES = \
+ 	$(LSM_SOURCES)
+ 
+ if ENABLE_CGMANAGER
+-liblxc_so_SOURCES += cgroups/cgmanager.c
++liblxc_la_SOURCES += cgroups/cgmanager.c
+ endif
+ 
+ if IS_BIONIC
+-liblxc_so_SOURCES += \
++liblxc_la_SOURCES += \
+ 	../include/ifaddrs.c ../include/ifaddrs.h \
+ 	../include/openpty.c ../include/openpty.h \
+ 	../include/lxcmntent.c ../include/lxcmntent.h
+@@ -135,7 +134,7 @@ endif
+ 
+ if !HAVE_GETLINE
+ if HAVE_FGETLN
+-liblxc_so_SOURCES += ../include/getline.c ../include/getline.h
++liblxc_la_SOURCES += ../include/getline.c ../include/getline.h
+ endif
+ endif
+ 
+@@ -176,21 +175,22 @@ endif
+ 
+ if ENABLE_SECCOMP
+ AM_CFLAGS += -DHAVE_SECCOMP $(SECCOMP_CFLAGS)
+-liblxc_so_SOURCES += seccomp.c
++liblxc_la_SOURCES += seccomp.c
+ endif
+ 
+-liblxc_so_CFLAGS = -fPIC -DPIC $(AM_CFLAGS) -pthread
++liblxc_la_CFLAGS = -fPIC -DPIC $(AM_CFLAGS) -pthread
+ 
+-liblxc_so_LDFLAGS = \
++liblxc_la_LDFLAGS = \
+ 	-pthread \
+ 	-shared \
+-	-Wl,-soname,liblxc.so.$(firstword $(subst ., ,@LXC_VERSION_ABI@))
++	-Wl,-soname,liblxc.so.$(firstword $(subst ., ,@LXC_ABI@)) \
++	-version-info @LXC_ABI_MAJOR@
+ 
+-liblxc_so_LDADD = $(CAP_LIBS) $(APPARMOR_LIBS) $(SELINUX_LIBS) $(SECCOMP_LIBS)
++liblxc_la_LIBADD = $(CAP_LIBS) $(APPARMOR_LIBS) $(SELINUX_LIBS) $(SECCOMP_LIBS)
+ 
+ if ENABLE_CGMANAGER
+-liblxc_so_LDADD += $(CGMANAGER_LIBS) $(DBUS_LIBS) $(NIH_LIBS) $(NIH_DBUS_LIBS)
+-liblxc_so_CFLAGS += $(CGMANAGER_CFLAGS) $(DBUS_CFLAGS) $(NIH_CFLAGS) $(NIH_DBUS_CFLAGS)
++liblxc_la_LIBADD += $(CGMANAGER_LIBS) $(DBUS_LIBS) $(NIH_LIBS) $(NIH_DBUS_LIBS)
++liblxc_la_CFLAGS += $(CGMANAGER_CFLAGS) $(DBUS_CFLAGS) $(NIH_CFLAGS) $(NIH_DBUS_CFLAGS)
+ endif
+ 
+ bin_SCRIPTS = tools/lxc-checkconfig
+@@ -242,7 +242,7 @@ AM_LDFLAGS = -Wl,-E
+ if ENABLE_RPATH
+ AM_LDFLAGS += -Wl,-rpath -Wl,$(libdir)
+ endif
+-LDADD=liblxc.so @CAP_LIBS@ @APPARMOR_LIBS@ @SELINUX_LIBS@ @SECCOMP_LIBS@
++LDADD=liblxc.la @CAP_LIBS@ @APPARMOR_LIBS@ @SELINUX_LIBS@ @SECCOMP_LIBS@
+ 
+ lxc_attach_SOURCES = tools/lxc_attach.c
+ lxc_autostart_SOURCES = tools/lxc_autostart.c
+@@ -295,13 +295,14 @@ init_lxc_static_LDADD = @CAP_LIBS@
+ init_lxc_static_CFLAGS = $(AM_CFLAGS) -DNO_LXC_CONF
+ endif
+ 
+-install-exec-local: install-soPROGRAMS
++install-exec-local: install-libLTLIBRARIES
+ 	mkdir -p $(DESTDIR)$(datadir)/lxc
+ 	install -c -m 644 lxc.functions $(DESTDIR)$(datadir)/lxc
+-	mv $(DESTDIR)$(libdir)/liblxc.so $(DESTDIR)$(libdir)/liblxc.so.@LXC_VERSION_ABI@
++	rm $(DESTDIR)$(libdir)/liblxc.so $(DESTDIR)$(libdir)/liblxc.so.1
++	mv $(DESTDIR)$(libdir)/liblxc.so.1.0.0 $(DESTDIR)$(libdir)/liblxc.so.@LXC_ABI@
+ 	cd $(DESTDIR)$(libdir); \
+-	ln -sf liblxc.so.@LXC_VERSION_ABI@ liblxc.so.$(firstword $(subst ., ,@LXC_VERSION_ABI@)); \
+-	ln -sf liblxc.so.$(firstword $(subst ., ,@LXC_VERSION_ABI@)) liblxc.so
++	ln -sf liblxc.so.@LXC_ABI@ liblxc.so.$(firstword $(subst ., ,@LXC_ABI@)); \
++	ln -sf liblxc.so.$(firstword $(subst ., ,@LXC_ABI@)) liblxc.so
+ 
+ install-exec-hook:
+ 	chmod u+s $(DESTDIR)$(libexecdir)/lxc/lxc-user-nic
+diff --git a/src/lxc/version.h.in b/src/lxc/version.h.in
+index 5a78f22..7dba0f9 100644
+--- a/src/lxc/version.h.in
++++ b/src/lxc/version.h.in
+@@ -27,7 +27,7 @@
+ #define LXC_VERSION_MAJOR @LXC_VERSION_MAJOR@
+ #define LXC_VERSION_MINOR @LXC_VERSION_MINOR@
+ #define LXC_VERSION_MICRO @LXC_VERSION_MICRO@
+-#define LXC_VERSION_ABI "@LXC_VERSION_ABI@"
++#define LXC_VERSION_ABI "@LXC_ABI@"
+ #define LXC_VERSION "@LXC_VERSION@"
+ 
+ #endif
+diff --git a/src/python-lxc/setup.py.in b/src/python-lxc/setup.py.in
+index fcb676e..80be4e3 100644
+--- a/src/python-lxc/setup.py.in
++++ b/src/python-lxc/setup.py.in
+@@ -44,9 +44,25 @@ os.chdir(srcdir)
+ module = Extension('_lxc', sources=['lxc.c'],
+                    include_dirs=[os.path.join(top_srcdir, 'src'),
+                                  os.path.join(top_builddir, 'src')],
+-                   library_dirs=[os.path.join(top_builddir, 'src/lxc')],
++                   library_dirs=[os.path.join(top_builddir, 'src/lxc/.libs/')],
+                    libraries=['lxc'])
+ 
++# Fix build when PIE is enabled
++for var in ("LDFLAGS", "CFLAGS"):
++    current = os.environ.get(var, None)
++    if not current:
++        continue
++
++    new = []
++    for flag in current.split(" "):
++        if flag.lower() in ("-pie", "-fpie"):
++            if "-fPIC" not in new:
++                new.append("-fPIC")
++            continue
++        new.append(flag)
++
++    os.environ[var] = " ".join(new)
++
+ 
+ setup(name='_lxc',
+       version='0.1',
+diff --git a/src/tests/Makefile.am b/src/tests/Makefile.am
+index cffc742..208578a 100644
+--- a/src/tests/Makefile.am
++++ b/src/tests/Makefile.am
+@@ -1,6 +1,6 @@
+ if ENABLE_TESTS
+ 
+-LDADD = ../lxc/liblxc.so
++LDADD = ../lxc/liblxc.la
+ 
+ lxc_test_containertests_SOURCES = containertests.c
+ lxc_test_locktests_SOURCES = locktests.c
