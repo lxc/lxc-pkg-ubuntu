@@ -1,3 +1,12 @@
+lxc (2.0.5-0ubuntu2) zesty; urgency=medium
+
+  * Cherry-pick bugfix from upstream:
+    - s390x: Fix seccomp handling of personalities (LP: #1635639)
+    - Setup libtool (LP: #1620313)
+  * Build-depend on dpkg-dev (>= 1.16.1~) | hardening-wrapper. LP: #1620313.
+
+ -- Stéphane Graber <stgraber@ubuntu.com>  Fri, 21 Oct 2016 13:44:19 -0400
+
 lxc (2.0.5-0ubuntu1) yakkety; urgency=medium
 
   * New upstream bugfix release (2.0.5):
