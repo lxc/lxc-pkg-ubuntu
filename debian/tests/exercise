@@ -56,8 +56,8 @@ for testbin in /usr/bin/lxc-test-*; do
     # Some tests can't be run standalone
     [ "$testbin" = "/usr/bin/lxc-test-may-control" ] && continue
 
-    # Skip ubuntu tests on yakkety
-    if [ "${DISTRIB_CODENAME}" = "yakkety" ]; then
+    # Skip ubuntu tests on yakkety and zesty
+    if [ "${DISTRIB_CODENAME}" = "yakkety" ] || [ "${DISTRIB_CODENAME}" = "zesty" ]; then
         [ "$testbin" = "/usr/bin/lxc-test-ubuntu" ] && \
             ignore "$STRING" && continue
     fi
