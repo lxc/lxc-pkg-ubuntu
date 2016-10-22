@@ -1,3 +1,10 @@
+lxc (2.0.5-0ubuntu3) zesty; urgency=medium
+
+  * Also skip lxc-test-ubuntu on zesty
+    (LXC still doesn't support squashfs cloud images)
+
+ -- Stéphane Graber <stgraber@ubuntu.com>  Fri, 21 Oct 2016 22:40:14 -0400
+
 lxc (2.0.5-0ubuntu2) zesty; urgency=medium
 
   * Cherry-pick bugfix from upstream:
