@@ -185,8 +185,10 @@ lxc-ls list containers\n\
 \n\
 Options :\n\
   -1, --line         show one entry per line\n\
-  -f, --fancy        column-based output\n\
-  -F, --fancy-format column-based output\n\
+  -f, --fancy        use a fancy, column-based output\n\
+  -F, --fancy-format comma separated list of columns to show in the fancy output\n\
+                     valid columns are: NAME, STATE, PID, RAM, SWAP, AUTOSTART,\n\
+                     GROUPS, INTERFACE, IPV4 and IPV6\n\
   --active           list only active containers\n\
   --running          list only running containers\n\
   --frozen           list only frozen containers\n\
@@ -457,8 +459,14 @@ static int ls_get(struct ls **m, size_t *size, const struct lxc_arguments *args,
 				goto put_and_next;
 
 			tmp = ls_get_config_item(c, "lxc.start.auto", running);
-			if (tmp)
-				l->autostart = atoi(tmp);
+			if (tmp) {
+				unsigned int astart = 0;
+				if (lxc_safe_uint(tmp, &astart) < 0)
+					WARN("Could not parse value for 'lxc.start.auto'.");
+				if (astart > 1)
+					DEBUG("Wrong value for 'lxc.start.auto = %d'.", astart);
+				l->autostart = astart == 1 ? true : false;
+			}
 			free(tmp);
 
 			if (running) {
