@@ -82,7 +82,7 @@ static const struct option my_longopts[] = {
 	{ "daemon", no_argument, 0, 'd'},
 	{ "ephemeral", no_argument, 0, 'e'},
 	{ "mount", required_argument, 0, 'm'},
-	{ "backingstore", required_argument, 0, 'B'},
+	{ "backingstorage", required_argument, 0, 'B'},
 	{ "fssize", required_argument, 0, 'L'},
 	{ "keepdata", no_argument, 0, 'D'},
 	{ "keepname", no_argument, 0, 'K'},
@@ -587,6 +587,8 @@ static int my_parser(struct lxc_arguments *args, int c, char *arg)
 			return -1;
 		break;
 	case 'B':
+		if (strcmp(arg, "overlay") == 0)
+			arg = "overlayfs";
 		args->bdevtype = arg;
 		break;
 	case 'L':

@@ -237,38 +237,25 @@ static void lxc_proc_put_context_info(struct lxc_proc_context_info *ctx)
 
 static int lxc_attach_to_ns(pid_t pid, int which)
 {
-	char path[MAXPATHLEN];
-	/* according to <http://article.gmane.org/gmane.linux.kernel.containers.lxc.devel/1429>,
-	 * the file for user namepsaces in /proc/$pid/ns will be called
-	 * 'user' once the kernel supports it
-	 */
-	static char *ns[] = { "user", "mnt", "pid", "uts", "ipc", "net", "cgroup" };
-	static int flags[] = {
-		CLONE_NEWUSER, CLONE_NEWNS, CLONE_NEWPID, CLONE_NEWUTS, CLONE_NEWIPC,
-		CLONE_NEWNET, CLONE_NEWCGROUP
-	};
-	static const int size = sizeof(ns) / sizeof(char *);
-	int fd[size];
+	int fd[LXC_NS_MAX];
 	int i, j, saved_errno;
 
 
-	snprintf(path, MAXPATHLEN, "/proc/%d/ns", pid);
-	if (access(path, X_OK)) {
+	if (access("/proc/self/ns", X_OK)) {
 		ERROR("Does this kernel version support 'attach' ?");
 		return -1;
 	}
 
-	for (i = 0; i < size; i++) {
+	for (i = 0; i < LXC_NS_MAX; i++) {
 		/* ignore if we are not supposed to attach to that
 		 * namespace
 		 */
-		if (which != -1 && !(which & flags[i])) {
+		if (which != -1 && !(which & ns_info[i].clone_flag)) {
 			fd[i] = -1;
 			continue;
 		}
 
-		snprintf(path, MAXPATHLEN, "/proc/%d/ns/%s", pid, ns[i]);
-		fd[i] = open(path, O_RDONLY | O_CLOEXEC);
+		fd[i] = lxc_preserve_ns(pid, ns_info[i].proc_name);
 		if (fd[i] < 0) {
 			saved_errno = errno;
 
@@ -279,22 +266,27 @@ static int lxc_attach_to_ns(pid_t pid, int which)
 				close(fd[j]);
 
 			errno = saved_errno;
-			SYSERROR("failed to open '%s'", path);
+			SYSERROR("failed to open namespace: '%s'.", ns_info[i].proc_name);
 			return -1;
 		}
 	}
 
-	for (i = 0; i < size; i++) {
-		if (fd[i] >= 0 && setns(fd[i], 0) != 0) {
+	for (i = 0; i < LXC_NS_MAX; i++) {
+		if (fd[i] < 0)
+			continue;
+
+		if (setns(fd[i], 0) < 0) {
 			saved_errno = errno;
 
-			for (j = i; j < size; j++)
+			for (j = i; j < LXC_NS_MAX; j++)
 				close(fd[j]);
 
 			errno = saved_errno;
-			SYSERROR("failed to set namespace '%s'", ns[i]);
+			SYSERROR("Failed to attach to namespace \"%s\".", ns_info[i].proc_name);
 			return -1;
 		}
+
+		DEBUG("Attached to namespace \"%s\".", ns_info[i].proc_name);
 
 		close(fd[i]);
 	}
@@ -1281,11 +1273,9 @@ static int attach_child_main(void* data)
 		flags = fcntl(fd, F_GETFL);
 		if (flags < 0)
 			continue;
-		if (flags & FD_CLOEXEC) {
-			if (fcntl(fd, F_SETFL, flags & ~FD_CLOEXEC) < 0) {
+		if (flags & FD_CLOEXEC)
+			if (fcntl(fd, F_SETFL, flags & ~FD_CLOEXEC) < 0)
 				SYSERROR("Unable to clear CLOEXEC from fd");
-			}
-		}
 	}
 
 	/* we're done, so we can now do whatever the user intended us to do */

@@ -4,7 +4,7 @@
 m4_define([lxc_devel], 0)
 m4_define([lxc_version_major], 2)
 m4_define([lxc_version_minor], 0)
-m4_define([lxc_version_micro], 5)
+m4_define([lxc_version_micro], 6)
 m4_define([lxc_version_beta], [])
 
 m4_define([lxc_abi_major], 1)
@@ -474,6 +474,14 @@ AC_ARG_ENABLE([bash],
 	[AC_HELP_STRING([--enable-bash], [build bash integration [default=yes]])],
 	[], [enable_bash=yes])
 AM_CONDITIONAL([ENABLE_BASH], [test "x$enable_bash" = "xyes"])
+
+AM_COND_IF([ENABLE_BASH],
+	[AC_MSG_CHECKING([bash completion directory])
+	PKG_CHECK_VAR(bashcompdir, [bash-completion], [completionsdir], ,
+		bashcompdir="${sysconfdir}/bash_completion.d")
+	AC_MSG_RESULT([$bashcompdir])
+	AC_SUBST(bashcompdir)
+	])
 
 # Optional test binaries
 AC_ARG_ENABLE([tests],

@@ -90,6 +90,11 @@ host_triplet = @host@
 subdir = config/init/upstart
 ACLOCAL_M4 = $(top_srcdir)/aclocal.m4
 am__aclocal_m4_deps = $(top_srcdir)/config/acinclude.m4 \
+	$(top_srcdir)/config/libtool.m4 \
+	$(top_srcdir)/config/ltoptions.m4 \
+	$(top_srcdir)/config/ltsugar.m4 \
+	$(top_srcdir)/config/ltversion.m4 \
+	$(top_srcdir)/config/lt~obsolete.m4 \
 	$(top_srcdir)/config/tls.m4 $(top_srcdir)/configure.ac
 am__configure_deps = $(am__aclocal_m4_deps) $(CONFIGURE_DEPENDENCIES) \
 	$(ACLOCAL_M4)
@@ -125,6 +130,7 @@ ACLOCAL = @ACLOCAL@
 AMTAR = @AMTAR@
 AM_DEFAULT_VERBOSITY = @AM_DEFAULT_VERBOSITY@
 APPARMOR_LIBS = @APPARMOR_LIBS@
+AR = @AR@
 AUTOCONF = @AUTOCONF@
 AUTOHEADER = @AUTOHEADER@
 AUTOMAKE = @AUTOMAKE@
@@ -145,12 +151,16 @@ DBUS_LIBS = @DBUS_LIBS@
 DEFAULT_CGROUP_PATTERN = @DEFAULT_CGROUP_PATTERN@
 DEFS = @DEFS@
 DEPDIR = @DEPDIR@
+DLLTOOL = @DLLTOOL@
 DOCDIR = @DOCDIR@
+DSYMUTIL = @DSYMUTIL@
+DUMPBIN = @DUMPBIN@
 ECHO_C = @ECHO_C@
 ECHO_N = @ECHO_N@
 ECHO_T = @ECHO_T@
 EGREP = @EGREP@
 EXEEXT = @EXEEXT@
+FGREP = @FGREP@
 GREP = @GREP@
 HAVE_DOXYGEN = @HAVE_DOXYGEN@
 INCLUDEDIR = @INCLUDEDIR@
@@ -159,14 +169,20 @@ INSTALL_DATA = @INSTALL_DATA@
 INSTALL_PROGRAM = @INSTALL_PROGRAM@
 INSTALL_SCRIPT = @INSTALL_SCRIPT@
 INSTALL_STRIP_PROGRAM = @INSTALL_STRIP_PROGRAM@
+LD = @LD@
 LDFLAGS = @LDFLAGS@
 LIBDIR = @LIBDIR@
 LIBEXECDIR = @LIBEXECDIR@
 LIBOBJS = @LIBOBJS@
 LIBS = @LIBS@
+LIBTOOL = @LIBTOOL@
+LIBTOOL_DEPS = @LIBTOOL_DEPS@
+LIPO = @LIPO@
+LN_S = @LN_S@
 LOCALSTATEDIR = @LOCALSTATEDIR@
 LOGPATH = @LOGPATH@
 LTLIBOBJS = @LTLIBOBJS@
+LT_SYS_LIBRARY_PATH = @LT_SYS_LIBRARY_PATH@
 LUA_CFLAGS = @LUA_CFLAGS@
 LUA_LIBDIR = @LUA_LIBDIR@
 LUA_LIBS = @LUA_LIBS@
@@ -179,6 +195,10 @@ LXCPATH = @LXCPATH@
 LXCROOTFSMOUNT = @LXCROOTFSMOUNT@
 LXCTEMPLATECONFIG = @LXCTEMPLATECONFIG@
 LXCTEMPLATEDIR = @LXCTEMPLATEDIR@
+LXC_ABI = @LXC_ABI@
+LXC_ABI_MAJOR = @LXC_ABI_MAJOR@
+LXC_ABI_MICRO = @LXC_ABI_MICRO@
+LXC_ABI_MINOR = @LXC_ABI_MINOR@
 LXC_DEFAULT_CONFIG = @LXC_DEFAULT_CONFIG@
 LXC_DEVEL = @LXC_DEVEL@
 LXC_DISTRO_SYSCONF = @LXC_DISTRO_SYSCONF@
@@ -187,19 +207,24 @@ LXC_GLOBAL_CONF = @LXC_GLOBAL_CONF@
 LXC_USERNIC_CONF = @LXC_USERNIC_CONF@
 LXC_USERNIC_DB = @LXC_USERNIC_DB@
 LXC_VERSION = @LXC_VERSION@
-LXC_VERSION_ABI = @LXC_VERSION_ABI@
 LXC_VERSION_BASE = @LXC_VERSION_BASE@
 LXC_VERSION_BETA = @LXC_VERSION_BETA@
 LXC_VERSION_MAJOR = @LXC_VERSION_MAJOR@
 LXC_VERSION_MICRO = @LXC_VERSION_MICRO@
 LXC_VERSION_MINOR = @LXC_VERSION_MINOR@
 MAKEINFO = @MAKEINFO@
+MANIFEST_TOOL = @MANIFEST_TOOL@
 MKDIR_P = @MKDIR_P@
 NIH_CFLAGS = @NIH_CFLAGS@
 NIH_DBUS_CFLAGS = @NIH_DBUS_CFLAGS@
 NIH_DBUS_LIBS = @NIH_DBUS_LIBS@
 NIH_LIBS = @NIH_LIBS@
+NM = @NM@
+NMEDIT = @NMEDIT@
+OBJDUMP = @OBJDUMP@
 OBJEXT = @OBJEXT@
+OTOOL = @OTOOL@
+OTOOL64 = @OTOOL64@
 PACKAGE = @PACKAGE@
 PACKAGE_BUGREPORT = @PACKAGE_BUGREPORT@
 PACKAGE_NAME = @PACKAGE_NAME@
@@ -219,6 +244,7 @@ PYTHON_EXEC_PREFIX = @PYTHON_EXEC_PREFIX@
 PYTHON_PLATFORM = @PYTHON_PLATFORM@
 PYTHON_PREFIX = @PYTHON_PREFIX@
 PYTHON_VERSION = @PYTHON_VERSION@
+RANLIB = @RANLIB@
 RUNTIME_PATH = @RUNTIME_PATH@
 SBINDIR = @SBINDIR@
 SECCOMP_CFLAGS = @SECCOMP_CFLAGS@
@@ -235,12 +261,15 @@ abs_builddir = @abs_builddir@
 abs_srcdir = @abs_srcdir@
 abs_top_builddir = @abs_top_builddir@
 abs_top_srcdir = @abs_top_srcdir@
+ac_ct_AR = @ac_ct_AR@
 ac_ct_CC = @ac_ct_CC@
+ac_ct_DUMPBIN = @ac_ct_DUMPBIN@
 am__include = @am__include@
 am__leading_dot = @am__leading_dot@
 am__quote = @am__quote@
 am__tar = @am__tar@
 am__untar = @am__untar@
+bashcompdir = @bashcompdir@
 bindir = @bindir@
 build = @build@
 build_alias = @build_alias@
@@ -325,6 +354,12 @@ lxc.conf: $(top_builddir)/config.status $(srcdir)/lxc.conf.in
 	cd $(top_builddir) && $(SHELL) ./config.status $(subdir)/$@
 lxc-net.conf: $(top_builddir)/config.status $(srcdir)/lxc-net.conf.in
 	cd $(top_builddir) && $(SHELL) ./config.status $(subdir)/$@
+
+mostlyclean-libtool:
+	-rm -f *.lo
+
+clean-libtool:
+	-rm -rf .libs _libs
 tags TAGS:
 
 ctags CTAGS:
@@ -396,11 +431,11 @@ distclean-generic:
 maintainer-clean-generic:
 	@echo "This command is intended for maintainers to use"
 	@echo "it deletes files that may require special tools to rebuild."
-@INIT_SCRIPT_UPSTART_FALSE@uninstall-local:
 @INIT_SCRIPT_UPSTART_FALSE@install-data-local:
+@INIT_SCRIPT_UPSTART_FALSE@uninstall-local:
 clean: clean-am
 
-clean-am: clean-generic mostlyclean-am
+clean-am: clean-generic clean-libtool mostlyclean-am
 
 distclean: distclean-am
 	-rm -f Makefile
@@ -452,7 +487,7 @@ maintainer-clean-am: distclean-am maintainer-clean-generic
 
 mostlyclean: mostlyclean-am
 
-mostlyclean-am: mostlyclean-generic
+mostlyclean-am: mostlyclean-generic mostlyclean-libtool
 
 pdf: pdf-am
 
@@ -466,16 +501,18 @@ uninstall-am: uninstall-local
 
 .MAKE: install-am install-strip
 
-.PHONY: all all-am check check-am clean clean-generic cscopelist-am \
-	ctags-am distclean distclean-generic distdir dvi dvi-am html \
-	html-am info info-am install install-am install-data \
-	install-data-am install-data-local install-dvi install-dvi-am \
-	install-exec install-exec-am install-html install-html-am \
-	install-info install-info-am install-man install-pdf \
-	install-pdf-am install-ps install-ps-am install-strip \
-	installcheck installcheck-am installdirs maintainer-clean \
-	maintainer-clean-generic mostlyclean mostlyclean-generic pdf \
-	pdf-am ps ps-am tags-am uninstall uninstall-am uninstall-local
+.PHONY: all all-am check check-am clean clean-generic clean-libtool \
+	cscopelist-am ctags-am distclean distclean-generic \
+	distclean-libtool distdir dvi dvi-am html html-am info info-am \
+	install install-am install-data install-data-am \
+	install-data-local install-dvi install-dvi-am install-exec \
+	install-exec-am install-html install-html-am install-info \
+	install-info-am install-man install-pdf install-pdf-am \
+	install-ps install-ps-am install-strip installcheck \
+	installcheck-am installdirs maintainer-clean \
+	maintainer-clean-generic mostlyclean mostlyclean-generic \
+	mostlyclean-libtool pdf pdf-am ps ps-am tags-am uninstall \
+	uninstall-am uninstall-local
 
 .PRECIOUS: Makefile
 

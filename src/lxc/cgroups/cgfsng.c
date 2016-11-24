@@ -33,21 +33,25 @@
  * under /sys/fs/cgroup/clist where clist is either the controller, or
  * a comman-separated list of controllers.
  */
+
 #include "config.h"
-#include <stdio.h>
+
+#include <ctype.h>
+#include <dirent.h>
+#include <errno.h>
+#include <grp.h>
+#include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
-#include <errno.h>
-#include <sys/types.h>
+#include <string.h>
 #include <unistd.h>
-#include <dirent.h>
-#include <grp.h>
+#include <sys/types.h>
 
 #include "bdev.h"
-#include "log.h"
 #include "cgroup.h"
-#include "utils.h"
 #include "commands.h"
+#include "log.h"
+#include "utils.h"
 
 lxc_log_define(lxc_cgfsng, lxc);
 
@@ -251,6 +255,308 @@ struct hierarchy *get_hierarchy(const char *c)
 
 static char *must_make_path(const char *first, ...) __attribute__((sentinel));
 
+#define BATCH_SIZE 50
+static void batch_realloc(char **mem, size_t oldlen, size_t newlen)
+{
+	int newbatches = (newlen / BATCH_SIZE) + 1;
+	int oldbatches = (oldlen / BATCH_SIZE) + 1;
+
+	if (!*mem || newbatches > oldbatches) {
+		*mem = must_realloc(*mem, newbatches * BATCH_SIZE);
+	}
+}
+
+static void append_line(char **dest, size_t oldlen, char *new, size_t newlen)
+{
+	size_t full = oldlen + newlen;
+
+	batch_realloc(dest, oldlen, full + 1);
+
+	memcpy(*dest + oldlen, new, newlen + 1);
+}
+
+/* Slurp in a whole file */
+static char *read_file(char *fnam)
+{
+	FILE *f;
+	char *line = NULL, *buf = NULL;
+	size_t len = 0, fulllen = 0;
+	int linelen;
+
+	f = fopen(fnam, "r");
+	if (!f)
+		return NULL;
+	while ((linelen = getline(&line, &len, f)) != -1) {
+		append_line(&buf, fulllen, line, linelen);
+		fulllen += linelen;
+	}
+	fclose(f);
+	free(line);
+	return buf;
+}
+
+/* Taken over modified from the kernel sources. */
+#define NBITS 32 /* bits in uint32_t */
+#define DIV_ROUND_UP(n, d) (((n) + (d)-1) / (d))
+#define BITS_TO_LONGS(nr) DIV_ROUND_UP(nr, NBITS)
+
+static void set_bit(unsigned bit, uint32_t *bitarr)
+{
+	bitarr[bit / NBITS] |= (1 << (bit % NBITS));
+}
+
+static void clear_bit(unsigned bit, uint32_t *bitarr)
+{
+	bitarr[bit / NBITS] &= ~(1 << (bit % NBITS));
+}
+
+static bool is_set(unsigned bit, uint32_t *bitarr)
+{
+	return (bitarr[bit / NBITS] & (1 << (bit % NBITS))) != 0;
+}
+
+/* Create cpumask from cpulist aka turn:
+ *
+ *	0,2-3
+ *
+ *  into bit array
+ *
+ *	1 0 1 1
+ */
+static uint32_t *lxc_cpumask(char *buf, size_t nbits)
+{
+	char *token;
+	char *saveptr = NULL;
+	size_t arrlen = BITS_TO_LONGS(nbits);
+	uint32_t *bitarr = calloc(arrlen, sizeof(uint32_t));
+	if (!bitarr)
+		return NULL;
+
+	for (; (token = strtok_r(buf, ",", &saveptr)); buf = NULL) {
+		errno = 0;
+		unsigned start = strtoul(token, NULL, 0);
+		unsigned end = start;
+
+		char *range = strchr(token, '-');
+		if (range)
+			end = strtoul(range + 1, NULL, 0);
+		if (!(start <= end)) {
+			free(bitarr);
+			return NULL;
+		}
+
+		if (end >= nbits) {
+			free(bitarr);
+			return NULL;
+		}
+
+		while (start <= end)
+			set_bit(start++, bitarr);
+	}
+
+	return bitarr;
+}
+
+/* The largest integer that can fit into long int is 2^64. This is a
+ * 20-digit number.
+ */
+#define __IN_TO_STR_LEN 21
+/* Turn cpumask into simple, comma-separated cpulist. */
+static char *lxc_cpumask_to_cpulist(uint32_t *bitarr, size_t nbits)
+{
+	size_t i;
+	int ret;
+	char numstr[__IN_TO_STR_LEN] = {0};
+	char **cpulist = NULL;
+
+	for (i = 0; i <= nbits; i++) {
+		if (is_set(i, bitarr)) {
+			ret = snprintf(numstr, __IN_TO_STR_LEN, "%zu", i);
+			if (ret < 0 || (size_t)ret >= __IN_TO_STR_LEN) {
+				lxc_free_array((void **)cpulist, free);
+				return NULL;
+			}
+			if (lxc_append_string(&cpulist, numstr) < 0) {
+				lxc_free_array((void **)cpulist, free);
+				return NULL;
+			}
+		}
+	}
+	return lxc_string_join(",", (const char **)cpulist, false);
+}
+
+static ssize_t get_max_cpus(char *cpulist)
+{
+	char *c1, *c2;
+	char *maxcpus = cpulist;
+	size_t cpus = 0;
+
+	c1 = strrchr(maxcpus, ',');
+	if (c1)
+		c1++;
+
+	c2 = strrchr(maxcpus, '-');
+	if (c2)
+		c2++;
+
+	if (!c1 && !c2)
+		c1 = maxcpus;
+	else if (c1 > c2)
+		c2 = c1;
+	else if (c1 < c2)
+		c1 = c2;
+	else if (!c1 && c2) // The reverse case is obvs. not needed.
+		c1 = c2;
+
+	/* If the above logic is correct, c1 should always hold a valid string
+	 * here.
+	 */
+
+	errno = 0;
+	cpus = strtoul(c1, NULL, 0);
+	if (errno != 0)
+		return -1;
+
+	return cpus;
+}
+
+#define __ISOL_CPUS "/sys/devices/system/cpu/isolated"
+static bool filter_and_set_cpus(char *path, bool am_initialized)
+{
+	char *lastslash, *fpath, oldv;
+	int ret;
+	ssize_t i;
+
+	ssize_t maxposs = 0, maxisol = 0;
+	char *cpulist = NULL, *posscpus = NULL, *isolcpus = NULL;
+	uint32_t *possmask = NULL, *isolmask = NULL;
+	bool bret = false, flipped_bit = false;
+
+	lastslash = strrchr(path, '/');
+	if (!lastslash) { // bug...  this shouldn't be possible
+		ERROR("Invalid path: %s.", path);
+		return bret;
+	}
+	oldv = *lastslash;
+	*lastslash = '\0';
+	fpath = must_make_path(path, "cpuset.cpus", NULL);
+	posscpus = read_file(fpath);
+	if (!posscpus) {
+		SYSERROR("Could not read file: %s.\n", fpath);
+		goto on_error;
+	}
+
+	/* Get maximum number of cpus found in possible cpuset. */
+	maxposs = get_max_cpus(posscpus);
+	if (maxposs < 0)
+		goto on_error;
+
+	if (!file_exists(__ISOL_CPUS)) {
+		/* This system doesn't expose isolated cpus. */
+		DEBUG("Path: "__ISOL_CPUS" to read isolated cpus from does not exist.\n");
+		cpulist = posscpus;
+		/* No isolated cpus but we weren't already initialized by
+		 * someone. We should simply copy the parents cpuset.cpus
+		 * values.
+		 */
+		if (!am_initialized) {
+			DEBUG("Copying cpuset of parent cgroup.");
+			goto copy_parent;
+		}
+		/* No isolated cpus but we were already initialized by someone.
+		 * Nothing more to do for us.
+		 */
+		goto on_success;
+	}
+
+	isolcpus = read_file(__ISOL_CPUS);
+	if (!isolcpus) {
+		SYSERROR("Could not read file "__ISOL_CPUS);
+		goto on_error;
+	}
+	if (!isdigit(isolcpus[0])) {
+		DEBUG("No isolated cpus detected.");
+		cpulist = posscpus;
+		/* No isolated cpus but we weren't already initialized by
+		 * someone. We should simply copy the parents cpuset.cpus
+		 * values.
+		 */
+		if (!am_initialized) {
+			DEBUG("Copying cpuset of parent cgroup.");
+			goto copy_parent;
+		}
+		/* No isolated cpus but we were already initialized by someone.
+		 * Nothing more to do for us.
+		 */
+		goto on_success;
+	}
+
+	/* Get maximum number of cpus found in isolated cpuset. */
+	maxisol = get_max_cpus(isolcpus);
+	if (maxisol < 0)
+		goto on_error;
+
+	if (maxposs < maxisol)
+		maxposs = maxisol;
+	maxposs++;
+
+	possmask = lxc_cpumask(posscpus, maxposs);
+	if (!possmask) {
+		ERROR("Could not create cpumask for all possible cpus.\n");
+		goto on_error;
+	}
+
+	isolmask = lxc_cpumask(isolcpus, maxposs);
+	if (!isolmask) {
+		ERROR("Could not create cpumask for all isolated cpus.\n");
+		goto on_error;
+	}
+
+	for (i = 0; i <= maxposs; i++) {
+		if (is_set(i, isolmask) && is_set(i, possmask)) {
+			flipped_bit = true;
+			clear_bit(i, possmask);
+		}
+	}
+
+	if (!flipped_bit) {
+		DEBUG("No isolated cpus present in cpuset.");
+		goto on_success;
+	}
+	DEBUG("Removed isolated cpus from cpuset.");
+
+	cpulist = lxc_cpumask_to_cpulist(possmask, maxposs);
+	if (!cpulist) {
+		ERROR("Could not create cpu list.\n");
+		goto on_error;
+	}
+
+copy_parent:
+	*lastslash = oldv;
+	fpath = must_make_path(path, "cpuset.cpus", NULL);
+	ret = lxc_write_to_file(fpath, cpulist, strlen(cpulist), false);
+	if (ret < 0) {
+		SYSERROR("Could not write cpu list to: %s.\n", fpath);
+		goto on_error;
+	}
+
+on_success:
+	bret = true;
+
+on_error:
+	free(fpath);
+
+	free(isolcpus);
+	free(isolmask);
+
+	if (posscpus != cpulist)
+		free(posscpus);
+	free(possmask);
+
+	free(cpulist);
+	return bret;
+}
+
 /* Copy contents of parent(@path)/@file to @path/@file */
 static bool copy_parent_file(char *path, char *file)
 {
@@ -295,7 +601,7 @@ bad:
  * Since the h->base_path is populated by init or ourselves, we know
  * it is already initialized.
  */
-bool handle_cpuset_hierarchy(struct hierarchy *h, char *cgname)
+static bool handle_cpuset_hierarchy(struct hierarchy *h, char *cgname)
 {
 	char *cgpath, *clonechildrenpath, v, *slash;
 
@@ -316,6 +622,7 @@ bool handle_cpuset_hierarchy(struct hierarchy *h, char *cgname)
 		free(cgpath);
 		return false;
 	}
+
 	clonechildrenpath = must_make_path(cgpath, "cgroup.clone_children", NULL);
 	if (!file_exists(clonechildrenpath)) { /* unified hierarchy doesn't have clone_children */
 		free(clonechildrenpath);
@@ -329,15 +636,24 @@ bool handle_cpuset_hierarchy(struct hierarchy *h, char *cgname)
 		return false;
 	}
 
+	/* Make sure any isolated cpus are removed from cpuset.cpus. */
+	if (!filter_and_set_cpus(cgpath, v == '1')) {
+		SYSERROR("Failed to remove isolated cpus.");
+		free(clonechildrenpath);
+		free(cgpath);
+		return false;
+	}
+
 	if (v == '1') {  /* already set for us by someone else */
+		DEBUG("\"cgroup.clone_children\" was already set to \"1\".");
 		free(clonechildrenpath);
 		free(cgpath);
 		return true;
 	}
 
 	/* copy parent's settings */
-	if (!copy_parent_file(cgpath, "cpuset.cpus") ||
-			!copy_parent_file(cgpath, "cpuset.mems")) {
+	if (!copy_parent_file(cgpath, "cpuset.mems")) {
+		SYSERROR("Failed to copy \"cpuset.mems\" settings.");
 		free(cgpath);
 		free(clonechildrenpath);
 		return false;
@@ -605,46 +921,6 @@ static char *get_current_cgroup(char *basecginfo, char *controller)
 	}
 }
 
-#define BATCH_SIZE 50
-static void batch_realloc(char **mem, size_t oldlen, size_t newlen)
-{
-	int newbatches = (newlen / BATCH_SIZE) + 1;
-	int oldbatches = (oldlen / BATCH_SIZE) + 1;
-
-	if (!*mem || newbatches > oldbatches) {
-		*mem = must_realloc(*mem, newbatches * BATCH_SIZE);
-	}
-}
-
-static void append_line(char **dest, size_t oldlen, char *new, size_t newlen)
-{
-	size_t full = oldlen + newlen;
-
-	batch_realloc(dest, oldlen, full + 1);
-
-	memcpy(*dest + oldlen, new, newlen + 1);
-}
-
-/* Slurp in a whole file */
-static char *read_file(char *fnam)
-{
-	FILE *f;
-	char *line = NULL, *buf = NULL;
-	size_t len = 0, fulllen = 0;
-	int linelen;
-
-	f = fopen(fnam, "r");
-	if (!f)
-		return NULL;
-	while ((linelen = getline(&line, &len, f)) != -1) {
-		append_line(&buf, fulllen, line, linelen);
-		fulllen += linelen;
-	}
-	fclose(f);
-	free(line);
-	return buf;
-}
-
 /*
  * Given a hierarchy @mountpoint and base @path, verify that we can create
  * directories underneath it.
@@ -686,6 +962,18 @@ static void get_existing_subsystems(char ***klist, char ***nlist)
 		if (!p2)
 			continue;
 		*p2 = '\0';
+
+		/* If we have a mixture between cgroup v1 and cgroup v2
+		 * hierarchies, then /proc/self/cgroup contains entries of the
+		 * form:
+		 *
+		 *	0::/some/path
+		 *
+		 * We need to skip those.
+		 */
+		if ((p2 - p) == 0)
+			continue;
+
 		for (tok = strtok_r(p, ",", &saveptr); tok;
 				tok = strtok_r(NULL, ",", &saveptr)) {
 			if (strncmp(tok, "name=", 5) == 0)
@@ -708,44 +996,47 @@ static void trim(char *s)
 
 static void print_init_debuginfo(struct cgfsng_handler_data *d)
 {
+	struct hierarchy **it;
 	int i;
 
 	if (!getenv("LXC_DEBUG_CGFSNG"))
 		return;
 
-	printf("Cgroup information:\n");
-	printf("  container name: %s\n", d->name);
-	printf("  lxc.cgroup.use: %s\n", cgroup_use ? cgroup_use : "(none)");
-	printf("  lxc.cgroup.pattern: %s\n", d->cgroup_pattern);
-	printf("  cgroup: %s\n", d->container_cgroup ? d->container_cgroup : "(none)");
+	DEBUG("Cgroup information:");
+	DEBUG("  container name: %s", d->name ? d->name : "(null)");
+	DEBUG("  lxc.cgroup.use: %s", cgroup_use ? cgroup_use : "(null)");
+	DEBUG("  lxc.cgroup.pattern: %s", d->cgroup_pattern ? d->cgroup_pattern : "(null)");
+	DEBUG("  cgroup: %s", d->container_cgroup ? d->container_cgroup : "(null)");
 	if (!hierarchies) {
-		printf("  No hierarchies found.\n");
+		DEBUG("  No hierarchies found.");
 		return;
 	}
-	printf("  Hierarchies:\n");
-	for (i = 0; hierarchies[i]; i++) {
-		struct hierarchy *h = hierarchies[i];
+	DEBUG("  Hierarchies:");
+	for (i = 0, it = hierarchies; it && *it; it++, i++) {
+		char **cit;
 		int j;
-		printf("  %d: base_cgroup %s\n", i, h->base_cgroup);
-		printf("      mountpoint %s\n", h->mountpoint);
-		printf("      controllers:\n");
-		for (j = 0; h->controllers[j]; j++)
-			printf("     %d: %s\n", j, h->controllers[j]);
+		DEBUG("  %d: base_cgroup %s", i, (*it)->base_cgroup ? (*it)->base_cgroup : "(null)");
+		DEBUG("      mountpoint %s", (*it)->mountpoint ? (*it)->mountpoint : "(null)");
+		DEBUG("      controllers:");
+		for (j = 0, cit = (*it)->controllers; cit && *cit; cit++, j++)
+			DEBUG("      %d: %s", j, *cit);
 	}
 }
 
 static void print_basecg_debuginfo(char *basecginfo, char **klist, char **nlist)
 {
 	int k;
+	char **it;
 	if (!getenv("LXC_DEBUG_CGFSNG"))
 		return;
 
-	printf("basecginfo is %s\n", basecginfo);
+	printf("basecginfo is:\n");
+	printf("%s\n", basecginfo);
 
-	for (k = 0; klist[k]; k++)
-		printf("kernel subsystem %d: %s\n", k, klist[k]);
-	for (k = 0; nlist[k]; k++)
-		printf("named subsystem %d: %s\n", k, nlist[k]);
+	for (k = 0, it = klist; it && *it; it++, k++)
+		printf("kernel subsystem %d: %s\n", k, *it);
+	for (k = 0, it = nlist; it && *it; it++, k++)
+		printf("named subsystem %d: %s\n", k, *it);
 }
 
 /*
@@ -1015,10 +1306,14 @@ struct cgroup_ops *cgfsng_ops_init(void)
 static bool create_path_for_hierarchy(struct hierarchy *h, char *cgname)
 {
 	h->fullcgpath = must_make_path(h->mountpoint, h->base_cgroup, cgname, NULL);
-	if (dir_exists(h->fullcgpath)) // it must not already exist
+	if (dir_exists(h->fullcgpath)) { // it must not already exist
+		ERROR("Path \"%s\" already existed.", h->fullcgpath);
 		return false;
-	if (!handle_cpuset_hierarchy(h, cgname))
+	}
+	if (!handle_cpuset_hierarchy(h, cgname)) {
+		ERROR("Failed to handle cgroupfs v1 cpuset controller.");
 		return false;
+	}
 	return mkdir_p(h->fullcgpath, 0755) == 0;
 }
 

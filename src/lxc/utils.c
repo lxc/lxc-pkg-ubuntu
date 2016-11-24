@@ -1158,36 +1158,40 @@ bool switch_to_ns(pid_t pid, const char *ns) {
  * IIUC, so long as we've chrooted so that rootfs is not our root,
  * the rootfs entry should always be skipped in mountinfo contents.
  */
-int detect_ramfs_rootfs(void)
+bool detect_ramfs_rootfs(void)
 {
-	char buf[LINELEN], *p;
 	FILE *f;
+	char *p, *p2;
+	char *line = NULL;
+	size_t len = 0;
 	int i;
-	char *p2;
 
 	f = fopen("/proc/self/mountinfo", "r");
 	if (!f)
-		return 0;
-	while (fgets(buf, LINELEN, f)) {
-		for (p = buf, i=0; p && i < 4; i++)
-			p = strchr(p+1, ' ');
+		return false;
+
+	while (getline(&line, &len, f) != -1) {
+		for (p = line, i = 0; p && i < 4; i++)
+			p = strchr(p + 1, ' ');
 		if (!p)
 			continue;
-		p2 = strchr(p+1, ' ');
+		p2 = strchr(p + 1, ' ');
 		if (!p2)
 			continue;
 		*p2 = '\0';
-		if (strcmp(p+1, "/") == 0) {
+		if (strcmp(p + 1, "/") == 0) {
 			// this is '/'.  is it the ramfs?
-			p = strchr(p2+1, '-');
+			p = strchr(p2 + 1, '-');
 			if (p && strncmp(p, "- rootfs rootfs ", 16) == 0) {
+				free(line);
 				fclose(f);
-				return 1;
+				return true;
 			}
 		}
 	}
+	free(line);
 	fclose(f);
-	return 0;
+	return false;
 }
 
 char *on_path(char *cmd, const char *rootfs) {
@@ -1762,7 +1766,7 @@ int mount_proc_if_needed(const char *rootfs)
 {
 	char path[MAXPATHLEN];
 	char link[20];
-	int linklen, ret;
+	int link_to_pid, linklen, ret;
 	int mypid;
 
 	ret = snprintf(path, MAXPATHLEN, "%s/proc/self", rootfs);
@@ -1781,7 +1785,9 @@ int mount_proc_if_needed(const char *rootfs)
 	}
 	if (linklen < 0) /* /proc not mounted */
 		goto domount;
-	if (atoi(link) != mypid) {
+	if (lxc_safe_int(link, &link_to_pid) < 0)
+		return -1;
+	if (link_to_pid != mypid) {
 		/* wrong /procs mounted */
 		umount2(path, MNT_DETACH); /* ignore failure */
 		goto domount;
@@ -1925,4 +1931,122 @@ out:
 	free(line);
 	fclose(f);
 	return bret;
+}
+
+static int lxc_append_null_to_list(void ***list)
+{
+	int newentry = 0;
+	void **tmp;
+
+	if (*list)
+		for (; (*list)[newentry]; newentry++) {
+			;
+		}
+
+	tmp = realloc(*list, (newentry + 2) * sizeof(void **));
+	if (!tmp)
+		return -1;
+
+	*list = tmp;
+	(*list)[newentry + 1] = NULL;
+
+	return newentry;
+}
+
+int lxc_append_string(char ***list, char *entry)
+{
+	char *copy;
+	int newentry;
+
+	newentry = lxc_append_null_to_list((void ***)list);
+	if (newentry < 0)
+		return -1;
+
+	copy = strdup(entry);
+	if (!copy)
+		return -1;
+
+	(*list)[newentry] = copy;
+
+	return 0;
+}
+
+int lxc_preserve_ns(const int pid, const char *ns)
+{
+	int ret;
+/* 5 /proc + 21 /int_as_str + 3 /ns + 20 /NS_NAME + 1 \0 */
+#define __NS_PATH_LEN 50
+	char path[__NS_PATH_LEN];
+
+	/* This way we can use this function to also check whether namespaces
+	 * are supported by the kernel by passing in the NULL or the empty
+	 * string.
+	 */
+	ret = snprintf(path, __NS_PATH_LEN, "/proc/%d/ns%s%s", pid,
+		       !ns || strcmp(ns, "") == 0 ? "" : "/",
+		       !ns || strcmp(ns, "") == 0 ? "" : ns);
+	if (ret < 0 || (size_t)ret >= __NS_PATH_LEN)
+		return -1;
+
+	return open(path, O_RDONLY | O_CLOEXEC);
+}
+
+int lxc_safe_uint(const char *numstr, unsigned int *converted)
+{
+	char *err = NULL;
+	unsigned long int uli;
+
+	errno = 0;
+	uli = strtoul(numstr, &err, 0);
+	if (errno > 0)
+		return -errno;
+
+	if (!err || err == numstr || *err != '\0')
+		return -EINVAL;
+
+	if (uli > UINT_MAX)
+		return -ERANGE;
+
+	*converted = (unsigned int)uli;
+	return 0;
+}
+
+int lxc_safe_int(const char *numstr, int *converted)
+{
+	char *err = NULL;
+	signed long int sli;
+
+	errno = 0;
+	sli = strtol(numstr, &err, 0);
+	if (errno > 0)
+		return -errno;
+
+	if (!err || err == numstr || *err != '\0')
+		return -EINVAL;
+
+	if (sli > INT_MAX)
+		return -ERANGE;
+
+	*converted = (int)sli;
+	return 0;
+}
+
+int lxc_safe_long(const char *numstr, long int *converted)
+{
+	char *err = NULL;
+	signed long int sli;
+
+	errno = 0;
+	sli = strtol(numstr, &err, 0);
+	if (errno > 0)
+		return -errno;
+
+	if (!err || err == numstr || *err != '\0')
+		return -EINVAL;
+
+	if (sli > LONG_MAX)
+		return -ERANGE;
+
+	*converted = sli;
+	return 0;
 }
