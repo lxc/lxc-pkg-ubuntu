@@ -1,3 +1,4 @@
 0001-Allocate-new-lxcbr0-subnet-at-startup-time.patch
 0002-s390x-Fix-seccomp-handling-of-personalities.patch
 0003-Use-libtool-for-liblxc.so.patch
+0004-attach-do-not-send-procfd-to-attached-process.patch
