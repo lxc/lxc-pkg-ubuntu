@@ -1958,7 +1958,7 @@ FILE *write_mount_file(struct lxc_list *mount)
 
 	file = tmpfile();
 	if (!file) {
-		ERROR("tmpfile error: %m");
+		ERROR("Could not create temporary file: %s.", strerror(errno));
 		return NULL;
 	}
 
@@ -2397,24 +2397,22 @@ static int setup_network(struct lxc_list *network)
 }
 
 /* try to move physical nics to the init netns */
-void restore_phys_nics_to_netns(int netnsfd, struct lxc_conf *conf)
+void lxc_restore_phys_nics_to_netns(int netnsfd, struct lxc_conf *conf)
 {
-	int i, ret, oldfd;
-	char path[MAXPATHLEN];
+	int i, oldfd;
 	char ifname[IFNAMSIZ];
 
-	if (netnsfd < 0)
+	if (netnsfd < 0 || conf->num_savednics == 0)
 		return;
 
-	ret = snprintf(path, MAXPATHLEN, "/proc/self/ns/net");
-	if (ret < 0 || ret >= MAXPATHLEN) {
-		WARN("Failed to open monitor netns fd");
+	INFO("Running to reset %d nic names.", conf->num_savednics);
+
+	oldfd = lxc_preserve_ns(getpid(), "net");
+	if (oldfd < 0) {
+		SYSERROR("Failed to open monitor netns fd.");
 		return;
 	}
-	if ((oldfd = open(path, O_RDONLY)) < 0) {
-		SYSERROR("Failed to open monitor netns fd");
-		return;
-	}
+
 	if (setns(netnsfd, 0) != 0) {
 		SYSERROR("Failed to enter container netns to reset nics");
 		close(oldfd);
@@ -2427,30 +2425,15 @@ void restore_phys_nics_to_netns(int netnsfd, struct lxc_conf *conf)
 			WARN("no interface corresponding to index '%d'", s->ifindex);
 			continue;
 		}
-		if (lxc_netdev_move_by_name(ifname, 1, NULL))
+		if (lxc_netdev_move_by_name(ifname, 1, s->orig_name))
 			WARN("Error moving nic name:%s back to host netns", ifname);
-	}
-	if (setns(oldfd, 0) != 0)
-		SYSERROR("Failed to re-enter monitor's netns");
-	close(oldfd);
-}
-
-void lxc_rename_phys_nics_on_shutdown(int netnsfd, struct lxc_conf *conf)
-{
-	int i;
-
-	if (conf->num_savednics == 0)
-		return;
-
-	INFO("running to reset %d nic names", conf->num_savednics);
-	restore_phys_nics_to_netns(netnsfd, conf);
-	for (i=0; i<conf->num_savednics; i++) {
-		struct saved_nic *s = &conf->saved_nics[i];
-		INFO("resetting nic %d to %s", s->ifindex, s->orig_name);
-		lxc_netdev_rename_by_index(s->ifindex, s->orig_name);
 		free(s->orig_name);
 	}
 	conf->num_savednics = 0;
+
+	if (setns(oldfd, 0) != 0)
+		SYSERROR("Failed to re-enter monitor's netns");
+	close(oldfd);
 }
 
 static char *default_rootfs_mount = LXCROOTFSMOUNT;
@@ -2521,7 +2504,8 @@ static int instantiate_veth(struct lxc_handler *handler, struct lxc_netdev *netd
 {
 	char veth1buf[IFNAMSIZ], *veth1;
 	char veth2buf[IFNAMSIZ], *veth2;
-	int bridge_index, err, mtu = 0;
+	int bridge_index, err;
+	unsigned int mtu = 0;
 
 	if (netdev->priv.veth_attr.pair) {
 		veth1 = netdev->priv.veth_attr.pair;
@@ -2573,8 +2557,10 @@ static int instantiate_veth(struct lxc_handler *handler, struct lxc_netdev *netd
 	}
 
 	if (netdev->mtu) {
-		mtu = atoi(netdev->mtu);
-		INFO("Retrieved mtu %d", mtu);
+		if (lxc_safe_uint(netdev->mtu, &mtu) < 0)
+			WARN("Failed to parse mtu from.");
+		else
+			INFO("Retrieved mtu %d", mtu);
 	} else if (netdev->link) {
 		bridge_index = if_nametoindex(netdev->link);
 		if (bridge_index) {
@@ -2604,6 +2590,7 @@ static int instantiate_veth(struct lxc_handler *handler, struct lxc_netdev *netd
 				      veth1, netdev->link, strerror(-err));
 			goto out_delete;
 		}
+		INFO("Attached '%s': to the bridge '%s': ", veth1, netdev->link);
 	}
 
 	err = lxc_netdev_up(veth1);
@@ -2722,6 +2709,7 @@ static int instantiate_vlan(struct lxc_handler *handler, struct lxc_netdev *netd
 	char peer[IFNAMSIZ];
 	int err;
 	static uint16_t vlan_cntr = 0;
+	unsigned int mtu = 0;
 
 	if (!netdev->link) {
 		ERROR("no link specified for vlan netdev");
@@ -2751,7 +2739,12 @@ static int instantiate_vlan(struct lxc_handler *handler, struct lxc_netdev *netd
 	DEBUG("instantiated vlan '%s', ifindex is '%d'", " vlan1000",
 	      netdev->ifindex);
 	if (netdev->mtu) {
-		err = lxc_netdev_set_mtu(peer, atoi(netdev->mtu));
+		if (lxc_safe_uint(netdev->mtu, &mtu) < 0) {
+			ERROR("Failed to retrieve mtu from: '%d'/'%s'.",
+			      netdev->ifindex, netdev->name);
+			return -1;
+		}
+		err = lxc_netdev_set_mtu(peer, mtu);
 		if (err) {
 			ERROR("failed to set mtu '%s' for %s : %s",
 			      netdev->mtu, peer, strerror(-err));
@@ -2896,36 +2889,83 @@ int lxc_create_network(struct lxc_handler *handler)
 	return 0;
 }
 
-void lxc_delete_network(struct lxc_handler *handler)
+bool lxc_delete_network(struct lxc_handler *handler)
 {
+	int ret;
 	struct lxc_list *network = &handler->conf->network;
 	struct lxc_list *iterator;
 	struct lxc_netdev *netdev;
+	bool deleted_all = true;
 
 	lxc_list_for_each(iterator, network) {
 		netdev = iterator->elem;
 
 		if (netdev->ifindex != 0 && netdev->type == LXC_NET_PHYS) {
 			if (lxc_netdev_rename_by_index(netdev->ifindex, netdev->link))
-				WARN("failed to rename to the initial name the " \
-				     "netdev '%s'", netdev->link);
+				WARN("Failed to rename interface with index %d "
+				     "to its initial name \"%s\".",
+				     netdev->ifindex, netdev->link);
 			continue;
 		}
 
 		if (netdev_deconf[netdev->type](handler, netdev)) {
-			WARN("failed to destroy netdev");
+			WARN("Failed to destroy netdev");
 		}
 
 		/* Recent kernel remove the virtual interfaces when the network
 		 * namespace is destroyed but in case we did not moved the
 		 * interface to the network namespace, we have to destroy it
 		 */
-		if (netdev->ifindex != 0 &&
-		    lxc_netdev_delete_by_index(netdev->ifindex))
-			WARN("failed to remove interface %d '%s'",
-				netdev->ifindex,
-				netdev->name ? netdev->name : "(null)");
+		if (netdev->ifindex != 0) {
+			ret = lxc_netdev_delete_by_index(netdev->ifindex);
+			if (-ret == ENODEV) {
+				INFO("Interface \"%s\" with index %d already "
+				     "deleted or existing in different network "
+				     "namespace.",
+				     netdev->name ? netdev->name : "(null)",
+				     netdev->ifindex);
+			} else if (ret < 0) {
+				deleted_all = false;
+				WARN("Failed to remove interface \"%s\" with "
+				     "index %d: %s.",
+				     netdev->name ? netdev->name : "(null)",
+				     netdev->ifindex, strerror(-ret));
+			} else {
+				INFO("Removed interface \"%s\" with index %d.",
+				     netdev->name ? netdev->name : "(null)",
+				     netdev->ifindex);
+			}
+		}
+
+		/* Explicitly delete host veth device to prevent lingering
+		 * devices. We had issues in LXD around this.
+		 */
+		if (netdev->type == LXC_NET_VETH) {
+			char *hostveth;
+			if (netdev->priv.veth_attr.pair) {
+				hostveth = netdev->priv.veth_attr.pair;
+				ret = lxc_netdev_delete_by_name(hostveth);
+				if (ret < 0) {
+					WARN("Failed to remove interface \"%s\" from host: %s.", hostveth, strerror(-ret));
+				} else {
+					INFO("Removed interface \"%s\" from host.", hostveth);
+					free(netdev->priv.veth_attr.pair);
+					netdev->priv.veth_attr.pair = NULL;
+				}
+			} else if (strlen(netdev->priv.veth_attr.veth1) > 0) {
+				hostveth = netdev->priv.veth_attr.veth1;
+				ret = lxc_netdev_delete_by_name(hostveth);
+				if (ret < 0) {
+					WARN("Failed to remove \"%s\" from host: %s.", hostveth, strerror(-ret));
+				} else {
+					INFO("Removed interface \"%s\" from host.", hostveth);
+					memset((void *)&netdev->priv.veth_attr.veth1, 0, sizeof(netdev->priv.veth_attr.veth1));
+				}
+			}
+		}
 	}
+
+	return deleted_all;
 }
 
 #define LXC_USERNIC_PATH LIBEXECDIR "/lxc/lxc-user-nic"
@@ -3063,7 +3103,7 @@ int lxc_assign_network(const char *lxcpath, char *lxcname,
 			return -1;
 		}
 
-		DEBUG("move '%s' to '%d'", netdev->name, pid);
+		DEBUG("move '%s'/'%s' to '%d': .", ifname, netdev->name, pid);
 	}
 
 	return 0;
@@ -4418,8 +4458,10 @@ void suggest_default_idmap(void)
 		p2++;
 		if (!*p2)
 			continue;
-		uid = atoi(p);
-		urange = atoi(p2);
+		if (lxc_safe_uint(p, &uid) < 0)
+			WARN("Could not parse UID.");
+		if (lxc_safe_uint(p2, &urange) < 0)
+			WARN("Could not parse UID range.");
 	}
 	fclose(f);
 
@@ -4447,8 +4489,10 @@ void suggest_default_idmap(void)
 		p2++;
 		if (!*p2)
 			continue;
-		gid = atoi(p);
-		grange = atoi(p2);
+		if (lxc_safe_uint(p, &gid) < 0)
+			WARN("Could not parse GID.");
+		if (lxc_safe_uint(p2, &grange) < 0)
+			WARN("Could not parse GID range.");
 	}
 	fclose(f);
 
