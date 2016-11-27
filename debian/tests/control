@@ -5,4 +5,4 @@ Depends: busybox-static,
          uidmap,
          xz-utils,
          @
-Restrictions: needs-root allow-stderr
+Restrictions: needs-root allow-stderr isolation-machine
