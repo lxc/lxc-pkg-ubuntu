@@ -47,6 +47,18 @@ summary() {
 # Source distro information
 [ -e /etc/lsb-release ] && . /etc/lsb-release
 
+# Workaround for broken gpg2
+if [ -n "${http_proxy}" ] && [ -e /usr/bin/dirmngr ]; then
+    dpkg-divert --divert /usr/bin/dirmngr.orig --rename --add /usr/bin/dirmngr
+    (
+    cat << EOF
+#!/bin/sh
+exec /usr/bin/dirmngr.orig --honor-http-proxy $@
+EOF
+    ) > /usr/bin/dirmngr
+    chmod +x /usr/bin/dirmngr
+fi
+
 # The actual tests
 ## Default testsuite
 for testbin in /usr/bin/lxc-test-*; do
