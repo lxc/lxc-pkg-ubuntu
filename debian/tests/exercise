@@ -53,7 +53,7 @@ if [ -n "${http_proxy}" ] && [ -e /usr/bin/dirmngr ]; then
     (
     cat << EOF
 #!/bin/sh
-exec /usr/bin/dirmngr.orig --honor-http-proxy $@
+exec /usr/bin/dirmngr.orig --honor-http-proxy \$@
 EOF
     ) > /usr/bin/dirmngr
     chmod +x /usr/bin/dirmngr
