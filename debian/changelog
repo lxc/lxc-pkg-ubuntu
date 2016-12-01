@@ -1,3 +1,10 @@
+lxc (2.0.6-0ubuntu2) zesty; urgency=medium
+
+  * Workaround autopkgtest failure when using gpg2 with dirmngr.
+  * Restrict tests to run on standalone systems.
+
+ -- Stéphane Graber <stgraber@ubuntu.com>  Thu, 01 Dec 2016 12:27:51 -0500
+
 lxc (2.0.6-0ubuntu1) zesty; urgency=medium
 
   * New upstream bugfix release (2.0.6):
