@@ -1,3 +1,10 @@
+lxc (2.0.6-0ubuntu3) zesty; urgency=medium
+
+  * Properly escape the dirmngr command so it doesn't end up being an
+    empty string...
+
+ -- Stéphane Graber <stgraber@ubuntu.com>  Thu, 01 Dec 2016 16:08:30 -0500
+
 lxc (2.0.6-0ubuntu2) zesty; urgency=medium
 
   * Workaround autopkgtest failure when using gpg2 with dirmngr.
