@@ -1,6 +1,6 @@
 if ENABLE_TESTS
 
-LDADD = ../lxc/liblxc.so
+LDADD = ../lxc/liblxc.la
 
 lxc_test_containertests_SOURCES = containertests.c
 lxc_test_locktests_SOURCES = locktests.c
@@ -101,3 +101,6 @@ EXTRA_DIST = \
 	shutdowntest.c \
 	snapshot.c \
 	startone.c
+
+clean-local:
+	rm -f lxc-test-utils-*

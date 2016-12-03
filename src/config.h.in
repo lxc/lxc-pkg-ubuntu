@@ -23,6 +23,9 @@
    `seccomp_syscall_resolve_name_arch', and to 0 if you don't. */
 #undef HAVE_DECL_SECCOMP_SYSCALL_RESOLVE_NAME_ARCH
 
+/* Define to 1 if you have the <dlfcn.h> header file. */
+#undef HAVE_DLFCN_H
+
 /* Define to 1 if you have the `endmntent' function. */
 #undef HAVE_ENDMNTENT
 
@@ -151,6 +154,9 @@
 
 /* bionic libc */
 #undef IS_BIONIC
+
+/* Define to the sub-directory where libtool stores uninstalled libraries. */
+#undef LT_OBJDIR
 
 /* Enabling mutex debugging */
 #undef MUTEX_DEBUGGING
