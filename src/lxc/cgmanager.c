@@ -502,9 +502,9 @@ static bool chown_cgroup(const char *cgroup_path, struct lxc_conf *conf)
 	for (i = 0; slist[i]; i++) {
 		if (!lxc_cgmanager_chmod(slist[i], cgroup_path, "", 0775))
 			return false;
-		if (!lxc_cgmanager_chmod(slist[i], cgroup_path, "tasks", 0775))
+		if (!lxc_cgmanager_chmod(slist[i], cgroup_path, "tasks", 0664))
 			return false;
-		if (!lxc_cgmanager_chmod(slist[i], cgroup_path, "cgroup.procs", 0775))
+		if (!lxc_cgmanager_chmod(slist[i], cgroup_path, "cgroup.procs", 0664))
 			return false;
 	}
 
@@ -766,8 +766,8 @@ static char *try_get_abs_cgroup(const char *name, const char *lxcpath,
 			NihError *nerr;
 			nerr = nih_error_get();
 			nih_free(nerr);
-		}
-		prune_init_scope(cgroup);
+		} else
+			prune_init_scope(cgroup);
 		return cgroup;
 	}
 
@@ -1375,6 +1375,14 @@ static bool cgm_setup_limits(void *hdata, struct lxc_list *cgroup_settings, bool
 					 d->cgroup_path, cg->subsystem, cg->value) != 0) {
 			NihError *nerr;
 			nerr = nih_error_get();
+			if (do_devices) {
+				WARN("call to cgmanager_set_value_sync failed: %s", nerr->message);
+				nih_free(nerr);
+				WARN("Error setting cgroup %s:%s limit type %s", controller,
+					d->cgroup_path, cg->subsystem);
+				continue;
+			}
+
 			ERROR("call to cgmanager_set_value_sync failed: %s", nerr->message);
 			nih_free(nerr);
 			ERROR("Error setting cgroup %s:%s limit type %s", controller,

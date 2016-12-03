@@ -1,4 +1,4 @@
-#!/usr/bin/python3
+#!/usr/bin/env python3
 #
 # lxc-ls: List containers
 #
@@ -284,8 +284,10 @@ def get_containers(fd=None, base="/", root=False):
                         memory_ram = 0
 
                     try:
-                        memory_swap = int(container.get_cgroup_item(
-                            "memory.memsw.usage_in_bytes")) - memory_ram
+                        memory_stat = container.get_cgroup_item("memory.stat")
+                        beg = memory_stat.find("\nswap ") + 6
+                        end = memory_stat[beg:].find("\n") + len(memory_stat[:beg])
+                        memory_swap = int(memory_stat[beg:end])
                     except:
                         memory_swap = 0
                 else:
@@ -351,7 +353,7 @@ def get_containers(fd=None, base="/", root=False):
                 else:
                     def clear_lock():
                         try:
-                            lock_path = "%s/lock/lxc/%s/%s" % (RUNTIME_PATH,
+                            lock_path = "%s/lxc/lock/%s/%s" % (RUNTIME_PATH,
                                                                path,
                                                                entry['name'])
                             if os.path.exists(lock_path):

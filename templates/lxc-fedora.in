@@ -560,8 +560,8 @@ but appears to be non-functional.  Skipping...  It should be removed.
 #       mount image to "squashfs"
 #       mount contained LiveOS to stage0
 
-# We're going to use the kernel.org mirror for the initial stages...
-#       1 - It's generally up to date and comnplete
+# We're going to use the archives.fedoraproject.org mirror for the initial stages...
+#       1 - It's generally up to date and complete
 #       2 - It's has high bandwidth access
 #       3 - It supports rsync and wildcarding (and we need both)
 #       4 - Not all the mirrors carry the LiveOS images
@@ -569,7 +569,7 @@ but appears to be non-functional.  Skipping...  It should be removed.
     if [[ ! -f ../LiveOS/squashfs.img ]]
     then
         echo "
-Downloading stage 0 LiveOS squashfs file system from mirrors.kernel.org...
+Downloading stage 0 LiveOS squashfs file system from archives.fedoraproject.org...
 Have a beer or a cup of coffee.  This will take a bit (~300MB).
 "
         sleep 3 # let him read it...
@@ -1335,6 +1335,10 @@ needed_pkgs=""
 type curl >/dev/null 2>&1
 if [ $? -ne 0 ]; then
     needed_pkgs="curl $needed_pkgs"
+fi
+type openssl >/dev/null 2>&1
+if [ $? -ne 0 ]; then
+    needed_pkgs="openssl $needed_pkgs"
 fi
 
 if [ -n "$needed_pkgs" ]; then

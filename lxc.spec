@@ -45,7 +45,7 @@ BuildRequires: systemd-units
 %endif
 
 Name: lxc
-Version: 1.0.8
+Version: 1.0.9
 Release: %{?beta_rel:0.1.%{beta_rel}}%{?!beta_rel:%{norm_rel}}%{?dist}
 URL: http://linuxcontainers.org
 Source: http://linuxcontainers.org/downloads/%{name}-%{version}%{?beta_dot}.tar.gz
@@ -147,9 +147,6 @@ rm -rf %{buildroot}
 %{_sbindir}/*
 %{_libdir}/*.so.*
 %{_libdir}/%{name}
-%if %{with_python}
-%{_libdir}/python*
-%endif
 %{_localstatedir}/*
 %{_libexecdir}/%{name}
 %attr(4111,root,root) %{_libexecdir}/%{name}/lxc-user-nic
@@ -159,8 +156,7 @@ rm -rf %{buildroot}
 %endif
 
 %if %{with_python}
-%{_libdir}/python3.3/site-packages/_lxc*
-%{_libdir}/python3.3/site-packages/lxc/*
+%{python3_sitearch}/*
 %endif
 
 %if %{with_lua}

@@ -3,7 +3,7 @@
 
 m4_define([lxc_version_major], 1)
 m4_define([lxc_version_minor], 0)
-m4_define([lxc_version_micro], 8)
+m4_define([lxc_version_micro], 9)
 m4_define([lxc_version_beta], [])
 
 m4_define([lxc_version_base], [lxc_version_major.lxc_version_minor.lxc_version_micro])
@@ -413,6 +413,14 @@ AC_ARG_ENABLE([bash],
 	[], [enable_bash=yes])
 AM_CONDITIONAL([ENABLE_BASH], [test "x$enable_bash" = "xyes"])
 
+AM_COND_IF([ENABLE_BASH],
+	[AC_MSG_CHECKING([bash completion directory])
+	PKG_CHECK_VAR(bashcompdir, [bash-completion], [completionsdir], ,
+		bashcompdir="${sysconfdir}/bash_completion.d")
+	AC_MSG_RESULT([$bashcompdir])
+	AC_SUBST(bashcompdir)
+	])
+
 # Optional test binaries
 AC_ARG_ENABLE([tests],
 	[AC_HELP_STRING([--enable-tests], [build test/example binaries [default=no]])],
@@ -502,7 +510,7 @@ AS_AC_EXPAND(LXC_DEFAULT_CONFIG, "$sysconfdir/lxc/default.conf")
 AS_AC_EXPAND(DATADIR, "$datadir")
 AS_AC_EXPAND(LOCALSTATEDIR, "$localstatedir")
 AS_AC_EXPAND(DOCDIR, "$docdir")
-AS_AC_EXPAND(LXC_GENERATE_DATE, "$(date)")
+AS_AC_EXPAND(LXC_GENERATE_DATE, "$(date --utc --date=@${SOURCE_DATE_EPOCH:-$(date +%s)} '+%Y-%m-%d')")
 AS_AC_EXPAND(LXCPATH, "$with_config_path")
 AS_AC_EXPAND(LXC_GLOBAL_CONF, "$with_global_conf")
 AS_AC_EXPAND(LXC_USERNIC_CONF, "$with_usernic_conf")

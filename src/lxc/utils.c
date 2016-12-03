@@ -62,7 +62,7 @@ extern bool btrfs_try_remove_subvol(const char *path);
 
 static int _recursive_rmdir(char *dirname, dev_t pdev, bool onedev)
 {
-	struct dirent dirent, *direntp;
+	struct dirent *direntp;
 	DIR *dir;
 	int ret, failed=0;
 	char pathname[MAXPATHLEN];
@@ -73,7 +73,7 @@ static int _recursive_rmdir(char *dirname, dev_t pdev, bool onedev)
 		return -1;
 	}
 
-	while (!readdir_r(dir, &dirent, &direntp)) {
+	while ((direntp = readdir(dir))) {
 		struct stat mystat;
 		int rc;
 
@@ -705,8 +705,8 @@ bool lxc_string_in_list(const char *needle, const char *haystack, char _sep)
 char **lxc_string_split(const char *string, char _sep)
 {
 	char *token, *str, *saveptr = NULL;
-	char sep[2] = { _sep, '\0' };
-	char **result = NULL;
+	char sep[2] = {_sep, '\0'};
+	char **tmp = NULL, **result = NULL;
 	size_t result_capacity = 0;
 	size_t result_count = 0;
 	int r, saved_errno;
@@ -714,7 +714,7 @@ char **lxc_string_split(const char *string, char _sep)
 	if (!string)
 		return calloc(1, sizeof(char *));
 
-	str = alloca(strlen(string)+1);
+	str = alloca(strlen(string) + 1);
 	strcpy(str, string);
 	for (; (token = strtok_r(str, sep, &saveptr)); str = NULL) {
 		r = lxc_grow_array((void ***)&result, &result_capacity, result_count + 1, 16);
@@ -727,7 +727,14 @@ char **lxc_string_split(const char *string, char _sep)
 	}
 
 	/* if we allocated too much, reduce it */
-	return realloc(result, (result_count + 1) * sizeof(char *));
+	tmp = realloc(result, (result_count + 1) * sizeof(char *));
+	if (!tmp)
+		goto error_out;
+	result = tmp;
+	/* Make sure we don't return uninitialized memory. */
+	if (result_count == 0)
+		*result = NULL;
+	return result;
 error_out:
 	saved_errno = errno;
 	lxc_free_array((void **)result, free);
@@ -1267,7 +1274,7 @@ static int open_without_symlink(const char *target, const char *prefix_skip)
 	fulllen = strlen(target);
 
 	/* make sure prefix-skip makes sense */
-	if (prefix_skip) {
+	if (prefix_skip && strlen(prefix_skip) > 0) {
 		curlen = strlen(prefix_skip);
 		if (!is_subdir(target, prefix_skip, curlen)) {
 			ERROR("WHOA there - target '%s' didn't start with prefix '%s'",
@@ -1313,8 +1320,6 @@ static int open_without_symlink(const char *target, const char *prefix_skip)
 			errno = saved_errno;
 			if (errno == ELOOP)
 				SYSERROR("%s in %s was a symbolic link!", nextpath, target);
-			else
-				SYSERROR("Error examining %s in %s", nextpath, target);
 			goto out;
 		}
 	}
@@ -1359,8 +1364,11 @@ int safe_mount(const char *src, const char *dest, const char *fstype,
 
 	destfd = open_without_symlink(dest, rootfs);
 	if (destfd < 0) {
-		if (srcfd != -1)
+		if (srcfd != -1) {
+			saved_errno = errno;
 			close(srcfd);
+			errno = saved_errno;
+		}
 		return destfd;
 	}
 

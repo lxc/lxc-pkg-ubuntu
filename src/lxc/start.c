@@ -117,8 +117,15 @@ static void close_ns(int ns_fd[LXC_NS_MAX]) {
 	}
 }
 
-static int preserve_ns(int ns_fd[LXC_NS_MAX], int clone_flags, pid_t pid) {
-	int i, saved_errno;
+/*
+ * preserve_ns: open /proc/@pid/ns/@ns for each namespace specified
+ * in clone_flags.
+ * Return true on success, false on failure.  On failure, leave an error
+ * message in *errmsg, which caller must free.
+ */
+static
+bool preserve_ns(int ns_fd[LXC_NS_MAX], int clone_flags, pid_t pid, char **errmsg) {
+	int i, ret;
 	char path[MAXPATHLEN];
 
 	for (i = 0; i < LXC_NS_MAX; i++)
@@ -126,8 +133,9 @@ static int preserve_ns(int ns_fd[LXC_NS_MAX], int clone_flags, pid_t pid) {
 
 	snprintf(path, MAXPATHLEN, "/proc/%d/ns", pid);
 	if (access(path, X_OK)) {
-		WARN("Kernel does not support attach; preserve_ns ignored");
-		return 0;
+		if (asprintf(errmsg, "Kernel does not support setns.") == -1)
+			*errmsg = NULL;
+		return false;
 	}
 
 	for (i = 0; i < LXC_NS_MAX; i++) {
@@ -140,14 +148,20 @@ static int preserve_ns(int ns_fd[LXC_NS_MAX], int clone_flags, pid_t pid) {
 			goto error;
 	}
 
-	return 0;
+	return true;
 
 error:
-	saved_errno = errno;
+	if (errno == ENOENT) {
+		ret = asprintf(errmsg, "Kernel does not support setns for %s",
+			ns_info[i].proc_name);
+	} else {
+		ret = asprintf(errmsg, "Failed to open %s: %s",
+			path, strerror(errno));
+	}
+	if (ret == -1)
+		*errmsg = NULL;
 	close_ns(ns_fd);
-	errno = saved_errno;
-	SYSERROR("failed to open '%s'", path);
-	return -1;
+	return false;
 }
 
 static int attach_ns(const int ns_fd[LXC_NS_MAX]) {
@@ -174,7 +188,7 @@ static int match_fd(int fd)
 
 int lxc_check_inherited(struct lxc_conf *conf, int fd_to_ignore)
 {
-	struct dirent dirent, *direntp;
+	struct dirent *direntp;
 	int fd, fddir;
 	DIR *dir;
 
@@ -187,7 +201,7 @@ restart:
 
 	fddir = dirfd(dir);
 
-	while (!readdir_r(dir, &dirent, &direntp)) {
+	while ((direntp = readdir(dir))) {
 		if (!direntp)
 			break;
 
@@ -630,6 +644,7 @@ static int do_start(void *data)
 {
 	struct lxc_handler *handler = data;
 	const char *lsm_label = NULL;
+	int ret = 0;
 
 	if (sigprocmask(SIG_SETMASK, &handler->oldmask, NULL)) {
 		SYSERROR("failed to set sigprocmask");
@@ -652,6 +667,20 @@ static int do_start(void *data)
 	/* don't leak the pinfd to the container */
 	if (handler->pinfd >= 0) {
 		close(handler->pinfd);
+	}
+
+	if (lxc_sync_wait_parent(handler, LXC_SYNC_STARTUP))
+		return -1;
+
+	/* Unshare CLONE_NEWNET after CLONE_NEWUSER  - see
+	  https://github.com/lxc/lxd/issues/1978 */
+	if ((handler->clone_flags & (CLONE_NEWNET | CLONE_NEWUSER)) ==
+			(CLONE_NEWNET | CLONE_NEWUSER)) {
+		ret = unshare(CLONE_NEWNET);
+		if (ret < 0) {
+			SYSERROR("Error unsharing network namespace");
+			goto out_warn_father;
+		}
 	}
 
 	/* Tell the parent task it can begin to configure the
@@ -758,16 +787,20 @@ static int do_start(void *data)
 	handler->ops->start(handler, handler->data);
 
 out_warn_father:
-	/* we want the parent to know something went wrong, so any
-	 * value other than what it expects is ok. */
-	lxc_sync_wake_parent(handler, LXC_SYNC_POST_CONFIGURE);
+	/* we want the parent to know something went wrong, so we return a special
+	 * error code. */
+	lxc_sync_wake_parent(handler, LXC_SYNC_ERROR);
 	return -1;
 }
 
 static int save_phys_nics(struct lxc_conf *conf)
 {
 	struct lxc_list *iterator;
+	int am_root = (getuid() == 0);
 
+	if (!am_root)
+		return 0;
+		
 	lxc_list_for_each(iterator, &conf->network) {
 		struct lxc_netdev *netdev = iterator->elem;
 
@@ -798,9 +831,10 @@ static int lxc_spawn(struct lxc_handler *handler)
 {
 	int failed_before_rename = 0;
 	const char *name = handler->name;
+	char *errmsg = NULL;
 	bool cgroups_connected = false;
 	int saved_ns_fd[LXC_NS_MAX];
-	int preserve_mask = 0, i;
+	int preserve_mask = 0, i, flags;
 	int netpipepair[2], nveths;
 
 	netpipe = -1;
@@ -889,8 +923,12 @@ static int lxc_spawn(struct lxc_handler *handler)
 			INFO("failed to pin the container's rootfs");
 	}
 
-	if (preserve_ns(saved_ns_fd, preserve_mask, getpid()) < 0)
+	if (!preserve_ns(saved_ns_fd, preserve_mask, getpid(), &errmsg)) {
+		SYSERROR("Failed to preserve requested namespaces: %s",
+			errmsg ? errmsg : "(Out of memory)");
+		free(errmsg);
 		goto out_delete_net;
+	}
 	if (attach_ns(handler->conf->inherit_ns_fd) < 0)
 		goto out_delete_net;
 
@@ -904,15 +942,19 @@ static int lxc_spawn(struct lxc_handler *handler)
 	}
 
 	/* Create a process in a new set of namespaces */
+	flags = handler->clone_flags;
+	if (handler->clone_flags & CLONE_NEWUSER)
+		flags &= ~CLONE_NEWNET;
 	handler->pid = lxc_clone(do_start, handler, handler->clone_flags);
 	if (handler->pid < 0) {
 		SYSERROR("failed to fork into a new namespace");
 		goto out_delete_net;
 	}
 
-	if (preserve_ns(handler->nsfd, handler->clone_flags, handler->pid) < 0) {
-	    ERROR("failed to store namespace references");
-	    goto out_delete_net;
+	if (!preserve_ns(handler->nsfd, handler->clone_flags | preserve_mask, handler->pid, &errmsg)) {
+		INFO("Failed to store namespace references for stop hook: %s",
+			errmsg ? errmsg : "(Out of memory)");
+		free(errmsg);
 	}
 
 	if (attach_ns(saved_ns_fd))
@@ -920,8 +962,25 @@ static int lxc_spawn(struct lxc_handler *handler)
 
 	lxc_sync_fini_child(handler);
 
-	if (lxc_sync_wait_child(handler, LXC_SYNC_CONFIGURE))
+	/* map the container uids - the container became an invalid
+	 * userid the moment it was cloned with CLONE_NEWUSER - this
+	 * call doesn't change anything immediately, but allows the
+	 * container to setuid(0) (0 being mapped to something else on
+	 * the host) later to become a valid uid again */
+	if (lxc_map_ids(&handler->conf->id_map, handler->pid)) {
+		ERROR("failed to set up id mapping");
+		goto out_delete_net;
+	}
+
+	if (lxc_sync_wake_child(handler, LXC_SYNC_STARTUP)) {
 		failed_before_rename = 1;
+		goto out_delete_net;
+	}
+
+	if (lxc_sync_wait_child(handler, LXC_SYNC_CONFIGURE)) {
+		failed_before_rename = 1;
+		goto out_delete_net;
+	}
 
 	if (!cgroup_create_legacy(handler)) {
 		ERROR("failed to setup the legacy cgroups for %s", name);
@@ -964,16 +1023,6 @@ static int lxc_spawn(struct lxc_handler *handler)
 			}
 		}
 		close(netpipepair[1]);
-	}
-
-	/* map the container uids - the container became an invalid
-	 * userid the moment it was cloned with CLONE_NEWUSER - this
-	 * call doesn't change anything immediately, but allows the
-	 * container to setuid(0) (0 being mapped to something else on
-	 * the host) later to become a valid uid again */
-	if (lxc_map_ids(&handler->conf->id_map, handler->pid)) {
-		ERROR("failed to set up id mapping");
-		goto out_delete_net;
 	}
 
 	/* Tell the child to continue its initialization.  we'll get
@@ -1141,7 +1190,7 @@ int __lxc_start(const char *name, struct lxc_conf *conf,
 	}
 
 	DEBUG("Pushing physical nics back to host namespace");
-	lxc_rename_phys_nics_on_shutdown(netnsfd, handler->conf);
+	lxc_restore_phys_nics_to_netns(netnsfd, handler->conf);
 
 	DEBUG("Tearing down virtual network devices used by container");
 	lxc_delete_network(handler);

@@ -590,7 +590,7 @@ out:
 static int mount_rootfs_file(const char *rootfs, const char *target,
 				             const char *options)
 {
-	struct dirent dirent, *direntp;
+	struct dirent *direntp;
 	struct loop_info64 loinfo;
 	int ret = -1, fd = -1, rc;
 	DIR *dir;
@@ -602,8 +602,7 @@ static int mount_rootfs_file(const char *rootfs, const char *target,
 		return -1;
 	}
 
-	while (!readdir_r(dir, &dirent, &direntp)) {
-
+	while ((direntp = readdir(dir))) {
 		if (!direntp)
 			break;
 
@@ -790,6 +789,7 @@ static int lxc_mount_auto_mounts(struct lxc_conf *conf, int flags, struct lxc_ha
 			}
 			if (!default_mounts[i].destination) {
 				ERROR("BUG: auto mounts destination %d was NULL", i);
+				free(source);
 				return -1;
 			}
 			/* will act like strdup if %r is not present */
@@ -1271,13 +1271,13 @@ static int mount_check_fs( const char *dir, char *fstype )
 	if (!f)
 		return 0;
 	while (fgets(buf, LINELEN, f)) {
-		p = index(buf, ' ');
+		p = strchr(buf, ' ');
 		if( !p )
 			continue;
 		*p = '\0';
 		p2 = p + 1;
 
-		p = index(p2, ' ');
+		p = strchr(p2, ' ');
 		if( !p )
 			continue;
 		*p = '\0';
@@ -1288,7 +1288,7 @@ static int mount_check_fs( const char *dir, char *fstype )
 		}
 
 		p2 = p + 1;
-		p = index( p2, ' ');
+		p = strchr( p2, ' ');
 		if( !p )
 			continue;
 		*p = '\0';
@@ -1461,7 +1461,7 @@ static int mount_autodev(const char *name, const struct lxc_rootfs *rootfs, cons
 		/* Only mount a tmpfs on here if we don't already a mount */
 		if ( ! mount_check_fs( host_path, NULL ) ) {
 			DEBUG("Mounting tmpfs to %s", host_path );
-			ret = safe_mount("none", path, "tmpfs", 0, "size=100000,mode=755", rootfs->path ? rootfs->mount : NULL);
+			ret = safe_mount("none", path, "tmpfs", 0, "size=500000,mode=755", rootfs->path ? rootfs->mount : NULL);
 		} else {
 			/* This allows someone to manually set up a mount */
 			DEBUG("Bind mounting %s to %s", host_path, path );
@@ -2513,7 +2513,7 @@ static int setup_mount_entries(const struct lxc_rootfs *rootfs, struct lxc_list 
 
 	file = tmpfile();
 	if (!file) {
-		ERROR("tmpfile error: %m");
+		ERROR("Could not create temporary file: %s.", strerror(errno));
 		return -1;
 	}
 
@@ -2933,13 +2933,16 @@ static int setup_network(struct lxc_list *network)
 }
 
 /* try to move physical nics to the init netns */
-void restore_phys_nics_to_netns(int netnsfd, struct lxc_conf *conf)
+void lxc_restore_phys_nics_to_netns(int netnsfd, struct lxc_conf *conf)
 {
 	int i, ret, oldfd;
 	char path[MAXPATHLEN];
+	char ifname[IFNAMSIZ];
 
-	if (netnsfd < 0)
+	if (netnsfd < 0 || conf->num_savednics == 0)
 		return;
+
+	INFO("running to reset %d nic names", conf->num_savednics);
 
 	ret = snprintf(path, MAXPATHLEN, "/proc/self/ns/net");
 	if (ret < 0 || ret >= MAXPATHLEN) {
@@ -2957,31 +2960,20 @@ void restore_phys_nics_to_netns(int netnsfd, struct lxc_conf *conf)
 	}
 	for (i=0; i<conf->num_savednics; i++) {
 		struct saved_nic *s = &conf->saved_nics[i];
-		if (lxc_netdev_move_by_index(s->ifindex, 1, NULL))
-			WARN("Error moving nic index:%d back to host netns",
-					s->ifindex);
-	}
-	if (setns(oldfd, 0) != 0)
-		SYSERROR("Failed to re-enter monitor's netns");
-	close(oldfd);
-}
-
-void lxc_rename_phys_nics_on_shutdown(int netnsfd, struct lxc_conf *conf)
-{
-	int i;
-
-	if (conf->num_savednics == 0)
-		return;
-
-	INFO("running to reset %d nic names", conf->num_savednics);
-	restore_phys_nics_to_netns(netnsfd, conf);
-	for (i=0; i<conf->num_savednics; i++) {
-		struct saved_nic *s = &conf->saved_nics[i];
-		INFO("resetting nic %d to %s", s->ifindex, s->orig_name);
-		lxc_netdev_rename_by_index(s->ifindex, s->orig_name);
+		/* retrieve the name of the interface */
+		if (!if_indextoname(s->ifindex, ifname)) {
+			WARN("no interface corresponding to index '%d'", s->ifindex);
+			continue;
+		}
+		if (lxc_netdev_move_by_name(ifname, 1, s->orig_name))
+			WARN("Error moving nic name:%s back to host netns", ifname);
 		free(s->orig_name);
 	}
 	conf->num_savednics = 0;
+
+	if (setns(oldfd, 0) != 0)
+		SYSERROR("Failed to re-enter monitor's netns");
+	close(oldfd);
 }
 
 static char *default_rootfs_mount = LXCROOTFSMOUNT;
@@ -3257,6 +3249,15 @@ static int instantiate_vlan(struct lxc_handler *handler, struct lxc_netdev *netd
 
 	DEBUG("instantiated vlan '%s', ifindex is '%d'", " vlan1000",
 	      netdev->ifindex);
+	if (netdev->mtu) {
+		err = lxc_netdev_set_mtu(peer, atoi(netdev->mtu));
+		if (err) {
+			ERROR("failed to set mtu '%s' for %s : %s",
+			      netdev->mtu, peer, strerror(-err));
+			lxc_netdev_delete_by_name(peer);
+			return -1;
+		}
+	}
 
 	return 0;
 }
@@ -3420,7 +3421,9 @@ void lxc_delete_network(struct lxc_handler *handler)
 		 */
 		if (netdev->ifindex != 0 &&
 		    lxc_netdev_delete_by_index(netdev->ifindex))
-			WARN("failed to remove interface '%s'", netdev->name);
+			WARN("failed to remove interface %d '%s'",
+				netdev->ifindex,
+				netdev->name ? netdev->name : "(null)");
 	}
 }
 
@@ -3517,6 +3520,7 @@ int lxc_assign_network(struct lxc_list *network, pid_t pid)
 {
 	struct lxc_list *iterator;
 	struct lxc_netdev *netdev;
+	char ifname[IFNAMSIZ];
 	int am_root = (getuid() == 0);
 	int err;
 
@@ -3537,7 +3541,13 @@ int lxc_assign_network(struct lxc_list *network, pid_t pid)
 		if (!netdev->ifindex)
 			continue;
 
-		err = lxc_netdev_move_by_index(netdev->ifindex, pid, NULL);
+		/* retrieve the name of the interface */
+		if (!if_indextoname(netdev->ifindex, ifname)) {
+			ERROR("no interface corresponding to index '%d'", netdev->ifindex);
+			return -1;
+		}
+
+		err = lxc_netdev_move_by_name(ifname, pid, NULL);
 		if (err) {
 			ERROR("failed to move '%s' to the container : %s",
 			      netdev->link, strerror(-err));
@@ -3816,6 +3826,7 @@ void lxc_delete_tty(struct lxc_tty_info *tty_info)
 	}
 
 	free(tty_info->pty_info);
+	tty_info->pty_info = NULL;
 	tty_info->nbtty = 0;
 }
 
