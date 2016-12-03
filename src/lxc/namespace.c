@@ -64,29 +64,45 @@ pid_t lxc_clone(int (*fn)(void *), void *arg, int flags)
 	ret = clone(do_clone, stack  + stack_size, flags | SIGCHLD, &clone_arg);
 #endif
 	if (ret < 0)
-		ERROR("failed to clone (%#x): %s", flags, strerror(errno));
+		ERROR("Failed to clone (%#x): %s.", flags, strerror(errno));
 
 	return ret;
 }
 
-static const char * const namespaces_list[] = {
-	"MOUNT", "PID", "UTSNAME", "IPC",
-	"USER", "NETWORK"
-};
-static const int cloneflags_list[] = {
-	CLONE_NEWNS, CLONE_NEWPID, CLONE_NEWUTS, CLONE_NEWIPC,
-	CLONE_NEWUSER, CLONE_NEWNET
+/* Leave the user namespace at the first position in the array of structs so
+ * that we always attach to it first when iterating over the struct and using
+ * setns() to switch namespaces. This especially affects lxc_attach(): Suppose
+ * you cloned a new user namespace and mount namespace as an unprivileged user
+ * on the host and want to setns() to the mount namespace. This requires you to
+ * attach to the user namespace first otherwise the kernel will fail this check:
+ *
+ *        if (!ns_capable(mnt_ns->user_ns, CAP_SYS_ADMIN) ||
+ *            !ns_capable(current_user_ns(), CAP_SYS_CHROOT) ||
+ *            !ns_capable(current_user_ns(), CAP_SYS_ADMIN))
+ *            return -EPERM;
+ *
+ *    in
+ *
+ *        linux/fs/namespace.c:mntns_install().
+ */
+const struct ns_info ns_info[LXC_NS_MAX] = {
+	[LXC_NS_USER] = {"user", CLONE_NEWUSER, "CLONE_NEWUSER"},
+	[LXC_NS_MNT] = {"mnt", CLONE_NEWNS, "CLONE_NEWNS"},
+	[LXC_NS_PID] = {"pid", CLONE_NEWPID, "CLONE_NEWPID"},
+	[LXC_NS_UTS] = {"uts", CLONE_NEWUTS, "CLONE_NEWUTS"},
+	[LXC_NS_IPC] = {"ipc", CLONE_NEWIPC, "CLONE_NEWIPC"},
+	[LXC_NS_NET] = {"net", CLONE_NEWNET, "CLONE_NEWNET"},
+	[LXC_NS_CGROUP] = {"cgroup", CLONE_NEWCGROUP, "CLONE_NEWCGROUP"}
 };
 
 int lxc_namespace_2_cloneflag(char *namespace)
 {
-	int i, len;
-	len = sizeof(namespaces_list)/sizeof(namespaces_list[0]);
-	for (i = 0; i < len; i++)
-		if (!strcmp(namespaces_list[i], namespace))
-			return cloneflags_list[i];
+	int i;
+	for (i = 0; i < LXC_NS_MAX; i++)
+		if (!strcasecmp(ns_info[i].proc_name, namespace))
+			return ns_info[i].clone_flag;
 
-	ERROR("invalid namespace name %s", namespace);
+	ERROR("Invalid namespace name: %s.", namespace);
 	return -1;
 }
 
@@ -96,7 +112,7 @@ int lxc_fill_namespace_flags(char *flaglist, int *flags)
 	int aflag;
 
 	if (!flaglist) {
-		ERROR("need at least one namespace to unshare");
+		ERROR("At least one namespace is needed.");
 		return -1;
 	}
 

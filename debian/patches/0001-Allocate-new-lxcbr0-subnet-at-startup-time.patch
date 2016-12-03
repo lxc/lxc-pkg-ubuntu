@@ -1,4 +1,4 @@
-From 06a2560ab4f88ab07768b7d881eb295ff1bc50cd Mon Sep 17 00:00:00 2001
+From 884b2b9bf4d70eb598758b28eaa797a3a12d23c4 Mon Sep 17 00:00:00 2001
 From: =?UTF-8?q?St=C3=A9phane=20Graber?= <stgraber@ubuntu.com>
 Date: Tue, 3 Nov 2015 11:42:58 -0500
 Subject: Allocate new lxcbr0 subnet at startup time
@@ -8,10 +8,10 @@ Subject: Allocate new lxcbr0 subnet at startup time
  1 file changed, 90 insertions(+), 8 deletions(-)
 
 diff --git a/config/init/common/lxc-net.in b/config/init/common/lxc-net.in
-index d457e78..adff477 100644
+index 4797f20..899ecc9 100644
 --- a/config/init/common/lxc-net.in
 +++ b/config/init/common/lxc-net.in
-@@ -22,6 +22,85 @@ LXC_IPV6_MASK=""
+@@ -23,6 +23,85 @@ LXC_IPV6_MASK=""
  LXC_IPV6_NETWORK=""
  LXC_IPV6_NAT="false"
  
@@ -97,7 +97,7 @@ index d457e78..adff477 100644
  [ ! -f $distrosysconfdir/lxc ] || . $distrosysconfdir/lxc
  
  use_iptables_lock="-w"
-@@ -48,7 +127,18 @@ ifup() {
+@@ -50,7 +129,18 @@ ifup() {
      ip link set dev $1 up
  }
  
@@ -116,7 +116,7 @@ index d457e78..adff477 100644
      [ "x$USE_LXC_BRIDGE" = "xtrue" ] || { exit 0; }
  
      [ ! -f "${varrun}/network_up" ] || { echo "lxc-net is already running"; exit 1; }
-@@ -59,14 +149,6 @@ start() {
+@@ -61,14 +151,6 @@ start() {
  
      FAILED=1
  

@@ -46,16 +46,26 @@
 #include "network.h"
 #include "utils.h"
 
+#if IS_BIONIC
+#include <../include/lxcmntent.h>
+#else
+#include <mntent.h>
+#endif
+
 #define CRIU_VERSION		"2.0"
 
 #define CRIU_GITID_VERSION	"2.0"
 #define CRIU_GITID_PATCHLEVEL	0
 
 #define CRIU_IN_FLIGHT_SUPPORT	"2.4"
+#define CRIU_EXTERNAL_NOT_VETH	"2.8"
 
 lxc_log_define(lxc_criu, lxc);
 
 struct criu_opts {
+	/* the thing to hook to stdout and stderr for logging */
+	int pipefd;
+
 	/* The type of criu invocation, one of "dump" or "restore" */
 	char *action;
 
@@ -123,9 +133,12 @@ static void exec_criu(struct criu_opts *opts)
 	int static_args = 23, argc = 0, i, ret;
 	int netnr = 0;
 	struct lxc_list *it;
+	FILE *mnts;
+	struct mntent mntent;
 
 	char buf[4096], tty_info[32];
 	size_t pos;
+
 	/* If we are currently in a cgroup /foo/bar, and the container is in a
 	 * cgroup /lxc/foo, lxcfs will give us an ENOENT if some task in the
 	 * container has an open fd that points to one of the cgroup files
@@ -200,9 +213,11 @@ static void exec_criu(struct criu_opts *opts)
 	if (opts->user->action_script)
 		static_args += 2;
 
+	static_args += 2 * lxc_list_len(&opts->c->lxc_conf->mount_list);
+
 	ret = snprintf(log, PATH_MAX, "%s/%s.log", opts->user->directory, opts->action);
 	if (ret < 0 || ret >= PATH_MAX) {
-		ERROR("logfile name too long\n");
+		ERROR("logfile name too long");
 		return;
 	}
 
@@ -225,7 +240,7 @@ static void exec_criu(struct criu_opts *opts)
 
 	argv[argc++] = on_path("criu", NULL);
 	if (!argv[argc-1]) {
-		ERROR("Couldn't find criu binary\n");
+		ERROR("Couldn't find criu binary");
 		goto err;
 	}
 
@@ -314,6 +329,36 @@ static void exec_criu(struct criu_opts *opts)
 		DECLARE_ARG("--action-script");
 		DECLARE_ARG(opts->user->action_script);
 	}
+
+	mnts = write_mount_file(&opts->c->lxc_conf->mount_list);
+	if (!mnts)
+		goto err;
+
+	while (getmntent_r(mnts, &mntent, buf, sizeof(buf))) {
+		char *fmt, *key, *val;
+		char arg[2 * PATH_MAX + 2];
+
+		if (strcmp(opts->action, "dump") == 0) {
+			fmt = "/%s:%s";
+			key = mntent.mnt_dir;
+			val = mntent.mnt_dir;
+		} else {
+			fmt = "%s:%s";
+			key = mntent.mnt_dir;
+			val = mntent.mnt_fsname;
+		}
+
+		ret = snprintf(arg, sizeof(arg), fmt, key, val);
+		if (ret < 0 || ret >= sizeof(arg)) {
+			fclose(mnts);
+			ERROR("snprintf failed");
+			goto err;
+		}
+
+		DECLARE_ARG("--ext-mount-map");
+		DECLARE_ARG(arg);
+	}
+	fclose(mnts);
 
 	if (strcmp(opts->action, "dump") == 0 || strcmp(opts->action, "pre-dump") == 0) {
 		char pid[32], *freezer_relative;
@@ -437,29 +482,77 @@ static void exec_criu(struct criu_opts *opts)
 
 		lxc_list_for_each(it, &opts->c->lxc_conf->network) {
 			char eth[128], *veth;
+			char *fmt;
 			struct lxc_netdev *n = it->elem;
+			bool external_not_veth;
 
-			if (n->type != LXC_NET_VETH)
-				continue;
+			if (strcmp(opts->criu_version, CRIU_EXTERNAL_NOT_VETH) >= 0) {
+				/* Since criu version 2.8 the usage of --veth-pair
+				 * has been deprecated:
+				 * git tag --contains f2037e6d3445fc400
+				 * v2.8 */
+				external_not_veth = true;
+			} else {
+				external_not_veth = false;
+			}
 
 			if (n->name) {
 				if (strlen(n->name) >= sizeof(eth))
 					goto err;
 				strncpy(eth, n->name, sizeof(eth));
-			} else
-				sprintf(eth, "eth%d", netnr);
+			} else {
+				ret = snprintf(eth, sizeof(eth), "eth%d", netnr);
+				if (ret < 0 || ret >= sizeof(eth))
+					goto err;
+			}
 
-			veth = n->priv.veth_attr.pair;
+			switch (n->type) {
+			case LXC_NET_VETH:
+				veth = n->priv.veth_attr.pair;
 
-			if (n->link)
-				ret = snprintf(buf, sizeof(buf), "%s=%s@%s", eth, veth, n->link);
-			else
-				ret = snprintf(buf, sizeof(buf), "%s=%s", eth, veth);
-			if (ret < 0 || ret >= sizeof(buf))
+				if (n->link) {
+					if (external_not_veth)
+						fmt = "veth[%s]:%s@%s";
+					else
+						fmt = "%s=%s@%s";
+
+					ret = snprintf(buf, sizeof(buf), fmt, eth, veth, n->link);
+				} else {
+					if (external_not_veth)
+						fmt = "veth[%s]:%s";
+					else
+						fmt = "%s=%s";
+
+					ret = snprintf(buf, sizeof(buf), fmt, eth, veth);
+				}
+				if (ret < 0 || ret >= sizeof(buf))
+					goto err;
+				break;
+			case LXC_NET_MACVLAN:
+				if (!n->link) {
+					ERROR("no host interface for macvlan %s", n->name);
+					goto err;
+				}
+
+				ret = snprintf(buf, sizeof(buf), "macvlan[%s]:%s", eth, n->link);
+				if (ret < 0 || ret >= sizeof(buf))
+					goto err;
+				break;
+			case LXC_NET_NONE:
+			case LXC_NET_EMPTY:
+				break;
+			default:
+				/* we have screened for this earlier... */
+				ERROR("unexpected network type %d", n->type);
 				goto err;
+			}
 
-			DECLARE_ARG("--veth-pair");
+			if (external_not_veth)
+				DECLARE_ARG("--external");
+			else
+				DECLARE_ARG("--veth-pair");
 			DECLARE_ARG(buf);
+			netnr++;
 		}
 
 	}
@@ -478,6 +571,21 @@ static void exec_criu(struct criu_opts *opts)
 	}
 
 	INFO("execing: %s", buf);
+
+	/* before criu inits its log, it sometimes prints things to stdout/err;
+	 * let's be sure we capture that.
+	 */
+	if (dup2(opts->pipefd, STDOUT_FILENO) < 0) {
+		SYSERROR("dup2 stdout failed");
+		goto err;
+	}
+
+	if (dup2(opts->pipefd, STDERR_FILENO) < 0) {
+		SYSERROR("dup2 stderr failed");
+		goto err;
+	}
+
+	close(opts->pipefd);
 
 #undef DECLARE_ARG
 	execv(argv[0], argv);
@@ -589,7 +697,7 @@ version_match:
 version_error:
 		fclose(f);
 		free(tmp);
-		ERROR("must have criu " CRIU_VERSION " or greater to checkpoint/restore\n");
+		ERROR("must have criu " CRIU_VERSION " or greater to checkpoint/restore");
 		return false;
 	}
 }
@@ -604,7 +712,7 @@ static bool criu_ok(struct lxc_container *c, char **criu_version)
 		return false;
 
 	if (geteuid()) {
-		ERROR("Must be root to checkpoint\n");
+		ERROR("Must be root to checkpoint");
 		return false;
 	}
 
@@ -615,9 +723,10 @@ static bool criu_ok(struct lxc_container *c, char **criu_version)
 		case LXC_NET_VETH:
 		case LXC_NET_NONE:
 		case LXC_NET_EMPTY:
+		case LXC_NET_MACVLAN:
 			break;
 		default:
-			ERROR("Found network that is not VETH or NONE\n");
+			ERROR("Found un-dumpable network: %s (%s)", lxc_net_type_to_str(n->type), n->name);
 			return false;
 		}
 	}
@@ -718,15 +827,6 @@ static void do_restore(struct lxc_container *c, int status_pipe, struct migrate_
 
 		close(pipes[0]);
 		pipes[0] = -1;
-		if (dup2(pipes[1], STDERR_FILENO) < 0) {
-			SYSERROR("dup2 failed");
-			goto out_fini_handler;
-		}
-
-		if (dup2(pipes[1], STDOUT_FILENO) < 0) {
-			SYSERROR("dup2 failed");
-			goto out_fini_handler;
-		}
 
 		if (unshare(CLONE_NEWNS))
 			goto out_fini_handler;
@@ -753,6 +853,7 @@ static void do_restore(struct lxc_container *c, int status_pipe, struct migrate_
 			}
 		}
 
+		os.pipefd = pipes[1];
 		os.action = "restore";
 		os.user = opts;
 		os.c = c;
@@ -809,9 +910,11 @@ static void do_restore(struct lxc_container *c, int status_pipe, struct migrate_
 					goto out_fini_handler;
 				}
 
+				if (n == sizeof(buf))
+					n--;
 				buf[n] = 0;
 
-				ERROR("criu process exited %d, output:\n%s\n", WEXITSTATUS(status), buf);
+				ERROR("criu process exited %d, output:\n%s", WEXITSTATUS(status), buf);
 				goto out_fini_handler;
 			} else {
 				ret = snprintf(buf, sizeof(buf), "/proc/self/task/%lu/children", (unsigned long)syscall(__NR_gettid));
@@ -822,7 +925,7 @@ static void do_restore(struct lxc_container *c, int status_pipe, struct migrate_
 
 				FILE *f = fopen(buf, "r");
 				if (!f) {
-					SYSERROR("couldn't read restore's children file %s\n", buf);
+					SYSERROR("couldn't read restore's children file %s", buf);
 					goto out_fini_handler;
 				}
 
@@ -839,7 +942,7 @@ static void do_restore(struct lxc_container *c, int status_pipe, struct migrate_
 				}
 			}
 		} else {
-			ERROR("CRIU was killed with signal %d\n", WTERMSIG(status));
+			ERROR("CRIU was killed with signal %d", WTERMSIG(status));
 			goto out_fini_handler;
 		}
 
@@ -950,22 +1053,30 @@ static bool do_dump(struct lxc_container *c, char *mode, struct migrate_opts *op
 {
 	pid_t pid;
 	char *criu_version = NULL;
+	int criuout[2];
 
 	if (!criu_ok(c, &criu_version))
 		return false;
 
-	if (mkdir_p(opts->directory, 0700) < 0)
+	if (pipe(criuout) < 0) {
+		SYSERROR("pipe() failed");
 		return false;
+	}
+
+	if (mkdir_p(opts->directory, 0700) < 0)
+		goto fail;
 
 	pid = fork();
 	if (pid < 0) {
 		SYSERROR("fork failed");
-		return false;
+		goto fail;
 	}
 
 	if (pid == 0) {
 		struct criu_opts os;
 		struct lxc_handler h;
+
+		close(criuout[0]);
 
 		h.name = c->name;
 		if (!cgroup_init(&h)) {
@@ -973,6 +1084,7 @@ static bool do_dump(struct lxc_container *c, char *mode, struct migrate_opts *op
 			exit(1);
 		}
 
+		os.pipefd = criuout[1];
 		os.action = mode;
 		os.user = opts;
 		os.c = c;
@@ -987,27 +1099,51 @@ static bool do_dump(struct lxc_container *c, char *mode, struct migrate_opts *op
 		exit(1);
 	} else {
 		int status;
+		ssize_t n;
+		char buf[4096];
+		bool ret;
+
+		close(criuout[1]);
+
 		pid_t w = waitpid(pid, &status, 0);
 		if (w == -1) {
 			SYSERROR("waitpid");
+			close(criuout[0]);
 			return false;
 		}
+
+		n = read(criuout[0], buf, sizeof(buf));
+		close(criuout[0]);
+		if (n < 0) {
+			SYSERROR("read");
+			n = 0;
+		}
+		buf[n] = 0;
 
 		if (WIFEXITED(status)) {
 			if (WEXITSTATUS(status)) {
-				ERROR("dump failed with %d\n", WEXITSTATUS(status));
-				return false;
+				ERROR("dump failed with %d", WEXITSTATUS(status));
+				ret = false;
+			} else {
+				ret = true;
 			}
-
-			return true;
 		} else if (WIFSIGNALED(status)) {
-			ERROR("dump signaled with %d\n", WTERMSIG(status));
-			return false;
+			ERROR("dump signaled with %d", WTERMSIG(status));
+			ret = false;
 		} else {
-			ERROR("unknown dump exit %d\n", status);
-			return false;
+			ERROR("unknown dump exit %d", status);
+			ret = false;
 		}
+
+		if (!ret)
+			ERROR("criu output: %s", buf);
+		return ret;
 	}
+fail:
+	close(criuout[0]);
+	close(criuout[1]);
+	rmdir(opts->directory);
+	return false;
 }
 
 bool __criu_pre_dump(struct lxc_container *c, struct migrate_opts *opts)
@@ -1025,7 +1161,7 @@ bool __criu_dump(struct lxc_container *c, struct migrate_opts *opts)
 		return false;
 
 	if (access(path, F_OK) == 0) {
-		ERROR("please use a fresh directory for the dump directory\n");
+		ERROR("please use a fresh directory for the dump directory");
 		return false;
 	}
 
@@ -1043,7 +1179,7 @@ bool __criu_restore(struct lxc_container *c, struct migrate_opts *opts)
 		return false;
 
 	if (geteuid()) {
-		ERROR("Must be root to restore\n");
+		ERROR("Must be root to restore");
 		return false;
 	}
 
