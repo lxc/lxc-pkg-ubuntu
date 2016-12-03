@@ -102,7 +102,7 @@ static int do_rsync(const char *src, const char *dest)
 	s[l-2] = '/';
 	s[l-1] = '\0';
 
-	execlp("rsync", "rsync", "-aHX", "--delete", s, dest, (char *)NULL);
+	execlp("rsync", "rsync", "-aHXS", "--delete", s, dest, (char *)NULL);
 	exit(1);
 }
 
@@ -660,6 +660,9 @@ static int zfs_clone(const char *opath, const char *npath, const char *oname,
 		if ((pid = fork()) < 0)
 			return -1;
 		if (!pid) {
+			int dev0 = open("/dev/null", O_WRONLY);
+			if (dev0 >= 0)
+				dup2(dev0, STDERR_FILENO);
 			execlp("zfs", "zfs", "destroy", path1, NULL);
 			exit(1);
 		}
@@ -740,7 +743,7 @@ static int zfs_destroy(struct bdev *orig)
 		return -1;
 	*p = '\0';
 
-	execlp("zfs", "zfs", "destroy", output, NULL);
+	execlp("zfs", "zfs", "destroy", "-r", output, NULL);
 	exit(1);
 }
 
@@ -1720,7 +1723,7 @@ static int btrfs_recursive_destroy(const char *path)
 	struct btrfs_ioctl_search_header *sh;
 	struct btrfs_root_ref *ref;
 	struct my_btrfs_tree *tree;
-	int ret, i;
+	int ret, e, i;
 	unsigned long off = 0;
 	int name_len;
 	char *name;
@@ -1733,8 +1736,9 @@ static int btrfs_recursive_destroy(const char *path)
 	}
 
 	if (btrfs_list_get_path_rootid(fd, &root_id)) {
+		e = errno;
 		close(fd);
-		if (errno == EPERM || errno == EACCES) {
+		if (e == EPERM || e == EACCES) {
 			WARN("Will simply try removing");
 			goto ignore_search;
 		}
@@ -1765,10 +1769,16 @@ static int btrfs_recursive_destroy(const char *path)
 
 	while(1) {
 		ret = ioctl(fd, BTRFS_IOC_TREE_SEARCH, &args);
+		e = errno;
 		if (ret < 0) {
 			close(fd);
-			ERROR("Error: can't perform the search under %s\n", path);
 			free_btrfs_tree(tree);
+			if (e == EPERM || e == EACCES) {
+				WARN("Warn: can't perform the search under %s. Will simply try removing", path);
+				goto ignore_search;
+			}
+
+			ERROR("Error: can't perform the search under %s\n", path);
 			return -1;
 		}
 		if (sk->nr_items == 0)
@@ -1887,7 +1897,7 @@ static int loop_detect(const char *path)
 
 static int find_free_loopdev_no_control(int *retfd, char *namep)
 {
-	struct dirent dirent, *direntp;
+	struct dirent *direntp;
 	struct loop_info64 lo;
 	DIR *dir;
 	int fd = -1;
@@ -1897,8 +1907,8 @@ static int find_free_loopdev_no_control(int *retfd, char *namep)
 		SYSERROR("Error opening /dev");
 		return -1;
 	}
-	while (!readdir_r(dir, &dirent, &direntp)) {
 
+	while ((direntp = readdir(dir))) {
 		if (!direntp)
 			break;
 		if (strncmp(direntp->d_name, "loop", 4) != 0)

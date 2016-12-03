@@ -483,6 +483,7 @@ extern int lxc_list_nicconfigs(struct lxc_conf *c, const char *key,
 	else
 		memset(retv, 0, inlen);
 
+	strprint(retv, inlen, "type\n");
 	strprint(retv, inlen, "script.up\n");
 	strprint(retv, inlen, "script.down\n");
 	if (netdev->type != LXC_NET_EMPTY) {
@@ -932,7 +933,7 @@ static int config_network_ipv6_gateway(const char *key, const char *value,
 	free(netdev->ipv6_gateway);
 
 	if (!value || strlen(value) == 0) {
-		netdev->ipv4_gateway = NULL;
+		netdev->ipv6_gateway = NULL;
 	} else if (!strcmp(value, "auto")) {
 		netdev->ipv6_gateway = NULL;
 		netdev->ipv6_gateway_auto = true;
@@ -1006,7 +1007,7 @@ static int config_hook(const char *key, const char *value,
 				 struct lxc_conf *lxc_conf)
 {
 	char *copy;
-	
+
 	if (!value || strlen(value) == 0)
 		return lxc_clear_hooks(lxc_conf, key);
 
@@ -1706,6 +1707,14 @@ static int parse_line(char *buffer, void *data)
 	value += lxc_char_left_gc(value, strlen(value));
 	value[lxc_char_right_gc(value, strlen(value))] = '\0';
 
+	if (*value == '\'' || *value == '\"') {
+		size_t len = strlen(value);
+		if (len > 1 && value[len-1] == *value) {
+			value[len-1] = '\0';
+			value++;
+		}
+	}
+
 	config = lxc_getconfig(key);
 	if (!config) {
 		ERROR("unknown key %s", key);
@@ -1782,9 +1791,26 @@ signed long lxc_config_parse_arch(const char *arch)
 		{ "i586", PER_LINUX32 },
 		{ "i686", PER_LINUX32 },
 		{ "athlon", PER_LINUX32 },
+		{ "mips", PER_LINUX32 },
+		{ "mipsel", PER_LINUX32 },
+		{ "ppc", PER_LINUX32 },
+		{ "arm", PER_LINUX32 },
+		{ "armv7l", PER_LINUX32 },
+		{ "armhf", PER_LINUX32 },
+		{ "armel", PER_LINUX32 },
+		{ "powerpc", PER_LINUX32 },
 		{ "linux64", PER_LINUX },
 		{ "x86_64", PER_LINUX },
 		{ "amd64", PER_LINUX },
+		{ "mips64", PER_LINUX },
+		{ "mips64el", PER_LINUX },
+		{ "ppc64", PER_LINUX },
+		{ "ppc64le", PER_LINUX },
+		{ "ppc64el", PER_LINUX },
+		{ "powerpc64", PER_LINUX },
+		{ "s390x", PER_LINUX },
+		{ "aarch64", PER_LINUX },
+		{ "arm64", PER_LINUX },
 	};
 	size_t len = sizeof(pername) / sizeof(pername[0]);
 
@@ -2252,7 +2278,7 @@ int lxc_clear_config_item(struct lxc_conf *c, const char *key)
 		return lxc_clear_config_keepcaps(c);
 	else if (strncmp(key, "lxc.cgroup", 10) == 0)
 		return lxc_clear_cgroups(c, key);
-	else if (strcmp(key, "lxc.mount.entries") == 0)
+	else if (strcmp(key, "lxc.mount.entry") == 0)
 		return lxc_clear_mount_entries(c);
 	else if (strcmp(key, "lxc.mount.auto") == 0)
 		return lxc_clear_automounts(c);

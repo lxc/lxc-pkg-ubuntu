@@ -34,7 +34,7 @@ done
 export PATH=$PATH:/usr/sbin:/usr/bin:/sbin:/bin
 export GREP_OPTIONS=""
 
-MIRROR=${MIRROR:-http://http.debian.net/debian}
+MIRROR=${MIRROR:-http://httpredir.debian.org/debian}
 SECURITY_MIRROR=${SECURITY_MIRROR:-http://security.debian.org/}
 LOCALSTATEDIR="@LOCALSTATEDIR@"
 LXC_TEMPLATE_CONFIG="@LXCTEMPLATECONFIG@"
@@ -97,6 +97,24 @@ $hostname
 EOF
 
     # reconfigure some services
+
+    # but first reconfigure locales - so we get no noisy perl-warnings
+    if [ -z "$LANG" ]; then
+        cat >> $rootfs/etc/locale.gen << EOF
+en_US.UTF-8 UTF-8
+EOF
+        chroot $rootfs locale-gen en_US.UTF-8 UTF-8
+        chroot $rootfs update-locale LANG=en_US.UTF-8
+    else
+        encoding=$(echo $LANG | cut -d. -f2)
+        chroot $rootfs sed -e "s/^# \(${LANG} ${encoding}\)/\1/" \
+            -i /etc/locale.gen 2> /dev/null
+        cat >> $rootfs/etc/locale.gen << EOF
+$LANG $encoding
+EOF
+        chroot $rootfs locale-gen $LANG $encoding
+        chroot $rootfs update-locale LANG=$LANG
+    fi
 
     # remove pointless services in a container
     chroot $rootfs /usr/sbin/update-rc.d -f checkroot.sh disable
@@ -221,10 +239,18 @@ cleanup()
 
 download_debian()
 {
+    case "$release" in
+      wheezy)
+        init=sysvinit
+        ;;
+      *)
+        init=init
+        ;;
+    esac
     packages=\
+$init,\
 ifupdown,\
 locales,\
-libui-dialog-perl,\
 dialog,\
 isc-dhcp-client,\
 netbase,\
@@ -237,6 +263,28 @@ openssh-server
     release=$3
 
     trap cleanup EXIT SIGHUP SIGINT SIGTERM
+
+    # Create the cache
+    mkdir -p "$cache"
+
+    # If debian-archive-keyring isn't installed, fetch GPG keys directly
+    releasekeyring=/usr/share/keyrings/debian-archive-keyring.gpg
+    if [ ! -f $releasekeyring ]; then
+        releasekeyring="$cache/archive-key.gpg"
+        case $release in
+            "squeeze")
+                gpgkeyname="archive-key-6.0"
+                ;;
+            "wheezy")
+                gpgkeyname="archive-key-7.0"
+                ;;
+            *)
+                gpgkeyname="archive-key-8"
+                ;;
+        esac
+        wget https://ftp-master.debian.org/keys/${gpgkeyname}.asc -O - --quiet \
+            | gpg --import --no-default-keyring --keyring=${releasekeyring}
+    fi
     # check the mini debian was not already downloaded
     mkdir -p "$cache/partial-$release-$arch"
     if [ $? -ne 0 ]; then
@@ -247,7 +295,7 @@ openssh-server
     # download a mini debian into a cache
     echo "Downloading debian minimal ..."
     debootstrap --verbose --variant=minbase --arch=$arch \
-        --include=$packages \
+        --include=$packages --keyring=${releasekeyring} \
         "$release" "$cache/partial-$release-$arch" $MIRROR
     if [ $? -ne 0 ]; then
         echo "Failed to download the rootfs, aborting."
@@ -394,23 +442,6 @@ EOF
     # Re-enable service startup
     rm ${rootfs}/usr/sbin/policy-rc.d
     
-    # reconfigure locales
-    if [ -z "$LANG" ]; then
-        cat >> $rootfs/etc/locale.gen << EOF
-en_US.UTF-8 UTF-8
-EOF
-        chroot $rootfs locale-gen en_US.UTF-8 UTF-8
-        chroot $rootfs update-locale LANG=en_US.UTF-8
-    else
-        encoding=$(echo $LANG | cut -d. -f2)
-        chroot $rootfs sed -e "s/^# \(${LANG} ${encoding}\)/\1/" \
-            -i /etc/locale.gen 2> /dev/null
-        cat >> $rootfs/etc/locale.gen << EOF
-$LANG $encoding
-EOF
-        chroot $rootfs locale-gen $LANG $encoding
-        chroot $rootfs update-locale LANG=$LANG
-    fi
     # end
 }
 
@@ -453,7 +484,7 @@ Options :
   -p, --path=PATH        directory where config and rootfs of this VM will be kept
   -a, --arch=ARCH        The container architecture. Can be one of: i686, x86_64,
                          amd64, armhf, armel, powerpc. Defaults to host arch.
-  -r, --release=RELEASE  Debian release. Can be one of: squeeze, wheezy, jessie, sid.
+  -r, --release=RELEASE  Debian release. Can be one of: wheezy, jessie, stretch, sid.
                          Defaults to current stable.
   --mirror=MIRROR        Debian mirror to use during installation. Overrides the MIRROR
                          environment variable (see below).
@@ -487,6 +518,8 @@ elif [ "$arch" = "x86_64" ]; then
     arch="amd64"
 elif [ "$arch" = "armv7l" ]; then
     arch="armhf"
+elif [ "$arch" = "ppc64le" ]; then
+    arch="ppc64el"
 fi
 hostarch=$arch
 
@@ -555,7 +588,7 @@ fi
 
 current_release=`wget ${MIRROR}/dists/stable/Release -O - 2> /dev/null | head |awk '/^Codename: (.*)$/ { print $2; }'`
 release=${release:-${current_release}}
-valid_releases=('squeeze' 'wheezy' 'jessie' 'stretch' 'sid')
+valid_releases=('wheezy' 'jessie' 'stretch' 'sid')
 if [[ ! "${valid_releases[*]}" =~ (^|[^[:alpha:]])$release([^[:alpha:]]|$) ]]; then
     echo "Invalid release ${release}, valid ones are: ${valid_releases[*]}"
     exit 1
