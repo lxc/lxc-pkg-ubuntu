@@ -1,3 +1,11 @@
+lxc (1.0.8-0ubuntu0.4) trusty-security; urgency=medium
+
+  * SECURITY UPDATE: Escape through ptrace and inherited fd (LP: #1639345)
+    - attach: Do not send procfd to attached process
+    - CVE-2016-8649
+
+ -- Stéphane Graber <stgraber@ubuntu.com>  Tue, 22 Nov 2016 00:49:00 -0500
+
 lxc (1.0.8-0ubuntu0.3) trusty; urgency=medium
 
   * Cherry-pick from upstream:
