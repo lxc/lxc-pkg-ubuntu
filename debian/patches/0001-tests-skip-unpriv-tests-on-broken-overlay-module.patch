@@ -1,0 +1,61 @@
+From 7f435a074b1b83a4adca9c86c80ea9a801e34c42 Mon Sep 17 00:00:00 2001
+From: Christian Brauner <christian.brauner@ubuntu.com>
+Date: Sun, 25 Dec 2016 12:26:17 +0100
+Subject: tests: skip unpriv tests on broken overlay module
+
+This mainly affects Trusty. The 3.13 kernel has a broken overlay module which
+does not handle symlinks correctly. This is a problem for containers that use
+an overlay based rootfs since safe_mount() uses /proc/<pid>/fd/<fd-number> in
+its calls to mount().
+
+Signed-off-by: Christian Brauner <christian.brauner@ubuntu.com>
+---
+ src/tests/lxc-test-unpriv | 35 +++++++++++++++++++++++++++++++++++
+ 1 file changed, 35 insertions(+)
+
+diff --git a/src/tests/lxc-test-unpriv b/src/tests/lxc-test-unpriv
+index 93c91a9..54ddc66 100755
+--- a/src/tests/lxc-test-unpriv
++++ b/src/tests/lxc-test-unpriv
+@@ -27,6 +27,41 @@ if [ $(id -u) -ne 0 ]; then
+ 	echo "ERROR: Must run as root."
+ 	exit 1
+ fi
++
++# Test if we're using an overlayfs module that handles symlinks correctly. If
++# not, we skip these tests since overlay clones will not work correctly.
++if modprobe -q overlayfs; then
++        TMPDIR=$(mktemp -d)
++
++        MOUNTDIR="${TMPDIR}/ovl_symlink_test"
++
++        mkdir ${MOUNTDIR}
++
++        mount -t tmpfs none ${MOUNTDIR}
++
++        mkdir "${MOUNTDIR}/lowerdir" "${MOUNTDIR}/upperdir" "${MOUNTDIR}/overlayfs"
++        mount -t overlayfs -o lowerdir="${MOUNTDIR}/lowerdir",upperdir="${MOUNTDIR}/upperdir" none "${MOUNTDIR}/overlayfs"
++
++        CORRECT_LINK_TARGET="${MOUNTDIR}/overlayfs/dummy_file"
++        exec 9> "${CORRECT_LINK_TARGET}"
++
++        DETECTED_LINK_TARGET=$(readlink -q /proc/$$/fd/9)
++
++        # cleanup
++        exec 9>&-
++
++        umount "${MOUNTDIR}/overlayfs"
++        umount ${MOUNTDIR}
++
++        rmdir ${MOUNTDIR}
++
++        # This overlay module does not correctly handle symlinks, so skip the
++        # tests.
++        if [ "${DETECTED_LINK_TARGET}" != "${CORRECT_LINK_TARGET}" ]; then
++                exit 0
++        fi
++fi
++
+ which newuidmap >/dev/null 2>&1 || { echo "'newuidmap' command is missing" >&2; exit 1; }
+ 
+ DONE=0
