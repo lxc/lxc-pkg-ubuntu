@@ -1,0 +1,83 @@
+From dafdbbb3fba6632673dbd4e6d549147baea1408a Mon Sep 17 00:00:00 2001
+From: Christian Brauner <christian.brauner@ubuntu.com>
+Date: Wed, 4 Jan 2017 16:28:50 +0100
+Subject: tools: only check for O_RDONLY
+
+On some Android systems the lxc folders where containers are stored might be
+read-only and so checking for O_RDWR, will effectively make the tools useless
+on these systems, so let's dumb the check down to O_RDONLY.
+
+Signed-off-by: Christian Brauner <christian.brauner@ubuntu.com>
+---
+ src/lxc/tools/lxc_attach.c   | 2 +-
+ src/lxc/tools/lxc_copy.c     | 2 +-
+ src/lxc/tools/lxc_create.c   | 2 +-
+ src/lxc/tools/lxc_snapshot.c | 2 +-
+ src/lxc/tools/lxc_start.c    | 2 +-
+ 5 files changed, 5 insertions(+), 5 deletions(-)
+
+diff --git a/src/lxc/tools/lxc_attach.c b/src/lxc/tools/lxc_attach.c
+index 4dd3883..01e505a 100644
+--- a/src/lxc/tools/lxc_attach.c
++++ b/src/lxc/tools/lxc_attach.c
+@@ -395,7 +395,7 @@ int main(int argc, char *argv[])
+ 	lxc_log_options_no_override();
+ 
+ 	if (geteuid()) {
+-		if (access(my_args.lxcpath[0], O_RDWR) < 0) {
++		if (access(my_args.lxcpath[0], O_RDONLY) < 0) {
+ 			if (!my_args.quiet)
+ 				fprintf(stderr, "You lack access to %s\n", my_args.lxcpath[0]);
+ 			exit(EXIT_FAILURE);
+diff --git a/src/lxc/tools/lxc_copy.c b/src/lxc/tools/lxc_copy.c
+index 7427cd4..c7a47d5 100644
+--- a/src/lxc/tools/lxc_copy.c
++++ b/src/lxc/tools/lxc_copy.c
+@@ -173,7 +173,7 @@ int main(int argc, char *argv[])
+ 	lxc_log_options_no_override();
+ 
+ 	if (geteuid()) {
+-		if (access(my_args.lxcpath[0], O_RDWR) < 0) {
++		if (access(my_args.lxcpath[0], O_RDONLY) < 0) {
+ 			if (!my_args.quiet)
+ 				fprintf(stderr, "You lack access to %s\n", my_args.lxcpath[0]);
+ 			exit(ret);
+diff --git a/src/lxc/tools/lxc_create.c b/src/lxc/tools/lxc_create.c
+index 6e8acf0..b8795c4 100644
+--- a/src/lxc/tools/lxc_create.c
++++ b/src/lxc/tools/lxc_create.c
+@@ -252,7 +252,7 @@ int main(int argc, char *argv[])
+ 		if (mkdir_p(my_args.lxcpath[0], 0755)) {
+ 			exit(EXIT_FAILURE);
+ 		}
+-		if (access(my_args.lxcpath[0], O_RDWR) < 0) {
++		if (access(my_args.lxcpath[0], O_RDONLY) < 0) {
+ 			fprintf(stderr, "You lack access to %s\n", my_args.lxcpath[0]);
+ 			exit(EXIT_FAILURE);
+ 		}
+diff --git a/src/lxc/tools/lxc_snapshot.c b/src/lxc/tools/lxc_snapshot.c
+index 1a79a7a..6948d19 100644
+--- a/src/lxc/tools/lxc_snapshot.c
++++ b/src/lxc/tools/lxc_snapshot.c
+@@ -95,7 +95,7 @@ int main(int argc, char *argv[])
+ 	lxc_log_options_no_override();
+ 
+ 	if (geteuid()) {
+-		if (access(my_args.lxcpath[0], O_RDWR) < 0) {
++		if (access(my_args.lxcpath[0], O_RDONLY) < 0) {
+ 			fprintf(stderr, "You lack access to %s\n",
+ 				my_args.lxcpath[0]);
+ 			exit(EXIT_FAILURE);
+diff --git a/src/lxc/tools/lxc_start.c b/src/lxc/tools/lxc_start.c
+index eaa8da4..e1a25a9 100644
+--- a/src/lxc/tools/lxc_start.c
++++ b/src/lxc/tools/lxc_start.c
+@@ -231,7 +231,7 @@ int main(int argc, char *argv[])
+ 		exit(err);
+ 	lxc_log_options_no_override();
+ 
+-	if (access(my_args.lxcpath[0], O_RDWR) < 0) {
++	if (access(my_args.lxcpath[0], O_RDONLY) < 0) {
+ 		if (!my_args.quiet)
+ 			fprintf(stderr, "You lack access to %s\n", my_args.lxcpath[0]);
+ 		exit(err);
