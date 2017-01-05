@@ -1,3 +1,10 @@
+lxc (2.0.6-0ubuntu1~ubuntu16.04.2) xenial; urgency=medium
+
+  * Cherry-pick upstream bugfix:
+    - 0003-tools-only-check-for-O_RDONLY.patch (LP: #1653725)
+
+ -- Stéphane Graber <stgraber@ubuntu.com>  Wed, 04 Jan 2017 19:52:32 -0500
+
 lxc (2.0.6-0ubuntu1~ubuntu16.04.1) xenial; urgency=medium
 
   * New upstream bugfix release (2.0.6) (LP: #1647010):
