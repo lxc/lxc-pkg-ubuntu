@@ -32,7 +32,7 @@ Section: oldlibs
 Description: Transitional package for lxc1
  This is a transitional dummy package. It can safely be removed.
  .
- The currently recommened LXC experience is available as lxc2 and is
+ The currently recommended LXC experience is available as lxc2 and is
  provided by LXD using the LXC backend.
 
 Package: lxc1
@@ -175,10 +175,10 @@ Depends: liblua5.2-0,
          ${misc:Depends},
          ${shlibs:Depends}
 Recommends: lxc-templates (= ${binary:Version})
-Description: Linux Containers userspace tools (LUA bindings)
+Description: Linux Containers userspace tools (Lua bindings)
  Containers are insulated areas inside a system, which have their own namespace
  for filesystem, network, PID, IPC, CPU and memory allocation and which can be
  created using the Control Group and Namespace features included in the Linux
  kernel.
  .
- This package contains the LUA bindings.
+ This package contains the Lua bindings.
