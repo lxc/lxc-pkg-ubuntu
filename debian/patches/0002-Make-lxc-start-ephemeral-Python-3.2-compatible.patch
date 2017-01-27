@@ -1,0 +1,60 @@
+From b3394cc91496dbb96c34444889a891b7940ec5cb Mon Sep 17 00:00:00 2001
+From: Colin Watson <cjwatson@ubuntu.com>
+Date: Thu, 26 Jan 2017 14:32:08 +0000
+Subject: Make lxc-start-ephemeral Python 3.2-compatible
+
+On Ubuntu 12.04 LTS with Python 3.2, `lxc-start-ephemeral` breaks as
+follows:
+
+    Traceback (most recent call last):
+      File "/usr/bin/lxc-start-ephemeral", line 371, in attach_as_user
+      File "/usr/lib/python3.2/subprocess.py", line 515, in check_output
+      File "/usr/lib/python3.2/subprocess.py", line 732, in __init__
+    LookupError: unknown encoding: ANSI_X3.4-1968
+
+This is because `universal_newlines=True` causes `subprocess` to use
+`io.TextIOWrapper`, and in versions of Python earlier than 3.3 that
+fetched the preferred encoding using `locale.getpreferredencoding()`
+rather than `locale.getpreferredencoding(False)`, thereby changing the
+locale and causing codecs to be reloaded.  However, `attach_as_user`
+runs inside the container and thus can't rely on having access to the
+same Python standard library on disk.
+
+The workaround is to decode by hand instead, avoiding the temporary
+change of locale.
+
+Signed-off-by: Colin Watson <cjwatson@ubuntu.com>
+---
+ src/lxc/tools/lxc-start-ephemeral.in | 12 +++++++++---
+ 1 file changed, 9 insertions(+), 3 deletions(-)
+
+diff --git a/src/lxc/tools/lxc-start-ephemeral.in b/src/lxc/tools/lxc-start-ephemeral.in
+index 7e0c8ea..90d5f6f 100644
+--- a/src/lxc/tools/lxc-start-ephemeral.in
++++ b/src/lxc/tools/lxc-start-ephemeral.in
+@@ -28,6 +28,7 @@
+ import argparse
+ import gettext
+ import lxc
++import locale
+ import os
+ import sys
+ import subprocess
+@@ -363,9 +364,14 @@ if os.path.exists("/proc/self/ns/pid"):
+             if args.user:
+                 username = args.user
+ 
+-            line = subprocess.check_output(
+-                ["getent", "passwd", username],
+-                universal_newlines=True).rstrip("\n")
++            # This should really just use universal_newlines=True, but we do
++            # the decoding by hand instead for compatibility with Python
++            # 3.2; that used locale.getpreferredencoding() internally rather
++            # than locale.getpreferredencoding(False), and the former breaks
++            # here because we can't reload codecs at this point unless the
++            # container has the same version of Python installed.
++            line = subprocess.check_output(["getent", "passwd", username])
++            line = line.decode(locale.getpreferredencoding(False)).rstrip("\n")
+             _, _, pw_uid, pw_gid, _, pw_dir, _ = line.split(":", 6)
+             pw_uid = int(pw_uid)
+             pw_gid = int(pw_gid)
