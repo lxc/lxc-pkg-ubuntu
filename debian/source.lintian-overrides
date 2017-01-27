@@ -1,6 +1,5 @@
-# Needed to build with older dpkg-dev
-lxc source: unknown-field-in-dsc testsuite-triggers
-
 # Not quite true yet in Ubuntu
-lxc source: build-depends-on-obsolete-package build-depends: hardening-wrapper => use dpkg-buildflags instead
+lxc source: ored-build-depends-on-obsolete-package build-depends: hardening-wrapper => use dpkg-buildflags instead
+
+# Intentional
 lxc source: intra-source-package-circular-dependency liblxc1 lxc-common
