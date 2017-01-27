@@ -24,20 +24,41 @@
 #define _GNU_SOURCE
 #include "config.h"
 
+#include <dirent.h>
+#include <errno.h>
+#include <fcntl.h>
+#include <grp.h>
+#include <inttypes.h>
+#include <libgen.h>
+#include <pwd.h>
+#include <stdarg.h>
 #include <stdio.h>
 #include <stdlib.h>
-#include <stdarg.h>
-#include <errno.h>
 #include <string.h>
-#include <dirent.h>
+#include <time.h>
 #include <unistd.h>
-#include <inttypes.h>
-#include <sys/wait.h>
+#include <arpa/inet.h>
+#include <linux/loop.h>
+#include <net/if.h>
+#include <netinet/in.h>
+#include <sys/mman.h>
+#include <sys/mount.h>
+#include <sys/param.h>
+#include <sys/prctl.h>
+#include <sys/stat.h>
+#include <sys/socket.h>
 #include <sys/syscall.h>
 #include <sys/types.h>
-#include <pwd.h>
-#include <grp.h>
-#include <time.h>
+#include <sys/utsname.h>
+#include <sys/wait.h>
+
+/* makedev() */
+#ifdef MAJOR_IN_MKDEV
+#    include <sys/mkdev.h>
+#endif
+#ifdef MAJOR_IN_SYSMACROS
+#    include <sys/sysmacros.h>
+#endif
 
 #ifdef HAVE_STATVFS
 #include <sys/statvfs.h>
@@ -49,37 +70,25 @@
 #include <../include/openpty.h>
 #endif
 
-#include <linux/loop.h>
+#ifdef HAVE_LINUX_MEMFD_H
+#include <linux/memfd.h>
+#endif
 
-#include <sys/types.h>
-#include <sys/utsname.h>
-#include <sys/param.h>
-#include <sys/stat.h>
-#include <sys/socket.h>
-#include <sys/mount.h>
-#include <sys/mman.h>
-#include <sys/prctl.h>
-
-#include <arpa/inet.h>
-#include <fcntl.h>
-#include <netinet/in.h>
-#include <net/if.h>
-#include <libgen.h>
-
-#include "bdev.h"
-#include "network.h"
-#include "error.h"
 #include "af_unix.h"
+#include "bdev.h"
+#include "caps.h"       /* for lxc_caps_last_cap() */
+#include "cgroup.h"
+#include "conf.h"
+#include "error.h"
+#include "log.h"
+#include "lxcaufs.h"
+#include "lxclock.h"
+#include "lxcoverlay.h"
+#include "lxcseccomp.h"
+#include "namespace.h"
+#include "network.h"
 #include "parse.h"
 #include "utils.h"
-#include "conf.h"
-#include "log.h"
-#include "caps.h"       /* for lxc_caps_last_cap() */
-#include "lxcaufs.h"
-#include "lxcoverlay.h"
-#include "cgroup.h"
-#include "lxclock.h"
-#include "namespace.h"
 #include "lsm/lsm.h"
 
 #if HAVE_SYS_CAPABILITY_H
@@ -96,11 +105,7 @@
 #include <mntent.h>
 #endif
 
-#include "lxcseccomp.h"
-
 lxc_log_define(lxc_conf, lxc);
-
-#define LINELEN 4096
 
 #if HAVE_SYS_CAPABILITY_H
 #ifndef CAP_SETFCAP
@@ -135,10 +140,10 @@ lxc_log_define(lxc_conf, lxc);
 static int pivot_root(const char * new_root, const char * put_old)
 {
 #ifdef __NR_pivot_root
-return syscall(__NR_pivot_root, new_root, put_old);
+	return syscall(__NR_pivot_root, new_root, put_old);
 #else
-errno = ENOSYS;
-return -1;
+	errno = ENOSYS;
+	return -1;
 #endif
 }
 #else
@@ -150,10 +155,10 @@ extern int pivot_root(const char * new_root, const char * put_old);
 static int sethostname(const char * name, size_t len)
 {
 #ifdef __NR_sethostname
-return syscall(__NR_sethostname, name, len);
+	return syscall(__NR_sethostname, name, len);
 #else
-errno = ENOSYS;
-return -1;
+	errno = ENOSYS;
+	return -1;
 #endif
 }
 #endif
@@ -165,6 +170,59 @@ return -1;
 
 #ifndef MS_PRIVATE
 #define MS_PRIVATE (1<<18)
+#endif
+
+/* memfd_create() */
+#ifndef MFD_CLOEXEC
+#define MFD_CLOEXEC 0x0001U
+#endif
+
+#ifndef MFD_ALLOW_SEALING
+#define MFD_ALLOW_SEALING 0x0002U
+#endif
+
+#ifndef HAVE_MEMFD_CREATE
+static int memfd_create(const char *name, unsigned int flags) {
+	#ifndef __NR_memfd_create
+		#if defined __i386__
+			#define __NR_memfd_create 356
+		#elif defined __x86_64__
+			#define __NR_memfd_create 319
+		#elif defined __arm__
+			#define __NR_memfd_create 385
+		#elif defined __aarch64__
+			#define __NR_memfd_create 279
+		#elif defined __s390__
+			#define __NR_memfd_create 350
+		#elif defined __powerpc__
+			#define __NR_memfd_create 360
+		#elif defined __sparc__
+			#define __NR_memfd_create 348
+		#elif defined __blackfin__
+			#define __NR_memfd_create 390
+		#elif defined __ia64__
+			#define __NR_memfd_create 1340
+		#elif defined _MIPS_SIM
+			#if _MIPS_SIM == _MIPS_SIM_ABI32
+				#define __NR_memfd_create 4354
+			#endif
+			#if _MIPS_SIM == _MIPS_SIM_NABI32
+				#define __NR_memfd_create 6318
+			#endif
+			#if _MIPS_SIM == _MIPS_SIM_ABI64
+				#define __NR_memfd_create 5314
+			#endif
+		#endif
+	#endif
+	#ifdef __NR_memfd_create
+	return syscall(__NR_memfd_create, name, flags);
+	#else
+	errno = ENOSYS;
+	return -1;
+	#endif
+}
+#else
+extern int memfd_create(const char *name, unsigned int flags);
 #endif
 
 char *lxchook_names[NUM_LXC_HOOKS] = {
@@ -323,32 +381,31 @@ static int run_buffer(char *buffer)
 
 	f = lxc_popen(buffer);
 	if (!f) {
-		SYSERROR("popen failed");
+		SYSERROR("Failed to popen() %s.", buffer);
 		return -1;
 	}
 
 	output = malloc(LXC_LOG_BUFFER_SIZE);
 	if (!output) {
-		ERROR("failed to allocate memory for script output");
+		ERROR("Failed to allocate memory for %s.", buffer);
 		lxc_pclose(f);
 		return -1;
 	}
 
-	while(fgets(output, LXC_LOG_BUFFER_SIZE, f->f))
-		DEBUG("script output: %s", output);
+	while (fgets(output, LXC_LOG_BUFFER_SIZE, f->f))
+		DEBUG("Script %s with output: %s.", buffer, output);
 
 	free(output);
 
 	ret = lxc_pclose(f);
 	if (ret == -1) {
-		SYSERROR("Script exited on error");
+		SYSERROR("Script exited with error.");
 		return -1;
 	} else if (WIFEXITED(ret) && WEXITSTATUS(ret) != 0) {
-		ERROR("Script exited with status %d", WEXITSTATUS(ret));
+		ERROR("Script exited with status %d.", WEXITSTATUS(ret));
 		return -1;
 	} else if (WIFSIGNALED(ret)) {
-		ERROR("Script terminated by signal %d (%s)", WTERMSIG(ret),
-		      strsignal(WTERMSIG(ret)));
+		ERROR("Script terminated by signal %d.", WTERMSIG(ret));
 		return -1;
 	}
 
@@ -356,17 +413,17 @@ static int run_buffer(char *buffer)
 }
 
 static int run_script_argv(const char *name, const char *section,
-		      const char *script, const char *hook, const char *lxcpath,
-		      char **argsin)
+			   const char *script, const char *hook,
+			   const char *lxcpath, char **argsin)
 {
 	int ret, i;
 	char *buffer;
 	size_t size = 0;
 
-	INFO("Executing script '%s' for container '%s', config section '%s'",
+	INFO("Executing script \"%s\" for container \"%s\", config section \"%s\".",
 	     script, name, section);
 
-	for (i=0; argsin && argsin[i]; i++)
+	for (i = 0; argsin && argsin[i]; i++)
 		size += strlen(argsin[i]) + 1;
 
 	size += strlen(hook) + 1;
@@ -381,22 +438,23 @@ static int run_script_argv(const char *name, const char *section,
 
 	buffer = alloca(size);
 	if (!buffer) {
-		ERROR("failed to allocate memory");
+		ERROR("Failed to allocate memory.");
 		return -1;
 	}
 
-	ret = snprintf(buffer, size, "%s %s %s %s", script, name, section, hook);
-	if (ret < 0 || ret >= size) {
-		ERROR("Script name too long");
+	ret =
+	    snprintf(buffer, size, "%s %s %s %s", script, name, section, hook);
+	if (ret < 0 || (size_t)ret >= size) {
+		ERROR("Script name too long.");
 		return -1;
 	}
 
-	for (i=0; argsin && argsin[i]; i++) {
-		int len = size-ret;
+	for (i = 0; argsin && argsin[i]; i++) {
+		int len = size - ret;
 		int rc;
 		rc = snprintf(buffer + ret, len, " %s", argsin[i]);
 		if (rc < 0 || rc >= len) {
-			ERROR("Script args too long");
+			ERROR("Script args too long.");
 			return -1;
 		}
 		ret += rc;
@@ -405,15 +463,15 @@ static int run_script_argv(const char *name, const char *section,
 	return run_buffer(buffer);
 }
 
-static int run_script(const char *name, const char *section,
-		      const char *script, ...)
+static int run_script(const char *name, const char *section, const char *script,
+		      ...)
 {
 	int ret;
 	char *buffer, *p;
 	size_t size = 0;
 	va_list ap;
 
-	INFO("Executing script '%s' for container '%s', config section '%s'",
+	INFO("Executing script \"%s\" for container \"%s\", config section \"%s\".",
 	     script, name, section);
 
 	va_start(ap, script);
@@ -431,23 +489,23 @@ static int run_script(const char *name, const char *section,
 
 	buffer = alloca(size);
 	if (!buffer) {
-		ERROR("failed to allocate memory");
+		ERROR("Failed to allocate memory.");
 		return -1;
 	}
 
 	ret = snprintf(buffer, size, "%s %s %s", script, name, section);
 	if (ret < 0 || ret >= size) {
-		ERROR("Script name too long");
+		ERROR("Script name too long.");
 		return -1;
 	}
 
 	va_start(ap, script);
 	while ((p = va_arg(ap, char *))) {
-		int len = size-ret;
+		int len = size - ret;
 		int rc;
 		rc = snprintf(buffer + ret, len, " %s", p);
 		if (rc < 0 || rc >= len) {
-			ERROR("Script args too long");
+			ERROR("Script args too long.");
 			return -1;
 		}
 		ret += rc;
@@ -1229,7 +1287,7 @@ static int setup_rootfs(struct lxc_conf *conf)
 
 int prepare_ramfs_root(char *root)
 {
-	char buf[LINELEN], *p;
+	char buf[LXC_LINELEN], *p;
 	char nroot[PATH_MAX];
 	FILE *f;
 	int i;
@@ -1274,7 +1332,7 @@ int prepare_ramfs_root(char *root)
 			SYSERROR("Unable to open /proc/self/mountinfo");
 			return -1;
 		}
-		while (fgets(buf, LINELEN, f)) {
+		while (fgets(buf, LXC_LINELEN, f)) {
 			for (p = buf, i=0; p && i < 4; i++)
 				p = strchr(p+1, ' ');
 			if (!p)
@@ -1950,34 +2008,54 @@ static int setup_mount(const struct lxc_rootfs *rootfs, const char *fstab,
 	return ret;
 }
 
-FILE *write_mount_file(struct lxc_list *mount)
+FILE *make_anonymous_mount_file(struct lxc_list *mount)
 {
-	FILE *file;
-	struct lxc_list *iterator;
+	int ret;
 	char *mount_entry;
+	struct lxc_list *iterator;
+	FILE *file;
+	int fd = -1;
 
-	file = tmpfile();
+	fd = memfd_create("lxc_mount_file", MFD_CLOEXEC);
+	if (fd < 0) {
+		if (errno != ENOSYS)
+			return NULL;
+		file = tmpfile();
+	} else {
+		file = fdopen(fd, "r+");
+	}
+
 	if (!file) {
-		ERROR("Could not create temporary file: %s.", strerror(errno));
+		int saved_errno = errno;
+		if (fd != -1)
+			close(fd);
+		ERROR("Could not create mount entry file: %s.", strerror(saved_errno));
 		return NULL;
 	}
 
 	lxc_list_for_each(iterator, mount) {
 		mount_entry = iterator->elem;
-		fprintf(file, "%s\n", mount_entry);
+		ret = fprintf(file, "%s\n", mount_entry);
+		if (ret < strlen(mount_entry))
+			WARN("Could not write mount entry to anonymous mount file.");
 	}
 
-	rewind(file);
+	if (fseek(file, 0, SEEK_SET) < 0) {
+		fclose(file);
+		return NULL;
+	}
+
 	return file;
 }
 
-static int setup_mount_entries(const struct lxc_rootfs *rootfs, struct lxc_list *mount,
-	const char *lxc_name, const char *lxc_path)
+static int setup_mount_entries(const struct lxc_rootfs *rootfs,
+			       struct lxc_list *mount, const char *lxc_name,
+			       const char *lxc_path)
 {
 	FILE *file;
 	int ret;
 
-	file = write_mount_file(mount);
+	file = make_anonymous_mount_file(mount);
 	if (!file)
 		return -1;
 
@@ -2119,7 +2197,7 @@ static int setup_hw_addr(char *hwaddr, const char *ifname)
 {
 	struct sockaddr sockaddr;
 	struct ifreq ifr;
-	int ret, fd;
+	int ret, fd, saved_errno;
 
 	ret = lxc_convert_mac(hwaddr, &sockaddr);
 	if (ret) {
@@ -2139,9 +2217,10 @@ static int setup_hw_addr(char *hwaddr, const char *ifname)
 	}
 
 	ret = ioctl(fd, SIOCSIFHWADDR, &ifr);
+	saved_errno = errno;
 	close(fd);
 	if (ret)
-		ERROR("ioctl failure : %s", strerror(errno));
+		ERROR("ioctl failure : %s", strerror(saved_errno));
 
 	DEBUG("mac address '%s' on '%s' has been setup", hwaddr, ifr.ifr_name);
 
@@ -2971,7 +3050,7 @@ bool lxc_delete_network(struct lxc_handler *handler)
 #define LXC_USERNIC_PATH LIBEXECDIR "/lxc/lxc-user-nic"
 
 /* lxc-user-nic returns "interface_name:interface_name\n" */
-#define MAX_BUFFER_SIZE IFNAMSIZ*2 + 2
+#define MAX_BUFFER_SIZE IFNAMSIZ * 2 + 2
 static int unpriv_assign_nic(const char *lxcpath, char *lxcname,
 			     struct lxc_netdev *netdev, pid_t pid)
 {
@@ -3883,7 +3962,7 @@ int lxc_setup(struct lxc_handler *handler)
 
 	if (!lxc_list_empty(&lxc_conf->keepcaps)) {
 		if (!lxc_list_empty(&lxc_conf->caps)) {
-			ERROR("Simultaneously requested dropping and keeping caps");
+			ERROR("Container requests lxc.cap.drop and lxc.cap.keep: either use lxc.cap.drop or lxc.cap.keep, not both.");
 			return -1;
 		}
 		if (dropcaps_except(&lxc_conf->keepcaps)) {
@@ -4442,6 +4521,7 @@ void suggest_default_idmap(void)
 		return;
 	}
 	while (getline(&line, &len, f) != -1) {
+		size_t no_newline = 0;
 		char *p = strchr(line, ':'), *p2;
 		if (*line == '#')
 			continue;
@@ -4458,6 +4538,9 @@ void suggest_default_idmap(void)
 		p2++;
 		if (!*p2)
 			continue;
+		no_newline = strcspn(p2, "\n");
+		p2[no_newline] = '\0';
+
 		if (lxc_safe_uint(p, &uid) < 0)
 			WARN("Could not parse UID.");
 		if (lxc_safe_uint(p2, &urange) < 0)
@@ -4473,6 +4556,7 @@ void suggest_default_idmap(void)
 		return;
 	}
 	while (getline(&line, &len, f) != -1) {
+		size_t no_newline = 0;
 		char *p = strchr(line, ':'), *p2;
 		if (*line == '#')
 			continue;
@@ -4489,6 +4573,9 @@ void suggest_default_idmap(void)
 		p2++;
 		if (!*p2)
 			continue;
+		no_newline = strcspn(p2, "\n");
+		p2[no_newline] = '\0';
+
 		if (lxc_safe_uint(p, &gid) < 0)
 			WARN("Could not parse GID.");
 		if (lxc_safe_uint(p2, &grange) < 0)

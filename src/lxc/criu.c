@@ -21,7 +21,6 @@
  * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA
  */
 #define _GNU_SOURCE
-#include <assert.h>
 #include <inttypes.h>
 #include <linux/limits.h>
 #include <sched.h>
@@ -330,7 +329,7 @@ static void exec_criu(struct criu_opts *opts)
 		DECLARE_ARG(opts->user->action_script);
 	}
 
-	mnts = write_mount_file(&opts->c->lxc_conf->mount_list);
+	mnts = make_anonymous_mount_file(&opts->c->lxc_conf->mount_list);
 	if (!mnts)
 		goto err;
 
