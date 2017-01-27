@@ -19,7 +19,6 @@
  */
 
 #define _GNU_SOURCE
-#include <assert.h>
 #include <dirent.h>
 #include <errno.h>
 #include <fcntl.h>
@@ -60,6 +59,14 @@
 #include "state.h"
 #include "utils.h"
 #include "version.h"
+
+/* major()/minor() */
+#ifdef MAJOR_IN_MKDEV
+#    include <sys/mkdev.h>
+#endif
+#ifdef MAJOR_IN_SYSMACROS
+#    include <sys/sysmacros.h>
+#endif
 
 #if HAVE_IFADDRS_H
 #include <ifaddrs.h>
@@ -1582,8 +1589,10 @@ static bool do_lxcapi_reboot(struct lxc_container *c)
 		return false;
 	if (c->lxc_conf && c->lxc_conf->rebootsignal)
 		rebootsignal = c->lxc_conf->rebootsignal;
-	if (kill(pid, rebootsignal) < 0)
+	if (kill(pid, rebootsignal) < 0) {
+		WARN("Could not send signal %d to pid %d.", rebootsignal, pid);
 		return false;
+	}
 	return true;
 
 }
@@ -1614,7 +1623,9 @@ static bool do_lxcapi_shutdown(struct lxc_container *c, int timeout)
 
 	INFO("Using signal number '%d' as halt signal.", haltsignal);
 
-	kill(pid, haltsignal);
+	if (kill(pid, haltsignal) < 0)
+		WARN("Could not send signal %d to pid %d.", haltsignal, pid);
+
 	retv = do_lxcapi_wait(c, "STOPPED", timeout);
 	return retv;
 }
@@ -4315,7 +4326,7 @@ int list_active_containers(const char *lxcpath, char ***nret,
 	char *line = NULL;
 	char **ct_name = NULL;
 	size_t len = 0;
-	struct lxc_container *c;
+	struct lxc_container *c = NULL;
 	bool is_hashed;
 
 	if (!lxcpath)
@@ -4398,7 +4409,12 @@ int list_active_containers(const char *lxcpath, char ***nret,
 		cret_cnt++;
 	}
 
-	assert(!nret || !cret || cret_cnt == ct_name_cnt);
+	if (nret && cret && cret_cnt != ct_name_cnt) {
+		if (c)
+			lxc_container_put(c);
+		goto free_cret_list;
+	}
+
 	ret = ct_name_cnt;
 	if (nret)
 		*nret = ct_name;
