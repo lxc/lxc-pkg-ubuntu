@@ -23,7 +23,6 @@
 
 #include "config.h"
 
-#include <assert.h>
 #include <errno.h>
 #include <fcntl.h>
 #include <stdio.h>
@@ -83,7 +82,8 @@ static int add_to_simple_array(char ***array, ssize_t *capacity, char *value)
 {
 	ssize_t count = 0;
 
-	assert(array);
+	if (!array)
+		return -1;
 
 	if (*array)
 		for (; (*array)[count]; count++);
@@ -99,7 +99,8 @@ static int add_to_simple_array(char ***array, ssize_t *capacity, char *value)
 		*capacity = new_capacity;
 	}
 
-	assert(*array);
+	if (!(*array))
+		return -1;
 
 	(*array)[count] = value;
 	return 0;
@@ -395,7 +396,7 @@ int main(int argc, char *argv[])
 	lxc_log_options_no_override();
 
 	if (geteuid()) {
-		if (access(my_args.lxcpath[0], O_RDWR) < 0) {
+		if (access(my_args.lxcpath[0], O_RDONLY) < 0) {
 			if (!my_args.quiet)
 				fprintf(stderr, "You lack access to %s\n", my_args.lxcpath[0]);
 			exit(EXIT_FAILURE);
