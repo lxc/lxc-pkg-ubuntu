@@ -62,6 +62,14 @@
 
 #define usernic_error(format, ...) usernic_debug_stream(stderr, format, __VA_ARGS__)
 
+#define usernic_debug_stream(stream, format, ...)                              \
+	do {                                                                   \
+		fprintf(stream, "%s: %d: %s: " format, __FILE__, __LINE__,     \
+			__func__, __VA_ARGS__);                                \
+	} while (false)
+
+#define usernic_error(format, ...) usernic_debug_stream(stderr, format, __VA_ARGS__)
+
 static void usage(char *me, bool fail)
 {
 	fprintf(stderr, "Usage: %s create {lxcpath} {name} {pid} {type} "
