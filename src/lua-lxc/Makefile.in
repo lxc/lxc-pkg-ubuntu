@@ -244,6 +244,7 @@ ECHO_T = @ECHO_T@
 EGREP = @EGREP@
 EXEEXT = @EXEEXT@
 FGREP = @FGREP@
+GNUTLS_LIBS = @GNUTLS_LIBS@
 GREP = @GREP@
 HAVE_DOXYGEN = @HAVE_DOXYGEN@
 INCLUDEDIR = @INCLUDEDIR@
@@ -676,8 +677,8 @@ distclean-generic:
 maintainer-clean-generic:
 	@echo "This command is intended for maintainers to use"
 	@echo "it deletes files that may require special tools to rebuild."
-@ENABLE_LUA_FALSE@install-exec-local:
 @ENABLE_LUA_FALSE@uninstall-local:
+@ENABLE_LUA_FALSE@install-exec-local:
 clean: clean-am
 
 clean-am: clean-generic clean-libLTLIBRARIES clean-libtool \

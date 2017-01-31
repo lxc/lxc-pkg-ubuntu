@@ -50,9 +50,9 @@
 #include "confile.h"
 #include "arguments.h"
 
-#define OPT_SHARE_NET OPT_USAGE+1
-#define OPT_SHARE_IPC OPT_USAGE+2
-#define OPT_SHARE_UTS OPT_USAGE+3
+#define OPT_SHARE_NET OPT_USAGE + 1
+#define OPT_SHARE_IPC OPT_USAGE + 2
+#define OPT_SHARE_UTS OPT_USAGE + 3
 
 lxc_log_define(lxc_start_ui, lxc);
 
@@ -259,6 +259,11 @@ int main(int argc, char *argv[])
 			lxc_container_put(c);
 			exit(err);
 		}
+		c->configfile = strdup(my_args.rcfile);
+		if (!c->configfile) {
+			ERROR("Out of memory setting new config filename");
+			goto out;
+		}
 	} else {
 		int rc;
 
@@ -281,10 +286,11 @@ int main(int argc, char *argv[])
 		}
 	}
 
-	if (!c->is_defined(c)) {
-		fprintf(stderr, "Error: container %s is not defined\n", c->name);
-		goto out;
-	}
+	/* We do not check here whether the container is defined, because we
+	 * support volatile containers. Which means the container does not need
+	 * to be created for it to be started. You can just pass a configuration
+	 * file as argument and start the container right away.
+	 */
 
 	if (!c->may_control(c)) {
 		fprintf(stderr, "Insufficent privileges to control %s\n", c->name);

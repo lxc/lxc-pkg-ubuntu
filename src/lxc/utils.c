@@ -23,10 +23,10 @@
 
 #include "config.h"
 
-#include <assert.h>
 #include <dirent.h>
 #include <errno.h>
 #include <fcntl.h>
+#include <grp.h>
 #include <libgen.h>
 #include <stddef.h>
 #include <stdio.h>
@@ -639,10 +639,16 @@ char *lxc_string_replace(const char *needle, const char *replacement, const char
 	/* make sure we did the same thing twice,
 	 * once for calculating length, the other
 	 * time for copying data */
-	assert(saved_len == len);
+	if (saved_len != len) {
+		free(result);
+		return NULL;
+	}
 	/* make sure we didn't overwrite any buffer,
 	 * due to calloc the string should be 0-terminated */
-	assert(result[len] == '\0');
+	if (result[len] != '\0') {
+		free(result);
+		return NULL;
+	}
 
 	return result;
 }
@@ -1093,10 +1099,9 @@ uint64_t fnv_64a_buf(void *buf, size_t len, uint64_t hval)
  * is MS_SHARED, but not '/', then you're out of luck - figuring that
  * out would be too much work to be worth it.
  */
-#define LINELEN 4096
 int detect_shared_rootfs(void)
 {
-	char buf[LINELEN], *p;
+	char buf[LXC_LINELEN], *p;
 	FILE *f;
 	int i;
 	char *p2;
@@ -1104,18 +1109,18 @@ int detect_shared_rootfs(void)
 	f = fopen("/proc/self/mountinfo", "r");
 	if (!f)
 		return 0;
-	while (fgets(buf, LINELEN, f)) {
-		for (p = buf, i=0; p && i < 4; i++)
-			p = strchr(p+1, ' ');
+	while (fgets(buf, LXC_LINELEN, f)) {
+		for (p = buf, i = 0; p && i < 4; i++)
+			p = strchr(p + 1, ' ');
 		if (!p)
 			continue;
-		p2 = strchr(p+1, ' ');
+		p2 = strchr(p + 1, ' ');
 		if (!p2)
 			continue;
 		*p2 = '\0';
-		if (strcmp(p+1, "/") == 0) {
+		if (strcmp(p + 1, "/") == 0) {
 			// this is '/'.  is it shared?
-			p = strchr(p2+1, ' ');
+			p = strchr(p2 + 1, ' ');
 			if (p && strstr(p, "shared:")) {
 				fclose(f);
 				return 1;
@@ -1896,6 +1901,8 @@ int lxc_strmunmap(void *addr, size_t length)
 }
 
 /* Check whether a signal is blocked by a process. */
+/* /proc/pid-to-str/status\0 = (5 + 21 + 7 + 1) */
+#define __PROC_STATUS_LEN (5 + (LXC_NUMSTRLEN64) + 7 + 1)
 bool task_blocking_signal(pid_t pid, int signal)
 {
 	bool bret = false;
@@ -1905,13 +1912,10 @@ bool task_blocking_signal(pid_t pid, int signal)
 	int ret;
 	FILE *f;
 
-	/* The largest integer that can fit into long int is 2^64. This is a
-	 * 20-digit number. */
-	size_t len = /* /proc */ 5 + /* /pid-to-str */ 21 + /* /status */ 7 + /* \0 */ 1;
-	char status[len];
+	char status[__PROC_STATUS_LEN];
 
-	ret = snprintf(status, len, "/proc/%d/status", pid);
-	if (ret < 0 || ret >= len)
+	ret = snprintf(status, __PROC_STATUS_LEN, "/proc/%d/status", pid);
+	if (ret < 0 || ret >= __PROC_STATUS_LEN)
 		return bret;
 
 	f = fopen(status, "r");
@@ -2048,5 +2052,34 @@ int lxc_safe_long(const char *numstr, long int *converted)
 		return -ERANGE;
 
 	*converted = sli;
+	return 0;
+}
+
+int lxc_switch_uid_gid(uid_t uid, gid_t gid)
+{
+	if (setgid(gid) < 0) {
+		SYSERROR("Failed to switch to gid %d.", gid);
+		return -errno;
+	}
+	NOTICE("Switched to gid %d.", gid);
+
+	if (setuid(uid) < 0) {
+		SYSERROR("Failed to switch to uid %d.", uid);
+		return -errno;
+	}
+	NOTICE("Switched to uid %d.", uid);
+
+	return 0;
+}
+
+/* Simple covenience function which enables uniform logging. */
+int lxc_setgroups(int size, gid_t list[])
+{
+	if (setgroups(size, list) < 0) {
+		SYSERROR("Failed to setgroups().");
+		return -errno;
+	}
+	NOTICE("Dropped additional groups.");
+
 	return 0;
 }

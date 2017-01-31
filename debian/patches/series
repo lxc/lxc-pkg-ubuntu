@@ -1,3 +1,2 @@
 0001-Allocate-new-lxcbr0-subnet-at-startup-time.patch
-0002-tests-Don-t-cause-test-failures-on-cleanup-errors.patch
-0003-tools-only-check-for-O_RDONLY.patch
+0002-Make-lxc-start-ephemeral-Python-3.2-compatible.patch
