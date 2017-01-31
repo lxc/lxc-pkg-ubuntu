@@ -32,9 +32,18 @@
 #include <sys/wait.h>
 
 #include "bdev.h"
+#include "config.h"
 #include "log.h"
 #include "lxclvm.h"
 #include "utils.h"
+
+/* major()/minor() */
+#ifdef MAJOR_IN_MKDEV
+#    include <sys/mkdev.h>
+#endif
+#ifdef MAJOR_IN_SYSMACROS
+#    include <sys/sysmacros.h>
+#endif
 
 lxc_log_define(lxclvm, lxc);
 
@@ -105,6 +114,7 @@ extern char *dir_new_path(char *src, const char *oldname, const char *name,
 			tp = NULL;
 	}
 
+	(void)setenv("LVM_SUPPRESS_FD_WARNINGS", "1", 1);
 	if (!tp)
 	    execlp("lvcreate", "lvcreate", "-L", sz, vg, "-n", lv, (char *)NULL);
 	else
@@ -256,6 +266,7 @@ int lvm_snapshot(const char *orig, const char *path, uint64_t size)
 		return -1;
 	}
 
+	(void)setenv("LVM_SUPPRESS_FD_WARNINGS", "1", 1);
 	if (!ret) {
 		ret = execlp("lvcreate", "lvcreate", "-s", "-L", sz, "-n", lv, orig, (char *)NULL);
 	} else {
@@ -356,6 +367,7 @@ int lvm_destroy(struct bdev *orig)
 	if ((pid = fork()) < 0)
 		return -1;
 	if (!pid) {
+		(void)setenv("LVM_SUPPRESS_FD_WARNINGS", "1", 1);
 		execlp("lvremove", "lvremove", "-f", orig->src, (char *)NULL);
 		exit(EXIT_FAILURE);
 	}
