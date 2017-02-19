@@ -2,9 +2,10 @@ Tests: exercise
 Depends: busybox-static,
          cloud-image-utils,
          debootstrap,
+         dirmngr,
          distro-info,
          lxcfs,
          uidmap,
          xz-utils,
          @
-Restrictions: needs-root allow-stderr
+Restrictions: needs-root allow-stderr isolation-machine
