@@ -1,1 +1,1 @@
-postinst-has-useless-call-to-ldconfig
+package-has-unnecessary-activation-of-ldconfig-trigger

@@ -3,6 +3,7 @@ Section: admin
 Priority: optional
 Maintainer: Ubuntu Developers <ubuntu-devel-discuss@lists.ubuntu.com>
 Build-Depends: autotools-dev,
+               bash-completion,
                debhelper (>= 9),
                dh-apparmor,
                dh-autoreconf,
@@ -17,24 +18,22 @@ Build-Depends: autotools-dev,
                libselinux1-dev,
                linux-libc-dev,
                pkg-config,
-               python3-all-dev (>= 3.2.3),
-               python3-setuptools
-Standards-Version: 3.9.7
+               python3-all-dev (>= 3.2.3)
+Standards-Version: 3.9.8
 Homepage: https://linuxcontainers.org
 Vcs-Git: https://github.com/lxc/lxc-pkg-ubuntu
 Vcs-Browser: https://github.com/lxc/lxc-pkg-ubuntu
 X-Python3-Version: >= 3.2
-XS-Testsuite: autopkgtest
 
 Package: lxc
 Architecture: all
-Depends: lxc1, ${misc:Depends}
+Depends: lxc1 (>= ${source:Version}), ${misc:Depends}
 Priority: extra
 Section: oldlibs
 Description: Transitional package for lxc1
  This is a transitional dummy package. It can safely be removed.
  .
- The currently recommened LXC experience is available as lxc2 and is
+ The currently recommended LXC experience is available as lxc2 and is
  provided by LXD using the LXC backend.
 
 Package: lxc1
@@ -49,7 +48,7 @@ Depends: adduser,
          python3-lxc (= ${binary:Version}),
          ${misc:Depends},
          ${shlibs:Depends}
-Recommends: libpam-cgfs, lxc-templates (>= 0.8.0~rc1-4ubuntu43)
+Recommends: libpam-cgfs, lxc-templates (= ${binary:Version})
 Suggests: btrfs-tools, lvm2, lxctl
 Replaces: lxc (<< 2.0.0~rc2-0ubuntu1~)
 Breaks: lxc (<< 2.0.0~rc2-0ubuntu1~)
@@ -94,7 +93,7 @@ Description: Linux Containers userspace tools (development)
 
 Package: lxc-templates
 Architecture: linux-any
-Depends: lxc1, ${misc:Depends}, ${shlibs:Depends}
+Depends: lxc1 (= ${binary:Version}), ${misc:Depends}, ${shlibs:Depends}
 Recommends: busybox-static,
             cloud-image-utils | cloud-utils,
             debootstrap | cdebootstrap,
@@ -154,11 +153,11 @@ Description: Linux Containers userspace tools (library)
 Package: python3-lxc
 Architecture: linux-any
 Section: python
-Depends: liblxc1 (=${binary:Version}),
+Depends: liblxc1 (= ${binary:Version}),
          ${misc:Depends},
          ${python3:Depends},
          ${shlibs:Depends}
-Recommends: lxc-templates (>= 0.8.0~rc1-4ubuntu43)
+Recommends: lxc-templates (= ${binary:Version})
 Description: Linux Containers userspace tools (Python 3.x bindings)
  Containers are insulated areas inside a system, which have their own namespace
  for filesystem, network, PID, IPC, CPU and memory allocation and which can be
@@ -171,16 +170,16 @@ Package: lua-lxc
 Architecture: linux-any
 Section: interpreters
 Depends: liblua5.2-0,
-         liblxc1 (=${binary:Version}),
+         liblxc1 (= ${binary:Version}),
          lua-filesystem,
          lua5.2,
          ${misc:Depends},
          ${shlibs:Depends}
-Recommends: lxc-templates (>= 0.8.0~rc1-4ubuntu43)
-Description: Linux Containers userspace tools (LUA bindings)
+Recommends: lxc-templates (= ${binary:Version})
+Description: Linux Containers userspace tools (Lua bindings)
  Containers are insulated areas inside a system, which have their own namespace
  for filesystem, network, PID, IPC, CPU and memory allocation and which can be
  created using the Control Group and Namespace features included in the Linux
  kernel.
  .
- This package contains the LUA bindings.
+ This package contains the Lua bindings.
