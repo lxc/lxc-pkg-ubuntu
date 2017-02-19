@@ -3,6 +3,7 @@ Section: admin
 Priority: optional
 Maintainer: Ubuntu Developers <ubuntu-devel-discuss@lists.ubuntu.com>
 Build-Depends: autotools-dev,
+               bash-completion,
                debhelper (>= 9),
                dh-apparmor,
                dh-autoreconf,
