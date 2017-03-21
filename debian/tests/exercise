@@ -48,7 +48,7 @@ summary() {
 [ -e /etc/lsb-release ] && . /etc/lsb-release
 
 # Workaround for broken gpg2
-if [ -n "${http_proxy}" ] && [ -e /usr/bin/dirmngr ]; then
+if [ -n "${http_proxy:-}" ] && [ -e /usr/bin/dirmngr ]; then
     dpkg-divert --divert /usr/bin/dirmngr.orig --rename --add /usr/bin/dirmngr
     (
     cat << EOF
@@ -123,7 +123,7 @@ else
 fi
 
 # Workaround for broken gpg2
-if [ -n "${http_proxy}" ] && [ -e /usr/bin/dirmngr ]; then
+if [ -n "${http_proxy:-}" ] && [ -e /usr/bin/dirmngr ]; then
     rm /usr/bin/dirmngr
     dpkg-divert --divert /usr/bin/dirmngr.orig --rename --remove /usr/bin/dirmngr
 fi
