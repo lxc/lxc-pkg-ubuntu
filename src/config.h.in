@@ -56,6 +56,9 @@
 /* Define to 1 if you have the `apparmor' library (-lapparmor). */
 #undef HAVE_LIBAPPARMOR
 
+/* Define to 1 if you have the `cap' library (-lcap). */
+#undef HAVE_LIBCAP
+
 /* Define to 1 if you have the `gnutls' library (-lgnutls). */
 #undef HAVE_LIBGNUTLS
 
@@ -128,9 +131,6 @@
 /* Define to 1 if you have the <string.h> header file. */
 #undef HAVE_STRING_H
 
-/* Define to 1 if you have the <sys/capability.h> header file. */
-#undef HAVE_SYS_CAPABILITY_H
-
 /* Define to 1 if you have the <sys/memfd.h> header file. */
 #undef HAVE_SYS_MEMFD_H
 
@@ -166,6 +166,9 @@
 
 /* bionic libc */
 #undef IS_BIONIC
+
+/* Have cap_get_file */
+#undef LIBCAP_SUPPORTS_FILE_CAPABILITIES
 
 /* Define to the sub-directory where libtool stores uninstalled libraries. */
 #undef LT_OBJDIR
