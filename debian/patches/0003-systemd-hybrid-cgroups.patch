@@ -1,4 +1,4 @@
-From a7abf66a6c9d26b33b5dfd152c94332e1f54a334 Mon Sep 17 00:00:00 2001
+From 01e3d8ff1b12516aedc537873b36eddbc74a0701 Mon Sep 17 00:00:00 2001
 From: =?UTF-8?q?St=C3=A9phane=20Graber?= <stgraber@ubuntu.com>
 Date: Fri, 12 May 2017 12:28:20 -0400
 Subject: systemd hybrid cgroups
@@ -14,7 +14,7 @@ Signed-off-by: Stéphane Graber <stgraber@ubuntu.com>
  3 files changed, 3 insertions(+)
 
 diff --git a/src/tests/lxc-test-apparmor-mount b/src/tests/lxc-test-apparmor-mount
-index 74fd8c6f..4807ebeb 100755
+index bb9b1fce..9aea41e4 100755
 --- a/src/tests/lxc-test-apparmor-mount
 +++ b/src/tests/lxc-test-apparmor-mount
 @@ -132,6 +132,7 @@ elif [ -e /sys/fs/cgroup/cgmanager/sock ]; then
@@ -26,7 +26,7 @@ index 74fd8c6f..4807ebeb 100755
  		[ ! -d $d/lxctest ] && mkdir $d/lxctest
  		chown -R $TUSER: $d/lxctest
 diff --git a/src/tests/lxc-test-unpriv b/src/tests/lxc-test-unpriv
-index 8ba216f5..e68387f2 100755
+index 8486fbde..b66728a9 100755
 --- a/src/tests/lxc-test-unpriv
 +++ b/src/tests/lxc-test-unpriv
 @@ -148,6 +148,7 @@ elif [ -e /sys/fs/cgroup/cgmanager/sock ]; then

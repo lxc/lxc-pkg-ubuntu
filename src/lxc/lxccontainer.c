@@ -31,6 +31,7 @@
 #include <stdio.h>
 #include <unistd.h>
 #include <arpa/inet.h>
+#include <sys/sysmacros.h>
 #include <sys/mman.h>
 #include <sys/mount.h>
 #include <sys/syscall.h>
@@ -63,9 +64,6 @@
 /* major()/minor() */
 #ifdef MAJOR_IN_MKDEV
 #    include <sys/mkdev.h>
-#endif
-#ifdef MAJOR_IN_SYSMACROS
-#    include <sys/sysmacros.h>
 #endif
 
 #if HAVE_IFADDRS_H
@@ -4372,7 +4370,10 @@ int list_active_containers(const char *lxcpath, char ***nret,
 		*p2 = '\0';
 
 		if (is_hashed) {
-			if (strncmp(lxcpath, lxc_cmd_get_lxcpath(p), lxcpath_len) != 0)
+			char *recvpath = lxc_cmd_get_lxcpath(p);
+			if (!recvpath)
+				continue;
+			if (strncmp(lxcpath, recvpath, lxcpath_len) != 0)
 				continue;
 			p = lxc_cmd_get_name(p);
 		}

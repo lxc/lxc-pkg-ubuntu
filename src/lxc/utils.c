@@ -1014,7 +1014,7 @@ int randseed(bool srand_it)
 	/*
 	   srand pre-seed function based on /dev/urandom
 	   */
-	unsigned int seed=time(NULL)+getpid();
+	unsigned int seed = time(NULL) + getpid();
 
 	FILE *f;
 	f = fopen("/dev/urandom", "r");
@@ -1199,7 +1199,7 @@ bool detect_ramfs_rootfs(void)
 	return false;
 }
 
-char *on_path(char *cmd, const char *rootfs) {
+char *on_path(const char *cmd, const char *rootfs) {
 	char *path = NULL;
 	char *entry = NULL;
 	char *saveptr = NULL;
@@ -1405,11 +1405,8 @@ char *get_template_path(const char *t)
 }
 
 /*
- * Sets the process title to the specified title. Note:
- *   1. this function requires root to succeed
- *   2. it clears /proc/self/environ
- *   3. it may not succed (e.g. if title is longer than /proc/self/environ +
- *      the original title)
+ * Sets the process title to the specified title. Note that this may fail if
+ * the kernel doesn't support PR_SET_MM_MAP (kernels <3.18).
  */
 int setproctitle(char *title)
 {
@@ -1463,34 +1460,24 @@ int setproctitle(char *title)
 	if (!tmp)
 		return -1;
 
-	i = sscanf(tmp, "%lu %lu %lu %lu %lu %lu %lu",
+	i = sscanf(tmp, "%lu %lu %lu %*u %*u %lu %lu",
 		&start_data,
 		&end_data,
 		&start_brk,
-		&arg_start,
-		&arg_end,
 		&env_start,
 		&env_end);
-	if (i != 7)
+	if (i != 5)
 		return -1;
 
 	/* Include the null byte here, because in the calculations below we
 	 * want to have room for it. */
 	len = strlen(title) + 1;
 
-	/* If we don't have enough room by just overwriting the old proctitle,
-	 * let's allocate a new one.
-	 */
-	if (len > arg_end - arg_start) {
-		void *m;
-		m = realloc(proctitle, len);
-		if (!m)
-			return -1;
-		proctitle = m;
+	proctitle = realloc(proctitle, len);
+	if (!proctitle)
+		return -1;
 
-		arg_start = (unsigned long) proctitle;
-	}
-
+	arg_start = (unsigned long) proctitle;
 	arg_end = arg_start + len;
 
 	brk_val = syscall(__NR_brk, 0);
@@ -1767,7 +1754,7 @@ int safe_mount(const char *src, const char *dest, const char *fstype,
  *
  * NOTE: not to be called from inside the container namespace!
  */
-int mount_proc_if_needed(const char *rootfs)
+int lxc_mount_proc_if_needed(const char *rootfs)
 {
 	char path[MAXPATHLEN];
 	char link[20];
@@ -1779,37 +1766,48 @@ int mount_proc_if_needed(const char *rootfs)
 		SYSERROR("proc path name too long");
 		return -1;
 	}
+
 	memset(link, 0, 20);
 	linklen = readlink(path, link, 20);
 	mypid = (int)getpid();
-	INFO("I am %d, /proc/self points to '%s'", mypid, link);
+	INFO("I am %d, /proc/self points to \"%s\"", mypid, link);
+
 	ret = snprintf(path, MAXPATHLEN, "%s/proc", rootfs);
 	if (ret < 0 || ret >= MAXPATHLEN) {
 		SYSERROR("proc path name too long");
 		return -1;
 	}
-	if (linklen < 0) /* /proc not mounted */
-		goto domount;
-	if (lxc_safe_int(link, &link_to_pid) < 0)
-		return -1;
-	if (link_to_pid != mypid) {
-		/* wrong /procs mounted */
-		umount2(path, MNT_DETACH); /* ignore failure */
+
+	/* /proc not mounted */
+	if (linklen < 0) {
+		if (mkdir(path, 0755) && errno != EEXIST)
+			return -1;
 		goto domount;
 	}
+
+	if (lxc_safe_int(link, &link_to_pid) < 0)
+		return -1;
+
+	/* wrong /procs mounted */
+	if (link_to_pid != mypid) {
+		/* ignore failure */
+		umount2(path, MNT_DETACH);
+		goto domount;
+	}
+
 	/* the right proc is already mounted */
 	return 0;
 
 domount:
-	if (!strcmp(rootfs,"")) /* rootfs is NULL */
+	/* rootfs is NULL */
+	if (!strcmp(rootfs,""))
 		ret = mount("proc", path, "proc", 0, NULL);
 	else
 		ret = safe_mount("proc", path, "proc", 0, NULL, rootfs);
-
 	if (ret < 0)
 		return -1;
 
-	INFO("Mounted /proc in container for security transition");
+	INFO("mounted /proc in container for security transition");
 	return 1;
 }
 
@@ -2082,4 +2080,158 @@ int lxc_setgroups(int size, gid_t list[])
 	NOTICE("Dropped additional groups.");
 
 	return 0;
+}
+
+static int lxc_get_unused_loop_dev_legacy(char *loop_name)
+{
+	struct dirent *dp;
+	struct loop_info64 lo64;
+	DIR *dir;
+	int dfd = -1, fd = -1, ret = -1;
+
+	dir = opendir("/dev");
+	if (!dir)
+		return -1;
+
+	while ((dp = readdir(dir))) {
+		if (!dp)
+			break;
+
+		if (strncmp(dp->d_name, "loop", 4) != 0)
+			continue;
+
+		dfd = dirfd(dir);
+		if (dfd < 0)
+			continue;
+
+		fd = openat(dfd, dp->d_name, O_RDWR);
+		if (fd < 0)
+			continue;
+
+		ret = ioctl(fd, LOOP_GET_STATUS64, &lo64);
+		if (ret < 0) {
+			if (ioctl(fd, LOOP_GET_STATUS64, &lo64) == 0 ||
+			    errno != ENXIO) {
+				close(fd);
+				fd = -1;
+				continue;
+			}
+		}
+
+		ret = snprintf(loop_name, LO_NAME_SIZE, "/dev/%s", dp->d_name);
+		if (ret < 0 || ret >= LO_NAME_SIZE) {
+			close(fd);
+			fd = -1;
+			continue;
+		}
+
+		break;
+	}
+
+	closedir(dir);
+
+	if (fd < 0)
+		return -1;
+
+	return fd;
+}
+
+static int lxc_get_unused_loop_dev(char *name_loop)
+{
+	int loop_nr, ret;
+	int fd_ctl = -1, fd_tmp = -1;
+
+	fd_ctl = open("/dev/loop-control", O_RDWR | O_CLOEXEC);
+	if (fd_ctl < 0)
+		return -ENODEV;
+
+	loop_nr = ioctl(fd_ctl, LOOP_CTL_GET_FREE);
+	if (loop_nr < 0)
+		goto on_error;
+
+	ret = snprintf(name_loop, LO_NAME_SIZE, "/dev/loop%d", loop_nr);
+	if (ret < 0 || ret >= LO_NAME_SIZE)
+		goto on_error;
+
+	fd_tmp = open(name_loop, O_RDWR | O_CLOEXEC);
+	if (fd_tmp < 0)
+		goto on_error;
+
+on_error:
+	close(fd_ctl);
+	return fd_tmp;
+}
+
+int lxc_prepare_loop_dev(const char *source, char *loop_dev, int flags)
+{
+	int ret;
+	struct loop_info64 lo64;
+	int fd_img = -1, fret = -1, fd_loop = -1;
+
+	fd_loop = lxc_get_unused_loop_dev(loop_dev);
+	if (fd_loop < 0) {
+		if (fd_loop == -ENODEV)
+			fd_loop = lxc_get_unused_loop_dev_legacy(loop_dev);
+		else
+			goto on_error;
+	}
+
+	fd_img = open(source, O_RDWR | O_CLOEXEC);
+	if (fd_img < 0)
+		goto on_error;
+
+	ret = ioctl(fd_loop, LOOP_SET_FD, fd_img);
+	if (ret < 0)
+		goto on_error;
+
+	memset(&lo64, 0, sizeof(lo64));
+	lo64.lo_flags = flags;
+
+	ret = ioctl(fd_loop, LOOP_SET_STATUS64, &lo64);
+	if (ret < 0)
+		goto on_error;
+
+	fret = 0;
+
+on_error:
+	if (fd_img >= 0)
+		close(fd_img);
+
+	if (fret < 0 && fd_loop >= 0) {
+		close(fd_loop);
+		fd_loop = -1;
+	}
+
+	return fd_loop;
+}
+
+int lxc_unstack_mountpoint(const char *path, bool lazy)
+{
+	int ret;
+	int umounts = 0;
+
+pop_stack:
+	ret = umount2(path, lazy ? MNT_DETACH : 0);
+	if (ret < 0) {
+		/* We consider anything else than EINVAL deadly to prevent going
+		 * into an infinite loop. (The other alternative is constantly
+		 * parsing /proc/self/mountinfo which is yucky and probably
+		 * racy.)
+		 */
+		if (errno != EINVAL)
+			return -errno;
+	} else {
+		/* Just stop counting when this happens. That'd just be so
+		 * stupid that we won't even bother trying to report back the
+		 * correct value anymore.
+		 */
+		if (umounts != INT_MAX)
+			umounts++;
+		/* We succeeded in umounting. Make sure that there's no other
+		 * mountpoint stacked underneath.
+		 */
+		goto pop_stack;
+	}
+
+	return umounts;
 }

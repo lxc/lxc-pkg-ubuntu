@@ -1,4 +1,3 @@
 0001-Allocate-new-lxcbr0-subnet-at-startup-time.patch
-0002-Make-lxc-start-ephemeral-Python-3.2-compatible.patch
-0003-CVE-2017-5985-Ensure-target-netns-is-caller-owned.patch
-0004-systemd-hybrid-cgroups.patch
+0002-CVE-2017-5985-Ensure-target-netns-is-caller-owned.patch
+0003-systemd-hybrid-cgroups.patch
