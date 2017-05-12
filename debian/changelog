@@ -1,3 +1,10 @@
+lxc (2.0.7-0ubuntu4) artful; urgency=medium
+
+  * Update test-suite to skip 'hybrid' (v1 & v2 mounted simultaniously)
+    cgroups for now. LP: #1690125
+
+ -- Dimitri John Ledkov <xnox@ubuntu.com>  Thu, 11 May 2017 12:01:33 +0100
+
 lxc (2.0.7-0ubuntu2) zesty-security; urgency=medium
 
   * SECURITY UPDATE: lxc-user-nic doesn't check netns ownership (LP: #1654676)
