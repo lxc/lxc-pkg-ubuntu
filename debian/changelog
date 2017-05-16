@@ -1,3 +1,16 @@
+lxc (2.0.8-0ubuntu2) artful; urgency=medium
+
+  * Cherry-pick some upstream fixes:
+    - conf{,ile}: allow one to clear all config items
+    - start: pin rootfs when privileged
+    - conf: fix build without libcap
+    - start: don't call lxc_map_ids() without id map
+    - lxc-attach: allow for situations without /dev/tty
+    - utils: fix num parsing functions
+    - tests: lxc_safe_{u}int() add corner-case tests
+
+ -- Stéphane Graber <stgraber@ubuntu.com>  Tue, 16 May 2017 13:35:34 -0400
+
 lxc (2.0.8-0ubuntu1) artful; urgency=medium
 
   * New upstream bugfix release (2.0.8):
