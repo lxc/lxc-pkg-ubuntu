@@ -1,3 +1,10 @@
 0001-Allocate-new-lxcbr0-subnet-at-startup-time.patch
 0002-CVE-2017-5985-Ensure-target-netns-is-caller-owned.patch
 0003-systemd-hybrid-cgroups.patch
+0004-utils-fix-num-parsing-functions.patch
+0005-tests-lxc_safe_-u-int-add-corner-case-tests.patch
+0006-lxc-attach-allow-for-situations-without-dev-tty.patch
+0007-start-don-t-call-lxc_map_ids-without-id-map.patch
+0008-conf-fix-build-without-libcap.patch
+0009-start-pin-rootfs-when-privileged.patch
+0010-conf-ile-allow-to-clear-all-config-items.patch
