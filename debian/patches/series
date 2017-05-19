@@ -7,3 +7,4 @@
 0007-conf-fix-build-without-libcap.patch
 0008-start-pin-rootfs-when-privileged.patch
 0009-conf-ile-allow-to-clear-all-config-items.patch
+0010-systemd-hybrid-cgroups.patch
