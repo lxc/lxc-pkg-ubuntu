@@ -766,7 +766,7 @@ lxc_monitord_SOURCES = lxc_monitord.c
 @HAVE_STATIC_LIBCAP_TRUE@init_lxc_static_SOURCES = tools/lxc_init.c \
 @HAVE_STATIC_LIBCAP_TRUE@	error.c log.c initutils.c caps.c \
 @HAVE_STATIC_LIBCAP_TRUE@	$(am__append_22)
-@HAVE_STATIC_LIBCAP_TRUE@init_lxc_static_LDFLAGS = -static
+@HAVE_STATIC_LIBCAP_TRUE@init_lxc_static_LDFLAGS = -all-static
 @HAVE_STATIC_LIBCAP_TRUE@init_lxc_static_LDADD = @CAP_LIBS@
 @HAVE_STATIC_LIBCAP_TRUE@init_lxc_static_CFLAGS = $(AM_CFLAGS) -DNO_LXC_CONF
 all: all-am

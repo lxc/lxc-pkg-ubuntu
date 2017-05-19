@@ -23,15 +23,19 @@
 #ifndef __LXC_UTILS_H
 #define __LXC_UTILS_H
 
+/* Properly support loop devices on 32bit systems. */
+#define _FILE_OFFSET_BITS 64
+
 #include "config.h"
 
 #include <errno.h>
 #include <stdarg.h>
 #include <stdio.h>
 #include <stdbool.h>
+#include <unistd.h>
+#include <linux/loop.h>
 #include <sys/syscall.h>
 #include <sys/types.h>
-#include <unistd.h>
 
 #include "initutils.h"
 
@@ -39,6 +43,7 @@
 /* Maximum number for 64 bit integer is a string with 21 digits: 2^64 - 1 = 21 */
 #define LXC_NUMSTRLEN64 21
 #define LXC_LINELEN 4096
+#define LXC_IDMAPLEN 4096
 
 /* returns 1 on success, 0 if there were any failures */
 extern int lxc_rmdir_onedev(char *path, const char *exclude);
@@ -161,6 +166,15 @@ static inline int signalfd(int fd, const sigset_t *mask, int flags)
 		retval = syscall (__NR_signalfd, fd, mask, _NSIG / 8);
 	return retval;
 }
+#endif
+
+/* loop devices */
+#ifndef LO_FLAGS_AUTOCLEAR
+#define LO_FLAGS_AUTOCLEAR 4
+#endif
+
+#ifndef LOOP_CTL_GET_FREE
+#define LOOP_CTL_GET_FREE 0x4C82
 #endif
 
 /* Struct to carry child pid from lxc_popen() to lxc_pclose().
@@ -301,7 +315,7 @@ uint64_t fnv_64a_buf(void *buf, size_t len, uint64_t hval);
 
 int detect_shared_rootfs(void);
 bool detect_ramfs_rootfs(void);
-char *on_path(char *cmd, const char *rootfs);
+char *on_path(const char *cmd, const char *rootfs);
 bool file_exists(const char *f);
 bool cgns_supported(void);
 char *choose_init(const char *rootfs);
@@ -312,7 +326,7 @@ char *get_template_path(const char *t);
 int setproctitle(char *title);
 int safe_mount(const char *src, const char *dest, const char *fstype,
 		unsigned long flags, const void *data, const char *rootfs);
-int mount_proc_if_needed(const char *rootfs);
+int lxc_mount_proc_if_needed(const char *rootfs);
 int open_devnull(void);
 int set_stdfds(int fd);
 int null_stdfds(void);
@@ -330,5 +344,15 @@ int lxc_safe_long(const char *numstr, long int *converted);
 /* Switch to a new uid and gid. */
 int lxc_switch_uid_gid(uid_t uid, gid_t gid);
 int lxc_setgroups(int size, gid_t list[]);
+
+/* Find an unused loop device and associate it with source. */
+int lxc_prepare_loop_dev(const char *source, char *loop_dev, int flags);
+
+/* Clear all mounts on a given node.
+ * >= 0 successfully cleared. The number returned is the number of umounts
+ *      performed.
+ * < 0  error umounting. Return -errno.
+ */
+int lxc_unstack_mountpoint(const char *path, bool lazy);
 
 #endif /* __LXC_UTILS_H */

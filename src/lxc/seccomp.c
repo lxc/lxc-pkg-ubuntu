@@ -119,6 +119,7 @@ enum lxc_hostarch_t {
 	lxc_seccomp_arch_all = 0,
 	lxc_seccomp_arch_native,
 	lxc_seccomp_arch_i386,
+	lxc_seccomp_arch_x32,
 	lxc_seccomp_arch_amd64,
 	lxc_seccomp_arch_arm,
 	lxc_seccomp_arch_arm64,
@@ -152,6 +153,7 @@ int get_hostarch(void)
 	}
 	if (strcmp(uts.machine, "i686") == 0)
 		return lxc_seccomp_arch_i386;
+	// no x32 kernels
 	else if (strcmp(uts.machine, "x86_64") == 0)
 		return lxc_seccomp_arch_amd64;
 	else if (strncmp(uts.machine, "armv7", 5) == 0)
@@ -181,6 +183,7 @@ scmp_filter_ctx get_new_ctx(enum lxc_hostarch_t n_arch, uint32_t default_policy_
 
 	switch(n_arch) {
 	case lxc_seccomp_arch_i386: arch = SCMP_ARCH_X86; break;
+	case lxc_seccomp_arch_x32: arch = SCMP_ARCH_X32; break;
 	case lxc_seccomp_arch_amd64: arch = SCMP_ARCH_X86_64; break;
 	case lxc_seccomp_arch_arm: arch = SCMP_ARCH_ARM; break;
 #ifdef SCMP_ARCH_AARCH64
@@ -218,6 +221,11 @@ scmp_filter_ctx get_new_ctx(enum lxc_hostarch_t n_arch, uint32_t default_policy_
 		seccomp_release(ctx);
 		return NULL;
 	}
+#ifdef SCMP_FLTATR_ATL_TSKIP
+	if (seccomp_attr_set(ctx, SCMP_FLTATR_ATL_TSKIP, 1)) {
+		WARN("Failed to turn on seccomp nop-skip, continuing");
+	}
+#endif
 	ret = seccomp_arch_add(ctx, arch);
 	if (ret != 0) {
 		ERROR("Seccomp error %d (%s) adding arch: %d", ret,
@@ -336,7 +344,10 @@ static int parse_config_v2(FILE *f, char *line, struct lxc_conf *conf)
 		compat_arch[0] = SCMP_ARCH_X86;
 		compat_ctx[0] = get_new_ctx(lxc_seccomp_arch_i386,
 				default_policy_action);
-		if (!compat_ctx[0])
+		compat_arch[1] = SCMP_ARCH_X32;
+		compat_ctx[1] = get_new_ctx(lxc_seccomp_arch_x32,
+				default_policy_action);
+		if (!compat_ctx[0] || !compat_ctx[1])
 			goto bad;
 #ifdef SCMP_ARCH_PPC
 	} else if (native_arch == lxc_seccomp_arch_ppc64) {
@@ -390,6 +401,11 @@ static int parse_config_v2(FILE *f, char *line, struct lxc_conf *conf)
 			ERROR("Failed to turn off n-new-privs.");
 			return -1;
 		}
+#ifdef SCMP_FLTATR_ATL_TSKIP
+		if (seccomp_attr_set(conf->seccomp_ctx, SCMP_FLTATR_ATL_TSKIP, 1)) {
+			WARN("Failed to turn on seccomp nop-skip, continuing");
+		}
+#endif
 	}
 
 	while (fgets(line, 1024, f)) {
@@ -410,6 +426,13 @@ static int parse_config_v2(FILE *f, char *line, struct lxc_conf *conf)
 					continue;
 				}
 				cur_rule_arch = lxc_seccomp_arch_i386;
+			} else if (strcmp(line, "[x32]") == 0 ||
+				   strcmp(line, "[X32]") == 0) {
+				if (native_arch != lxc_seccomp_arch_amd64) {
+					cur_rule_arch = lxc_seccomp_arch_unknown;
+					continue;
+				}
+				cur_rule_arch = lxc_seccomp_arch_x32;
 			} else if (strcmp(line, "[X86_64]") == 0 ||
 				   strcmp(line, "[x86_64]") == 0) {
 				if (native_arch != lxc_seccomp_arch_amd64) {
@@ -704,7 +727,7 @@ int lxc_read_seccomp_config(struct lxc_conf *conf)
 		return -1;
 	}
 
-/* turn of no-new-privs.  We don't want it in lxc, and it breaks
+/* turn off no-new-privs.  We don't want it in lxc, and it breaks
  * with apparmor */
 #if HAVE_SCMP_FILTER_CTX
 	check_seccomp_attr_set = seccomp_attr_set(conf->seccomp_ctx, SCMP_FLTATR_CTL_NNP, 0);
@@ -715,6 +738,11 @@ int lxc_read_seccomp_config(struct lxc_conf *conf)
 		ERROR("Failed to turn off n-new-privs.");
 		return -1;
 	}
+#ifdef SCMP_FLTATR_ATL_TSKIP
+	if (seccomp_attr_set(conf->seccomp_ctx, SCMP_FLTATR_ATL_TSKIP, 1)) {
+		WARN("Failed to turn on seccomp nop-skip, continuing");
+	}
+#endif
 
 	f = fopen(conf->seccomp, "r");
 	if (!f) {
