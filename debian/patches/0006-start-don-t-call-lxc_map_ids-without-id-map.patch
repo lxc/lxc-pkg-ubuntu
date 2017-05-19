@@ -1,0 +1,50 @@
+From 8d7bfebc3061ff1b698e62c7e49db580ab90a856 Mon Sep 17 00:00:00 2001
+From: Christian Brauner <christian.brauner@ubuntu.com>
+Date: Sat, 13 May 2017 17:16:25 +0200
+Subject: start: don't call lxc_map_ids() without id map
+
+So far, we somehow always called lxc_map_ids(), even when no id map was
+configured. Let's not do this.
+
+Closes #1555.
+
+Signed-off-by: Christian Brauner <christian.brauner@ubuntu.com>
+---
+ src/lxc/start.c | 8 ++++++--
+ 1 file changed, 6 insertions(+), 2 deletions(-)
+
+diff --git a/src/lxc/start.c b/src/lxc/start.c
+index bca7f8eb..859a7da7 100644
+--- a/src/lxc/start.c
++++ b/src/lxc/start.c
+@@ -1061,8 +1061,12 @@ static int lxc_spawn(struct lxc_handler *handler)
+ 	int saved_ns_fd[LXC_NS_MAX];
+ 	int preserve_mask = 0, i, flags;
+ 	int netpipepair[2], nveths;
++	bool wants_to_map_ids;
++	struct lxc_list *id_map;
+ 
+ 	netpipe = -1;
++	id_map = &handler->conf->id_map;
++	wants_to_map_ids = !lxc_list_empty(id_map);
+ 
+ 	for (i = 0; i < LXC_NS_MAX; i++)
+ 		if (handler->conf->inherit_ns_fd[i] != -1)
+@@ -1124,7 +1128,7 @@ static int lxc_spawn(struct lxc_handler *handler)
+ 	 * it readonly.
+ 	 * If the container is unprivileged then skip rootfs pinning.
+ 	 */
+-	if (lxc_list_empty(&handler->conf->id_map)) {
++	if (wants_to_map_ids) {
+ 		handler->pinfd = pin_rootfs(handler->conf->rootfs.path);
+ 		if (handler->pinfd == -1)
+ 			INFO("Failed to pin the rootfs for container \"%s\".", handler->name);
+@@ -1178,7 +1182,7 @@ static int lxc_spawn(struct lxc_handler *handler)
+ 	 * mapped to something else on the host.) later to become a valid uid
+ 	 * again.
+ 	 */
+-	if (lxc_map_ids(&handler->conf->id_map, handler->pid)) {
++	if (wants_to_map_ids && lxc_map_ids(id_map, handler->pid)) {
+ 		ERROR("Failed to set up id mapping.");
+ 		goto out_delete_net;
+ 	}
