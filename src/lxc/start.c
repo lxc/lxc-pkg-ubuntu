@@ -46,7 +46,7 @@
 #include <sys/un.h>
 #include <sys/wait.h>
 
-#if HAVE_SYS_CAPABILITY_H
+#if HAVE_LIBCAP
 #include <sys/capability.h>
 #endif
 
@@ -319,7 +319,7 @@ static int signal_handler(int fd, uint32_t events, void *data,
 	 * by a process different from the container init.
 	 */
 	if (siginfo.ssi_pid != *pid) {
-		WARN("Invalid pid for SIGCHLD. Received pid %d, expected pid %d.", siginfo.ssi_pid, *pid);
+		NOTICE("Received SIGCHLD from pid %d instead of container init %d.", siginfo.ssi_pid, *pid);
 		return init_died ? 1 : 0;
 	}
 
@@ -361,7 +361,7 @@ int lxc_poll(const char *name, struct lxc_handler *handler)
 	}
 
 	if (handler->conf->need_utmp_watch) {
-		#if HAVE_SYS_CAPABILITY_H
+		#if HAVE_LIBCAP
 		if (lxc_utmp_mainloop_add(&descr, handler)) {
 			ERROR("Failed to add utmp handler to LXC mainloop.");
 			goto out_mainloop_open;
@@ -773,7 +773,7 @@ static int do_start(void *data)
 		goto out_warn_father;
 	}
 
-	#if HAVE_SYS_CAPABILITY_H
+	#if HAVE_LIBCAP
 	if (handler->conf->need_utmp_watch) {
 		if (prctl(PR_CAPBSET_DROP, CAP_SYS_BOOT, 0, 0, 0)) {
 			SYSERROR("Failed to remove the CAP_SYS_BOOT capability.");
@@ -873,7 +873,11 @@ static int do_start(void *data)
 		 * further above. Only drop groups if we can, so ensure that we
 		 * have necessary privilege.
 		 */
-		have_cap_setgid = lxc_cap_is_set(CAP_SETGID, CAP_EFFECTIVE);
+		#if HAVE_LIBCAP
+		have_cap_setgid = lxc_proc_cap_is_set(CAP_SETGID, CAP_EFFECTIVE);
+		#else
+		have_cap_setgid = false;
+		#endif
 		if (lxc_list_empty(&handler->conf->id_map) && have_cap_setgid) {
 			if (lxc_setgroups(0, NULL) < 0)
 				goto out_warn_father;
@@ -1042,6 +1046,13 @@ void resolve_clone_flags(struct lxc_handler *handler)
 		INFO("Inheriting a UTS namespace.");
 }
 
+/* lxc_spawn() performs crucial setup tasks and clone()s the new process which
+ * exec()s the requested container binary.
+ * Note that lxc_spawn() runs in the parent namespaces. Any operations performed
+ * right here should be double checked if they'd pose a security risk. (For
+ * example, any {u}mount() operations performed here will be reflected on the
+ * host!)
+ */
 static int lxc_spawn(struct lxc_handler *handler)
 {
 	int failed_before_rename = 0;
@@ -1255,9 +1266,6 @@ static int lxc_spawn(struct lxc_handler *handler)
 	if (lxc_sync_barrier_child(handler, LXC_SYNC_POST_CGROUP))
 		return -1;
 
-	if (detect_shared_rootfs())
-		umount2(handler->conf->rootfs.mount, MNT_DETACH);
-
 	if (handler->ops->post_start(handler, handler->data))
 		goto out_abort;
 
@@ -1308,7 +1316,7 @@ int __lxc_start(const char *name, struct lxc_conf *conf,
 	handler->netnsfd = -1;
 
 	if (must_drop_cap_sys_boot(handler->conf)) {
-		#if HAVE_SYS_CAPABILITY_H
+		#if HAVE_LIBCAP
 		DEBUG("Dropping CAP_SYS_BOOT capability.");
 		#else
 		DEBUG("Not dropping CAP_SYS_BOOT capability as capabilities aren't supported.");
