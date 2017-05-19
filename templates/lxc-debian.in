@@ -158,9 +158,6 @@ EOF
         echo "Timezone in container is not configured. Adjust it manually."
     fi
 
-    echo "root:root" | chroot "$rootfs" chpasswd
-    echo "Root password is 'root', please change !"
-
     return 0
 }
 
@@ -291,9 +288,6 @@ openssh-server
     if [ ! -f $releasekeyring ]; then
         releasekeyring="$cache/archive-key.gpg"
         case $release in
-            "squeeze")
-                gpgkeyname="archive-key-6.0"
-                ;;
             "wheezy")
                 gpgkeyname="archive-key-7.0"
                 ;;

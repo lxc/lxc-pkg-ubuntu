@@ -134,6 +134,7 @@ cleanup() {
     if [ "$FAILED" = "1" ]; then
         echo "Failed to setup lxc-net." >&2
         stop force
+        exit 1
     fi
 }
 
