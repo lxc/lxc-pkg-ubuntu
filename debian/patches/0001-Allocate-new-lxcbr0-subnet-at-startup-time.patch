@@ -8,7 +8,7 @@ Subject: Allocate new lxcbr0 subnet at startup time
  1 file changed, 90 insertions(+), 8 deletions(-)
 
 diff --git a/config/init/common/lxc-net.in b/config/init/common/lxc-net.in
-index 4797f20..899ecc9 100644
+index 4797f20c..899ecc99 100644
 --- a/config/init/common/lxc-net.in
 +++ b/config/init/common/lxc-net.in
 @@ -23,6 +23,85 @@ LXC_IPV6_MASK=""
