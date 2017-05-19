@@ -1,3 +1,11 @@
+lxc (2.0.7-0ubuntu1~16.10.2) yakkety-security; urgency=medium
+
+  * SECURITY UPDATE: lxc-user-nic doesn't check netns ownership (LP: #1654676)
+    - Ensure target netns is caller-owned
+    - CVE-2017-5985
+
+ -- Stéphane Graber <stgraber@ubuntu.com>  Tue, 07 Mar 2017 14:36:12 -0500
+
 lxc (2.0.7-0ubuntu1~16.10.1) yakkety; urgency=medium
 
   * New upstream bugfix release (2.0.7) (LP: #1660844)
