@@ -4,7 +4,7 @@
 m4_define([lxc_devel], 0)
 m4_define([lxc_version_major], 2)
 m4_define([lxc_version_minor], 0)
-m4_define([lxc_version_micro], 7)
+m4_define([lxc_version_micro], 8)
 m4_define([lxc_version_beta], [])
 
 m4_define([lxc_abi_major], 1)
@@ -113,13 +113,13 @@ case "$with_init_script" in
 			fedora|altlinux|opensuse*)
 				init_script=systemd
 				;;
-			redhat|centos|oracle|oracleserver|sparclinux|plamo)
+			redhat|oracle|oracleserver|sparclinux|plamo)
 				init_script=sysvinit
 				;;
-			debian|raspbian)
-				init_script=upstart,systemd
+			centos)
+				init_script=sysvinit,systemd
 				;;
-			ubuntu)
+			debian|raspbian|ubuntu)
 				init_script=upstart,systemd
 				;;
 			*)
@@ -366,8 +366,11 @@ fi
 AM_CONDITIONAL([ENABLE_CAP], [test "x$enable_capabilities" = "xyes"])
 
 AM_COND_IF([ENABLE_CAP],
-	[AC_CHECK_LIB(cap,cap_set_proc,[true],[AC_MSG_ERROR([You are missing libcap support.])])
-	AC_SUBST([CAP_LIBS], [-lcap])])
+	[AC_CHECK_HEADER([sys/capability.h],[],[AC_MSG_ERROR([You must install the libcap development package in order to compile lxc])])
+	AC_CHECK_LIB(cap,cap_set_proc,[],[AC_MSG_ERROR([You must install the libcap development package in order to compile lxc])])
+        # Test whether we support getting file capabilities via cap_get_file().
+        AC_CHECK_LIB(cap,cap_get_file, AC_DEFINE(LIBCAP_SUPPORTS_FILE_CAPABILITIES,1,[Have cap_get_file]),[],[])
+        AC_SUBST([CAP_LIBS], [-lcap])])
 
 # HAVE_SCMP_FILTER_CTX=1 will tell us we have libseccomp api >= 1.0.0
 OLD_CFLAGS="$CFLAGS"
@@ -630,7 +633,7 @@ AM_CONDITIONAL([IS_BIONIC], [test "x$is_bionic" = "xyes"])
 AC_CHECK_DECLS([PR_CAPBSET_DROP], [], [], [#include <sys/prctl.h>])
 
 # Check for some headers
-AC_CHECK_HEADERS([sys/signalfd.h pty.h ifaddrs.h sys/capability.h sys/memfd.h sys/personality.h utmpx.h sys/timerfd.h])
+AC_CHECK_HEADERS([sys/signalfd.h pty.h ifaddrs.h sys/memfd.h sys/personality.h utmpx.h sys/timerfd.h])
 
 # lookup major()/minor()/makedev()
 AC_HEADER_MAJOR

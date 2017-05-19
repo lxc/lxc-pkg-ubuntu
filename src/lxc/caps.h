@@ -27,7 +27,7 @@
 #ifndef __LXC_CAPS_H
 #define __LXC_CAPS_H
 
-#if HAVE_SYS_CAPABILITY_H
+#if HAVE_LIBCAP
 #include <sys/capability.h>
 
 extern int lxc_caps_down(void);
@@ -36,7 +36,8 @@ extern int lxc_caps_init(void);
 
 extern int lxc_caps_last_cap(void);
 
-extern bool lxc_cap_is_set(cap_value_t cap, cap_flag_t flag);
+extern bool lxc_proc_cap_is_set(cap_value_t cap, cap_flag_t flag);
+extern bool lxc_file_cap_is_set(const char *path, cap_value_t cap, cap_flag_t flag);
 #else
 static inline int lxc_caps_down(void) {
 	return 0;
@@ -54,8 +55,12 @@ static inline int lxc_caps_last_cap(void) {
 
 typedef int cap_value_t;
 typedef int cap_flag_t;
-static inline bool lxc_cap_is_set(cap_value_t cap, cap_flag_t flag) {
-	return true;
+static inline bool lxc_proc_cap_is_set(cap_value_t cap, cap_flag_t flag) {
+	return false;
+}
+
+static inline bool lxc_file_cap_is_set(const char *path, cap_value_t cap, cap_flag_t flag) {
+	return false;
 }
 #endif
 

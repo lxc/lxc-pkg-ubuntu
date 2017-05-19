@@ -60,7 +60,7 @@ BuildRequires: systemd
 %endif
 
 Name: lxc
-Version: 2.0.7
+Version: 2.0.8
 Release: %{?beta_rel:0.1.%{beta_rel}}%{?!beta_rel:%{norm_rel}}%{?dist}
 URL: http://linuxcontainers.org
 Source: http://linuxcontainers.org/downloads/%{name}-%{version}%{?beta_dot}.tar.gz
