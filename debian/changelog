@@ -1,3 +1,52 @@
+lxc (1.0.10-0ubuntu1) trusty; urgency=medium
+
+  * New upstream bugfix release. (LP: #1693002)
+    - Security fix for CVE-2016-10124
+    - Security fix for CVE-2017-5985
+
+    - attach: simplify lsm_openat()
+    - commands: improve logging
+    - utils: add macro __LXC_NUMSTRLEN
+    - tests; Don't cause test failures on cleanup errors
+    - conf: clearly report to either use drop or keep
+    - attach: close lsm label file descriptor
+    - conf, attach: save errno across call to close
+    - templates/lxc-debian.in: Fix typo in calling dpkg with
+      --print-foreign-architectures option
+    - templates/lxc-debian.in: handle ppc hostarch -> powerpc
+    - Fix regression in errno handling cherry-pick
+    - don't try to get stuff from /usr/lib/systemd on the host
+    - lxc-opensuse: rm poweroff.target -> sigpwr.target copy
+    - Add --enable-gnutls option
+    - tests: skip unpriv tests on broken overlay module
+    - Use AC_HEADER_MAJOR to detect major()/minor()/makedev()
+    - Make lxc-start-ephemeral Python 3.2-compatible
+    - systemd: enable delegate in service file
+    - confile: clear lxc.network..ipv{4,6} when empty
+    - seccomp: allow x32 guests on amd64 hosts.
+    - squeeze is not a supported release anymore, drop the key
+    - seccomp: set SCMP_FLTATR_ATL_TSKIP if available
+    - lxc-checkconfig: verify new[ug]idmap are setuid-root
+    - python3: Deal with potential NULL char*
+    - lxc-download.in / allow setting keyserver from env
+    - lxc-download.in / Document keyserver change in help
+    - Change variable check to match existing style
+    - tests: Support running on IPv6 networks
+    - tests: Kill containers (don't wait for shutdown)
+    - Fix opening wrong file in suggest_default_idmap
+    - lxc_setup_tios(): Ignore SIGTTOU and SIGTTIN signals
+    - Increased buffer length in print_stats()
+    - remove obsolete note about api stability
+    - conf: less error prone pointer access
+    - create ISSUE_TEMPLATE.md
+    - issue template: fix typo
+    - conf: order mount options
+    - commands: avoid NULL pointer dereference
+    - commands: non-functional changes
+    - lxccontainer: avoid NULL pointer dereference
+
+ -- Stéphane Graber <stgraber@ubuntu.com>  Tue, 23 May 2017 14:44:34 -0400
+
 lxc (1.0.9-0ubuntu3) trusty-security; urgency=medium
 
   * SECURITY UPDATE: lxc-user-nic doesn't check netns ownership (LP: #1654676)
