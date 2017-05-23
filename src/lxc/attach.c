@@ -78,12 +78,13 @@
 
 lxc_log_define(lxc_attach, lxc);
 
+/* /proc/pid-to-str/current\0 = (5 + 21 + 7 + 1) */
+#define __LSMATTRLEN (5 + 21 + 7 + 1)
 static int lsm_openat(int procfd, pid_t pid, int on_exec)
 {
 	int ret = -1;
 	int labelfd = -1;
-	const char* name;
-#define __LSMATTRLEN /* /proc */ (5 + /* /pid-to-str */ 21 + /* /current */ 7 + /* \0 */ 1)
+	const char *name;
 	char path[__LSMATTRLEN];
 
 	name = lsm_name();
@@ -98,20 +99,16 @@ static int lsm_openat(int procfd, pid_t pid, int on_exec)
 	if (strcmp(name, "AppArmor") == 0)
 		on_exec = 0;
 
-	if (on_exec) {
+	if (on_exec)
 		ret = snprintf(path, __LSMATTRLEN, "%d/attr/exec", pid);
-		if (ret < 0 || ret >= __LSMATTRLEN)
-			return -1;
-		labelfd = openat(procfd, path, O_RDWR);
-	} else {
+	else
 		ret = snprintf(path, __LSMATTRLEN, "%d/attr/current", pid);
-		if (ret < 0 || ret >= __LSMATTRLEN)
-			return -1;
-		labelfd = openat(procfd, path, O_RDWR);
-	}
+	if (ret < 0 || ret >= __LSMATTRLEN)
+		return -1;
 
+	labelfd = openat(procfd, path, O_RDWR);
 	if (labelfd < 0) {
-		SYSERROR("Unable to open LSM label");
+		SYSERROR("Unable to open file descriptor to set LSM label.");
 		return -1;
 	}
 
@@ -944,7 +941,8 @@ int lxc_attach(const char* name, const char* lxcpath, lxc_attach_exec_t exec_fun
 
 		/* Open LSM fd and send it to child. */
 		if ((options->namespaces & CLONE_NEWNS) && (options->attach_flags & LXC_ATTACH_LSM) && init_ctx->lsm_label) {
-			int on_exec, labelfd;
+			int on_exec, saved_errno;
+			int labelfd = -1;
 			on_exec = options->attach_flags & LXC_ATTACH_LSM_EXEC ? 1 : 0;
 			/* Open fd for the LSM security module. */
 			labelfd = lsm_openat(procfd, attached_pid, on_exec);
@@ -953,13 +951,16 @@ int lxc_attach(const char* name, const char* lxcpath, lxc_attach_exec_t exec_fun
 
 			/* Send child fd of the LSM security module to write to. */
 			ret = lxc_abstract_unix_send_fd(ipc_sockets[0], labelfd, NULL, 0);
+			saved_errno = errno;
+			close(labelfd);
 			if (ret <= 0) {
-				ERROR("Error using IPC to send child LSM fd (4): %s.",
-						strerror(errno));
+				ERROR("Intended to send file descriptor %d: %s.", labelfd, strerror(saved_errno));
 				goto cleanup_error;
 			}
 		}
 
+		if (procfd >= 0)
+			close(procfd);
 		/* now shut down communication with child, we're done */
 		shutdown(ipc_sockets[0], SHUT_RDWR);
 		close(ipc_sockets[0]);

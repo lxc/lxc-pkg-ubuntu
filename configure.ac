@@ -3,7 +3,7 @@
 
 m4_define([lxc_version_major], 1)
 m4_define([lxc_version_minor], 0)
-m4_define([lxc_version_micro], 9)
+m4_define([lxc_version_micro], 10)
 m4_define([lxc_version_beta], [])
 
 m4_define([lxc_version_base], [lxc_version_major.lxc_version_minor.lxc_version_micro])
@@ -202,12 +202,25 @@ if test "$enable_apparmor" = "auto" ; then
 fi
 AM_CONDITIONAL([ENABLE_APPARMOR], [test "x$enable_apparmor" = "xyes"])
 
-AC_CHECK_LIB([gnutls], [gnutls_hash_fast], [enable_gnutls=yes], [enable_gnutls=no])
-
 AM_COND_IF([ENABLE_APPARMOR],
 	[AC_CHECK_HEADER([sys/apparmor.h],[],[AC_MSG_ERROR([You must install the AppArmor development package in order to compile lxc])])
 	AC_CHECK_LIB([apparmor], [aa_change_profile],[],[AC_MSG_ERROR([You must install the AppArmor development package in order to compile lxc])])
 	AC_SUBST([APPARMOR_LIBS], [-lapparmor])])
+
+# GnuTLS
+AC_ARG_ENABLE([gnutls],
+	[AC_HELP_STRING([--enable-gnutls], [enable GnuTLS support [default=auto]])],
+	[], [enable_gnutls=auto])
+
+if test "$enable_gnutls" = "auto" ; then
+	AC_CHECK_LIB([gnutls], [gnutls_hash_fast], [enable_gnutls=yes], [enable_gnutls=no])
+fi
+AM_CONDITIONAL([ENABLE_GNUTLS], [test "x$enable_gnutls" = "xyes"])
+
+AM_COND_IF([ENABLE_GNUTLS],
+	[AC_CHECK_HEADER([gnutls/gnutls.h],[],[AC_MSG_ERROR([You must install the GnuTLS development package in order to compile lxc])])
+	AC_CHECK_LIB([gnutls], [gnutls_hash_fast],[],[AC_MSG_ERROR([You must install the GnuTLS development package in order to compile lxc])])
+	AC_SUBST([GNUTLS_LIBS], [-lgnutls])])
 
 # SELinux
 AC_ARG_ENABLE([selinux],
@@ -551,6 +564,9 @@ AC_CHECK_DECLS([PR_CAPBSET_DROP], [], [], [#include <sys/prctl.h>])
 
 # Check for some headers
 AC_CHECK_HEADERS([sys/signalfd.h pty.h ifaddrs.h sys/capability.h sys/personality.h utmpx.h sys/timerfd.h])
+
+# lookup major()/minor()/makedev()
+AC_HEADER_MAJOR
 
 # Check for some syscalls functions
 AC_CHECK_FUNCS([setns pivot_root sethostname unshare rand_r confstr faccessat])

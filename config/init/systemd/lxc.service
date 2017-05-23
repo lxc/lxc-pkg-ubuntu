@@ -10,6 +10,7 @@ ExecStart=/usr/local/libexec/lxc/lxc-autostart-helper start
 ExecStop=/usr/local/libexec/lxc/lxc-autostart-helper stop
 # Environment=BOOTUP=serial
 # Environment=CONSOLETYPE=serial
+Delegate=yes
 StandardOutput=syslog
 StandardError=syslog
 
