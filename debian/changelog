@@ -1,3 +1,11 @@
+lxc (1.0.9-0ubuntu3) trusty-security; urgency=medium
+
+  * SECURITY UPDATE: lxc-user-nic doesn't check netns ownership (LP: #1654676)
+    - Ensure target netns is caller-owned
+    - CVE-2017-5985
+
+ -- Stéphane Graber <stgraber@ubuntu.com>  Tue, 07 Mar 2017 14:39:58 -0500
+
 lxc (1.0.9-0ubuntu2) trusty; urgency=medium
 
   * Cherry-pick upstream bugfix (LP: #1647016):
