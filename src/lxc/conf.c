@@ -36,6 +36,15 @@
 #include <pwd.h>
 #include <grp.h>
 #include <time.h>
+
+/* makedev() */
+#ifdef MAJOR_IN_MKDEV
+#    include <sys/mkdev.h>
+#endif
+#ifdef MAJOR_IN_SYSMACROS
+#    include <sys/sysmacros.h>
+#endif
+
 #ifdef HAVE_STATVFS
 #include <sys/statvfs.h>
 #endif
@@ -216,31 +225,31 @@ static  instantiate_cb netdev_deconf[LXC_NET_MAXCONFTYPE + 1] = {
 };
 
 static struct mount_opt mount_opt[] = {
-	{ "defaults",      0, 0              },
-	{ "ro",            0, MS_RDONLY      },
-	{ "rw",            1, MS_RDONLY      },
-	{ "suid",          1, MS_NOSUID      },
-	{ "nosuid",        0, MS_NOSUID      },
-	{ "dev",           1, MS_NODEV       },
-	{ "nodev",         0, MS_NODEV       },
-	{ "exec",          1, MS_NOEXEC      },
-	{ "noexec",        0, MS_NOEXEC      },
-	{ "sync",          0, MS_SYNCHRONOUS },
 	{ "async",         1, MS_SYNCHRONOUS },
-	{ "dirsync",       0, MS_DIRSYNC     },
-	{ "remount",       0, MS_REMOUNT     },
-	{ "mand",          0, MS_MANDLOCK    },
-	{ "nomand",        1, MS_MANDLOCK    },
 	{ "atime",         1, MS_NOATIME     },
-	{ "noatime",       0, MS_NOATIME     },
-	{ "diratime",      1, MS_NODIRATIME  },
-	{ "nodiratime",    0, MS_NODIRATIME  },
 	{ "bind",          0, MS_BIND        },
+	{ "defaults",      0, 0              },
+	{ "dev",           1, MS_NODEV       },
+	{ "diratime",      1, MS_NODIRATIME  },
+	{ "dirsync",       0, MS_DIRSYNC     },
+	{ "exec",          1, MS_NOEXEC      },
+	{ "mand",          0, MS_MANDLOCK    },
+	{ "noatime",       0, MS_NOATIME     },
+	{ "nodev",         0, MS_NODEV       },
+	{ "nodiratime",    0, MS_NODIRATIME  },
+	{ "noexec",        0, MS_NOEXEC      },
+	{ "nomand",        1, MS_MANDLOCK    },
+	{ "norelatime",    1, MS_RELATIME    },
+	{ "nostrictatime", 1, MS_STRICTATIME },
+	{ "nosuid",        0, MS_NOSUID      },
 	{ "rbind",         0, MS_BIND|MS_REC },
 	{ "relatime",      0, MS_RELATIME    },
-	{ "norelatime",    1, MS_RELATIME    },
+	{ "remount",       0, MS_REMOUNT     },
+	{ "ro",            0, MS_RDONLY      },
+	{ "rw",            1, MS_RDONLY      },
 	{ "strictatime",   0, MS_STRICTATIME },
-	{ "nostrictatime", 1, MS_STRICTATIME },
+	{ "suid",          1, MS_NOSUID      },
+	{ "sync",          0, MS_SYNCHRONOUS },
 	{ NULL,            0, 0              },
 };
 
@@ -2655,7 +2664,7 @@ static int setup_hw_addr(char *hwaddr, const char *ifname)
 {
 	struct sockaddr sockaddr;
 	struct ifreq ifr;
-	int ret, fd;
+	int ret, fd, saved_errno;
 
 	ret = lxc_convert_mac(hwaddr, &sockaddr);
 	if (ret) {
@@ -2675,9 +2684,10 @@ static int setup_hw_addr(char *hwaddr, const char *ifname)
 	}
 
 	ret = ioctl(fd, SIOCSIFHWADDR, &ifr);
+	saved_errno = errno;
 	close(fd);
 	if (ret)
-		ERROR("ioctl failure : %s", strerror(errno));
+		ERROR("ioctl failure : %s", strerror(saved_errno));
 
 	DEBUG("mac address '%s' on '%s' has been setup", hwaddr, ifr.ifr_name);
 
@@ -4366,7 +4376,7 @@ int lxc_setup(struct lxc_handler *handler)
 
 	if (!lxc_list_empty(&lxc_conf->keepcaps)) {
 		if (!lxc_list_empty(&lxc_conf->caps)) {
-			ERROR("Simultaneously requested dropping and keeping caps");
+			ERROR("Container requests lxc.cap.drop and lxc.cap.keep: either use lxc.cap.drop or lxc.cap.keep, not both.");
 			return -1;
 		}
 		if (dropcaps_except(&lxc_conf->keepcaps)) {
@@ -4572,10 +4582,14 @@ int lxc_clear_cgroups(struct lxc_conf *c, const char *key)
 {
 	struct lxc_list *it,*next;
 	bool all = false;
-	const char *k = key + 11;
+	const char *k = NULL;
 
 	if (strcmp(key, "lxc.cgroup") == 0)
 		all = true;
+	else if (strncmp(key, "lxc.cgroup.", sizeof("lxc.cgroup.")-1) == 0)
+		k = key + sizeof("lxc.cgroup.")-1;
+	else
+		return -1;
 
 	lxc_list_for_each_safe(it, &c->cgroup, next) {
 		struct lxc_cgroup *cg = it->elem;
@@ -4624,11 +4638,15 @@ int lxc_clear_hooks(struct lxc_conf *c, const char *key)
 {
 	struct lxc_list *it,*next;
 	bool all = false, done = false;
-	const char *k = key + 9;
+	const char *k = NULL;
 	int i;
 
 	if (strcmp(key, "lxc.hook") == 0)
 		all = true;
+	else if (strncmp(key, "lxc.hook.", sizeof("lxc.hook.")-1) == 0)
+		k = key + sizeof("lxc.hook.")-1;
+	else
+		return -1;
 
 	for (i=0; i<NUM_LXC_HOOKS; i++) {
 		if (all || strcmp(k, lxchook_names[i]) == 0) {
@@ -4918,7 +4936,7 @@ void suggest_default_idmap(void)
 	}
 	fclose(f);
 
-	f = fopen(subuidfile, "r");
+	f = fopen(subgidfile, "r");
 	if (!f) {
 		ERROR("Your system is not configured with subgids");
 		free(gname);
