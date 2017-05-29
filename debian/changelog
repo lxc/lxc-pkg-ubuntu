@@ -1,3 +1,10 @@
+lxc (2.0.8-0ubuntu3) artful; urgency=medium
+
+  * Cherry-pick upstream workaround for ppc64el failure:
+    - 0011-utils-fix-ppc64le-builds.patch
+
+ -- Stéphane Graber <stgraber@ubuntu.com>  Mon, 29 May 2017 13:15:38 -0400
+
 lxc (2.0.8-0ubuntu2) artful; urgency=medium
 
   * Cherry-pick some upstream fixes:
