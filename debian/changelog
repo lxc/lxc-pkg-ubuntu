@@ -1,3 +1,10 @@
+lxc (2.0.8-0ubuntu1~16.04.2) xenial; urgency=medium
+
+  * Cherry-pick upstream workaround for ppc64el failure:
+    - 0011-utils-fix-ppc64le-builds.patch
+
+ -- Stéphane Graber <stgraber@ubuntu.com>  Mon, 29 May 2017 14:37:15 -0400
+
 lxc (2.0.8-0ubuntu1~16.04.1) xenial; urgency=medium
 
   * New upstream bugfix release (2.0.8) (LP: #1691911):
