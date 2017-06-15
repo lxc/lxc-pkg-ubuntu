@@ -1,4 +1,4 @@
-From eb98deb4925efc7ccda43914757c5c1517b1fbab Mon Sep 17 00:00:00 2001
+From 89eb2ee0a6538e768a44cb4e290966e67ed06532 Mon Sep 17 00:00:00 2001
 From: Dima Krasner <dima@securingsam.com>
 Date: Sun, 14 May 2017 12:24:59 +0300
 Subject: conf: fix build without libcap

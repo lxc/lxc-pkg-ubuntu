@@ -1,4 +1,4 @@
-From 135d9470c44bff6ec6cbfabdb59ccfd2adb62821 Mon Sep 17 00:00:00 2001
+From 0f1907cc11400530a1f01e2d4f3315bcbf6ed5cc Mon Sep 17 00:00:00 2001
 From: Christian Brauner <christian.brauner@ubuntu.com>
 Date: Fri, 12 May 2017 16:33:23 +0200
 Subject: lxc-attach: allow for situations without /dev/tty

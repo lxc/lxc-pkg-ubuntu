@@ -1,4 +1,4 @@
-From 7f7ba260964b3ef4f81ee72f9169e37313437c0d Mon Sep 17 00:00:00 2001
+From 3f9393937a2891a12575a0e06dcb43838cc27dc1 Mon Sep 17 00:00:00 2001
 From: Christian Brauner <christian.brauner@ubuntu.com>
 Date: Tue, 16 May 2017 00:42:30 +0200
 Subject: start: pin rootfs when privileged

@@ -1,4 +1,4 @@
-From 3fda70b5f50a9bd6203a06d2512bb738fa948045 Mon Sep 17 00:00:00 2001
+From e22564b4b241de661ecc662767054391e0360c87 Mon Sep 17 00:00:00 2001
 From: Christian Brauner <christian.brauner@ubuntu.com>
 Date: Thu, 18 May 2017 13:18:29 +0200
 Subject: utils: fix ppc64le builds

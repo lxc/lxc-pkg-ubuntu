@@ -1,4 +1,4 @@
-From ae6105534ac349cb2044d1f97fc0738a70dd368a Mon Sep 17 00:00:00 2001
+From 99366119f27c3228f2797a4b4a531595fe6a4e80 Mon Sep 17 00:00:00 2001
 From: Christian Brauner <christian.brauner@ubuntu.com>
 Date: Mon, 15 May 2017 14:53:06 +0200
 Subject: conf{,ile}: allow to clear all config items

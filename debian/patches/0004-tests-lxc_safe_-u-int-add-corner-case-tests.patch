@@ -1,4 +1,4 @@
-From 5eeaebe8c70b21fc1e852a94a7ce126e345236cb Mon Sep 17 00:00:00 2001
+From fb391577a38d330397ea4b9bf86fabcae3d2a004 Mon Sep 17 00:00:00 2001
 From: Christian Brauner <christian.brauner@ubuntu.com>
 Date: Fri, 12 May 2017 01:16:18 +0200
 Subject: tests: lxc_safe_{u}int() add corner-case tests
