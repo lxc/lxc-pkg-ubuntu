@@ -24,13 +24,13 @@ override_dh_auto_configure:
 override_dh_auto_build:
 	dh_auto_build
 	set -e; cd src/python-lxc && for pv in $(PY3V); do \
-	  CFLAGS="$$(python$$pv-config --includes) -I ../../src -L../../src/lxc/" python$$pv setup.py build; \
+	  CFLAGS="$$(python$$pv-config --includes) -I ../../src -L../../src/lxc/.libs/" python$$pv setup.py build_ext --no-pkg-config; \
 	done
 
 override_dh_auto_install:
 	dh_auto_install
 	set -e; cd src/python-lxc && for pv in $(PY3V); do \
-	  CFLAGS="$$(python$$pv-config --includes) -I ../../src -L../../src/lxc/" python$$pv setup.py install --root=$(CURDIR)/debian/tmp --install-layout=deb; \
+	  CFLAGS="$$(python$$pv-config --includes) -I ../../src -L../../src/lxc/.libs/" python$$pv setup.py install --root=$(CURDIR)/debian/tmp --install-layout=deb; \
 	done
 
 override_dh_install:
