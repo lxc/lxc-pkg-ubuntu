@@ -18,6 +18,7 @@ noinst_HEADERS = \
 	bdev/lxcrsync.h \
 	bdev/lxczfs.h \
 	cgroups/cgroup.h \
+	cgroups/cgroup_utils.h \
 	caps.h \
 	conf.h \
 	console.h \
@@ -82,6 +83,7 @@ liblxc_la_SOURCES = \
 	bdev/lxczfs.c bdev/lxczfs.h \
 	cgroups/cgfs.c \
 	cgroups/cgfsng.c \
+	cgroups/cgroup_utils.c cgroups/cgroup_utils.h \
 	cgroups/cgroup.c cgroups/cgroup.h \
 	commands.c commands.h \
 	start.c start.h \
