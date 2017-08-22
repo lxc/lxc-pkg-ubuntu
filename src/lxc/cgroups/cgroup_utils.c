@@ -32,6 +32,8 @@
 #include "cgroup_utils.h"
 #include "utils.h"
 
+char *must_make_path(const char *first, ...) __attribute__((sentinel));
+
 bool is_cgroupfs_v1(char *line)
 {
 	char *p = strstr(line, " - ");
