@@ -9,3 +9,4 @@
 0009-conf-ile-allow-to-clear-all-config-items.patch
 0010-utils-fix-ppc64le-builds.patch
 0011-cgroups-workaround-gcc-7-bug.patch
+0012-cgroups-handle-hybrid-cgroup-layouts.patch
