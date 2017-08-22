@@ -1,3 +1,10 @@
+lxc (2.0.8-0ubuntu6) artful; urgency=medium
+
+  * Cherry-pick upstream fix:
+    - 0012-cgroups-handle-hybrid-cgroup-layouts.patch
+
+ -- Stéphane Graber <stgraber@ubuntu.com>  Tue, 22 Aug 2017 18:43:41 -0400
+
 lxc (2.0.8-0ubuntu5) artful; urgency=medium
 
   * debian/patches/0012-gcc-7-workaround.patch: workaround for gcc-7 bug
