@@ -1,3 +1,10 @@
+lxc (2.0.8-0ubuntu5) artful; urgency=medium
+
+  * debian/patches/0012-gcc-7-workaround.patch: workaround for gcc-7 bug
+    that causes lxc to FTBFS. LP: #1711449. Closes: #853531.
+
+ -- Tiago Stürmer Daitx <tiago.daitx@ubuntu.com>  Thu, 17 Aug 2017 20:29:29 +0000
+
 lxc (2.0.8-0ubuntu4) artful; urgency=medium
 
   * No-change rebuild to build to drop python3.5.
