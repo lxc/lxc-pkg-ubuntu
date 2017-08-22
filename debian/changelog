@@ -1,3 +1,9 @@
+lxc (2.0.8-0ubuntu4) artful; urgency=medium
+
+  * No-change rebuild to build to drop python3.5.
+
+ -- Matthias Klose <doko@ubuntu.com>  Sat, 05 Aug 2017 16:25:57 +0000
+
 lxc (2.0.8-0ubuntu3) artful; urgency=medium
 
   * Cherry-pick upstream workaround for ppc64el failure:
