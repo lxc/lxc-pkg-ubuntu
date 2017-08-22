@@ -261,7 +261,7 @@ struct hierarchy *get_hierarchy(const char *c)
 	return NULL;
 }
 
-static char *must_make_path(const char *first, ...) __attribute__((sentinel));
+char *must_make_path(const char *first, ...) __attribute__((sentinel));
 
 #define BATCH_SIZE 50
 static void batch_realloc(char **mem, size_t oldlen, size_t newlen)
@@ -1200,7 +1200,7 @@ out_free:
  * Concatenate all passed-in strings into one path.  Do not fail.  If any piece is
  * not prefixed with '/', add a '/'.
  */
-static char *must_make_path(const char *first, ...)
+char *must_make_path(const char *first, ...)
 {
 	va_list args;
 	char *cur, *dest;
