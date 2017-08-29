@@ -1,3 +1,10 @@
+lxc (2.0.8-0ubuntu7) artful; urgency=medium
+
+  * Cherry-pick upstream fix:
+    - 0014-templates-ubuntu-conditionally-move-upstart-ssh-job-.patch
+
+ -- Stéphane Graber <stgraber@ubuntu.com>  Tue, 29 Aug 2017 14:40:49 -0400
+
 lxc (2.0.8-0ubuntu6) artful; urgency=medium
 
   * Cherry-pick upstream fix:
