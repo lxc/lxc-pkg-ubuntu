@@ -11,3 +11,4 @@
 0011-cgroups-workaround-gcc-7-bug.patch
 0012-cgroups-handle-hybrid-cgroup-layouts.patch
 0013-Make-must_make_path-available-to-cgroup_utils.patch
+0014-templates-ubuntu-conditionally-move-upstart-ssh-job-.patch

@@ -1,0 +1,40 @@
+From 2dcd5c37220469fc00dab9ee82d06b3624c140c9 Mon Sep 17 00:00:00 2001
+From: Dimitri John Ledkov <xnox@ubuntu.com>
+Date: Tue, 29 Aug 2017 15:11:55 +0100
+Subject: templates/ubuntu: conditionally move upstart ssh job, as it is now
+ optional.
+
+Mimic the code from the debian template.
+
+Signed-off-by: Dimitri John Ledkov <xnox@ubuntu.com>
+---
+ templates/lxc-ubuntu.in | 11 +++++++++--
+ 1 file changed, 9 insertions(+), 2 deletions(-)
+
+diff --git a/templates/lxc-ubuntu.in b/templates/lxc-ubuntu.in
+index ae3a22ad..ffa4722a 100644
+--- a/templates/lxc-ubuntu.in
++++ b/templates/lxc-ubuntu.in
+@@ -152,13 +152,20 @@ exit 101
+ EOF
+         chmod +x $rootfs/usr/sbin/policy-rc.d
+ 
++        if [ -f "$rootfs/etc/init/ssh.conf" ]; then
++            mv "$rootfs/etc/init/ssh.conf" "$rootfs/etc/init/ssh.conf.disabled"
++        fi
++
+         rm -f $rootfs/etc/ssh/ssh_host_*key*
+-        mv $rootfs/etc/init/ssh.conf $rootfs/etc/init/ssh.conf.disabled
++
+         DPKG_MAINTSCRIPT_PACKAGE=openssh DPKG_MAINTSCRIPT_NAME=postinst chroot $rootfs /var/lib/dpkg/info/openssh-server.postinst configure
+-        mv $rootfs/etc/init/ssh.conf.disabled $rootfs/etc/init/ssh.conf
+ 
+         sed -i "s/root@$(hostname)/root@$hostname/g" $rootfs/etc/ssh/ssh_host_*.pub
+ 
++        if [ -f "$rootfs/etc/init/ssh.conf.disabled" ]; then
++            mv "$rootfs/etc/init/ssh.conf.disabled" "$rootfs/etc/init/ssh.conf"
++        fi
++
+         rm -f $rootfs/usr/sbin/policy-rc.d
+     fi
+ 
