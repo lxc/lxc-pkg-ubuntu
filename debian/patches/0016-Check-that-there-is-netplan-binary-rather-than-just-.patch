@@ -1,0 +1,25 @@
+From 8356a5f06d3d551c49a26ab6c2540bc7bf174869 Mon Sep 17 00:00:00 2001
+From: Dimitri John Ledkov <xnox@ubuntu.com>
+Date: Thu, 31 Aug 2017 12:40:58 +0100
+Subject: Check that there is netplan binary, rather than just just a config
+ directory.
+
+Signed-off-by: Dimitri John Ledkov <xnox@ubuntu.com>
+Signed-off-by: Christian Brauner <christian.brauner@ubuntu.com>
+---
+ templates/lxc-ubuntu.in | 2 +-
+ 1 file changed, 1 insertion(+), 1 deletion(-)
+
+diff --git a/templates/lxc-ubuntu.in b/templates/lxc-ubuntu.in
+index 689e6871..ce36f757 100644
+--- a/templates/lxc-ubuntu.in
++++ b/templates/lxc-ubuntu.in
+@@ -92,7 +92,7 @@ configure_ubuntu()
+     password=$5
+ 
+     # configure the network using the dhcp
+-    if [ -d $rootfs/etc/netplan ]; then
++    if chroot $rootfs which netplan >/dev/null 2>&1; then
+         cat <<EOF > $rootfs/etc/netplan/10-lxc.yaml
+ network:
+   ethernets:

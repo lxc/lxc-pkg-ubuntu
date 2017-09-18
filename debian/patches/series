@@ -12,3 +12,5 @@
 0012-cgroups-handle-hybrid-cgroup-layouts.patch
 0013-Make-must_make_path-available-to-cgroup_utils.patch
 0014-templates-ubuntu-conditionally-move-upstart-ssh-job-.patch
+0015-templates-ubuntu-support-netplan-in-newer-releases-b.patch
+0016-Check-that-there-is-netplan-binary-rather-than-just-.patch
