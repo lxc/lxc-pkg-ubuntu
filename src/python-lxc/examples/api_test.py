@@ -71,7 +71,7 @@ container.create("download", 0,
 
 assert(container.defined)
 assert(container.name == CONTAINER_NAME
-       == container.get_config_item("lxc.utsname"))
+       == container.get_config_item("lxc.uts.name"))
 assert(container.name in lxc.list_containers())
 
 ## Test the config
@@ -90,7 +90,7 @@ assert(capdrop == container.get_config_item("lxc.cap.drop"))
 print("Testing the networking")
 
 # A few basic checks of the current state
-assert("name" in container.get_keys("lxc.network.0"))
+assert("name" in container.get_keys("lxc.net.0"))
 assert(len(container.network) == 1)
 
 ## Starting the container
@@ -131,8 +131,8 @@ assert(len(ips) > 0)
 
 ## Test running config
 assert(container.name == CONTAINER_NAME
-       == container.get_config_item("lxc.utsname")
-       == container.get_running_config_item("lxc.utsname"))
+       == container.get_config_item("lxc.uts.name")
+       == container.get_running_config_item("lxc.uts.name"))
 
 ## Testing cgroups a bit
 print("Testing cgroup API")

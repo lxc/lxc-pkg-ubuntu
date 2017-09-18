@@ -225,7 +225,7 @@ end
 
 function test_container_cmd()
     log(0, "Test get config from running container...")
-    veth_pair = lxc.cmd_get_config_item(optarg["n"], "lxc.network.0.veth.pair")
+    veth_pair = lxc.cmd_get_config_item(optarg["n"], "lxc.net.0.veth.pair")
     log(0, "  veth.pair:%s", veth_pair)
 end
 
@@ -233,11 +233,11 @@ function test_config_items()
     log(0, "Test set/clear configuration items...")
 
     -- test setting a 'single type' item
-    assert(container:get_config_item("lxc.utsname") == optarg["n"])
-    container:set_config_item("lxc.utsname", "foobar")
-    assert(container:get_config_item("lxc.utsname") == "foobar")
-    container:set_config_item("lxc.utsname", optarg["n"])
-    assert(container:get_config_item("lxc.utsname") == optarg["n"])
+    assert(container:get_config_item("lxc.uts.name") == optarg["n"])
+    container:set_config_item("lxc.uts.name", "foobar")
+    assert(container:get_config_item("lxc.uts.name") == "foobar")
+    container:set_config_item("lxc.uts.name", optarg["n"])
+    assert(container:get_config_item("lxc.uts.name") == optarg["n"])
 
     -- test clearing/setting a 'list type' item
     container:clear_config_item("lxc.cap.drop")
@@ -281,7 +281,7 @@ function test_config_network(net_nr)
     log(0, "Test network %d config...", net_nr)
     local netcfg
 
-    netcfg = container:get_keys("lxc.network." .. net_nr)
+    netcfg = container:get_keys("lxc.net." .. net_nr)
     if (netcfg == nil) then
 	return
     end
@@ -289,7 +289,7 @@ function test_config_network(net_nr)
 	log(0, "  %s = %s", k, v or "")
     end
     assert(netcfg["flags"] == "up")
-    assert(container:get_config_item("lxc.network."..net_nr..".type") == "veth")
+    assert(container:get_config_item("lxc.net."..net_nr..".type") == "veth")
 end
 
 

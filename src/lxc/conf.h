@@ -26,10 +26,13 @@
 #include "config.h"
 
 #include <stdio.h>
-#include <netinet/in.h>
 #include <net/if.h>
+#include <netinet/in.h>
 #include <sys/param.h>
 #include <sys/types.h>
+#if HAVE_SYS_RESOURCE_H
+#include <sys/resource.h>
+#endif
 #include <stdbool.h>
 
 #include "list.h"
@@ -43,110 +46,47 @@ typedef void * scmp_filter_ctx;
 #define subuidfile "/etc/subuid"
 #define subgidfile "/etc/subgid"
 
-enum {
-	LXC_NET_EMPTY,
-	LXC_NET_VETH,
-	LXC_NET_MACVLAN,
-	LXC_NET_PHYS,
-	LXC_NET_VLAN,
-	LXC_NET_NONE,
-	LXC_NET_MAXCONFTYPE,
-};
-
 /*
- * Defines the structure to configure an ipv4 address
- * @address   : ipv4 address
- * @broadcast : ipv4 broadcast address
- * @mask      : network mask
- */
-struct lxc_inetdev {
-	struct in_addr addr;
-	struct in_addr bcast;
-	unsigned int prefix;
-};
-
-struct lxc_route {
-	struct in_addr addr;
-};
-
-/*
- * Defines the structure to configure an ipv6 address
- * @flags     : set the address up
- * @address   : ipv6 address
- * @broadcast : ipv6 broadcast address
- * @mask      : network mask
- */
-struct lxc_inet6dev {
-	struct in6_addr addr;
-	struct in6_addr mcast;
-	struct in6_addr acast;
-	unsigned int prefix;
-};
-
-struct lxc_route6 {
-	struct in6_addr addr;
-};
-
-struct ifla_veth {
-	char *pair; /* pair name */
-	char veth1[IFNAMSIZ]; /* needed for deconf */
-};
-
-struct ifla_vlan {
-	unsigned int   flags;
-	unsigned int   fmask;
-	unsigned short   vid;
-	unsigned short   pad;
-};
-
-struct ifla_macvlan {
-	int mode; /* private, vepa, bridge, passthru */
-};
-
-union netdev_p {
-	struct ifla_veth veth_attr;
-	struct ifla_vlan vlan_attr;
-	struct ifla_macvlan macvlan_attr;
-};
-
-/*
- * Defines a structure to configure a network device
- * @link       : lxc.network.link, name of bridge or host iface to attach if any
- * @name       : lxc.network.name, name of iface on the container side
- * @flags      : flag of the network device (IFF_UP, ... )
- * @ipv4       : a list of ipv4 addresses to be set on the network device
- * @ipv6       : a list of ipv6 addresses to be set on the network device
- * @upscript   : a script filename to be executed during interface configuration
- * @downscript : a script filename to be executed during interface destruction
- */
-struct lxc_netdev {
-	int type;
-	int flags;
-	int ifindex;
-	char *link;
-	char *name;
-	char *hwaddr;
-	char *mtu;
-	union netdev_p priv;
-	struct lxc_list ipv4;
-	struct lxc_list ipv6;
-	struct in_addr *ipv4_gateway;
-	bool ipv4_gateway_auto;
-	struct in6_addr *ipv6_gateway;
-	bool ipv6_gateway_auto;
-	char *upscript;
-	char *downscript;
-};
-
-/*
- * Defines a generic struct to configure the control group.
- * It is up to the programmer to specify the right subsystem.
+ * Defines a generic struct to configure the control group. It is up to the
+ * programmer to specify the right subsystem.
  * @subsystem : the targeted subsystem
  * @value     : the value to set
+ *
+ * @controllers : The controllers to use for this container.
+ * @dir         : The name of the directory containing the container's cgroup.
+ *                Not that this is a per-container setting.
  */
 struct lxc_cgroup {
-	char *subsystem;
-	char *value;
+	union {
+		/* information about a specific controller */
+		struct /* controller */ {
+			char *subsystem;
+			char *value;
+		};
+
+		/* meta information about cgroup configuration */
+		struct /* meta */ {
+			char *controllers;
+			char *dir;
+		};
+	};
+};
+
+#if !HAVE_SYS_RESOURCE_H
+# define RLIM_INFINITY ((unsigned long)-1)
+struct rlimit {
+	unsigned long rlim_cur;
+	unsigned long rlim_max;
+};
+#endif
+/*
+ * Defines a structure to configure resource limits to set via setrlimit().
+ * @resource : the resource name in lowercase without the RLIMIT_ prefix
+ * @limit    : the limit to set
+ */
+struct lxc_limit {
+	char *resource;
+	struct rlimit limit;
 };
 
 enum idtype {
@@ -156,10 +96,10 @@ enum idtype {
 
 /*
  * id_map is an id map entry.  Form in confile is:
- * lxc.id_map = u 0    9800 100
- * lxc.id_map = u 1000 9900 100
- * lxc.id_map = g 0    9800 100
- * lxc.id_map = g 1000 9900 100
+ * lxc.idmap = u 0    9800 100
+ * lxc.idmap = u 1000 9900 100
+ * lxc.idmap = g 0    9800 100
+ * lxc.idmap = g 1000 9900 100
  * meaning the container can use uids and gids 0-99 and 1000-1099,
  * with [ug]id 0 mapping to [ug]id 9800 on the host, and [ug]id 1000 to
  * [ug]id 9900 on the host.
@@ -263,7 +203,6 @@ enum {
 /*
  * Defines the global container configuration
  * @rootfs     : root directory to run the container
- * @pivotdir   : pivotdir path, if not set default will be used
  * @mount      : list of mount points
  * @tty        : numbers of tty
  * @pts        : new pts instance
@@ -280,15 +219,19 @@ enum {
  * @lsm_se_context : selinux type to switch to or NULL
  */
 enum lxchooks {
-	LXCHOOK_PRESTART, LXCHOOK_PREMOUNT, LXCHOOK_MOUNT, LXCHOOK_AUTODEV,
-	LXCHOOK_START, LXCHOOK_STOP, LXCHOOK_POSTSTOP, LXCHOOK_CLONE, LXCHOOK_DESTROY,
-	NUM_LXC_HOOKS};
-extern char *lxchook_names[NUM_LXC_HOOKS];
-
-struct saved_nic {
-	int ifindex;
-	char *orig_name;
+	LXCHOOK_PRESTART,
+	LXCHOOK_PREMOUNT,
+	LXCHOOK_MOUNT,
+	LXCHOOK_AUTODEV,
+	LXCHOOK_START,
+	LXCHOOK_STOP,
+	LXCHOOK_POSTSTOP,
+	LXCHOOK_CLONE,
+	LXCHOOK_DESTROY,
+	NUM_LXC_HOOKS
 };
+
+extern char *lxchook_names[NUM_LXC_HOOKS];
 
 struct lxc_conf {
 	int is_execute;
@@ -296,20 +239,18 @@ struct lxc_conf {
 	unsigned int tty;
 	unsigned int pts;
 	int reboot;
-	int need_utmp_watch;
 	signed long personality;
 	struct utsname *utsname;
 	struct lxc_list cgroup;
 	struct lxc_list id_map;
 	struct lxc_list network;
-	struct saved_nic *saved_nics;
-	int num_savednics;
 	int auto_mounts;
 	struct lxc_list mount_list;
 	struct lxc_list caps;
 	struct lxc_list keepcaps;
 	struct lxc_tty_info tty_info;
-	char *pty_names; // comma-separated list of lxc.tty pty names
+	/* Comma-separated list of lxc.tty.max pty names. */
+	char *pty_names;
 	struct lxc_console console;
 	struct lxc_rootfs rootfs;
 	char *ttydir;
@@ -320,25 +261,24 @@ struct lxc_conf {
 	unsigned int lsm_aa_allow_incomplete;
 	char *lsm_se_context;
 	int tmp_umount_proc;
-	char *seccomp;  // filename with the seccomp rules
+	char *seccomp;  /* filename with the seccomp rules */
 #if HAVE_SCMP_FILTER_CTX
 	scmp_filter_ctx seccomp_ctx;
 #endif
 	int maincmd_fd;
-	unsigned int autodev;  // if 1, mount and fill a /dev at start
-	int haltsignal; // signal used to halt container
-	int rebootsignal; // signal used to reboot container
-	int stopsignal; // signal used to hard stop container
-	unsigned int kmsg;  // if 1, create /dev/kmsg symlink
-	char *rcfile;	// Copy of the top level rcfile we read
+	unsigned int autodev;  /* if 1, mount and fill a /dev at start */
+	int haltsignal; /* signal used to halt container */
+	int rebootsignal; /* signal used to reboot container */
+	int stopsignal; /* signal used to hard stop container */
+	char *rcfile;	/* Copy of the top level rcfile we read */
 
-	// Logfile and logleve can be set in a container config file.
-	// Those function as defaults.  The defaults can be overriden
-	// by command line.  However we don't want the command line
-	// specified values to be saved on c->save_config().  So we
-	// store the config file specified values here.
-	char *logfile;  // the logfile as specifed in config
-	int loglevel;   // loglevel as specifed in config (if any)
+	/* Logfile and logleve can be set in a container config file. Those
+	 * function as defaults. The defaults can be overriden by command line.
+	 * However we don't want the command line specified values to be saved
+	 * on c->save_config(). So we store the config file specified values
+	 * here. */
+	char *logfile; /* the logfile as specifed in config */
+	int loglevel; /* loglevel as specifed in config (if any) */
 	int logfd;
 
 	int inherit_ns_fd[LXC_NS_MAX];
@@ -378,6 +318,29 @@ struct lxc_conf {
 
 	/* indicator if the container will be destroyed on shutdown */
 	unsigned int ephemeral;
+
+	/* The facility to pass to syslog. Let's users establish as what type of
+	 * program liblxc is supposed to write to the syslog. */
+	char *syslog;
+
+	/* Whether PR_SET_NO_NEW_PRIVS will be set for the container. */
+	bool no_new_privs;
+
+	/* RLIMIT_* limits */
+	struct lxc_list limits;
+
+	/* REMOVE IN LXC 3.0
+	 * Indicator whether the current config file we're using contained any
+	 * legacy configuration keys.
+	 */
+	bool contains_legacy_key;
+
+	/* Contains generic info about the cgroup configuration for this
+	 * container. Note that struct lxc_cgroup contains a union. It is only
+	 * valid to access the members of the anonymous "meta" struct within
+	 * that union.
+	 */
+	struct lxc_cgroup cgroup_meta;
 };
 
 #ifdef HAVE_TLS
@@ -386,32 +349,15 @@ extern __thread struct lxc_conf *current_config;
 extern struct lxc_conf *current_config;
 #endif
 
-int run_lxc_hooks(const char *name, char *hook, struct lxc_conf *conf,
-		  const char *lxcpath, char *argv[]);
-
+extern int run_lxc_hooks(const char *name, char *hook, struct lxc_conf *conf,
+			 const char *lxcpath, char *argv[]);
 extern int detect_shared_rootfs(void);
-
-/*
- * Initialize the lxc configuration structure
- */
 extern struct lxc_conf *lxc_conf_init(void);
 extern void lxc_conf_free(struct lxc_conf *conf);
-
 extern int pin_rootfs(const char *rootfs);
-
-extern int lxc_requests_empty_network(struct lxc_handler *handler);
-extern int lxc_create_network(struct lxc_handler *handler);
-extern bool lxc_delete_network(struct lxc_handler *handler);
-extern int lxc_assign_network(const char *lxcpath, char *lxcname,
-			      struct lxc_list *networks, pid_t pid);
 extern int lxc_map_ids(struct lxc_list *idmap, pid_t pid);
-extern int lxc_find_gateway_addresses(struct lxc_handler *handler);
-
 extern int lxc_create_tty(const char *name, struct lxc_conf *conf);
 extern void lxc_delete_tty(struct lxc_tty_info *tty_info);
-
-extern int lxc_clear_config_network(struct lxc_conf *c);
-extern int lxc_clear_nic(struct lxc_conf *c, const char *key);
 extern int lxc_clear_config_caps(struct lxc_conf *c);
 extern int lxc_clear_config_keepcaps(struct lxc_conf *c);
 extern int lxc_clear_cgroups(struct lxc_conf *c, const char *key);
@@ -421,30 +367,30 @@ extern int lxc_clear_hooks(struct lxc_conf *c, const char *key);
 extern int lxc_clear_idmaps(struct lxc_conf *c);
 extern int lxc_clear_groups(struct lxc_conf *c);
 extern int lxc_clear_environment(struct lxc_conf *c);
+extern int lxc_clear_limits(struct lxc_conf *c, const char *key);
 extern int lxc_delete_autodev(struct lxc_handler *handler);
-
+extern void lxc_clear_includes(struct lxc_conf *conf);
 extern int do_rootfs_setup(struct lxc_conf *conf, const char *name,
 			   const char *lxcpath);
-
-/*
- * Configure the container from inside
- */
-
-struct cgroup_process_info;
 extern int lxc_setup(struct lxc_handler *handler);
-
-extern void lxc_restore_phys_nics_to_netns(int netnsfd, struct lxc_conf *conf);
-
-extern int find_unmapped_nsuid(struct lxc_conf *conf, enum idtype idtype);
-extern int mapped_hostid(unsigned id, struct lxc_conf *conf, enum idtype idtype);
+extern int setup_resource_limits(struct lxc_list *limits, pid_t pid);
+extern int find_unmapped_nsid(struct lxc_conf *conf, enum idtype idtype);
+extern int mapped_hostid(unsigned id, struct lxc_conf *conf,
+			 enum idtype idtype);
 extern int chown_mapped_root(char *path, struct lxc_conf *conf);
-extern int ttys_shift_ids(struct lxc_conf *c);
-extern int userns_exec_1(struct lxc_conf *conf, int (*fn)(void *), void *data);
+extern int lxc_ttys_shift_ids(struct lxc_conf *c);
+extern int userns_exec_1(struct lxc_conf *conf, int (*fn)(void *), void *data,
+			 const char *fn_name);
 extern int parse_mntopts(const char *mntopts, unsigned long *mntflags,
 			 char **mntdata);
 extern void tmp_proc_unmount(struct lxc_conf *lxc_conf);
-void remount_all_slave(void);
+extern void remount_all_slave(void);
 extern void suggest_default_idmap(void);
-FILE *make_anonymous_mount_file(struct lxc_list *mount);
-struct lxc_list *sort_cgroup_settings(struct lxc_list* cgroup_settings);
-#endif
+extern FILE *make_anonymous_mount_file(struct lxc_list *mount);
+extern struct lxc_list *sort_cgroup_settings(struct lxc_list *cgroup_settings);
+extern unsigned long add_required_remount_flags(const char *s, const char *d,
+						unsigned long flags);
+extern int run_script(const char *name, const char *section, const char *script,
+		      ...);
+
+#endif /* __LXC_CONF_H */

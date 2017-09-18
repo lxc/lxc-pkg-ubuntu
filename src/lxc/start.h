@@ -5,6 +5,8 @@
  *
  * Authors:
  * Daniel Lezcano <daniel.lezcano at free.fr>
+ * Serge Hallyn <serge@hallyn.com>
+ * Christian Brauner <christian.brauner@ubuntu.com>
  *
  * This library is free software; you can redistribute it and/or
  * modify it under the terms of the GNU Lesser General Public
@@ -24,54 +26,120 @@
 #define __LXC_START_H
 
 #include <signal.h>
-#include <sys/param.h>
 #include <stdbool.h>
+#include <sys/param.h>
+#include <sys/socket.h>
+#include <sys/un.h>
 
+#include "conf.h"
 #include "config.h"
-#include "state.h"
 #include "namespace.h"
+#include "state.h"
 
-struct lxc_conf;
+struct lxc_handler {
+	/* The clone flags that were requested. */
+	int clone_flags;
 
-struct lxc_handler;
+	/* File descriptors referring to the network namespace of the container. */
+	int netnsfd;
+
+	/* File descriptor to pin the rootfs for privileged containers. */
+	int pinfd;
+
+	/* Signal file descriptor. */
+	int sigfd;
+
+	/* List of file descriptors referring to the namespaces of the
+	 * container. Note that these are not necessarily identical to
+	 * the "clone_flags" handler field in case namespace inheritance is
+	 * requested.
+	 */
+	int nsfd[LXC_NS_MAX];
+
+	/* Abstract unix domain SOCK_DGRAM socketpair to pass arbitrary data
+	 * between child and parent.
+	 */
+	int data_sock[2];
+
+	/* The socketpair() fds used to wait on successful daemonized startup. */
+	int state_socket_pair[2];
+
+	/* Socketpair to synchronize processes during container creation. */
+	int sync_sock[2];
+
+	/* The name of the container. */
+	char *name;
+
+	/* The path the container is running in. */
+	const char *lxcpath;
+
+	/* Whether the container's startup process euid is 0. */
+	bool am_root;
+
+	/* Indicates whether should we close std{in,out,err} on start. */
+	bool backgrounded;
+
+	/* The child's pid. */
+	pid_t pid;
+
+	/* The signal mask prior to setting up the signal file descriptor. */
+	sigset_t oldmask;
+
+	/* The container's in-memory configuration. */
+	struct lxc_conf *conf;
+
+	/* A list of clients registered to be informed about a container state. */
+	struct lxc_list state_clients;
+
+	/* A set of operations to be performed at various stages of the
+	 * container's life.
+	 */
+	struct lxc_operations *ops;
+
+	/* This holds the cgroup information. Note that the data here is
+	 * specific to the cgroup driver used.
+	 */
+	void *cgroup_data;
+
+	/* Data to be passed to handler ops. */
+	void *data;
+
+	/* Current state of the container. */
+	lxc_state_t state;
+};
 
 struct lxc_operations {
 	int (*start)(struct lxc_handler *, void *);
 	int (*post_start)(struct lxc_handler *, void *);
 };
 
-struct cgroup_desc;
-
-struct lxc_handler {
-	pid_t pid;
-	char *name;
-	lxc_state_t state;
-	int clone_flags;
-	int sigfd;
-	sigset_t oldmask;
-	struct lxc_conf *conf;
-	struct lxc_operations *ops;
-	void *data;
-	int sv[2];
-	int pinfd;
-	const char *lxcpath;
-	void *cgroup_data;
-	int ttysock[2]; // socketpair for child->parent tty fd passing
-	bool backgrounded; // indicates whether should we close std{in,out,err} on start
-	int nsfd[LXC_NS_MAX];
-	int netnsfd;
+struct state_client {
+	int clientfd;
+	lxc_state_t states[MAX_STATE];
 };
-
 
 extern int lxc_poll(const char *name, struct lxc_handler *handler);
 extern int lxc_set_state(const char *name, struct lxc_handler *handler, lxc_state_t state);
 extern void lxc_abort(const char *name, struct lxc_handler *handler);
-extern struct lxc_handler *lxc_init(const char *name, struct lxc_conf *, const char *);
+extern struct lxc_handler *lxc_init_handler(const char *name,
+					    struct lxc_conf *conf,
+					    const char *lxcpath,
+					    bool daemonize);
+extern void lxc_free_handler(struct lxc_handler *handler);
+extern int lxc_init(const char *name, struct lxc_handler *handler);
 extern void lxc_fini(const char *name, struct lxc_handler *handler);
 
-extern int lxc_check_inherited(struct lxc_conf *conf, bool closeall, int fd_to_ignore);
-int __lxc_start(const char *, struct lxc_conf *, struct lxc_operations *,
-		void *, const char *, bool);
+/* lxc_check_inherited: Check for any open file descriptors and close them if
+ *                      requested.
+ * @param[in] conf          The container's configuration.
+ * @param[in] closeall      Whether we should close all open file descriptors.
+ * @param[in] fds_to_ignore Array of file descriptors to ignore.
+ * @param[in] len_fds       Length of fds_to_ignore array.
+ */
+extern int lxc_check_inherited(struct lxc_conf *conf, bool closeall,
+			       int *fds_to_ignore, size_t len_fds);
+extern int __lxc_start(const char *, struct lxc_handler *,
+		       struct lxc_operations *, void *, const char *, bool);
 
 extern void resolve_clone_flags(struct lxc_handler *handler);
 #endif

@@ -59,7 +59,7 @@ struct migrate_opts;
  * changes, whenever possible stick to simply appending new members.
  */
 struct lxc_container {
-	// private fields
+	/* private fields */
 	/*!
 	 * \private
 	 * Name of container.
@@ -105,7 +105,7 @@ struct lxc_container {
 	 */
 	struct lxc_conf *lxc_conf;
 
-	// public fields
+	/* public fields */
 	/*! Human-readable string representing last error */
 	char *error_string;
 
@@ -408,8 +408,8 @@ struct lxc_container {
 	 *  \p retv by initially passing its value as \c NULL and considering the return value.
 	 *  This function can then be called again passing a newly-allocated suitably-sized buffer.
 	 * \note If \p retv is NULL, \p inlen is ignored.
-	 * \note If \p inlen is smaller than required, the value written
-	 *  to \p retv will be truncated.
+	 * \note If \p inlen is smaller than required, nothing will be written to \p retv and still return
+	 *  the length of config item value.
 	 */
 	int (*get_config_item)(struct lxc_container *c, const char *key, char *retv, int inlen);
 
@@ -1017,10 +1017,33 @@ int list_active_containers(const char *lxcpath, char ***names, struct lxc_contai
  */
 int list_all_containers(const char *lxcpath, char ***names, struct lxc_container ***cret);
 
+struct lxc_log {
+	const char *name;
+	const char *lxcpath;
+	const char *file;
+	const char *level;
+	const char *prefix;
+	bool quiet;
+};
+
+/*!
+ *\brief Initialize the log
+ *
+ *\param log lxc log configuration.
+ */
+int lxc_log_init(struct lxc_log *log);
+
 /*!
  * \brief Close log file.
  */
 void lxc_log_close(void);
+
+/*!
+ * \brief Check if the configuration item is supported by this LXC instance.
+ *
+ * \param key Configuration item to check for.
+ */
+bool lxc_config_item_is_supported(const char *key);
 
 #ifdef  __cplusplus
 }

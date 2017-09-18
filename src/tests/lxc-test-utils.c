@@ -41,33 +41,37 @@
 
 void test_lxc_deslashify(void)
 {
-	char *s = strdup("/A///B//C/D/E/");
-	if (!s)
-		exit(EXIT_FAILURE);
-	lxc_test_assert_abort(lxc_deslashify(&s));
-	lxc_test_assert_abort(strcmp(s, "/A/B/C/D/E") == 0);
-	free(s);
+	char *s = "/A///B//C/D/E/";
+	char *t;
 
-	s = strdup("/A");
-	if (!s)
+	t = lxc_deslashify(s);
+	if (!t)
 		exit(EXIT_FAILURE);
-	lxc_test_assert_abort(lxc_deslashify(&s));
-	lxc_test_assert_abort(strcmp(s, "/A") == 0);
-	free(s);
+	lxc_test_assert_abort(strcmp(t, "/A/B/C/D/E") == 0);
+	free(t);
 
-	s = strdup("");
-	if (!s)
-		exit(EXIT_FAILURE);
-	lxc_test_assert_abort(lxc_deslashify(&s));
-	lxc_test_assert_abort(strcmp(s, "") == 0);
-	free(s);
+	s = "/A";
 
-	s = strdup("//");
-	if (!s)
+	t = lxc_deslashify(s);
+	if (!t)
 		exit(EXIT_FAILURE);
-	lxc_test_assert_abort(lxc_deslashify(&s));
-	lxc_test_assert_abort(strcmp(s, "/") == 0);
-	free(s);
+	lxc_test_assert_abort(strcmp(t, "/A") == 0);
+	free(t);
+
+	s = "";
+	t = lxc_deslashify(s);
+	if (!t)
+		exit(EXIT_FAILURE);
+	lxc_test_assert_abort(strcmp(t, "") == 0);
+	free(t);
+
+	s = "//";
+
+	t = lxc_deslashify(s);
+	if (!t)
+		exit(EXIT_FAILURE);
+	lxc_test_assert_abort(strcmp(t, "/") == 0);
+	free(t);
 }
 
 /* /proc/int_as_str/ns/mnt\0 = (5 + 21 + 7 + 1) */
@@ -228,7 +232,22 @@ non_test_error:
 
 void test_lxc_safe_uint(void)
 {
+	int ret;
 	unsigned int n;
+	char numstr[LXC_NUMSTRLEN64];
+
+	lxc_test_assert_abort((-EINVAL == lxc_safe_uint("    -123", &n)));
+	lxc_test_assert_abort((-EINVAL == lxc_safe_uint("-123", &n)));
+
+	ret = snprintf(numstr, LXC_NUMSTRLEN64, "%" PRIu64, (uint64_t)UINT_MAX);
+	if (ret < 0 || ret >= LXC_NUMSTRLEN64)
+		exit(EXIT_FAILURE);
+	lxc_test_assert_abort((0 == lxc_safe_uint(numstr, &n)) && n == UINT_MAX);
+
+	ret = snprintf(numstr, LXC_NUMSTRLEN64, "%" PRIu64, (uint64_t)UINT_MAX + 1);
+	if (ret < 0 || ret >= LXC_NUMSTRLEN64)
+		exit(EXIT_FAILURE);
+	lxc_test_assert_abort((-ERANGE == lxc_safe_uint(numstr, &n)));
 
 	lxc_test_assert_abort((0 == lxc_safe_uint("1234345", &n)) && n == 1234345);
 	lxc_test_assert_abort((0 == lxc_safe_uint("   345", &n)) && n == 345);
@@ -247,7 +266,29 @@ void test_lxc_safe_uint(void)
 
 void test_lxc_safe_int(void)
 {
+	int ret;
 	signed int n;
+	char numstr[LXC_NUMSTRLEN64];
+
+	ret = snprintf(numstr, LXC_NUMSTRLEN64, "%" PRIu64, (uint64_t)INT_MAX);
+	if (ret < 0 || ret >= LXC_NUMSTRLEN64)
+		exit(EXIT_FAILURE);
+	lxc_test_assert_abort((0 == lxc_safe_int(numstr, &n)) && n == INT_MAX);
+
+	ret = snprintf(numstr, LXC_NUMSTRLEN64, "%" PRIu64, (uint64_t)INT_MAX + 1);
+	if (ret < 0 || ret >= LXC_NUMSTRLEN64)
+		exit(EXIT_FAILURE);
+	lxc_test_assert_abort((-ERANGE == lxc_safe_int(numstr, &n)));
+
+	ret = snprintf(numstr, LXC_NUMSTRLEN64, "%" PRId64, (int64_t)INT_MIN);
+	if (ret < 0 || ret >= LXC_NUMSTRLEN64)
+		exit(EXIT_FAILURE);
+	lxc_test_assert_abort((0 == lxc_safe_int(numstr, &n)) && n == INT_MIN);
+
+	ret = snprintf(numstr, LXC_NUMSTRLEN64, "%" PRId64, (int64_t)INT_MIN - 1);
+	if (ret < 0 || ret >= LXC_NUMSTRLEN64)
+		exit(EXIT_FAILURE);
+	lxc_test_assert_abort((-ERANGE == lxc_safe_int(numstr, &n)));
 
 	lxc_test_assert_abort((0 == lxc_safe_int("1234345", &n)) && n == 1234345);
 	lxc_test_assert_abort((0 == lxc_safe_int("   345", &n)) && n == 345);

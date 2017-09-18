@@ -121,6 +121,11 @@ struct lxc_tty_state *lxc_console_sigwinch_init(int srcfd, int dstfd)
 	ts->masterfd = dstfd;
 	ts->sigfd = -1;
 
+	if (!isatty(srcfd)) {
+		INFO("fd %d does not refer to a tty device", srcfd);
+		return ts;
+	}
+
 	/* add tty to list to be scanned at SIGWINCH time */
 	lxc_list_add_elem(&ts->node, ts);
 	lxc_list_add_tail(&lxc_ttys, &ts->node);
@@ -128,30 +133,33 @@ struct lxc_tty_state *lxc_console_sigwinch_init(int srcfd, int dstfd)
 	sigemptyset(&mask);
 	sigaddset(&mask, SIGWINCH);
 	if (sigprocmask(SIG_BLOCK, &mask, &ts->oldmask)) {
-		SYSERROR("failed to block SIGWINCH.");
+		SYSERROR("failed to block SIGWINCH");
 		ts->sigfd = -1;
+		lxc_list_del(&ts->node);
 		return ts;
 	}
 
 	ts->sigfd = signalfd(-1, &mask, 0);
 	if (ts->sigfd < 0) {
-		SYSERROR("failed to get signalfd.");
+		SYSERROR("failed to create signal fd");
 		sigprocmask(SIG_SETMASK, &ts->oldmask, NULL);
 		ts->sigfd = -1;
+		lxc_list_del(&ts->node);
 		return ts;
 	}
 
-	DEBUG("%d got SIGWINCH fd %d", getpid(), ts->sigfd);
+	DEBUG("process %d created signal fd %d to handle SIGWINCH events", getpid(), ts->sigfd);
 	return ts;
 }
 
 void lxc_console_sigwinch_fini(struct lxc_tty_state *ts)
 {
-	if (ts->sigfd >= 0)
+	if (ts->sigfd >= 0) {
 		close(ts->sigfd);
+		lxc_list_del(&ts->node);
+		sigprocmask(SIG_SETMASK, &ts->oldmask, NULL);
+	}
 
-	lxc_list_del(&ts->node);
-	sigprocmask(SIG_SETMASK, &ts->oldmask, NULL);
 	free(ts);
 }
 
@@ -292,7 +300,7 @@ int lxc_setup_tios(int fd, struct termios *oldtios)
 
 static void lxc_console_peer_proxy_free(struct lxc_console *console)
 {
-	if (console->tty_state && console->tty_state->sigfd != -1) {
+	if (console->tty_state) {
 		lxc_console_sigwinch_fini(console->tty_state);
 		console->tty_state = NULL;
 	}
@@ -441,7 +449,7 @@ static int lxc_console_peer_default(struct lxc_console *console)
 
 	console->peer = lxc_unpriv(open(path, O_CLOEXEC | O_RDWR | O_CREAT | O_APPEND, 0600));
 	if (console->peer < 0) {
-		ERROR("failed to open \"%s\"", path);
+		ERROR("failed to open \"%s\": %s", path, strerror(errno));
 		return -ENOTTY;
 	}
 	DEBUG("using \"%s\" as peer tty device", path);
@@ -661,16 +669,17 @@ int lxc_console(struct lxc_container *c, int ttynum,
 	struct lxc_epoll_descr descr;
 	struct termios oldtios;
 	struct lxc_tty_state *ts;
+	int istty = 0;
 
-	if (!isatty(stdinfd)) {
-		ERROR("stdin is not a tty");
-		return -1;
-	}
-
-	ret = lxc_setup_tios(stdinfd, &oldtios);
-	if (ret) {
-		ERROR("failed to setup tios");
-		return -1;
+	istty = isatty(stdinfd);
+	if (istty) {
+		ret = lxc_setup_tios(stdinfd, &oldtios);
+		if (ret) {
+			ERROR("failed to setup terminal properties");
+			return -1;
+		}
+	} else {
+		INFO("fd %d does not refer to a tty device", stdinfd);
 	}
 
 	ttyfd = lxc_cmd_console(c->name, &ttynum, &masterfd, c->config_path);
@@ -697,9 +706,12 @@ int lxc_console(struct lxc_container *c, int ttynum,
 	ts->escape = escape;
 	ts->winch_proxy = c->name;
 	ts->winch_proxy_lxcpath = c->config_path;
+	ts->stdoutfd = stdoutfd;
 
-	lxc_console_winsz(stdinfd, masterfd);
-	lxc_cmd_console_winch(ts->winch_proxy, ts->winch_proxy_lxcpath);
+	if (istty) {
+		lxc_console_winsz(stdinfd, masterfd);
+		lxc_cmd_console_winch(ts->winch_proxy, ts->winch_proxy_lxcpath);
+	}
 
 	ret = lxc_mainloop_open(&descr);
 	if (ret) {
@@ -741,14 +753,15 @@ int lxc_console(struct lxc_container *c, int ttynum,
 err4:
 	lxc_mainloop_close(&descr);
 err3:
-	if (ts->sigfd != -1)
-		lxc_console_sigwinch_fini(ts);
+	lxc_console_sigwinch_fini(ts);
 err2:
 	close(masterfd);
 	close(ttyfd);
 err1:
-	tcsetattr(stdinfd, TCSAFLUSH, &oldtios);
+	if (istty) {
+		if (tcsetattr(stdinfd, TCSAFLUSH, &oldtios) < 0)
+			WARN("failed to reset terminal properties: %s.", strerror(errno));
+	}
 
 	return ret;
 }
-

@@ -44,6 +44,7 @@
 #include "mainloop.h"
 #include "monitor.h"
 #include "utils.h"
+#include "lxccontainer.h"
 
 #define CLIENTFDS_CHUNK 64
 
@@ -350,6 +351,7 @@ int main(int argc, char *argv[])
 	char *lxcpath = argv[1];
 	bool mainloop_opened = false;
 	bool monitord_created = false;
+	struct lxc_log log;
 
 	if (argc != 3) {
 		fprintf(stderr,
@@ -364,7 +366,13 @@ int main(int argc, char *argv[])
 	if (ret < 0 || ret >= sizeof(logpath))
 		exit(EXIT_FAILURE);
 
-	ret = lxc_log_init(NULL, logpath, "DEBUG", "lxc-monitord", 0, lxcpath);
+	log.name = NULL;
+	log.file = logpath;
+	log.level = "DEBUG";
+	log.prefix = "lxc-monitord";
+	log.quiet = 0;
+	log.lxcpath = lxcpath;
+	ret = lxc_log_init(&log);
 	if (ret)
 		INFO("Failed to open log file %s, log will be lost.", lxcpath);
 	lxc_log_options_no_override();
@@ -422,8 +430,16 @@ int main(int argc, char *argv[])
 	       getpid(), mon.lxcpath);
 	for (;;) {
 		ret = lxc_mainloop(&mon.descr, 1000 * 30);
+		if (ret) {
+			ERROR("mainloop returned an error");
+			break;
+		}
 		if (mon.clientfds_cnt <= 0) {
 			NOTICE("No remaining clients. lxc-monitord is exiting.");
+			break;
+		}
+		if (quit == 1) {
+			NOTICE("got quit command. lxc-monitord is exitting.");
 			break;
 		}
 	}

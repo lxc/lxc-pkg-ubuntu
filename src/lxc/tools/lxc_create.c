@@ -27,9 +27,10 @@
 #include <sys/types.h>
 
 #include "arguments.h"
-#include "bdev.h"
 #include "log.h"
 #include "lxc.h"
+#include "storage.h"
+#include "storage_utils.h"
 #include "utils.h"
 
 lxc_log_define(lxc_create_ui, lxc);
@@ -48,7 +49,7 @@ static uint64_t get_fssize(char *s)
 	while (isblank(*end))
 		end++;
 	if (*end == '\0')
-		ret *= 1024ULL * 1024ULL; // MB by default
+		ret *= 1024ULL * 1024ULL; /* MB by default */
 	else if (*end == 'b' || *end == 'B')
 		ret *= 1ULL;
 	else if (*end == 'k' || *end == 'K')
@@ -208,6 +209,7 @@ int main(int argc, char *argv[])
 {
 	struct lxc_container *c;
 	struct bdev_specs spec;
+	struct lxc_log log;
 	int flags = 0;
 
 	if (lxc_arguments_parse(&my_args, argc, argv))
@@ -216,8 +218,14 @@ int main(int argc, char *argv[])
 	if (!my_args.log_file)
 		my_args.log_file = "none";
 
-	if (lxc_log_init(my_args.name, my_args.log_file, my_args.log_priority,
-			 my_args.progname, my_args.quiet, my_args.lxcpath[0]))
+	log.name = my_args.name;
+	log.file = my_args.log_file;
+	log.level = my_args.log_priority;
+	log.prefix = my_args.progname;
+	log.quiet = my_args.quiet;
+	log.lxcpath = my_args.lxcpath[0];
+
+	if (lxc_log_init(&log))
 		exit(EXIT_FAILURE);
 	lxc_log_options_no_override();
 
@@ -240,10 +248,10 @@ int main(int argc, char *argv[])
 	if (strcmp(my_args.bdevtype, "none") == 0)
 		my_args.bdevtype = "dir";
 
-	// Final check whether the user gave use a valid bdev type.
+	/* Final check whether the user gave use a valid bdev type. */
 	if (strcmp(my_args.bdevtype, "best") &&
 	    strcmp(my_args.bdevtype, "_unset") &&
-	    !is_valid_bdev_type(my_args.bdevtype)) {
+	    !is_valid_storage_type(my_args.bdevtype)) {
 		fprintf(stderr, "%s is not a valid backing storage type.\n", my_args.bdevtype);
 		exit(EXIT_FAILURE);
 	}

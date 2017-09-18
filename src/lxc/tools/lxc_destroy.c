@@ -67,6 +67,7 @@ static bool do_destroy_with_snapshots(struct lxc_container *c);
 int main(int argc, char *argv[])
 {
 	struct lxc_container *c;
+	struct lxc_log log;
 	bool bret;
 
 	if (lxc_arguments_parse(&my_args, argc, argv))
@@ -75,8 +76,14 @@ int main(int argc, char *argv[])
 	if (!my_args.log_file)
 		my_args.log_file = "none";
 
-	if (lxc_log_init(my_args.name, my_args.log_file, my_args.log_priority,
-			 my_args.progname, my_args.quiet, my_args.lxcpath[0]))
+	log.name = my_args.name;
+	log.file = my_args.log_file;
+	log.level = my_args.log_priority;
+	log.prefix = my_args.progname;
+	log.quiet = my_args.quiet;
+	log.lxcpath = my_args.lxcpath[0];
+
+	if (lxc_log_init(&log))
 		exit(EXIT_FAILURE);
 	lxc_log_options_no_override();
 	if (my_args.quiet)
@@ -164,7 +171,7 @@ static bool do_destroy(struct lxc_container *c)
 	if (ret < 0 || ret >= MAXPATHLEN)
 		return false;
 
-	if (dir_exists(path)) {
+	if (rmdir(path) < 0 && errno != ENOENT) {
 		if (!quiet)
 			fprintf(stdout, "Destroying %s failed: %s has snapshots.\n", c->name, c->name);
 		return false;
@@ -264,7 +271,7 @@ static bool do_destroy_with_snapshots(struct lxc_container *c)
 	if (ret < 0 || ret >= MAXPATHLEN)
 		return false;
 
-	if (dir_exists(path))
+	if (rmdir(path) < 0 && errno != ENOENT)
 		bret = c->destroy_with_snapshots(c);
 	else
 		bret = do_destroy(c);

@@ -33,21 +33,21 @@
 #define LXC_LOCK_ANON_SEM 1 /*!< Anonymous semaphore lock */
 #define LXC_LOCK_FLOCK    2 /*!< flock(2) lock */
 
-// private
+/* private */
 /*!
  * LXC Lock
 */
 struct lxc_lock {
-	short type; //!< Lock type
+	short type; /*!< Lock type */
 
 	union {
-		sem_t *sem; //!< Anonymous semaphore (LXC_LOCK_ANON_SEM)
+		sem_t *sem; /*!< Anonymous semaphore (LXC_LOCK_ANON_SEM) */
 		/*! LXC_LOCK_FLOCK details */
 		struct {
-			int   fd; //!< fd on which a lock is held (if not -1)
-			char *fname; //!< Name of lock
+			int   fd; /*!< fd on which a lock is held (if not -1) */
+			char *fname; /*!< Name of lock */
 		} f;
-	} u; //!< Container for lock type elements
+	} u; /*!< Container for lock type elements */
 };
 
 /*!
@@ -68,7 +68,8 @@ struct lxc_lock {
  * will be placed in \c l->u.sem.
  *
  * If \ref lxcpath and \ref name are given (both must be given if either is
- * given) then a lockfile is created as \c $lxcpath/$lxcname/locks/$name.
+ * given) then a lockfile is created as \c /run/lxc/lock/$lxcpath/.$name if root,
+ * or \c $XDG_RUNTIME_DIR/lxc/lock/$lxcpath/.$name if non-root.
  * The lock is used to protect the containers on-disk representation.
  *
  * \internal This function allocates the pathname for the given lock in memory
@@ -87,7 +88,8 @@ extern struct lxc_lock *lxc_newlock(const char *lxcpath, const char *name);
  * indefinite wait).
  *
  * \return \c 0 if lock obtained, \c -2 on failure to set timeout,
- *  or \c -1 on any other error (\c errno will be set by \c sem_wait(3)).
+ *  or \c -1 on any other error (\c errno will be set by \c sem_wait(3)
+ * or \c fcntl(2)).
  *
  * \note \p timeout is (currently?) only supported for privlock, not
  * for slock.  Since currently there is not a single use of the timeout
@@ -102,7 +104,7 @@ extern int lxclock(struct lxc_lock *lock, int timeout);
  * \param lock \ref lxc_lock.
  *
  * \return \c 0 on success, \c -2 if provided lock was not already held,
- * otherwise \c -1 with \c errno saved from \c flock(2) or sem_post function.
+ * otherwise \c -1 with \c errno saved from \c fcntl(2) or sem_post function.
  */
 extern int lxcunlock(struct lxc_lock *lock);
 
@@ -153,6 +155,9 @@ extern int container_disk_lock(struct lxc_container *c);
 
 /*!
  * \brief Unlock the containers disk data.
+ *
+ * \param c Container.
+ *
  */
 extern void container_disk_unlock(struct lxc_container *c);
 

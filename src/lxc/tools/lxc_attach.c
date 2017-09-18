@@ -301,15 +301,12 @@ static int get_pty_on_host(struct lxc_container *c, struct wrapargs *wrap, int *
 
 	/* In the case of lxc-attach our peer pty will always be the current
 	 * controlling terminal. We clear whatever was set by the user for
-	 * lxc.console.path here and set it to "/dev/tty". Doing this will (a)
-	 * prevent segfaults when the container has been setup with
-	 * lxc.console = none and (b) provide an easy way to ensure that we
-	 * always do the correct thing. strdup() must be used since console.path
-	 * is free()ed when we call lxc_container_put(). */
+	 * lxc.console.path here and set it NULL. lxc_console_peer_default()
+	 * will then try to open /dev/tty. If the process doesn't have a
+	 * controlling terminal we should still proceed.
+	 */
 	free(conf->console.path);
-	conf->console.path = strdup("/dev/tty");
-	if (!conf->console.path)
-		return -1;
+	conf->console.path = NULL;
 
 	/* Create pty on the host. */
 	if (lxc_console_create(conf) < 0)
@@ -318,7 +315,7 @@ static int get_pty_on_host(struct lxc_container *c, struct wrapargs *wrap, int *
 	conf->console.descr = &descr;
 
 	/* Shift ttys to container. */
-	if (ttys_shift_ids(conf) < 0) {
+	if (lxc_ttys_shift_ids(conf) < 0) {
 		ERROR("Failed to shift tty into container");
 		goto err1;
 	}
@@ -374,6 +371,7 @@ int main(int argc, char *argv[])
 {
 	int ret = -1, r;
 	int wexit = 0;
+	struct lxc_log log;
 	pid_t pid;
 	lxc_attach_options_t attach_options = LXC_ATTACH_OPTIONS_DEFAULT;
 	lxc_attach_command_t command = (lxc_attach_command_t){.program = NULL};
@@ -389,8 +387,13 @@ int main(int argc, char *argv[])
 	if (!my_args.log_file)
 		my_args.log_file = "none";
 
-	r = lxc_log_init(my_args.name, my_args.log_file, my_args.log_priority,
-			   my_args.progname, my_args.quiet, my_args.lxcpath[0]);
+	log.name = my_args.name;
+	log.file = my_args.log_file;
+	log.level = my_args.log_priority;
+	log.prefix = my_args.progname;
+	log.quiet = my_args.quiet;
+	log.lxcpath = my_args.lxcpath[0];
+	r = lxc_log_init(&log);
 	if (r)
 		exit(EXIT_FAILURE);
 	lxc_log_options_no_override();

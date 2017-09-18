@@ -101,7 +101,7 @@ am__configure_deps = $(am__aclocal_m4_deps) $(CONFIGURE_DEPENDENCIES) \
 DIST_COMMON = $(srcdir)/Makefile.am $(am__DIST_COMMON)
 mkinstalldirs = $(install_sh) -d
 CONFIG_HEADER = $(top_builddir)/src/config.h
-CONFIG_CLEAN_FILES = setup.py
+CONFIG_CLEAN_FILES =
 CONFIG_CLEAN_VPATH_FILES =
 AM_V_P = $(am__v_P_@AM_V@)
 am__v_P_ = $(am__v_P_@AM_DEFAULT_V@)
@@ -123,7 +123,7 @@ am__can_run_installinfo = \
     *) (install-info --version) >/dev/null 2>&1;; \
   esac
 am__tagged_files = $(HEADERS) $(SOURCES) $(TAGS_FILES) $(LISP)
-am__DIST_COMMON = $(srcdir)/Makefile.in $(srcdir)/setup.py.in
+am__DIST_COMMON = $(srcdir)/Makefile.in
 DISTFILES = $(DIST_COMMON) $(DIST_SOURCES) $(TEXINFOS) $(EXTRA_DIST)
 ACLOCAL = @ACLOCAL@
 AMTAR = @AMTAR@
@@ -319,7 +319,12 @@ top_builddir = @top_builddir@
 top_srcdir = @top_srcdir@
 @ENABLE_PYTHON_TRUE@@HAVE_DEBIAN_FALSE@DISTSETUPOPTS = 
 @ENABLE_PYTHON_TRUE@@HAVE_DEBIAN_TRUE@DISTSETUPOPTS = --install-layout=deb
+@ENABLE_PYTHON_TRUE@@ENABLE_RPATH_FALSE@RPATHOPTS = 
+@ENABLE_PYTHON_TRUE@@ENABLE_RPATH_TRUE@RPATHOPTS = -R $(libdir)
+@ENABLE_PYTHON_TRUE@CALL_SETUP_PY := cd @srcdir@ && $(PYTHON) setup.py build -b @abs_builddir@/build egg_info -e @abs_builddir@
+@ENABLE_PYTHON_TRUE@DESTDIR = / # default
 EXTRA_DIST = \
+	setup.py \
 	lxc.c \
 	lxc/__init__.py \
 	examples/api_test.py \
@@ -358,8 +363,6 @@ $(top_srcdir)/configure:  $(am__configure_deps)
 $(ACLOCAL_M4):  $(am__aclocal_m4_deps)
 	cd $(top_builddir) && $(MAKE) $(AM_MAKEFLAGS) am--refresh
 $(am__aclocal_m4_deps):
-setup.py: $(top_builddir)/config.status $(srcdir)/setup.py.in
-	cd $(top_builddir) && $(SHELL) ./config.status $(subdir)/$@
 
 mostlyclean-libtool:
 	-rm -f *.lo
@@ -522,17 +525,13 @@ uninstall-am:
 
 
 @ENABLE_PYTHON_TRUE@all:
-@ENABLE_PYTHON_TRUE@	$(PYTHON) setup.py build
+@ENABLE_PYTHON_TRUE@	$(CALL_SETUP_PY) build_ext -I @abs_top_srcdir@/src -L @abs_top_builddir@/src/lxc/.libs/ $(RPATHOPTS) --no-pkg-config
 
 @ENABLE_PYTHON_TRUE@install:
-@ENABLE_PYTHON_TRUE@	if [ "$(DESTDIR)" = "" ]; then \
-@ENABLE_PYTHON_TRUE@		$(PYTHON) setup.py install --prefix=$(prefix) --no-compile $(DISTSETUPOPTS); \
-@ENABLE_PYTHON_TRUE@	else \
-@ENABLE_PYTHON_TRUE@		$(PYTHON) setup.py install --root=$(DESTDIR) --prefix=$(prefix) --no-compile $(DISTSETUPOPTS); \
-@ENABLE_PYTHON_TRUE@	fi
+@ENABLE_PYTHON_TRUE@	$(CALL_SETUP_PY) install --prefix=$(prefix) --no-compile $(DISTSETUPOPTS) --root=$(DESTDIR)
 
 @ENABLE_PYTHON_TRUE@clean-local:
-@ENABLE_PYTHON_TRUE@	rm -rf build
+@ENABLE_PYTHON_TRUE@	rm -rf @builddir@/build
 
 # Tell versions [3.59,3.63) of GNU make to not export all variables.
 # Otherwise a system limit (for SysV at least) may be exceeded.

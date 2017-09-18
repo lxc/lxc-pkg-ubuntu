@@ -51,11 +51,11 @@ static void test_lsm_detect(void)
 {
 	if (lsm_enabled()) {
 		if (!strcmp(lsm_name(), "SELinux")) {
-			lsm_config_key = "lxc.se_context";
+			lsm_config_key = "lxc.selinux.context";
 			lsm_label      = "unconfined_u:unconfined_r:lxc_t:s0-s0:c0.c1023";
 		}
 		else if (!strcmp(lsm_name(), "AppArmor")) {
-			lsm_config_key = "lxc.aa_profile";
+			lsm_config_key = "lxc.apparmor.profile";
 			if (file_exists("/proc/self/ns/cgroup"))
 				lsm_label      = "lxc-container-default-cgns";
 			else
@@ -403,6 +403,7 @@ int main(int argc, char *argv[])
 	if (ret < 0)
 		return EXIT_FAILURE;
 
+	(void)rmdir(LXCPATH "/alternate-path-test");
 	TSTOUT("All tests passed\n");
 	return EXIT_SUCCESS;
 }

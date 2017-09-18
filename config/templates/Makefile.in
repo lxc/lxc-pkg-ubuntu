@@ -113,7 +113,9 @@ CONFIG_CLEAN_FILES = alpine.common.conf alpine.userns.conf \
 	ubuntu-cloud.common.conf ubuntu-cloud.lucid.conf \
 	ubuntu-cloud.userns.conf ubuntu.common.conf ubuntu.lucid.conf \
 	ubuntu.userns.conf openwrt.common.conf sparclinux.common.conf \
-	sparclinux.userns.conf userns.conf
+	sparclinux.userns.conf voidlinux.common.conf \
+	voidlinux.userns.conf sabayon.common.conf sabayon.userns.conf \
+	userns.conf
 CONFIG_CLEAN_VPATH_FILES =
 AM_V_P = $(am__v_P_@AM_V@)
 am__v_P_ = $(am__v_P_@AM_DEFAULT_V@)
@@ -219,6 +221,8 @@ am__DIST_COMMON = $(srcdir)/Makefile.in \
 	$(srcdir)/oracle.common.conf.in \
 	$(srcdir)/oracle.userns.conf.in $(srcdir)/plamo.common.conf.in \
 	$(srcdir)/plamo.userns.conf.in \
+	$(srcdir)/sabayon.common.conf.in \
+	$(srcdir)/sabayon.userns.conf.in \
 	$(srcdir)/slackware.common.conf.in \
 	$(srcdir)/slackware.userns.conf.in \
 	$(srcdir)/sparclinux.common.conf.in \
@@ -227,7 +231,9 @@ am__DIST_COMMON = $(srcdir)/Makefile.in \
 	$(srcdir)/ubuntu-cloud.lucid.conf.in \
 	$(srcdir)/ubuntu-cloud.userns.conf.in \
 	$(srcdir)/ubuntu.common.conf.in $(srcdir)/ubuntu.lucid.conf.in \
-	$(srcdir)/ubuntu.userns.conf.in $(srcdir)/userns.conf.in
+	$(srcdir)/ubuntu.userns.conf.in $(srcdir)/userns.conf.in \
+	$(srcdir)/voidlinux.common.conf.in \
+	$(srcdir)/voidlinux.userns.conf.in
 DISTFILES = $(DIST_COMMON) $(DIST_SOURCES) $(TEXINFOS) $(EXTRA_DIST)
 am__relativize = \
   dir0=`pwd`; \
@@ -483,6 +489,10 @@ templatesconfig_DATA = \
 	openwrt.common.conf \
 	sparclinux.common.conf \
 	sparclinux.userns.conf \
+	voidlinux.common.conf \
+	voidlinux.userns.conf \
+	sabayon.common.conf \
+	sabayon.userns.conf \
 	userns.conf
 
 all: all-recursive
@@ -580,6 +590,14 @@ openwrt.common.conf: $(top_builddir)/config.status $(srcdir)/openwrt.common.conf
 sparclinux.common.conf: $(top_builddir)/config.status $(srcdir)/sparclinux.common.conf.in
 	cd $(top_builddir) && $(SHELL) ./config.status $(subdir)/$@
 sparclinux.userns.conf: $(top_builddir)/config.status $(srcdir)/sparclinux.userns.conf.in
+	cd $(top_builddir) && $(SHELL) ./config.status $(subdir)/$@
+voidlinux.common.conf: $(top_builddir)/config.status $(srcdir)/voidlinux.common.conf.in
+	cd $(top_builddir) && $(SHELL) ./config.status $(subdir)/$@
+voidlinux.userns.conf: $(top_builddir)/config.status $(srcdir)/voidlinux.userns.conf.in
+	cd $(top_builddir) && $(SHELL) ./config.status $(subdir)/$@
+sabayon.common.conf: $(top_builddir)/config.status $(srcdir)/sabayon.common.conf.in
+	cd $(top_builddir) && $(SHELL) ./config.status $(subdir)/$@
+sabayon.userns.conf: $(top_builddir)/config.status $(srcdir)/sabayon.userns.conf.in
 	cd $(top_builddir) && $(SHELL) ./config.status $(subdir)/$@
 userns.conf: $(top_builddir)/config.status $(srcdir)/userns.conf.in
 	cd $(top_builddir) && $(SHELL) ./config.status $(subdir)/$@

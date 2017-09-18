@@ -6,20 +6,25 @@ pkginclude_HEADERS = \
 noinst_HEADERS = \
 	arguments.h \
 	attach.h \
-	bdev/bdev.h \
-	bdev/lxcaufs.h \
-	bdev/lxcbtrfs.h \
-	bdev/lxcdir.h \
-	bdev/lxcloop.h \
-	bdev/lxclvm.h \
-	bdev/lxcnbd.h \
-	bdev/lxcoverlay.h \
-	bdev/lxcrbd.h \
-	bdev/lxcrsync.h \
-	bdev/lxczfs.h \
+	storage/storage.h \
+	storage/aufs.h \
+	storage/btrfs.h \
+	storage/dir.h \
+	storage/loop.h \
+	storage/lvm.h \
+	storage/nbd.h \
+	storage/overlay.h \
+	storage/rbd.h \
+	storage/rsync.h \
+	storage/zfs.h \
+	storage/storage_utils.h \
 	cgroups/cgroup.h \
+	cgroups/cgroup_utils.h \
 	caps.h \
 	conf.h \
+	confile.h \
+	confile_legacy.h \
+	confile_utils.h \
 	console.h \
 	error.h \
 	initutils.h \
@@ -40,6 +45,9 @@ noinst_HEADERS += \
 	../include/ifaddrs.h \
 	../include/openpty.h \
 	../include/lxcmntent.h
+if !HAVE_PRLIMIT
+noinst_HEADERS += ../include/prlimit.h
+endif
 endif
 
 if !HAVE_GETLINE
@@ -69,21 +77,24 @@ endif
 lib_LTLIBRARIES = liblxc.la
 liblxc_la_SOURCES = \
 	arguments.c arguments.h \
-	bdev/bdev.c bdev/bdev.h \
-	bdev/lxcaufs.c bdev/lxcaufs.h \
-	bdev/lxcbtrfs.c bdev/lxcbtrfs.h \
-	bdev/lxcdir.c bdev/lxcdir.h \
-	bdev/lxcloop.c bdev/lxcloop.h \
-	bdev/lxclvm.c bdev/lxclvm.h \
-	bdev/lxcnbd.c bdev/lxcnbd.h \
-	bdev/lxcoverlay.c bdev/lxcoverlay.h \
-	bdev/lxcrbd.c bdev/lxcrbd.h \
-	bdev/lxcrsync.c bdev/lxcrsync.h \
-	bdev/lxczfs.c bdev/lxczfs.h \
+	storage/storage.c storage/storage.h \
+	storage/aufs.c storage/aufs.h \
+	storage/btrfs.c storage/btrfs.h \
+	storage/dir.c storage/dir.h \
+	storage/loop.c storage/loop.h \
+	storage/lvm.c storage/lvm.h \
+	storage/nbd.c storage/nbd.h \
+	storage/overlay.c storage/overlay.h \
+	storage/rbd.c storage/rbd.h \
+	storage/rsync.c storage/rsync.h \
+	storage/zfs.c storage/zfs.h \
+	storage/storage_utils.c storage/storage_utils.h \
 	cgroups/cgfs.c \
 	cgroups/cgfsng.c \
+	cgroups/cgroup_utils.c cgroups/cgroup_utils.h \
 	cgroups/cgroup.c cgroups/cgroup.h \
 	commands.c commands.h \
+	commands_utils.c commands_utils.h \
 	start.c start.h \
 	execute.c \
 	monitor.c monitor.h \
@@ -98,6 +109,8 @@ liblxc_la_SOURCES = \
 	namespace.h namespace.c \
 	conf.c conf.h \
 	confile.c confile.h \
+	confile_legacy.c confile_legacy.h \
+	confile_utils.c confile_utils.h \
 	list.h \
 	state.c state.h \
 	log.c log.h \
@@ -114,7 +127,6 @@ liblxc_la_SOURCES = \
 	mainloop.c mainloop.h \
 	af_unix.c af_unix.h \
 	\
-	lxcutmp.c lxcutmp.h \
 	lxclock.h lxclock.c \
 	lxccontainer.c lxccontainer.h \
 	version.h \
@@ -130,6 +142,9 @@ liblxc_la_SOURCES += \
 	../include/ifaddrs.c ../include/ifaddrs.h \
 	../include/openpty.c ../include/openpty.h \
 	../include/lxcmntent.c ../include/lxcmntent.h
+if !HAVE_PRLIMIT
+liblxc_la_SOURCES += ../include/prlimit.c ../include/prlimit.h
+endif
 endif
 
 if !HAVE_GETLINE
@@ -154,7 +169,7 @@ AM_CFLAGS=-DLXCROOTFSMOUNT=\"$(LXCROOTFSMOUNT)\" \
 	-DSBINDIR=\"$(SBINDIR)\" \
 	-I $(top_srcdir)/src \
 	-I $(top_srcdir)/src/lxc \
-	-I $(top_srcdir)/src/lxc/bdev \
+	-I $(top_srcdir)/src/lxc/storage \
 	-I $(top_srcdir)/src/lxc/cgroups
 
 if ENABLE_APPARMOR
@@ -193,7 +208,8 @@ liblxc_la_LIBADD += $(CGMANAGER_LIBS) $(DBUS_LIBS) $(NIH_LIBS) $(NIH_DBUS_LIBS)
 liblxc_la_CFLAGS += $(CGMANAGER_CFLAGS) $(DBUS_CFLAGS) $(NIH_CFLAGS) $(NIH_DBUS_CFLAGS)
 endif
 
-bin_SCRIPTS = tools/lxc-checkconfig
+bin_SCRIPTS = tools/lxc-checkconfig \
+	      tools/lxc-update-config
 
 EXTRA_DIST = \
 	tools/lxc-top.lua
