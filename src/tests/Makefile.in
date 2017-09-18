@@ -112,7 +112,10 @@ host_triplet = @host@
 @ENABLE_TESTS_TRUE@	lxc-test-attach$(EXEEXT) \
 @ENABLE_TESTS_TRUE@	lxc-test-device-add-remove$(EXEEXT) \
 @ENABLE_TESTS_TRUE@	lxc-test-apparmor$(EXEEXT) \
-@ENABLE_TESTS_TRUE@	lxc-test-utils$(EXEEXT)
+@ENABLE_TESTS_TRUE@	lxc-test-utils$(EXEEXT) \
+@ENABLE_TESTS_TRUE@	lxc-test-parse-config-file$(EXEEXT) \
+@ENABLE_TESTS_TRUE@	lxc-test-config-jump-table$(EXEEXT) \
+@ENABLE_TESTS_TRUE@	lxc-test-shortlived$(EXEEXT)
 @DISTRO_UBUNTU_TRUE@@ENABLE_TESTS_TRUE@am__append_3 = \
 @DISTRO_UBUNTU_TRUE@@ENABLE_TESTS_TRUE@	lxc-test-lxc-attach \
 @DISTRO_UBUNTU_TRUE@@ENABLE_TESTS_TRUE@	lxc-test-apparmor-mount \
@@ -172,6 +175,15 @@ am__lxc_test_concurrent_SOURCES_DIST = concurrent.c
 lxc_test_concurrent_OBJECTS = $(am_lxc_test_concurrent_OBJECTS)
 lxc_test_concurrent_LDADD = $(LDADD)
 @ENABLE_TESTS_TRUE@lxc_test_concurrent_DEPENDENCIES =  \
+@ENABLE_TESTS_TRUE@	../lxc/liblxc.la
+am__lxc_test_config_jump_table_SOURCES_DIST = config_jump_table.c \
+	lxctest.h
+@ENABLE_TESTS_TRUE@am_lxc_test_config_jump_table_OBJECTS =  \
+@ENABLE_TESTS_TRUE@	config_jump_table.$(OBJEXT)
+lxc_test_config_jump_table_OBJECTS =  \
+	$(am_lxc_test_config_jump_table_OBJECTS)
+lxc_test_config_jump_table_LDADD = $(LDADD)
+@ENABLE_TESTS_TRUE@lxc_test_config_jump_table_DEPENDENCIES =  \
 @ENABLE_TESTS_TRUE@	../lxc/liblxc.la
 am__lxc_test_console_SOURCES_DIST = console.c
 @ENABLE_TESTS_TRUE@am_lxc_test_console_OBJECTS = console.$(OBJEXT)
@@ -241,6 +253,15 @@ lxc_test_may_control_OBJECTS = $(am_lxc_test_may_control_OBJECTS)
 lxc_test_may_control_LDADD = $(LDADD)
 @ENABLE_TESTS_TRUE@lxc_test_may_control_DEPENDENCIES =  \
 @ENABLE_TESTS_TRUE@	../lxc/liblxc.la
+am__lxc_test_parse_config_file_SOURCES_DIST = parse_config_file.c \
+	lxctest.h
+@ENABLE_TESTS_TRUE@am_lxc_test_parse_config_file_OBJECTS =  \
+@ENABLE_TESTS_TRUE@	parse_config_file.$(OBJEXT)
+lxc_test_parse_config_file_OBJECTS =  \
+	$(am_lxc_test_parse_config_file_OBJECTS)
+lxc_test_parse_config_file_LDADD = $(LDADD)
+@ENABLE_TESTS_TRUE@lxc_test_parse_config_file_DEPENDENCIES =  \
+@ENABLE_TESTS_TRUE@	../lxc/liblxc.la
 am__lxc_test_reboot_SOURCES_DIST = reboot.c
 @ENABLE_TESTS_TRUE@am_lxc_test_reboot_OBJECTS = reboot.$(OBJEXT)
 lxc_test_reboot_OBJECTS = $(am_lxc_test_reboot_OBJECTS)
@@ -252,6 +273,13 @@ am__lxc_test_saveconfig_SOURCES_DIST = saveconfig.c
 lxc_test_saveconfig_OBJECTS = $(am_lxc_test_saveconfig_OBJECTS)
 lxc_test_saveconfig_LDADD = $(LDADD)
 @ENABLE_TESTS_TRUE@lxc_test_saveconfig_DEPENDENCIES =  \
+@ENABLE_TESTS_TRUE@	../lxc/liblxc.la
+am__lxc_test_shortlived_SOURCES_DIST = shortlived.c
+@ENABLE_TESTS_TRUE@am_lxc_test_shortlived_OBJECTS =  \
+@ENABLE_TESTS_TRUE@	shortlived.$(OBJEXT)
+lxc_test_shortlived_OBJECTS = $(am_lxc_test_shortlived_OBJECTS)
+lxc_test_shortlived_LDADD = $(LDADD)
+@ENABLE_TESTS_TRUE@lxc_test_shortlived_DEPENDENCIES =  \
 @ENABLE_TESTS_TRUE@	../lxc/liblxc.la
 am__lxc_test_shutdowntest_SOURCES_DIST = shutdowntest.c
 @ENABLE_TESTS_TRUE@am_lxc_test_shutdowntest_OBJECTS =  \
@@ -340,14 +368,17 @@ am__v_CCLD_0 = @echo "  CCLD    " $@;
 am__v_CCLD_1 = 
 SOURCES = $(lxc_test_apparmor_SOURCES) $(lxc_test_attach_SOURCES) \
 	$(lxc_test_cgpath_SOURCES) $(lxc_test_clonetest_SOURCES) \
-	$(lxc_test_concurrent_SOURCES) $(lxc_test_console_SOURCES) \
-	$(lxc_test_containertests_SOURCES) \
+	$(lxc_test_concurrent_SOURCES) \
+	$(lxc_test_config_jump_table_SOURCES) \
+	$(lxc_test_console_SOURCES) $(lxc_test_containertests_SOURCES) \
 	$(lxc_test_createtest_SOURCES) $(lxc_test_destroytest_SOURCES) \
 	$(lxc_test_device_add_remove_SOURCES) \
 	$(lxc_test_get_item_SOURCES) $(lxc_test_getkeys_SOURCES) \
 	$(lxc_test_list_SOURCES) $(lxc_test_locktests_SOURCES) \
 	$(lxc_test_lxcpath_SOURCES) $(lxc_test_may_control_SOURCES) \
+	$(lxc_test_parse_config_file_SOURCES) \
 	$(lxc_test_reboot_SOURCES) $(lxc_test_saveconfig_SOURCES) \
+	$(lxc_test_shortlived_SOURCES) \
 	$(lxc_test_shutdowntest_SOURCES) $(lxc_test_snapshot_SOURCES) \
 	$(lxc_test_startone_SOURCES) $(lxc_test_utils_SOURCES)
 DIST_SOURCES = $(am__lxc_test_apparmor_SOURCES_DIST) \
@@ -355,6 +386,7 @@ DIST_SOURCES = $(am__lxc_test_apparmor_SOURCES_DIST) \
 	$(am__lxc_test_cgpath_SOURCES_DIST) \
 	$(am__lxc_test_clonetest_SOURCES_DIST) \
 	$(am__lxc_test_concurrent_SOURCES_DIST) \
+	$(am__lxc_test_config_jump_table_SOURCES_DIST) \
 	$(am__lxc_test_console_SOURCES_DIST) \
 	$(am__lxc_test_containertests_SOURCES_DIST) \
 	$(am__lxc_test_createtest_SOURCES_DIST) \
@@ -366,8 +398,10 @@ DIST_SOURCES = $(am__lxc_test_apparmor_SOURCES_DIST) \
 	$(am__lxc_test_locktests_SOURCES_DIST) \
 	$(am__lxc_test_lxcpath_SOURCES_DIST) \
 	$(am__lxc_test_may_control_SOURCES_DIST) \
+	$(am__lxc_test_parse_config_file_SOURCES_DIST) \
 	$(am__lxc_test_reboot_SOURCES_DIST) \
 	$(am__lxc_test_saveconfig_SOURCES_DIST) \
+	$(am__lxc_test_shortlived_SOURCES_DIST) \
 	$(am__lxc_test_shutdowntest_SOURCES_DIST) \
 	$(am__lxc_test_snapshot_SOURCES_DIST) \
 	$(am__lxc_test_startone_SOURCES_DIST) \
@@ -614,6 +648,9 @@ top_srcdir = @top_srcdir@
 @ENABLE_TESTS_TRUE@lxc_test_device_add_remove_SOURCES = device_add_remove.c
 @ENABLE_TESTS_TRUE@lxc_test_apparmor_SOURCES = aa.c
 @ENABLE_TESTS_TRUE@lxc_test_utils_SOURCES = lxc-test-utils.c lxctest.h
+@ENABLE_TESTS_TRUE@lxc_test_parse_config_file_SOURCES = parse_config_file.c lxctest.h
+@ENABLE_TESTS_TRUE@lxc_test_config_jump_table_SOURCES = config_jump_table.c lxctest.h
+@ENABLE_TESTS_TRUE@lxc_test_shortlived_SOURCES = shortlived.c
 @ENABLE_TESTS_TRUE@AM_CFLAGS = -DLXCROOTFSMOUNT=\"$(LXCROOTFSMOUNT)\" \
 @ENABLE_TESTS_TRUE@	-DLXCPATH=\"$(LXCPATH)\" \
 @ENABLE_TESTS_TRUE@	-DLXC_GLOBAL_CONF=\"$(LXC_GLOBAL_CONF)\" \
@@ -627,11 +664,13 @@ top_srcdir = @top_srcdir@
 @ENABLE_TESTS_TRUE@	$(am__append_2)
 @ENABLE_TESTS_TRUE@bin_SCRIPTS = lxc-test-automount lxc-test-autostart \
 @ENABLE_TESTS_TRUE@	lxc-test-cloneconfig lxc-test-createconfig \
+@ENABLE_TESTS_TRUE@	lxc-test-no-new-privs lxc-test-rootfs \
 @ENABLE_TESTS_TRUE@	$(am__append_3)
 EXTRA_DIST = \
 	cgpath.c \
 	clonetest.c \
 	concurrent.c \
+	config_jump_table.c \
 	console.c \
 	containertests.c \
 	createtest.c \
@@ -644,18 +683,22 @@ EXTRA_DIST = \
 	lxcpath.c \
 	lxc-test-lxc-attach \
 	lxc-test-automount \
+	lxc-test-rootfs \
 	lxc-test-autostart \
 	lxc-test-apparmor-mount \
 	lxc-test-checkpoint-restore \
 	lxc-test-cloneconfig \
 	lxc-test-createconfig \
+	lxc-test-no-new-privs \
 	lxc-test-snapdeps \
 	lxc-test-symlink \
 	lxc-test-ubuntu \
 	lxc-test-unpriv \
 	lxc-test-utils.c \
 	may_control.c \
+	parse_config_file.c \
 	saveconfig.c \
+	shortlived.c \
 	shutdowntest.c \
 	snapshot.c \
 	startone.c
@@ -765,6 +808,10 @@ lxc-test-concurrent$(EXEEXT): $(lxc_test_concurrent_OBJECTS) $(lxc_test_concurre
 	@rm -f lxc-test-concurrent$(EXEEXT)
 	$(AM_V_CCLD)$(LINK) $(lxc_test_concurrent_OBJECTS) $(lxc_test_concurrent_LDADD) $(LIBS)
 
+lxc-test-config-jump-table$(EXEEXT): $(lxc_test_config_jump_table_OBJECTS) $(lxc_test_config_jump_table_DEPENDENCIES) $(EXTRA_lxc_test_config_jump_table_DEPENDENCIES) 
+	@rm -f lxc-test-config-jump-table$(EXEEXT)
+	$(AM_V_CCLD)$(LINK) $(lxc_test_config_jump_table_OBJECTS) $(lxc_test_config_jump_table_LDADD) $(LIBS)
+
 lxc-test-console$(EXEEXT): $(lxc_test_console_OBJECTS) $(lxc_test_console_DEPENDENCIES) $(EXTRA_lxc_test_console_DEPENDENCIES) 
 	@rm -f lxc-test-console$(EXEEXT)
 	$(AM_V_CCLD)$(LINK) $(lxc_test_console_OBJECTS) $(lxc_test_console_LDADD) $(LIBS)
@@ -809,6 +856,10 @@ lxc-test-may-control$(EXEEXT): $(lxc_test_may_control_OBJECTS) $(lxc_test_may_co
 	@rm -f lxc-test-may-control$(EXEEXT)
 	$(AM_V_CCLD)$(LINK) $(lxc_test_may_control_OBJECTS) $(lxc_test_may_control_LDADD) $(LIBS)
 
+lxc-test-parse-config-file$(EXEEXT): $(lxc_test_parse_config_file_OBJECTS) $(lxc_test_parse_config_file_DEPENDENCIES) $(EXTRA_lxc_test_parse_config_file_DEPENDENCIES) 
+	@rm -f lxc-test-parse-config-file$(EXEEXT)
+	$(AM_V_CCLD)$(LINK) $(lxc_test_parse_config_file_OBJECTS) $(lxc_test_parse_config_file_LDADD) $(LIBS)
+
 lxc-test-reboot$(EXEEXT): $(lxc_test_reboot_OBJECTS) $(lxc_test_reboot_DEPENDENCIES) $(EXTRA_lxc_test_reboot_DEPENDENCIES) 
 	@rm -f lxc-test-reboot$(EXEEXT)
 	$(AM_V_CCLD)$(LINK) $(lxc_test_reboot_OBJECTS) $(lxc_test_reboot_LDADD) $(LIBS)
@@ -816,6 +867,10 @@ lxc-test-reboot$(EXEEXT): $(lxc_test_reboot_OBJECTS) $(lxc_test_reboot_DEPENDENC
 lxc-test-saveconfig$(EXEEXT): $(lxc_test_saveconfig_OBJECTS) $(lxc_test_saveconfig_DEPENDENCIES) $(EXTRA_lxc_test_saveconfig_DEPENDENCIES) 
 	@rm -f lxc-test-saveconfig$(EXEEXT)
 	$(AM_V_CCLD)$(LINK) $(lxc_test_saveconfig_OBJECTS) $(lxc_test_saveconfig_LDADD) $(LIBS)
+
+lxc-test-shortlived$(EXEEXT): $(lxc_test_shortlived_OBJECTS) $(lxc_test_shortlived_DEPENDENCIES) $(EXTRA_lxc_test_shortlived_DEPENDENCIES) 
+	@rm -f lxc-test-shortlived$(EXEEXT)
+	$(AM_V_CCLD)$(LINK) $(lxc_test_shortlived_OBJECTS) $(lxc_test_shortlived_LDADD) $(LIBS)
 
 lxc-test-shutdowntest$(EXEEXT): $(lxc_test_shutdowntest_OBJECTS) $(lxc_test_shutdowntest_DEPENDENCIES) $(EXTRA_lxc_test_shutdowntest_DEPENDENCIES) 
 	@rm -f lxc-test-shutdowntest$(EXEEXT)
@@ -879,6 +934,7 @@ distclean-compile:
 @AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/cgpath.Po@am__quote@
 @AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/clonetest.Po@am__quote@
 @AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/concurrent.Po@am__quote@
+@AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/config_jump_table.Po@am__quote@
 @AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/console.Po@am__quote@
 @AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/containertests.Po@am__quote@
 @AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/createtest.Po@am__quote@
@@ -891,8 +947,10 @@ distclean-compile:
 @AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/lxc-test-utils.Po@am__quote@
 @AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/lxcpath.Po@am__quote@
 @AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/may_control.Po@am__quote@
+@AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/parse_config_file.Po@am__quote@
 @AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/reboot.Po@am__quote@
 @AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/saveconfig.Po@am__quote@
+@AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/shortlived.Po@am__quote@
 @AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/shutdowntest.Po@am__quote@
 @AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/snapshot.Po@am__quote@
 @AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/startone.Po@am__quote@
@@ -1140,6 +1198,7 @@ uninstall-am: uninstall-binPROGRAMS uninstall-binSCRIPTS
 
 clean-local:
 	rm -f lxc-test-utils-*
+	rm -f lxc-parse-config-file-*
 
 # Tell versions [3.59,3.63) of GNU make to not export all variables.
 # Otherwise a system limit (for SysV at least) may be exceeded.

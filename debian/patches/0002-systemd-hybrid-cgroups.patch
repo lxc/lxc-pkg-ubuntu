@@ -1,4 +1,4 @@
-From c6d85962aa34b61e41b13b4512e4aa8694ec1c73 Mon Sep 17 00:00:00 2001
+From 140dddef9c4929702c8c59d517caaf083b1c6c28 Mon Sep 17 00:00:00 2001
 From: =?UTF-8?q?St=C3=A9phane=20Graber?= <stgraber@ubuntu.com>
 Date: Fri, 12 May 2017 12:28:20 -0400
 Subject: systemd hybrid cgroups
@@ -14,7 +14,7 @@ Signed-off-by: Stéphane Graber <stgraber@ubuntu.com>
  3 files changed, 3 insertions(+)
 
 diff --git a/src/tests/lxc-test-apparmor-mount b/src/tests/lxc-test-apparmor-mount
-index bb9b1fce..9aea41e4 100755
+index a09fd544..ddcee8a7 100755
 --- a/src/tests/lxc-test-apparmor-mount
 +++ b/src/tests/lxc-test-apparmor-mount
 @@ -132,6 +132,7 @@ elif [ -e /sys/fs/cgroup/cgmanager/sock ]; then
@@ -26,7 +26,7 @@ index bb9b1fce..9aea41e4 100755
  		[ ! -d $d/lxctest ] && mkdir $d/lxctest
  		chown -R $TUSER: $d/lxctest
 diff --git a/src/tests/lxc-test-unpriv b/src/tests/lxc-test-unpriv
-index 8486fbde..b66728a9 100755
+index 5fe09279..5f2a18f6 100755
 --- a/src/tests/lxc-test-unpriv
 +++ b/src/tests/lxc-test-unpriv
 @@ -148,6 +148,7 @@ elif [ -e /sys/fs/cgroup/cgmanager/sock ]; then
@@ -38,7 +38,7 @@ index 8486fbde..b66728a9 100755
  		[ ! -d $d/lxctest ] && mkdir $d/lxctest
  		chown -R $TUSER: $d/lxctest
 diff --git a/src/tests/lxc-test-usernic.in b/src/tests/lxc-test-usernic.in
-index 0b99baa0..551fe12c 100755
+index f7d19a36..3e35008c 100755
 --- a/src/tests/lxc-test-usernic.in
 +++ b/src/tests/lxc-test-usernic.in
 @@ -105,6 +105,7 @@ elif [ -e /sys/fs/cgroup/cgmanager/sock ]; then

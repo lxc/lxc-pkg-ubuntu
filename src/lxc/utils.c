@@ -23,11 +23,13 @@
 
 #include "config.h"
 
+#define __STDC_FORMAT_MACROS /* Required for PRIu64 to work. */
 #include <ctype.h>
 #include <dirent.h>
 #include <errno.h>
 #include <fcntl.h>
 #include <grp.h>
+#include <inttypes.h>
 #include <libgen.h>
 #include <stddef.h>
 #include <stdio.h>
@@ -40,7 +42,6 @@
 #include <sys/prctl.h>
 #include <sys/stat.h>
 #include <sys/types.h>
-#include <sys/vfs.h>
 #include <sys/wait.h>
 
 #include "log.h"
@@ -99,7 +100,7 @@ static int _recursive_rmdir(char *dirname, dev_t pdev,
 
 	dir = opendir(dirname);
 	if (!dir) {
-		ERROR("%s: failed to open %s", __func__, dirname);
+		ERROR("failed to open %s", dirname);
 		return -1;
 	}
 
@@ -132,10 +133,10 @@ static int _recursive_rmdir(char *dirname, dev_t pdev,
 				case ENOTDIR:
 					ret = unlink(pathname);
 					if (ret)
-						INFO("%s: failed to remove %s", __func__, pathname);
+						INFO("Failed to remove %s", pathname);
 					break;
 				default:
-					SYSERROR("%s: failed to rmdir %s", __func__, pathname);
+					SYSERROR("Failed to rmdir %s", pathname);
 					failed = 1;
 					break;
 				}
@@ -145,7 +146,7 @@ static int _recursive_rmdir(char *dirname, dev_t pdev,
 
 		ret = lstat(pathname, &mystat);
 		if (ret) {
-			ERROR("%s: failed to stat %s", __func__, pathname);
+			ERROR("Failed to stat %s", pathname);
 			failed = 1;
 			continue;
 		}
@@ -161,42 +162,44 @@ static int _recursive_rmdir(char *dirname, dev_t pdev,
 				failed=1;
 		} else {
 			if (unlink(pathname) < 0) {
-				SYSERROR("%s: failed to delete %s", __func__, pathname);
+				SYSERROR("Failed to delete %s", pathname);
 				failed=1;
 			}
 		}
 	}
 
 	if (rmdir(dirname) < 0 && !btrfs_try_remove_subvol(dirname) && !hadexclude) {
-		ERROR("%s: failed to delete %s", __func__, dirname);
+		ERROR("Failed to delete %s", dirname);
 		failed=1;
 	}
 
 	ret = closedir(dir);
 	if (ret) {
-		ERROR("%s: failed to close directory %s", __func__, dirname);
+		ERROR("Failed to close directory %s", dirname);
 		failed=1;
 	}
 
 	return failed ? -1 : 0;
 }
 
-/* we have two different magic values for overlayfs, yay */
+/* We have two different magic values for overlayfs, yay. */
+#ifndef OVERLAYFS_SUPER_MAGIC
 #define OVERLAYFS_SUPER_MAGIC 0x794c764f
+#endif
+
+#ifndef OVERLAY_SUPER_MAGIC
 #define OVERLAY_SUPER_MAGIC 0x794c7630
-/*
- * In overlayfs, st_dev is unreliable.  so on overlayfs we don't do
- * the lxc_rmdir_onedev()
+#endif
+
+/* In overlayfs, st_dev is unreliable. So on overlayfs we don't do the
+ * lxc_rmdir_onedev()
  */
 static bool is_native_overlayfs(const char *path)
 {
-	struct statfs sb;
-
-	if (statfs(path, &sb) < 0)
-		return false;
-	if (sb.f_type == OVERLAYFS_SUPER_MAGIC ||
-			sb.f_type == OVERLAY_SUPER_MAGIC)
+	if (has_fs_type(path, OVERLAY_SUPER_MAGIC) ||
+	    has_fs_type(path, OVERLAYFS_SUPER_MAGIC))
 		return true;
+
 	return false;
 }
 
@@ -213,7 +216,7 @@ extern int lxc_rmdir_onedev(char *path, const char *exclude)
 	if (lstat(path, &mystat) < 0) {
 		if (errno == ENOENT)
 			return 0;
-		ERROR("%s: failed to stat %s", __func__, path);
+		ERROR("Failed to stat %s", path);
 		return -1;
 	}
 
@@ -490,6 +493,9 @@ extern struct lxc_popen_FILE *lxc_popen(const char *command)
 		/* child */
 		int child_std_end = STDOUT_FILENO;
 
+		close(parent_end);
+		parent_end = -1;
+
 		if (child_end != child_std_end) {
 			/* dup2() doesn't dup close-on-exec flag */
 			dup2(child_end, child_std_end);
@@ -723,47 +729,46 @@ char **lxc_normalize_path(const char *path)
 	return components;
 }
 
-bool lxc_deslashify(char **path)
+char *lxc_deslashify(const char *path)
 {
-	bool ret = false;
-	char *p;
+	char *dup, *p;
 	char **parts = NULL;
 	size_t n, len;
 
-	parts = lxc_normalize_path(*path);
-	if (!parts)
-		return false;
+	dup = strdup(path);
+	if (!dup)
+		return NULL;
+
+	parts = lxc_normalize_path(dup);
+	if (!parts) {
+		free(dup);
+		return NULL;
+	}
 
 	/* We'll end up here if path == "///" or path == "". */
 	if (!*parts) {
-		len = strlen(*path);
+		len = strlen(dup);
 		if (!len) {
-			ret = true;
-			goto out;
+			lxc_free_array((void **)parts, free);
+			return dup;
 		}
-		n = strcspn(*path, "/");
+		n = strcspn(dup, "/");
 		if (n == len) {
+			free(dup);
+			lxc_free_array((void **)parts, free);
+
 			p = strdup("/");
 			if (!p)
-				goto out;
-			free(*path);
-			*path = p;
-			ret = true;
-			goto out;
+				return NULL;
+
+			return p;
 		}
 	}
 
-	p = lxc_string_join("/", (const char **)parts, **path == '/');
-	if (!p)
-		goto out;
-
-	free(*path);
-	*path = p;
-	ret = true;
-
-out:
+	p = lxc_string_join("/", (const char **)parts, *dup == '/');
+	free(dup);
 	lxc_free_array((void **)parts, free);
-	return ret;
+	return p;
 }
 
 char *lxc_append_paths(const char *first, const char *second)
@@ -1064,7 +1069,7 @@ bool dir_exists(const char *path)
 
 	ret = stat(path, &sb);
 	if (ret < 0)
-		// could be something other than eexist, just say no
+		/* Could be something other than eexist, just say "no". */
 		return false;
 	return S_ISDIR(sb.st_mode);
 }
@@ -1120,7 +1125,7 @@ int detect_shared_rootfs(void)
 			continue;
 		*p2 = '\0';
 		if (strcmp(p + 1, "/") == 0) {
-			// this is '/'.  is it shared?
+			/* This is '/'. Is it shared? */
 			p = strchr(p2 + 1, ' ');
 			if (p && strstr(p, "shared:")) {
 				fclose(f);
@@ -1186,7 +1191,7 @@ bool detect_ramfs_rootfs(void)
 			continue;
 		*p2 = '\0';
 		if (strcmp(p + 1, "/") == 0) {
-			// this is '/'.  is it the ramfs?
+			/* This is '/'. Is it the ramfs? */
 			p = strchr(p2 + 1, '-');
 			if (p && strncmp(p, "- rootfs rootfs ", 16) == 0) {
 				free(line);
@@ -1259,7 +1264,6 @@ char *choose_init(const char *rootfs)
 	const char *empty = "",
 		   *tmp;
 	int ret, env_set = 0;
-	struct stat mystat;
 
 	if (!getenv("PATH")) {
 		if (setenv("PATH", "/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin", 0))
@@ -1291,9 +1295,7 @@ char *choose_init(const char *rootfs)
 		ERROR("pathname too long");
 		goto out1;
 	}
-
-	ret = stat(retv, &mystat);
-	if (ret == 0)
+	if (access(retv, X_OK) == 0)
 		return retv;
 
 	ret = snprintf(retv, PATH_MAX, "%s/%s/%s", tmp, LXCINITDIR, "/lxc/lxc-init");
@@ -1301,9 +1303,7 @@ char *choose_init(const char *rootfs)
 		ERROR("pathname too long");
 		goto out1;
 	}
-
-	ret = stat(retv, &mystat);
-	if (ret == 0)
+	if (access(retv, X_OK) == 0)
 		return retv;
 
 	ret = snprintf(retv, PATH_MAX, "%s/usr/lib/lxc/lxc-init", tmp);
@@ -1311,8 +1311,7 @@ char *choose_init(const char *rootfs)
 		ERROR("pathname too long");
 		goto out1;
 	}
-	ret = stat(retv, &mystat);
-	if (ret == 0)
+	if (access(retv, X_OK) == 0)
 		return retv;
 
 	ret = snprintf(retv, PATH_MAX, "%s/sbin/lxc-init", tmp);
@@ -1320,8 +1319,7 @@ char *choose_init(const char *rootfs)
 		ERROR("pathname too long");
 		goto out1;
 	}
-	ret = stat(retv, &mystat);
-	if (ret == 0)
+	if (access(retv, X_OK) == 0)
 		return retv;
 
 	/*
@@ -1339,8 +1337,7 @@ char *choose_init(const char *rootfs)
 		WARN("Nonsense - name /lxc.init.static too long");
 		goto out1;
 	}
-	ret = stat(retv, &mystat);
-	if (ret == 0)
+	if (access(retv, X_OK) == 0)
 		return retv;
 
 out1:
@@ -1575,20 +1572,21 @@ static int check_symlink(int fd)
 static int open_if_safe(int dirfd, const char *nextpath)
 {
 	int newfd = openat(dirfd, nextpath, O_RDONLY | O_NOFOLLOW);
-	if (newfd >= 0) // was not a symlink, all good
+	if (newfd >= 0) /* Was not a symlink, all good. */
 		return newfd;
 
 	if (errno == ELOOP)
 		return newfd;
 
 	if (errno == EPERM || errno == EACCES) {
-		/* we're not root (cause we got EPERM) so
-		   try opening with O_PATH */
+		/* We're not root (cause we got EPERM) so try opening with
+		 * O_PATH.
+		 */
 		newfd = openat(dirfd, nextpath, O_PATH | O_NOFOLLOW);
 		if (newfd >= 0) {
-			/* O_PATH will return an fd for symlinks.  We know
-			 * nextpath wasn't a symlink at last openat, so if fd
-			 * is now a link, then something * fishy is going on
+			/* O_PATH will return an fd for symlinks. We know
+			 * nextpath wasn't a symlink at last openat, so if fd is
+			 * now a link, then something * fishy is going on.
 			 */
 			int ret = check_symlink(newfd);
 			if (ret < 0) {
@@ -1688,8 +1686,10 @@ out:
 int safe_mount(const char *src, const char *dest, const char *fstype,
 		unsigned long flags, const void *data, const char *rootfs)
 {
-	int srcfd = -1, destfd, ret, saved_errno;
-	char srcbuf[50], destbuf[50]; // only needs enough for /proc/self/fd/<fd>
+	int destfd, ret, saved_errno;
+	/* Only needs enough for /proc/self/fd/<fd>. */
+	char srcbuf[50], destbuf[50];
+	int srcfd = -1;
 	const char *mntsrc = src;
 
 	if (!rootfs)
@@ -1758,9 +1758,8 @@ int safe_mount(const char *src, const char *dest, const char *fstype,
 int lxc_mount_proc_if_needed(const char *rootfs)
 {
 	char path[MAXPATHLEN];
-	char link[20];
-	int link_to_pid, linklen, ret;
-	int mypid;
+	int link_to_pid, linklen, mypid, ret;
+	char link[LXC_NUMSTRLEN64] = {0};
 
 	ret = snprintf(path, MAXPATHLEN, "%s/proc/self", rootfs);
 	if (ret < 0 || ret >= MAXPATHLEN) {
@@ -1768,10 +1767,7 @@ int lxc_mount_proc_if_needed(const char *rootfs)
 		return -1;
 	}
 
-	memset(link, 0, 20);
-	linklen = readlink(path, link, 20);
-	mypid = (int)getpid();
-	INFO("I am %d, /proc/self points to \"%s\"", mypid, link);
+	linklen = readlink(path, link, LXC_NUMSTRLEN64);
 
 	ret = snprintf(path, MAXPATHLEN, "%s/proc", rootfs);
 	if (ret < 0 || ret >= MAXPATHLEN) {
@@ -1784,24 +1780,29 @@ int lxc_mount_proc_if_needed(const char *rootfs)
 		if (mkdir(path, 0755) && errno != EEXIST)
 			return -1;
 		goto domount;
+	} else if (linklen >= LXC_NUMSTRLEN64) {
+		link[linklen - 1] = '\0';
+		ERROR("readlink returned truncated content: \"%s\"", link);
+		return -1;
 	}
+
+	mypid = getpid();
+	INFO("I am %d, /proc/self points to \"%s\"", mypid, link);
 
 	if (lxc_safe_int(link, &link_to_pid) < 0)
 		return -1;
 
-	/* wrong /procs mounted */
-	if (link_to_pid != mypid) {
-		/* ignore failure */
-		umount2(path, MNT_DETACH);
-		goto domount;
-	}
+	/* correct procfs is already mounted */
+	if (link_to_pid == mypid)
+		return 0;
 
-	/* the right proc is already mounted */
-	return 0;
+	ret = umount2(path, MNT_DETACH);
+	if (ret < 0)
+		WARN("failed to umount \"%s\" with MNT_DETACH", path);
 
 domount:
 	/* rootfs is NULL */
-	if (!strcmp(rootfs,""))
+	if (!strcmp(rootfs, ""))
 		ret = mount("proc", path, "proc", 0, NULL);
 	else
 		ret = safe_mount("proc", path, "proc", 0, NULL, rootfs);
@@ -1824,14 +1825,21 @@ int open_devnull(void)
 
 int set_stdfds(int fd)
 {
+	int ret;
+
 	if (fd < 0)
 		return -1;
 
-	if (dup2(fd, 0) < 0)
+	ret = dup2(fd, STDIN_FILENO);
+	if (ret < 0)
 		return -1;
-	if (dup2(fd, 1) < 0)
+
+	ret = dup2(fd, STDOUT_FILENO);
+	if (ret < 0)
 		return -1;
-	if (dup2(fd, 2) < 0)
+
+	ret = dup2(fd, STDERR_FILENO);
+	if (ret < 0)
 		return -1;
 
 	return 0;
@@ -1922,12 +1930,14 @@ bool task_blocking_signal(pid_t pid, int signal)
 		return bret;
 
 	while (getline(&line, &n, f) != -1) {
-		if (!strncmp(line, "SigBlk:\t", 8))
-			if (sscanf(line + 8, "%lx", &sigblk) != 1)
-				goto out;
+		if (strncmp(line, "SigBlk:\t", 8))
+			continue;
+
+		if (sscanf(line + 8, "%lx", &sigblk) != 1)
+			goto out;
 	}
 
-	if (sigblk & signal)
+	if (sigblk & (1LU << (signal - 1)))
 		bret = true;
 
 out:
@@ -2017,6 +2027,29 @@ int lxc_safe_uint(const char *numstr, unsigned int *converted)
 		return -ERANGE;
 
 	*converted = (unsigned int)uli;
+	return 0;
+}
+
+int lxc_safe_ulong(const char *numstr, unsigned long *converted)
+{
+	char *err = NULL;
+	unsigned long int uli;
+
+	while (isspace(*numstr))
+		numstr++;
+
+	if (*numstr == '-')
+		return -EINVAL;
+
+	errno = 0;
+	uli = strtoul(numstr, &err, 0);
+	if (errno == ERANGE && uli == ULONG_MAX)
+		return -ERANGE;
+
+	if (err == numstr || *err != '\0')
+		return -EINVAL;
+
+	*converted = uli;
 	return 0;
 }
 
@@ -2244,4 +2277,156 @@ pop_stack:
 	}
 
 	return umounts;
+}
+
+int run_command(char *buf, size_t buf_size, int (*child_fn)(void *), void *args)
+{
+	pid_t child;
+	int ret, fret, pipefd[2];
+	ssize_t bytes;
+
+	/* Make sure our callers do not receive unitialized memory. */
+	if (buf_size > 0 && buf)
+		buf[0] = '\0';
+
+	if (pipe(pipefd) < 0) {
+		SYSERROR("failed to create pipe");
+		return -1;
+	}
+
+	child = fork();
+	if (child < 0) {
+		close(pipefd[0]);
+		close(pipefd[1]);
+		SYSERROR("failed to create new process");
+		return -1;
+	}
+
+	if (child == 0) {
+		/* Close the read-end of the pipe. */
+		close(pipefd[0]);
+
+		/* Redirect std{err,out} to write-end of the
+		 * pipe.
+		 */
+		ret = dup2(pipefd[1], STDOUT_FILENO);
+		if (ret >= 0)
+			ret = dup2(pipefd[1], STDERR_FILENO);
+
+		/* Close the write-end of the pipe. */
+		close(pipefd[1]);
+
+		if (ret < 0) {
+			SYSERROR("failed to duplicate std{err,out} file descriptor");
+			exit(EXIT_FAILURE);
+		}
+
+		/* Does not return. */
+		child_fn(args);
+		ERROR("failed to exec command");
+		exit(EXIT_FAILURE);
+	}
+
+	/* close the write-end of the pipe */
+	close(pipefd[1]);
+
+	bytes = read(pipefd[0], buf, (buf_size > 0) ? (buf_size - 1) : 0);
+	if (bytes > 0)
+		buf[bytes - 1] = '\0';
+
+	fret = wait_for_pid(child);
+	/* close the read-end of the pipe */
+	close(pipefd[0]);
+
+	return fret;
+}
+
+char *must_make_path(const char *first, ...)
+{
+	va_list args;
+	char *cur, *dest;
+	size_t full_len = strlen(first);
+
+	dest = must_copy_string(first);
+
+	va_start(args, first);
+	while ((cur = va_arg(args, char *)) != NULL) {
+		full_len += strlen(cur);
+		if (cur[0] != '/')
+			full_len++;
+		dest = must_realloc(dest, full_len + 1);
+		if (cur[0] != '/')
+			strcat(dest, "/");
+		strcat(dest, cur);
+	}
+	va_end(args);
+
+	return dest;
+}
+
+char *must_copy_string(const char *entry)
+{
+	char *ret;
+
+	if (!entry)
+		return NULL;
+	do {
+		ret = strdup(entry);
+	} while (!ret);
+
+	return ret;
+}
+
+void *must_realloc(void *orig, size_t sz)
+{
+	void *ret;
+
+	do {
+		ret = realloc(orig, sz);
+	} while (!ret);
+
+	return ret;
+}
+
+bool is_fs_type(const struct statfs *fs, fs_type_magic magic_val)
+{
+	return (fs->f_type == (fs_type_magic)magic_val);
+}
+
+bool has_fs_type(const char *path, fs_type_magic magic_val)
+{
+	bool has_type;
+	int ret;
+	struct statfs sb;
+
+	ret = statfs(path, &sb);
+	if (ret < 0)
+		return false;
+
+	has_type = is_fs_type(&sb, magic_val);
+	if (!has_type && magic_val == RAMFS_MAGIC)
+		WARN("When the ramfs it a tmpfs statfs() might report tmpfs");
+
+	return has_type;
+}
+
+bool lxc_nic_exists(char *nic)
+{
+#define __LXC_SYS_CLASS_NET_LEN 15 + IFNAMSIZ + 1
+	char path[__LXC_SYS_CLASS_NET_LEN];
+	int ret;
+	struct stat sb;
+
+	if (!strcmp(nic, "none"))
+		return true;
+
+	ret = snprintf(path, __LXC_SYS_CLASS_NET_LEN, "/sys/class/net/%s", nic);
+	if (ret < 0 || (size_t)ret >= __LXC_SYS_CLASS_NET_LEN)
+		return false;
+
+	ret = stat(path, &sb);
+	if (ret < 0)
+		return false;
+
+	return true;
 }

@@ -24,6 +24,9 @@ lxc_test_attach_SOURCES = attach.c
 lxc_test_device_add_remove_SOURCES = device_add_remove.c
 lxc_test_apparmor_SOURCES = aa.c
 lxc_test_utils_SOURCES = lxc-test-utils.c lxctest.h
+lxc_test_parse_config_file_SOURCES = parse_config_file.c lxctest.h
+lxc_test_config_jump_table_SOURCES = config_jump_table.c lxctest.h
+lxc_test_shortlived_SOURCES = shortlived.c
 
 AM_CFLAGS=-DLXCROOTFSMOUNT=\"$(LXCROOTFSMOUNT)\" \
 	-DLXCPATH=\"$(LXCPATH)\" \
@@ -51,10 +54,15 @@ bin_PROGRAMS = lxc-test-containertests lxc-test-locktests lxc-test-startone \
 	lxc-test-cgpath lxc-test-clonetest lxc-test-console \
 	lxc-test-snapshot lxc-test-concurrent lxc-test-may-control \
 	lxc-test-reboot lxc-test-list lxc-test-attach lxc-test-device-add-remove \
-	lxc-test-apparmor lxc-test-utils
+	lxc-test-apparmor lxc-test-utils lxc-test-parse-config-file \
+	lxc-test-config-jump-table lxc-test-shortlived
 
-bin_SCRIPTS = lxc-test-automount lxc-test-autostart lxc-test-cloneconfig \
-	lxc-test-createconfig
+bin_SCRIPTS = lxc-test-automount \
+	      lxc-test-autostart \
+	      lxc-test-cloneconfig \
+	      lxc-test-createconfig \
+	      lxc-test-no-new-privs \
+	      lxc-test-rootfs
 
 if DISTRO_UBUNTU
 bin_SCRIPTS += \
@@ -74,6 +82,7 @@ EXTRA_DIST = \
 	cgpath.c \
 	clonetest.c \
 	concurrent.c \
+	config_jump_table.c \
 	console.c \
 	containertests.c \
 	createtest.c \
@@ -86,21 +95,26 @@ EXTRA_DIST = \
 	lxcpath.c \
 	lxc-test-lxc-attach \
 	lxc-test-automount \
+	lxc-test-rootfs \
 	lxc-test-autostart \
 	lxc-test-apparmor-mount \
 	lxc-test-checkpoint-restore \
 	lxc-test-cloneconfig \
 	lxc-test-createconfig \
+	lxc-test-no-new-privs \
 	lxc-test-snapdeps \
 	lxc-test-symlink \
 	lxc-test-ubuntu \
 	lxc-test-unpriv \
 	lxc-test-utils.c \
 	may_control.c \
+	parse_config_file.c \
 	saveconfig.c \
+	shortlived.c \
 	shutdowntest.c \
 	snapshot.c \
 	startone.c
 
 clean-local:
 	rm -f lxc-test-utils-*
+	rm -f lxc-parse-config-file-*

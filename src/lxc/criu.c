@@ -34,7 +34,6 @@
 
 #include "config.h"
 
-#include "bdev.h"
 #include "cgroup.h"
 #include "conf.h"
 #include "commands.h"
@@ -43,6 +42,7 @@
 #include "lxc.h"
 #include "lxclock.h"
 #include "network.h"
+#include "storage.h"
 #include "utils.h"
 
 #if IS_BIONIC
@@ -83,7 +83,7 @@ struct criu_opts {
 	/* The path that is bind mounted from /dev/console, if any. We don't
 	 * want to use `--ext-mount-map auto`'s result here because the pts
 	 * device may have a different path (e.g. if the pty number is
-	 * different) on the target host. NULL if lxc.console = "none".
+	 * different) on the target host. NULL if lxc.console.path = "none".
 	 */
 	char *console_name;
 
@@ -106,8 +106,8 @@ static int load_tty_major_minor(char *directory, char *output, int len)
 	f = fopen(path, "r");
 	if (!f) {
 		/* This means we're coming from a liblxc which didn't export
-		 * the tty info. In this case they had to have lxc.console =
-		 * none, so there's no problem restoring.
+		 * the tty info. In this case they had to have lxc.console.path
+		 * = * none, so there's no problem restoring.
 		 */
 		if (errno == ENOENT)
 			return 0;
@@ -124,6 +124,47 @@ static int load_tty_major_minor(char *directory, char *output, int len)
 
 	fclose(f);
 	return 0;
+}
+
+static int cmp_version(const char *v1, const char *v2)
+{
+	int ret;
+	int oct_v1[3], oct_v2[3];
+
+	memset(oct_v1, -1, sizeof(oct_v1));
+	memset(oct_v2, -1, sizeof(oct_v2));
+
+	ret = sscanf(v1, "%d.%d.%d", &oct_v1[0], &oct_v1[1], &oct_v1[2]);
+	if (ret < 1)
+		return -1;
+
+	ret = sscanf(v2, "%d.%d.%d", &oct_v2[0], &oct_v2[1], &oct_v2[2]);
+	if (ret < 1)
+		return -1;
+
+	/* Major version is greater. */
+	if (oct_v1[0] > oct_v2[0])
+		return 1;
+
+	if (oct_v1[0] < oct_v2[0])
+		return -1;
+
+	/* Minor number is greater.*/
+	if (oct_v1[1] > oct_v2[1])
+		return 1;
+
+	if (oct_v1[1] < oct_v2[1])
+		return -1;
+
+	/* Patch number is greater. */
+	if (oct_v1[2] > oct_v2[2])
+		return 1;
+
+	/* Patch numbers are equal. */
+	if (oct_v1[2] == oct_v2[2])
+		return 0;
+
+	return -1;
 }
 
 static void exec_criu(struct criu_opts *opts)
@@ -263,7 +304,7 @@ static void exec_criu(struct criu_opts *opts)
 
 	for (i = 0; i < cgroup_num_hierarchies(); i++) {
 		char **controllers = NULL, *fullname;
-		char *path;
+		char *path, *tmp;
 
 		if (!cgroup_get_hierarchies(i, &controllers)) {
 			ERROR("failed to get hierarchy %d", i);
@@ -296,11 +337,15 @@ static void exec_criu(struct criu_opts *opts)
 			}
 		}
 
-		if (!lxc_deslashify(&path)) {
-			ERROR("failed to deslashify %s", path);
+		tmp = lxc_deslashify(path);
+		if (!tmp) {
+			ERROR("Failed to remove extraneous slashes from \"%s\"",
+			      path);
 			free(path);
 			goto err;
 		}
+		free(path);
+		path = tmp;
 
 		fullname = lxc_string_join(",", (const char **) controllers, false);
 		if (!fullname) {
@@ -408,6 +453,7 @@ static void exec_criu(struct criu_opts *opts)
 		if (opts->user->predump_dir) {
 			DECLARE_ARG("--prev-images-dir");
 			DECLARE_ARG(opts->user->predump_dir);
+			DECLARE_ARG("--track-mem");
 		}
 
 		if (opts->user->pageserver_address && opts->user->pageserver_port) {
@@ -449,7 +495,7 @@ static void exec_criu(struct criu_opts *opts)
 
 		if (tty_info[0]) {
 			if (opts->console_fd < 0) {
-				ERROR("lxc.console configured on source host but not target");
+				ERROR("lxc.console.path configured on source host but not target");
 				goto err;
 			}
 
@@ -495,7 +541,7 @@ static void exec_criu(struct criu_opts *opts)
 			struct lxc_netdev *n = it->elem;
 			bool external_not_veth;
 
-			if (strcmp(opts->criu_version, CRIU_EXTERNAL_NOT_VETH) >= 0) {
+			if (cmp_version(opts->criu_version, CRIU_EXTERNAL_NOT_VETH) >= 0) {
 				/* Since criu version 2.8 the usage of --veth-pair
 				 * has been deprecated:
 				 * git tag --contains f2037e6d3445fc400
@@ -519,7 +565,7 @@ static void exec_criu(struct criu_opts *opts)
 			case LXC_NET_VETH:
 				veth = n->priv.veth_attr.pair;
 
-				if (n->link) {
+				if (n->link[0] != '\0') {
 					if (external_not_veth)
 						fmt = "veth[%s]:%s@%s";
 					else
@@ -538,7 +584,7 @@ static void exec_criu(struct criu_opts *opts)
 					goto err;
 				break;
 			case LXC_NET_MACVLAN:
-				if (!n->link) {
+				if (n->link[0] == '\0') {
 					ERROR("no host interface for macvlan %s", n->name);
 					goto err;
 				}
@@ -760,11 +806,13 @@ static bool restore_net_info(struct lxc_container *c)
 
 		snprintf(template, sizeof(template), "vethXXXXXX");
 
-		if (!netdev->priv.veth_attr.pair)
-			netdev->priv.veth_attr.pair = lxc_mkifname(template);
+		if (netdev->priv.veth_attr.pair[0] == '\0' &&
+		    netdev->priv.veth_attr.veth1[0] == '\0') {
+			if (!lxc_mkifname(template))
+				goto out_unlock;
 
-		if (!netdev->priv.veth_attr.pair)
-			goto out_unlock;
+			strcpy(netdev->priv.veth_attr.veth1, template);
+		}
 	}
 
 	has_error = false;
@@ -774,8 +822,9 @@ out_unlock:
 	return !has_error;
 }
 
-// do_restore never returns, the calling process is used as the
-// monitor process. do_restore calls exit() if it fails.
+/* do_restore never returns, the calling process is used as the monitor process.
+ * do_restore calls exit() if it fails.
+ */
 static void do_restore(struct lxc_container *c, int status_pipe, struct migrate_opts *opts, char *criu_version)
 {
 	pid_t pid;
@@ -796,8 +845,11 @@ static void do_restore(struct lxc_container *c, int status_pipe, struct migrate_
 		close(fd);
 	}
 
-	handler = lxc_init(c->name, c->lxc_conf, c->config_path);
+	handler = lxc_init_handler(c->name, c->lxc_conf, c->config_path, false);
 	if (!handler)
+		goto out;
+
+	if (lxc_init(c->name, handler) < 0)
 		goto out;
 
 	if (!cgroup_init(handler)) {
@@ -1206,7 +1258,7 @@ bool __criu_restore(struct lxc_container *c, struct migrate_opts *opts)
 
 	if (pid == 0) {
 		close(pipefd[0]);
-		// this never returns
+		/* this never returns */
 		do_restore(c, pipefd[1], opts, criu_version);
 	}
 
@@ -1219,9 +1271,10 @@ bool __criu_restore(struct lxc_container *c, struct migrate_opts *opts)
 		goto err_wait;
 	}
 
-	// If the criu process was killed or exited nonzero, wait() for the
-	// handler, since the restore process died. Otherwise, we don't need to
-	// wait, since the child becomes the monitor process.
+	/* If the criu process was killed or exited nonzero, wait() for the
+	 * handler, since the restore process died. Otherwise, we don't need to
+	 * wait, since the child becomes the monitor process.
+	 */
 	if (!WIFEXITED(status) || WEXITSTATUS(status))
 		goto err_wait;
 	return true;

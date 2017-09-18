@@ -1,16 +1,2 @@
 0001-Allocate-new-lxcbr0-subnet-at-startup-time.patch
 0002-systemd-hybrid-cgroups.patch
-0003-utils-fix-num-parsing-functions.patch
-0004-tests-lxc_safe_-u-int-add-corner-case-tests.patch
-0005-lxc-attach-allow-for-situations-without-dev-tty.patch
-0006-start-don-t-call-lxc_map_ids-without-id-map.patch
-0007-conf-fix-build-without-libcap.patch
-0008-start-pin-rootfs-when-privileged.patch
-0009-conf-ile-allow-to-clear-all-config-items.patch
-0010-utils-fix-ppc64le-builds.patch
-0011-cgroups-workaround-gcc-7-bug.patch
-0012-cgroups-handle-hybrid-cgroup-layouts.patch
-0013-Make-must_make_path-available-to-cgroup_utils.patch
-0014-templates-ubuntu-conditionally-move-upstart-ssh-job-.patch
-0015-templates-ubuntu-support-netplan-in-newer-releases-b.patch
-0016-Check-that-there-is-netplan-binary-rather-than-just-.patch

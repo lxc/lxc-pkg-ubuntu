@@ -19,6 +19,14 @@
    you don't. */
 #undef HAVE_DECL_PR_CAPBSET_DROP
 
+/* Define to 1 if you have the declaration of `PR_GET_NO_NEW_PRIVS', and to 0
+   if you don't. */
+#undef HAVE_DECL_PR_GET_NO_NEW_PRIVS
+
+/* Define to 1 if you have the declaration of `PR_SET_NO_NEW_PRIVS', and to 0
+   if you don't. */
+#undef HAVE_DECL_PR_SET_NO_NEW_PRIVS
+
 /* Define to 1 if you have the declaration of
    `seccomp_syscall_resolve_name_arch', and to 0 if you don't. */
 #undef HAVE_DECL_SECCOMP_SYSCALL_RESOLVE_NAME_ARCH
@@ -92,6 +100,9 @@
 /* Define to 1 if you have the `pivot_root' function. */
 #undef HAVE_PIVOT_ROOT
 
+/* Define to 1 if you have the `prlimit' function. */
+#undef HAVE_PRLIMIT
+
 /* Define to 1 if you have the `pthread_atfork' function. */
 #undef HAVE_PTHREAD_ATFORK
 
@@ -136,6 +147,9 @@
 
 /* Define to 1 if you have the <sys/personality.h> header file. */
 #undef HAVE_SYS_PERSONALITY_H
+
+/* Define to 1 if you have the <sys/resource.h> header file. */
+#undef HAVE_SYS_RESOURCE_H
 
 /* Define to 1 if you have the <sys/signalfd.h> header file. */
 #undef HAVE_SYS_SIGNALFD_H

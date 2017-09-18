@@ -25,9 +25,9 @@
 
 #define LXC_DEVEL 0
 #define LXC_VERSION_MAJOR 2
-#define LXC_VERSION_MINOR 0
-#define LXC_VERSION_MICRO 8
-#define LXC_VERSION_ABI "1.2.0"
-#define LXC_VERSION "2.0.8"
+#define LXC_VERSION_MINOR 1
+#define LXC_VERSION_MICRO 0
+#define LXC_VERSION_ABI "1.3.0"
+#define LXC_VERSION "2.1.0"
 
 #endif

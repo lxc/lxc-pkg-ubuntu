@@ -104,9 +104,9 @@ mkinstalldirs = $(install_sh) -d
 CONFIG_HEADER = $(top_builddir)/src/config.h
 CONFIG_CLEAN_FILES = lxc-alpine lxc-altlinux lxc-archlinux lxc-busybox \
 	lxc-centos lxc-cirros lxc-debian lxc-download lxc-fedora \
-	lxc-gentoo lxc-openmandriva lxc-opensuse lxc-oracle lxc-plamo \
-	lxc-slackware lxc-sshd lxc-ubuntu lxc-ubuntu-cloud \
-	lxc-sparclinux
+	lxc-fedora-legacy lxc-gentoo lxc-openmandriva lxc-opensuse \
+	lxc-oracle lxc-plamo lxc-pld lxc-slackware lxc-sshd lxc-ubuntu \
+	lxc-ubuntu-cloud lxc-sparclinux lxc-voidlinux lxc-sabayon
 CONFIG_CLEAN_VPATH_FILES =
 am__vpath_adj_setup = srcdirstrip=`echo "$(srcdir)" | sed 's|.|.|g'`;
 am__vpath_adj = case $$p in \
@@ -161,12 +161,14 @@ am__DIST_COMMON = $(srcdir)/Makefile.in $(srcdir)/lxc-alpine.in \
 	$(srcdir)/lxc-altlinux.in $(srcdir)/lxc-archlinux.in \
 	$(srcdir)/lxc-busybox.in $(srcdir)/lxc-centos.in \
 	$(srcdir)/lxc-cirros.in $(srcdir)/lxc-debian.in \
-	$(srcdir)/lxc-download.in $(srcdir)/lxc-fedora.in \
-	$(srcdir)/lxc-gentoo.in $(srcdir)/lxc-openmandriva.in \
-	$(srcdir)/lxc-opensuse.in $(srcdir)/lxc-oracle.in \
-	$(srcdir)/lxc-plamo.in $(srcdir)/lxc-slackware.in \
-	$(srcdir)/lxc-sparclinux.in $(srcdir)/lxc-sshd.in \
-	$(srcdir)/lxc-ubuntu-cloud.in $(srcdir)/lxc-ubuntu.in
+	$(srcdir)/lxc-download.in $(srcdir)/lxc-fedora-legacy.in \
+	$(srcdir)/lxc-fedora.in $(srcdir)/lxc-gentoo.in \
+	$(srcdir)/lxc-openmandriva.in $(srcdir)/lxc-opensuse.in \
+	$(srcdir)/lxc-oracle.in $(srcdir)/lxc-plamo.in \
+	$(srcdir)/lxc-pld.in $(srcdir)/lxc-sabayon.in \
+	$(srcdir)/lxc-slackware.in $(srcdir)/lxc-sparclinux.in \
+	$(srcdir)/lxc-sshd.in $(srcdir)/lxc-ubuntu-cloud.in \
+	$(srcdir)/lxc-ubuntu.in $(srcdir)/lxc-voidlinux.in
 DISTFILES = $(DIST_COMMON) $(DIST_SOURCES) $(TEXINFOS) $(EXTRA_DIST)
 ACLOCAL = @ACLOCAL@
 AMTAR = @AMTAR@
@@ -371,16 +373,20 @@ templates_SCRIPTS = \
 	lxc-debian \
 	lxc-download \
 	lxc-fedora \
+	lxc-fedora-legacy \
 	lxc-gentoo \
 	lxc-openmandriva \
 	lxc-opensuse \
 	lxc-oracle \
 	lxc-plamo \
+	lxc-pld \
 	lxc-slackware \
 	lxc-sshd \
 	lxc-ubuntu \
 	lxc-ubuntu-cloud \
-	lxc-sparclinux
+	lxc-sparclinux \
+	lxc-voidlinux \
+	lxc-sabayon
 
 all: all-am
 
@@ -432,6 +438,8 @@ lxc-download: $(top_builddir)/config.status $(srcdir)/lxc-download.in
 	cd $(top_builddir) && $(SHELL) ./config.status $(subdir)/$@
 lxc-fedora: $(top_builddir)/config.status $(srcdir)/lxc-fedora.in
 	cd $(top_builddir) && $(SHELL) ./config.status $(subdir)/$@
+lxc-fedora-legacy: $(top_builddir)/config.status $(srcdir)/lxc-fedora-legacy.in
+	cd $(top_builddir) && $(SHELL) ./config.status $(subdir)/$@
 lxc-gentoo: $(top_builddir)/config.status $(srcdir)/lxc-gentoo.in
 	cd $(top_builddir) && $(SHELL) ./config.status $(subdir)/$@
 lxc-openmandriva: $(top_builddir)/config.status $(srcdir)/lxc-openmandriva.in
@@ -442,6 +450,8 @@ lxc-oracle: $(top_builddir)/config.status $(srcdir)/lxc-oracle.in
 	cd $(top_builddir) && $(SHELL) ./config.status $(subdir)/$@
 lxc-plamo: $(top_builddir)/config.status $(srcdir)/lxc-plamo.in
 	cd $(top_builddir) && $(SHELL) ./config.status $(subdir)/$@
+lxc-pld: $(top_builddir)/config.status $(srcdir)/lxc-pld.in
+	cd $(top_builddir) && $(SHELL) ./config.status $(subdir)/$@
 lxc-slackware: $(top_builddir)/config.status $(srcdir)/lxc-slackware.in
 	cd $(top_builddir) && $(SHELL) ./config.status $(subdir)/$@
 lxc-sshd: $(top_builddir)/config.status $(srcdir)/lxc-sshd.in
@@ -451,6 +461,10 @@ lxc-ubuntu: $(top_builddir)/config.status $(srcdir)/lxc-ubuntu.in
 lxc-ubuntu-cloud: $(top_builddir)/config.status $(srcdir)/lxc-ubuntu-cloud.in
 	cd $(top_builddir) && $(SHELL) ./config.status $(subdir)/$@
 lxc-sparclinux: $(top_builddir)/config.status $(srcdir)/lxc-sparclinux.in
+	cd $(top_builddir) && $(SHELL) ./config.status $(subdir)/$@
+lxc-voidlinux: $(top_builddir)/config.status $(srcdir)/lxc-voidlinux.in
+	cd $(top_builddir) && $(SHELL) ./config.status $(subdir)/$@
+lxc-sabayon: $(top_builddir)/config.status $(srcdir)/lxc-sabayon.in
 	cd $(top_builddir) && $(SHELL) ./config.status $(subdir)/$@
 install-templatesSCRIPTS: $(templates_SCRIPTS)
 	@$(NORMAL_INSTALL)

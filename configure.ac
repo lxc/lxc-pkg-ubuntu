@@ -3,12 +3,12 @@
 
 m4_define([lxc_devel], 0)
 m4_define([lxc_version_major], 2)
-m4_define([lxc_version_minor], 0)
-m4_define([lxc_version_micro], 8)
+m4_define([lxc_version_minor], 1)
+m4_define([lxc_version_micro], 0)
 m4_define([lxc_version_beta], [])
 
 m4_define([lxc_abi_major], 1)
-m4_define([lxc_abi_minor], 2)
+m4_define([lxc_abi_minor], 3)
 m4_define([lxc_abi_micro], 0)
 m4_define([lxc_abi], [lxc_abi_major.lxc_abi_minor.lxc_abi_micro])
 
@@ -71,6 +71,7 @@ if test "z$with_distro" = "z"; then
 	AC_CHECK_FILE(/etc/mandriva-release,with_distro="openmandriva")
 	AC_CHECK_FILE(/etc/pardus-release,with_distro="pardus")
 	AC_CHECK_FILE(/etc/altlinux-release,with_distro="altlinux")
+	AC_CHECK_FILE(/etc/pld-release,with_distro="pld")
 fi
 with_distro=`echo ${with_distro} | tr '[[:upper:]]' '[[:lower:]]'`
 
@@ -86,7 +87,7 @@ case $with_distro in
 		distroconf=default.conf.lxcbr
 		distrosysconf="$sysconfdir/default"
 		;;
-	redhat|centos|fedora|oracle|oracleserver|sparclinux|altlinux|suse|opensuse*|plamo)
+	redhat|centos|fedora|oracle|oracleserver|sparclinux|altlinux|suse|opensuse*|plamo|pld)
 		distroconf=default.conf.lxcbr
 		distrosysconf="$sysconfdir/sysconfig"
 		;;
@@ -121,6 +122,9 @@ case "$with_init_script" in
 				;;
 			debian|raspbian|ubuntu)
 				init_script=upstart,systemd
+				;;
+			pld)
+				init_script=sysvinit,upstart,systemd
 				;;
 			*)
 				echo -n "Linux distribution init system unknown."
@@ -187,7 +191,7 @@ AC_ARG_ENABLE([doc],
 
 if test "x$enable_doc" = "xyes" -o "x$enable_doc" = "xauto"; then
 	db2xman=""
-	dbparsers="docbook2x-man db2x_docbook2man docbook2man docbook-to-man"
+	dbparsers="docbook2X2man docbook2x-man db2x_docbook2man docbook2man docbook-to-man"
 
 	AC_MSG_CHECKING(for docbook2x-man)
 	for name in ${dbparsers}; do
@@ -554,7 +558,7 @@ AC_ARG_WITH([cgroup-pattern],
 	[AC_HELP_STRING(
 		[--with-cgroup-pattern=pattern],
 		[pattern for container cgroups]
-	)], [], [with_cgroup_pattern=['/lxc/%n']])
+	)], [], [with_cgroup_pattern=['lxc/%n']])
 
 # Container log path.  By default, use $lxcpath.
 AC_MSG_CHECKING([Whether to place logfiles in container config path])
@@ -632,8 +636,12 @@ AM_CONDITIONAL([IS_BIONIC], [test "x$is_bionic" = "xyes"])
 # Some systems lack PR_CAPBSET_DROP definition => HAVE_DECL_PR_CAPBSET_DROP
 AC_CHECK_DECLS([PR_CAPBSET_DROP], [], [], [#include <sys/prctl.h>])
 
+# Some systems lack PR_{G,S}ET_NO_NEW_PRIVS definition => HAVE_DECL_PR_{G,S}ET_NO_NEW_PRIVS
+AC_CHECK_DECLS([PR_SET_NO_NEW_PRIVS], [], [], [#include <sys/prctl.h>])
+AC_CHECK_DECLS([PR_GET_NO_NEW_PRIVS], [], [], [#include <sys/prctl.h>])
+
 # Check for some headers
-AC_CHECK_HEADERS([sys/signalfd.h pty.h ifaddrs.h sys/memfd.h sys/personality.h utmpx.h sys/timerfd.h])
+AC_CHECK_HEADERS([sys/signalfd.h pty.h ifaddrs.h sys/memfd.h sys/personality.h utmpx.h sys/timerfd.h sys/resource.h])
 
 # lookup major()/minor()/makedev()
 AC_HEADER_MAJOR
@@ -659,6 +667,10 @@ AC_CHECK_FUNCS([fgetln],
 	AM_CONDITIONAL(HAVE_FGETLN, true)
 	AC_DEFINE(HAVE_FGETLN,1,[Have fgetln]),
 	AM_CONDITIONAL(HAVE_FGETLN, false))
+AC_CHECK_FUNCS([prlimit],
+	AM_CONDITIONAL(HAVE_PRLIMIT, true)
+	AC_DEFINE(HAVE_PRLIMIT,1,[Have prlimit]),
+	AM_CONDITIONAL(HAVE_PRLIMIT, false))
 
 # Check for some libraries
 AC_SEARCH_LIBS(sem_open, [rt pthread])
@@ -738,6 +750,10 @@ AC_CONFIG_FILES([
 	config/templates/openwrt.common.conf
 	config/templates/sparclinux.common.conf
 	config/templates/sparclinux.userns.conf
+	config/templates/voidlinux.common.conf
+	config/templates/voidlinux.userns.conf
+	config/templates/sabayon.common.conf
+	config/templates/sabayon.userns.conf
 	config/templates/userns.conf
 	config/yum/Makefile
 	config/sysconfig/Makefile
@@ -878,25 +894,29 @@ AC_CONFIG_FILES([
 	templates/lxc-debian
 	templates/lxc-download
 	templates/lxc-fedora
+	templates/lxc-fedora-legacy
 	templates/lxc-gentoo
 	templates/lxc-openmandriva
 	templates/lxc-opensuse
 	templates/lxc-oracle
 	templates/lxc-plamo
+	templates/lxc-pld
 	templates/lxc-slackware
 	templates/lxc-sshd
 	templates/lxc-ubuntu
 	templates/lxc-ubuntu-cloud
 	templates/lxc-sparclinux
+	templates/lxc-voidlinux
+	templates/lxc-sabayon
 
 	src/Makefile
 	src/lxc/Makefile
 	src/lxc/lxc.functions
 	src/lxc/tools/lxc-checkconfig
 	src/lxc/tools/lxc-start-ephemeral
+	src/lxc/tools/lxc-update-config
 	src/lxc/version.h
 	src/python-lxc/Makefile
-	src/python-lxc/setup.py
 
 	src/lua-lxc/Makefile
 

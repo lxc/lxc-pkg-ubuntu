@@ -49,43 +49,71 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA
     <title>Description</title>
 
     <para>
-      The linux containers (<command>lxc</command>) are always created
-      before being used. This creation defines a set of system
-      resources to be virtualized / isolated when a process is using
-      the container. By default, the pids, sysv ipc and mount points
-      are virtualized and isolated. The other system resources are
-      shared across containers, until they are explicitly defined in
-      the configuration file. For example, if there is no network
-      configuration, the network will be shared between the creator of
-      the container and the container itself, but if the network is
-      specified, a new network stack is created for the container and
-      the container can no longer use the network of its ancestor.
+      LXC is the well-known and heavily tested low-level Linux container
+      runtime. It is in active development since 2008 and has proven itself in
+      critical production environments world-wide. Some of its core contributors
+      are the same people that helped to implement various well-known
+      containerization features inside the Linux kernel.
     </para>
 
     <para>
-      The configuration file defines the different system resources to
-      be assigned for the container. At present, the utsname, the
-      network, the mount points, the root file system, the user namespace,
-      and the control groups are supported.
+      LXC's main focus is system containers. That is, containers which offer an
+      environment as close as possible as the one you'd get from a VM but
+      without the overhead that comes with running a separate kernel and
+      simulating all the hardware.
     </para>
 
     <para>
-      Each option in the configuration file has the form <command>key
-      = value</command> fitting in one line. The '#' character means
-      the line is a comment. List options, like capabilities and cgroups
-      options, can be used with no value to clear any previously
-      defined values of that option.
+      This is achieved through a combination of kernel security features such as
+      namespaces, mandatory access control and control groups.
+    </para>
+
+    <para>
+      LXC has supports unprivileged containers.  Unprivileged containers are
+      containers that are run without any privilege.  This requires support for
+      user namespaces in the kernel that the container is run on.  LXC was the
+      first runtime to support unprivileged containers after user namespaces
+      were merged into the mainline kernel.
+    </para>
+
+    <para>
+      In essence, user namespaces isolate given sets of UIDs and GIDs. This is
+      achieved by establishing a mapping between a range of UIDs and GIDs on the
+      host to a different (unprivileged) range of UIDs and GIDs in the
+      container. The kernel will translate this mapping in such a way that
+      inside the container all UIDs and GIDs appear as you would expect from the
+      host whereas on the host these UIDs and GIDs are in fact unprivileged. For
+      example, a process running as UID and GID 0 inside the container might
+      appear as UID and GID 100000 on the host.  The implementation and working
+      details can be gathered from the corresponding user namespace man page.
+      UID and GID mappings can be defined with the <option>lxc.idmap</option>
+      key.
+    </para>
+
+    <para>
+      Linux containers are defined with a simple configuration file.  Each
+      option in the configuration file has the form <command>key =
+      value</command> fitting in one line. The "#" character means the line is a
+      comment. List options, like capabilities and cgroups options, can be used
+      with no value to clear any previously defined values of that option.
+      </para>
+
+    <para>
+      LXC namespaces configuration keys by using single dots. This means complex
+      configuration keys such as <option>lxc.net.0</option> expose various
+      subkeys such as <option>lxc.net.0.type</option>,
+      <option>lxc.net.0.link</option>, <option>lxc.net.0.ipv6.address</option>, and
+      others for even more fine-grained configuration.
     </para>
 
     <refsect2>
       <title>Configuration</title>
       <para>
-        In order to ease administration of multiple related containers, it
-        is possible to have a container configuration file cause another
-        file to be loaded.  For instance, network configuration
-        can be defined in one common file which is included by multiple
-        containers.  Then, if the containers are moved to another host,
-        only one file may need to be updated.
+        In order to ease administration of multiple related containers, it is
+        possible to have a container configuration file cause another file to be
+        loaded. For instance, network configuration can be defined in one common
+        file which is included by multiple containers. Then, if the containers
+        are moved to another host, only one file may need to be updated.
       </para>
 
       <variablelist>
@@ -106,11 +134,10 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA
     <refsect2>
       <title>Architecture</title>
       <para>
-        Allows one to set the architecture for the container. For example,
-        set a 32bits architecture for a container running 32bits
-        binaries on a 64bits host. This fixes the container scripts
-        which rely on the architecture to do some work like
-        downloading the packages.
+        Allows one to set the architecture for the container. For example, set a
+        32bits architecture for a container running 32bits binaries on a 64bits
+        host. This fixes the container scripts which rely on the architecture to
+        do some work like downloading the packages.
       </para>
 
       <variablelist>
@@ -123,7 +150,7 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA
               Specify the architecture for the container.
             </para>
             <para>
-              Valid options are
+              Some valid options are
               <option>x86</option>,
               <option>i686</option>,
               <option>x86_64</option>,
@@ -138,15 +165,14 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA
     <refsect2>
       <title>Hostname</title>
       <para>
-        The utsname section defines the hostname to be set for the
-        container. That means the container can set its own hostname
-        without changing the one from the system. That makes the
-        hostname private for the container.
+        The utsname section defines the hostname to be set for the container.
+        That means the container can set its own hostname without changing the
+        one from the system. That makes the hostname private for the container.
       </para>
       <variablelist>
         <varlistentry>
           <term>
-            <option>lxc.utsname</option>
+            <option>lxc.uts.name</option>
           </term>
           <listitem>
             <para>
@@ -160,17 +186,17 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA
     <refsect2>
       <title>Halt signal</title>
       <para>
-        Allows one to specify signal name or number, sent by lxc-stop to the
-        container's init process to cleanly shutdown the container. Different
-        init systems could use different signals to perform clean shutdown
-        sequence. This option allows the signal to be specified in kill(1)
-        fashion, e.g. SIGPWR, SIGRTMIN+14, SIGRTMAX-10 or plain number. The
-        default signal is SIGPWR.
+        Allows one to specify signal name or number sent to the container's
+        init process to cleanly shutdown the container. Different init systems
+        could use different signals to perform clean shutdown sequence. This
+        option allows the signal to be specified in kill(1) fashion, e.g.
+        SIGPWR, SIGRTMIN+14, SIGRTMAX-10 or plain number. The default signal is
+        SIGPWR.
       </para>
       <variablelist>
         <varlistentry>
           <term>
-            <option>lxc.haltsignal</option>
+            <option>lxc.signal.halt</option>
           </term>
           <listitem>
             <para>
@@ -184,15 +210,15 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA
     <refsect2>
       <title>Reboot signal</title>
       <para>
-        Allows one to specify signal name or number, sent by lxc-stop to
-        reboot the container. This option allows signal to be specified in
-        kill(1) fashion, e.g. SIGTERM, SIGRTMIN+14, SIGRTMAX-10 or plain number.
-        The default signal is SIGINT.
+        Allows one to specify signal name or number to reboot the container.
+        This option allows signal to be specified in kill(1) fashion, e.g.
+        SIGTERM, SIGRTMIN+14, SIGRTMAX-10 or plain number. The default signal
+        is SIGINT.
           </para>
           <variablelist>
         <varlistentry>
           <term>
-            <option>lxc.rebootsignal</option>
+            <option>lxc.signal.reboot</option>
           </term>
           <listitem>
             <para>
@@ -206,15 +232,15 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA
     <refsect2>
       <title>Stop signal</title>
       <para>
-        Allows one to specify signal name or number, sent by lxc-stop to forcibly
-        shutdown the container. This option allows signal to be specified in
-        kill(1) fashion, e.g. SIGKILL, SIGRTMIN+14, SIGRTMAX-10 or plain number.
-        The default signal is SIGKILL.
+        Allows one to specify signal name or number to forcibly shutdown the
+        container. This option allows signal to be specified in kill(1) fashion,
+        e.g. SIGKILL, SIGRTMIN+14, SIGRTMAX-10 or plain number.  The default
+        signal is SIGKILL.
           </para>
           <variablelist>
         <varlistentry>
           <term>
-            <option>lxc.stopsignal</option>
+            <option>lxc.signal.stop</option>
           </term>
           <listitem>
             <para>
@@ -237,7 +263,7 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA
       <variablelist>
         <varlistentry>
           <term>
-            <option>lxc.init_cmd</option>
+            <option>lxc.init.cmd</option>
           </term>
           <listitem>
             <para>
@@ -251,30 +277,31 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA
     <refsect2>
       <title>Init ID</title>
       <para>
-        Sets the UID/GID to use for the init system, and subsequent command, executed by lxc-execute.
-
-        These options are only used when lxc-execute is started in a private user namespace.
+        Sets the UID/GID to use for the init system, and subsequent commands.
+        Note that using a non-root uid when booting a system container will
+        likely not work due to missing privileges. Setting the UID/GID is mostly
+        useful when running application container.
 
         Defaults to: UID(0), GID(0)
       </para>
       <variablelist>
         <varlistentry>
           <term>
-            <option>lxc.init_uid</option>
+            <option>lxc.init.uid</option>
           </term>
           <listitem>
             <para>
-              UID to use within a private user namesapce for init.
+              UID to use for init.
             </para>
           </listitem>
         </varlistentry>
         <varlistentry>
           <term>
-            <option>lxc.init_gid</option>
+            <option>lxc.init.gid</option>
           </term>
           <listitem>
             <para>
-              GID to use within a private user namesapce for init.
+              GID to use for init.
             </para>
           </listitem>
         </varlistentry>
@@ -315,7 +342,7 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA
       <variablelist>
         <varlistentry>
           <term>
-            <option>lxc.network</option>
+            <option>lxc.net</option>
           </term>
           <listitem>
             <para>
@@ -325,18 +352,22 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA
         </varlistentry>
         <varlistentry>
           <term>
-            <option>lxc.network.type</option>
+            <option>lxc.net.[i].type</option>
           </term>
           <listitem>
             <para>
               specify what kind of network virtualization to be used
-              for the container. Each time
-              a <option>lxc.network.type</option> field is found a new
-              round of network configuration begins. In this way,
-              several network virtualization types can be specified
-              for the same container, as well as assigning several
-              network interfaces for one container. The different
-              virtualization types can be:
+              for the container.
+              Multiple networks can be specified by using an additional index
+              <option>i</option>
+              after all <option>lxc.net.*</option> keys. For example,
+              <option>lxc.net.0.type = veth</option> and
+              <option>lxc.net.1.type = veth</option> specify two different
+              networks of the same type. All keys sharing the same index
+              <option>i</option> will be treated as belonging to the same
+              network. For example, <option>lxc.net.0.link = br0</option>
+              will belong to <option>lxc.net.0.type</option>.
+              Currently, the different virtualization types can be:
             </para>
 
             <para>
@@ -357,7 +388,7 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA
               <option>veth:</option> a virtual ethernet pair
               device is created with one side assigned to the container
               and the other side attached to a bridge specified by
-              the <option>lxc.network.link</option> option.
+              the <option>lxc.net.[i].link</option> option.
               If the bridge is not specified, then the veth pair device
               will be created but not attached to any bridge.
               Otherwise, the bridge has to be created on the system
@@ -369,7 +400,7 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA
               container, but if you wish to handle
               this name yourselves, you can tell <command>lxc</command>
               to set a specific name with
-              the <option>lxc.network.veth.pair</option> option (except for
+              the <option>lxc.net.[i].veth.pair</option> option (except for
               unprivileged containers where this option is ignored for security
               reasons).
             </para>
@@ -377,17 +408,17 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA
             <para>
               <option>vlan:</option> a vlan interface is linked with
               the interface specified by
-              the <option>lxc.network.link</option> and assigned to
+              the <option>lxc.net.[i].link</option> and assigned to
               the container. The vlan identifier is specified with the
-              option <option>lxc.network.vlan.id</option>.
+              option <option>lxc.net.[i].vlan.id</option>.
             </para>
 
             <para>
               <option>macvlan:</option> a macvlan interface is linked
               with the interface specified by
-              the <option>lxc.network.link</option> and assigned to
+              the <option>lxc.net.[i].link</option> and assigned to
               the container.
-              <option>lxc.network.macvlan.mode</option> specifies the
+              <option>lxc.net.[i].macvlan.mode</option> specifies the
               mode the macvlan will use to communicate between
               different macvlan on the same upper device. The accepted
               modes are <option>private</option>, <option>vepa</option>,
@@ -419,7 +450,7 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA
 
             <para>
               <option>phys:</option> an already existing interface
-              specified by the <option>lxc.network.link</option> is
+              specified by the <option>lxc.net.[i].link</option> is
               assigned to the container.
             </para>
           </listitem>
@@ -427,12 +458,11 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA
 
         <varlistentry>
           <term>
-            <option>lxc.network.flags</option>
+            <option>lxc.net.[i].flags</option>
           </term>
           <listitem>
             <para>
-              specify an action to do for the
-              network.
+              Specify an action to do for the network.
             </para>
 
             <para><option>up:</option> activates the interface.
@@ -442,88 +472,81 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA
 
         <varlistentry>
           <term>
-            <option>lxc.network.link</option>
+            <option>lxc.net.[i].link</option>
           </term>
           <listitem>
             <para>
-              specify the interface to be used for real network
-              traffic.
+              Specify the interface to be used for real network traffic.
+              </para>
+          </listitem>
+        </varlistentry>
+
+        <varlistentry>
+          <term>
+            <option>lxc.net.[i].mtu</option>
+          </term>
+          <listitem>
+            <para>
+              Specify the maximum transfer unit for this interface.
             </para>
           </listitem>
         </varlistentry>
 
         <varlistentry>
           <term>
-            <option>lxc.network.mtu</option>
+            <option>lxc.net.[i].name</option>
           </term>
           <listitem>
             <para>
-              specify the maximum transfer unit for this interface.
+              The interface name is dynamically allocated, but if another name
+              is needed because the configuration files being used by the
+              container use a generic name, eg. eth0, this option will rename
+              the interface in the container.
             </para>
           </listitem>
         </varlistentry>
 
         <varlistentry>
           <term>
-            <option>lxc.network.name</option>
+            <option>lxc.net.[i].hwaddr</option>
           </term>
           <listitem>
             <para>
-              the interface name is dynamically allocated, but if
-              another name is needed because the configuration files
-              being used by the container use a generic name,
-              eg. eth0, this option will rename the interface in the
-              container.
+              The interface mac address is dynamically allocated by default to
+              the virtual interface, but in some cases, this is needed to
+              resolve a mac address conflict or to always have the same
+              link-local ipv6 address.  Any "x" in address will be replaced by
+              random value, this allows setting hwaddr templates.
             </para>
           </listitem>
         </varlistentry>
 
         <varlistentry>
           <term>
-            <option>lxc.network.hwaddr</option>
+            <option>lxc.net.[i].ipv4.address</option>
           </term>
           <listitem>
             <para>
-              the interface mac address is dynamically allocated by
-              default to the virtual interface, but in some cases,
-              this is needed to resolve a mac address conflict or to
-              always have the same link-local ipv6 address.
-              Any "x" in address will be replaced by random value,
-              this allows setting hwaddr templates.
+              Specify the ipv4 address to assign to the virtualized interface.
+              Several lines specify several ipv4 addresses. The address is in
+              format x.y.z.t/m, eg. 192.168.1.123/24.
             </para>
           </listitem>
         </varlistentry>
 
         <varlistentry>
           <term>
-            <option>lxc.network.ipv4</option>
+            <option>lxc.net.[i].ipv4.gateway</option>
           </term>
           <listitem>
             <para>
-              specify the ipv4 address to assign to the virtualized
-              interface. Several lines specify several ipv4 addresses.
-              The address is in format x.y.z.t/m,
-              eg. 192.168.1.123/24. The broadcast address should be
-              specified on the same line, right after the ipv4
-              address.
-            </para>
-          </listitem>
-        </varlistentry>
-
-        <varlistentry>
-          <term>
-            <option>lxc.network.ipv4.gateway</option>
-          </term>
-          <listitem>
-            <para>
-              specify the ipv4 address to use as the gateway inside the
-              container. The address is in format x.y.z.t, eg.
-              192.168.1.123.
+              Specify the ipv4 address to use as the gateway inside the
+              container. The address is in format x.y.z.t, eg.  192.168.1.123.
 
               Can also have the special value <option>auto</option>,
               which means to take the primary address from the bridge
               interface (as specified by the
-              <option>lxc.network.link</option> option) and use that as
+              <option>lxc.net.[i].link</option> option) and use that as
               the gateway. <option>auto</option> is only available when
               using the <option>veth</option> and
               <option>macvlan</option> network types.
@@ -534,32 +557,31 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA
 
         <varlistentry>
           <term>
-            <option>lxc.network.ipv6</option>
+            <option>lxc.net.[i].ipv6.address</option>
           </term>
           <listitem>
             <para>
-              specify the ipv6 address to assign to the virtualized
-              interface. Several lines specify several ipv6 addresses.
-              The address is in format x::y/m,
-              eg. 2003:db8:1:0:214:1234:fe0b:3596/64
+              Specify the ipv6 address to assign to the virtualized
+              interface. Several lines specify several ipv6 addresses. The
+              address is in format x::y/m, eg.
+              2003:db8:1:0:214:1234:fe0b:3596/64
             </para>
           </listitem>
         </varlistentry>
 
         <varlistentry>
           <term>
-            <option>lxc.network.ipv6.gateway</option>
+            <option>lxc.net.[i].ipv6.gateway</option>
           </term>
           <listitem>
             <para>
-              specify the ipv6 address to use as the gateway inside the
-              container. The address is in format x::y,
-              eg. 2003:db8:1:0::1
+              Specify the ipv6 address to use as the gateway inside the
+              container. The address is in format x::y, eg. 2003:db8:1:0::1
 
               Can also have the special value <option>auto</option>,
               which means to take the primary address from the bridge
               interface (as specified by the
-              <option>lxc.network.link</option> option) and use that as
+              <option>lxc.net.[i].link</option> option) and use that as
               the gateway. <option>auto</option> is only available when
               using the <option>veth</option> and
               <option>macvlan</option> network types.
@@ -569,11 +591,11 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA
 
         <varlistentry>
           <term>
-            <option>lxc.network.script.up</option>
+            <option>lxc.net.[i].script.up</option>
           </term>
           <listitem>
             <para>
-              add a configuration option to specify a script to be
+              Add a configuration option to specify a script to be
               executed after creating and configuring the network used
               from the host side. The following arguments are passed
               to the script: container name and config section name
@@ -594,11 +616,11 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA
 
         <varlistentry>
           <term>
-            <option>lxc.network.script.down</option>
+            <option>lxc.net.[i].script.down</option>
           </term>
           <listitem>
             <para>
-              add a configuration option to specify a script to be
+              Add a configuration option to specify a script to be
               executed before destroying the network used from the
               host side. The following arguments are passed to the
               script: container name and config section name (net)
@@ -628,7 +650,7 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA
       <variablelist>
         <varlistentry>
           <term>
-            <option>lxc.pts</option>
+            <option>lxc.pty.max</option>
           </term>
           <listitem>
             <para>
@@ -663,7 +685,7 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA
         </varlistentry>
         <varlistentry>
           <term>
-            <option>lxc.console</option>
+            <option>lxc.console.path</option>
           </term>
           <listitem>
             <para>
@@ -696,7 +718,7 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA
       <variablelist>
         <varlistentry>
           <term>
-            <option>lxc.tty</option>
+            <option>lxc.tty.max</option>
           </term>
           <listitem>
             <para>
@@ -725,7 +747,7 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA
       <variablelist>
         <varlistentry>
           <term>
-            <option>lxc.devttydir</option>
+            <option>lxc.tty.dir</option>
           </term>
           <listitem>
             <para>
@@ -770,25 +792,6 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA
     </refsect2>
 
     <refsect2>
-      <title>Enable kmsg symlink</title>
-      <para>
-        Enable creating /dev/kmsg as symlink to /dev/console.  This defaults to 0.
-      </para>
-      <variablelist>
-    <varlistentry>
-      <term>
-        <option>lxc.kmsg</option>
-      </term>
-      <listitem>
-        <para>
-          Set this to 1 to enable /dev/kmsg symlinking.
-        </para>
-      </listitem>
-    </varlistentry>
-      </variablelist>
-    </refsect2>
-
-    <refsect2>
       <title>Mount points</title>
       <para>
         The mount points section specifies the different places to be
@@ -812,7 +815,7 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA
       <variablelist>
         <varlistentry>
           <term>
-            <option>lxc.mount</option>
+            <option>lxc.mount.fstab</option>
           </term>
           <listitem>
             <para>
@@ -822,9 +825,9 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA
               most cases should be a relative path, which will become
               relative to the mounted container root.  For instance,
              </para>
-<screen>
-proc proc proc nodev,noexec,nosuid 0 0
-</screen>
+             <programlisting>
+             proc proc proc nodev,noexec,nosuid 0 0
+             </programlisting>
              <para>
               Will mount a proc filesystem under the container's /proc,
               regardless of where the root filesystem comes from.  This
@@ -1039,7 +1042,7 @@ proc proc proc nodev,noexec,nosuid 0 0
       <variablelist>
         <varlistentry>
           <term>
-            <option>lxc.rootfs</option>
+            <option>lxc.rootfs.path</option>
           </term>
           <listitem>
             <para>
@@ -1073,7 +1076,7 @@ proc proc proc nodev,noexec,nosuid 0 0
           </term>
           <listitem>
             <para>
-              where to recursively bind <option>lxc.rootfs</option>
+              where to recursively bind <option>lxc.rootfs.path</option>
               before pivoting.  This is to ensure success of the
               <citerefentry>
                 <refentrytitle><command>pivot_root</command></refentrytitle>
@@ -1092,20 +1095,6 @@ proc proc proc nodev,noexec,nosuid 0 0
           <listitem>
             <para>
               extra mount options to use when mounting the rootfs.
-            </para>
-          </listitem>
-        </varlistentry>
-
-        <varlistentry>
-          <term>
-            <option>lxc.rootfs.backend</option>
-          </term>
-          <listitem>
-            <para>
-              specify the rootfs backend type to use, for instance 'dir' or
-	      'zfs'.  While this can be guessed by lxc at container startup,
-	      doing so takes time.  Specifying it here avoids extra
-	      processing.
             </para>
           </listitem>
         </varlistentry>
@@ -1137,6 +1126,25 @@ proc proc proc nodev,noexec,nosuid 0 0
               features of the Linux kernel running at the time the
               container is started,
               eg. <option>lxc.cgroup.cpuset.cpus</option>
+            </para>
+          </listitem>
+        </varlistentry>
+        <varlistentry>
+          <term>
+            <option>lxc.cgroup.dir</option>
+          </term>
+          <listitem>
+            <para>
+              specify a directory or path in which the container's cgroup will
+              be created. For example, setting
+              <option>lxc.cgroup.dir = my-cgroup/first</option> for a container
+              named "c1" will create the container's cgroup as a sub-cgroup of
+              "my-cgroup". For example, if the user's current cgroup "my-user"
+              is located in the root cgroup of the cpuset controllerin in a
+              cgroup v1 hierarchy this would create the cgroup
+              "/sys/fs/cgroup/cpuset/my-user/my-cgroup/first/c1" for the
+              container. Any missing cgroups will be created by LXC. This
+              presupposes that the user has write access to its current cgroup.
             </para>
           </listitem>
         </varlistentry>
@@ -1189,6 +1197,40 @@ proc proc proc nodev,noexec,nosuid 0 0
     </refsect2>
 
     <refsect2>
+      <title>Resource limits</title>
+      <para>
+        The soft and hard resource limits for the container can be changed.
+        Unprivileged containers can only lower them. Resources which are not
+        explicitly specified will be inherited.
+      </para>
+      <variablelist>
+        <varlistentry>
+          <term>
+            <option>lxc.prlimit.[limit name]</option>
+          </term>
+          <listitem>
+            <para>
+              Specify the resource limit to be set. A limit is specified as two
+              colon separated values which are either numeric or the word
+              'unlimited'. A single value can be used as a shortcut to set both
+              soft and hard limit to the same value. The permitted names the
+              "RLIMIT_" resource names in lowercase without the "RLIMIT_"
+              prefix, eg. RLIMIT_NOFILE should be specified as "nofile". See
+              <citerefentry>
+                <refentrytitle><command>setrlimit</command></refentrytitle>
+                <manvolnum>2</manvolnum>
+              </citerefentry>.
+              If used with no value, lxc will clear the resource limit
+              specified up to this point. A resource with no explicitly
+              configured limitation will be inherited from the process starting
+              up the container.
+            </para>
+          </listitem>
+        </varlistentry>
+      </variablelist>
+    </refsect2>
+
+    <refsect2>
       <title>Apparmor profile</title>
       <para>
         If lxc was compiled and installed with apparmor support, and the host
@@ -1201,7 +1243,7 @@ proc proc proc nodev,noexec,nosuid 0 0
       <variablelist>
         <varlistentry>
           <term>
-            <option>lxc.aa_profile</option>
+            <option>lxc.apparmor.profile</option>
           </term>
           <listitem>
             <para>
@@ -1209,17 +1251,17 @@ proc proc proc nodev,noexec,nosuid 0 0
               be run.  To specify that the container should be unconfined,
               use
             </para>
-              <programlisting>lxc.aa_profile = unconfined</programlisting>
+              <programlisting>lxc.apparmor.profile = unconfined</programlisting>
             <para>
               If the apparmor profile should remain unchanged (i.e. if you
 	      are nesting containers and are already confined), then use
             </para>
-              <programlisting>lxc.aa_profile = unchanged</programlisting>
+              <programlisting>lxc.apparmor.profile = unchanged</programlisting>
           </listitem>
         </varlistentry>
         <varlistentry>
           <term>
-            <option>lxc.aa_allow_incomplete</option>
+            <option>lxc.apparmor.allow_incomplete</option>
           </term>
           <listitem>
             <para>
@@ -1255,14 +1297,14 @@ proc proc proc nodev,noexec,nosuid 0 0
       <variablelist>
         <varlistentry>
           <term>
-            <option>lxc.se_context</option>
+            <option>lxc.selinux.context</option>
           </term>
           <listitem>
             <para>
               Specify the SELinux context under which the container should
               be run or <command>unconfined_t</command>. For example
             </para>
-            <programlisting>lxc.se_context = system_u:system_r:lxc_t:s0:c22</programlisting>
+            <programlisting>lxc.selinux.context = system_u:system_r:lxc_t:s0:c22</programlisting>
           </listitem>
         </varlistentry>
       </variablelist>
@@ -1295,21 +1337,51 @@ proc proc proc nodev,noexec,nosuid 0 0
        allowed except for mknod, which will simply do nothing and
        return 0 (success), looks like:
       </para>
-<screen>
-2
-blacklist
-mknod errno 0
-</screen>
+
+      <programlisting>
+      2
+      blacklist
+      mknod errno 0
+      </programlisting>
+
       <variablelist>
         <varlistentry>
           <term>
-            <option>lxc.seccomp</option>
+            <option>lxc.seccomp.profile</option>
           </term>
           <listitem>
             <para>
               Specify a file containing the seccomp configuration to
               load before the container starts.
              </para>
+          </listitem>
+        </varlistentry>
+      </variablelist>
+    </refsect2>
+
+    <refsect2>
+      <title>PR_SET_NO_NEW_PRIVS</title>
+      <para>
+              With PR_SET_NO_NEW_PRIVS active execve() promises not to grant
+              privileges to do anything that could not have been done without
+              the execve() call (for example, rendering the set-user-ID and
+              set-group-ID mode bits, and file capabilities non-functional).
+              Once set, this bit cannot be unset. The setting of this bit is
+              inherited by children created by fork() and clone(), and preserved
+              across execve().
+              Note that PR_SET_NO_NEW_PRIVS is applied after the container has
+              changed into its intended AppArmor profile or SElinux context.
+      </para>
+      <variablelist>
+        <varlistentry>
+          <term>
+            <option>lxc.no_new_privs</option>
+          </term>
+          <listitem>
+            <para>
+              Specify whether the PR_SET_NO_NEW_PRIVS flag should be set for the
+              container. Set to 1 to activate.
+            </para>
           </listitem>
         </varlistentry>
       </variablelist>
@@ -1330,7 +1402,7 @@ mknod errno 0
       <variablelist>
         <varlistentry>
           <term>
-            <option>lxc.id_map</option>
+            <option>lxc.idmap</option>
           </term>
           <listitem>
             <para>
@@ -1373,7 +1445,7 @@ mknod errno 0
           <listitem><para> LXC_ROOTFS_MOUNT: the path to the mounted root filesystem. </para></listitem>
           <listitem><para> LXC_CONFIG_FILE: the path to the container configuration file. </para></listitem>
           <listitem><para> LXC_SRC_NAME: in the case of the clone hook, this is the original container's name. </para></listitem>
-          <listitem><para> LXC_ROOTFS_PATH: this is the lxc.rootfs entry for the container.  Note this is likely not where the mounted rootfs is to be found, use LXC_ROOTFS_MOUNT for that. </para></listitem>
+          <listitem><para> LXC_ROOTFS_PATH: this is the lxc.rootfs.path entry for the container.  Note this is likely not where the mounted rootfs is to be found, use LXC_ROOTFS_MOUNT for that. </para></listitem>
         </itemizedlist>
       </para>
       <para>
@@ -1566,7 +1638,7 @@ mknod errno 0
           <listitem>
             <para>
               The path to the console output of the container if not NULL.
-              [<option>-c</option>] [<option>lxc.console</option>]
+              [<option>-c</option>] [<option>lxc.console.path</option>]
             </para>
           </listitem>
         </varlistentry>
@@ -1609,7 +1681,7 @@ mknod errno 0
             <para>
               The host relative path to the container root which has been
               mounted to the rootfs.mount location.
-              [<option>lxc.rootfs</option>]
+              [<option>lxc.rootfs.path</option>]
             </para>
           </listitem>
         </varlistentry>
@@ -1674,7 +1746,7 @@ mknod errno 0
       <variablelist>
         <varlistentry>
           <term>
-            <option>lxc.loglevel</option>
+            <option>lxc.log.level</option>
           </term>
           <listitem>
             <para>
@@ -1694,11 +1766,24 @@ mknod errno 0
         </varlistentry>
         <varlistentry>
           <term>
-            <option>lxc.logfile</option>
+            <option>lxc.log</option>
           </term>
           <listitem>
             <para>
             The file to which logging info should be written.
+            </para>
+          </listitem>
+        </varlistentry>
+        <varlistentry>
+          <term>
+            <option>lxc.log.syslog</option>
+          </term>
+          <listitem>
+            <para>
+            Send logging info to syslog. It respects the log level defined in
+            <command>lxc.log.level</command>. The argument should be the syslog
+            facility to use, valid ones are: daemon, local0, local1, local2,
+            local3, local4, local5, local5, local6, local7.
             </para>
           </listitem>
         </varlistentry>
@@ -1852,14 +1937,14 @@ mknod errno 0
         virtual network device visible in the container is renamed to
         eth0.</para>
       <programlisting>
-        lxc.utsname = myhostname
-        lxc.network.type = veth
-        lxc.network.flags = up
-        lxc.network.link = br0
-        lxc.network.name = eth0
-        lxc.network.hwaddr = 4a:49:43:49:79:bf
-        lxc.network.ipv4 = 10.2.3.5/24 10.2.3.255
-        lxc.network.ipv6 = 2003:db8:1:0:214:1234:fe0b:3597
+        lxc.uts.name = myhostname
+        lxc.net.0.type = veth
+        lxc.net.0.flags = up
+        lxc.net.0.link = br0
+        lxc.net.0.name = eth0
+        lxc.net.0.hwaddr = 4a:49:43:49:79:bf
+        lxc.net.0.ipv4.address = 10.2.3.5/24 10.2.3.255
+        lxc.net.0.ipv6.address = 2003:db8:1:0:214:1234:fe0b:3597
       </programlisting>
     </refsect2>
 
@@ -1869,8 +1954,8 @@ mknod errno 0
         range 0-9999 in the container to the ids 100000-109999 on the host.
       </para>
       <programlisting>
-        lxc.id_map = u 0 100000 10000
-        lxc.id_map = g 0 100000 10000
+        lxc.idmap = u 0 100000 10000
+        lxc.idmap = g 0 100000 10000
       </programlisting>
     </refsect2>
 
@@ -1895,35 +1980,35 @@ mknod errno 0
       network stack, using the control groups, setting a new hostname,
       mounting some locations and a changing root file system.</para>
       <programlisting>
-        lxc.utsname = complex
-        lxc.network.type = veth
-        lxc.network.flags = up
-        lxc.network.link = br0
-        lxc.network.hwaddr = 4a:49:43:49:79:bf
-        lxc.network.ipv4 = 10.2.3.5/24 10.2.3.255
-        lxc.network.ipv6 = 2003:db8:1:0:214:1234:fe0b:3597
-        lxc.network.ipv6 = 2003:db8:1:0:214:5432:feab:3588
-        lxc.network.type = macvlan
-        lxc.network.flags = up
-        lxc.network.link = eth0
-        lxc.network.hwaddr = 4a:49:43:49:79:bd
-        lxc.network.ipv4 = 10.2.3.4/24
-        lxc.network.ipv4 = 192.168.10.125/24
-        lxc.network.ipv6 = 2003:db8:1:0:214:1234:fe0b:3596
-        lxc.network.type = phys
-        lxc.network.flags = up
-        lxc.network.link = dummy0
-        lxc.network.hwaddr = 4a:49:43:49:79:ff
-        lxc.network.ipv4 = 10.2.3.6/24
-        lxc.network.ipv6 = 2003:db8:1:0:214:1234:fe0b:3297
+        lxc.uts.name = complex
+        lxc.net.0.type = veth
+        lxc.net.0.flags = up
+        lxc.net.0.link = br0
+        lxc.net.0.hwaddr = 4a:49:43:49:79:bf
+        lxc.net.0.ipv4.address = 10.2.3.5/24 10.2.3.255
+        lxc.net.0.ipv6.address = 2003:db8:1:0:214:1234:fe0b:3597
+        lxc.net.0.ipv6.address = 2003:db8:1:0:214:5432:feab:3588
+        lxc.net.1.type = macvlan
+        lxc.net.1.flags = up
+        lxc.net.1.link = eth0
+        lxc.net.1.hwaddr = 4a:49:43:49:79:bd
+        lxc.net.1.ipv4.address = 10.2.3.4/24
+        lxc.net.1.ipv4.address = 192.168.10.125/24
+        lxc.net.1.ipv6.address = 2003:db8:1:0:214:1234:fe0b:3596
+        lxc.net.2.type = phys
+        lxc.net.2.flags = up
+        lxc.net.2.link = dummy0
+        lxc.net.2.hwaddr = 4a:49:43:49:79:ff
+        lxc.net.2.ipv4.address = 10.2.3.6/24
+        lxc.net.2.ipv6.address = 2003:db8:1:0:214:1234:fe0b:3297
         lxc.cgroup.cpuset.cpus = 0,1
         lxc.cgroup.cpu.shares = 1234
         lxc.cgroup.devices.deny = a
         lxc.cgroup.devices.allow = c 1:3 rw
         lxc.cgroup.devices.allow = b 8:0 rw
-        lxc.mount = /etc/fstab.complex
+        lxc.mount.fstab = /etc/fstab.complex
         lxc.mount.entry = /lib /root/myrootfs/lib none ro,bind 0 0
-        lxc.rootfs = /mnt/rootfs.complex
+        lxc.rootfs.path = dir:/mnt/rootfs.complex
         lxc.cap.drop = sys_module mknod setuid net_raw
         lxc.cap.drop = mac_override
       </programlisting>

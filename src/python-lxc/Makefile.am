@@ -6,21 +6,28 @@ else
     DISTSETUPOPTS=
 endif
 
+if ENABLE_RPATH
+    RPATHOPTS=-R $(libdir)
+else
+    RPATHOPTS=
+endif
+
+CALL_SETUP_PY := cd @srcdir@ && $(PYTHON) setup.py build -b @abs_builddir@/build egg_info -e @abs_builddir@
+
 all:
-	$(PYTHON) setup.py build
+	$(CALL_SETUP_PY) build_ext -I @abs_top_srcdir@/src -L @abs_top_builddir@/src/lxc/.libs/ $(RPATHOPTS) --no-pkg-config
+
+DESTDIR = / # default
 
 install:
-	if [ "$(DESTDIR)" = "" ]; then \
-		$(PYTHON) setup.py install --prefix=$(prefix) --no-compile $(DISTSETUPOPTS); \
-	else \
-		$(PYTHON) setup.py install --root=$(DESTDIR) --prefix=$(prefix) --no-compile $(DISTSETUPOPTS); \
-	fi
+	$(CALL_SETUP_PY) install --prefix=$(prefix) --no-compile $(DISTSETUPOPTS) --root=$(DESTDIR)
 
 clean-local:
-	rm -rf build
+	rm -rf @builddir@/build
 
 endif
 EXTRA_DIST = \
+	setup.py \
 	lxc.c \
 	lxc/__init__.py \
 	examples/api_test.py \

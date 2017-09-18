@@ -60,7 +60,7 @@ BuildRequires: systemd
 %endif
 
 Name: lxc
-Version: 2.0.8
+Version: 2.1.0
 Release: %{?beta_rel:0.1.%{beta_rel}}%{?!beta_rel:%{norm_rel}}%{?dist}
 URL: http://linuxcontainers.org
 Source: http://linuxcontainers.org/downloads/%{name}-%{version}%{?beta_dot}.tar.gz
@@ -97,6 +97,7 @@ BuildRequires:  libseccomp-devel
 %if %{with_python}
 Requires: python3
 BuildRequires: python3-devel
+BuildRequires: python3-setuptools
 %endif
 
 %description

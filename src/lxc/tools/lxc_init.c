@@ -33,8 +33,9 @@
 #include <sys/wait.h>
 #include <getopt.h>
 
+#include <lxc/lxccontainer.h>
+
 #include "log.h"
-#include "caps.h"
 #include "error.h"
 #include "initutils.h"
 
@@ -80,9 +81,11 @@ int main(int argc, char *argv[])
 	int err;
 	char **aargv;
 	sigset_t mask, omask;
+	struct sigaction act;
 	int i, have_status = 0, shutdown = 0;
 	int opt;
 	char *lxcpath = NULL, *name = NULL, *logpriority = NULL;
+	struct lxc_log log;
 
 	while ((opt = getopt_long(argc, argv, "n:l:qP:", options, NULL)) != -1) {
 		switch(opt) {
@@ -94,7 +97,7 @@ int main(int argc, char *argv[])
 			break;
 		case 'q':
 			quiet = 1;
- 			break;
+			break;
 		case 'P':
 			lxcpath = optarg;
 			break;
@@ -104,14 +107,20 @@ int main(int argc, char *argv[])
 		}
 	}
 
-	err = lxc_log_init(name, name ? NULL : "none", logpriority,
-			   basename(argv[0]), quiet, lxcpath);
+	log.name = name;
+	log.file = name ? NULL : "none";
+	log.level = logpriority;
+	log.prefix = basename(argv[0]);
+	log.quiet = quiet;
+	log.lxcpath = lxcpath;
+
+	err = lxc_log_init(&log);
 	if (err < 0)
 		exit(EXIT_FAILURE);
 	lxc_log_options_no_override();
 
 	if (!argv[optind]) {
-		ERROR("missing command to launch");
+		ERROR("Missing command to launch");
 		exit(EXIT_FAILURE);
 	}
 
@@ -126,16 +135,27 @@ int main(int argc, char *argv[])
 	    sigdelset(&mask, SIGSEGV) ||
 	    sigdelset(&mask, SIGBUS) ||
 	    sigprocmask(SIG_SETMASK, &mask, &omask)) {
-		SYSERROR("failed to set signal mask");
+		SYSERROR("Failed to set signal mask");
 		exit(EXIT_FAILURE);
 	}
 
-	for (i = 1; i < NSIG; i++) {
-		struct sigaction act;
+	if (sigfillset(&act.sa_mask) ||
+	    sigdelset(&act.sa_mask, SIGILL) ||
+	    sigdelset(&act.sa_mask, SIGSEGV) ||
+	    sigdelset(&act.sa_mask, SIGBUS) ||
+	    sigdelset(&act.sa_mask, SIGSTOP) ||
+	    sigdelset(&act.sa_mask, SIGKILL)) {
+		ERROR("Failed to set signal");
+		exit(EXIT_FAILURE);
+	}
+	act.sa_flags = 0;
+	act.sa_handler = interrupt_handler;
 
+	for (i = 1; i < NSIG; i++) {
 		/* Exclude some signals: ILL, SEGV and BUS are likely to
 		 * reveal a bug and we want a core. STOP and KILL cannot be
-		 * handled anyway: they're here for documentation.
+		 * handled anyway: they're here for documentation. 32 and 33
+		 * are not defined.
 		 */
 		if (i == SIGILL ||
 		    i == SIGSEGV ||
@@ -145,20 +165,8 @@ int main(int argc, char *argv[])
 		    i == 32 || i == 33)
 			continue;
 
-		if (sigfillset(&act.sa_mask) ||
-		    sigdelset(&act.sa_mask, SIGILL) ||
-		    sigdelset(&act.sa_mask, SIGSEGV) ||
-		    sigdelset(&act.sa_mask, SIGBUS) ||
-		    sigdelset(&act.sa_mask, SIGSTOP) ||
-		    sigdelset(&act.sa_mask, SIGKILL)) {
-			ERROR("failed to set signal");
-			exit(EXIT_FAILURE);
-		}
-
-		act.sa_flags = 0;
-		act.sa_handler = interrupt_handler;
 		if (sigaction(i, &act, NULL) && errno != EINVAL) {
-			SYSERROR("failed to sigaction");
+			SYSERROR("Failed to sigaction");
 			exit(EXIT_FAILURE);
 		}
 	}
@@ -166,32 +174,32 @@ int main(int argc, char *argv[])
 	lxc_setup_fs();
 
 	pid = fork();
-
 	if (pid < 0)
 		exit(EXIT_FAILURE);
 
 	if (!pid) {
+		int ret;
 
 		/* restore default signal handlers */
 		for (i = 1; i < NSIG; i++)
 			signal(i, SIG_DFL);
 
 		if (sigprocmask(SIG_SETMASK, &omask, NULL)) {
-			SYSERROR("failed to set signal mask");
+			SYSERROR("Failed to set signal mask");
 			exit(EXIT_FAILURE);
 		}
 
-		NOTICE("about to exec '%s'", aargv[0]);
+		NOTICE("About to exec '%s'", aargv[0]);
 
-		execvp(aargv[0], aargv);
-		ERROR("failed to exec: '%s' : %m", aargv[0]);
-		exit(err);
+		ret = execvp(aargv[0], aargv);
+		ERROR("Failed to exec: '%s' : %s", aargv[0], strerror(errno));
+		exit(ret);
 	}
 
 	/* let's process the signals now */
 	if (sigdelset(&omask, SIGALRM) ||
 	    sigprocmask(SIG_SETMASK, &omask, NULL)) {
-		SYSERROR("failed to set signal mask");
+		SYSERROR("Failed to set signal mask");
 		exit(EXIT_FAILURE);
 	}
 
@@ -205,10 +213,8 @@ int main(int argc, char *argv[])
 		pid_t waited_pid;
 
 		switch (was_interrupted) {
-
 		case 0:
 			break;
-
 		case SIGPWR:
 		case SIGTERM:
 			if (!shutdown) {
@@ -217,11 +223,9 @@ int main(int argc, char *argv[])
 				alarm(1);
 			}
 			break;
-
 		case SIGALRM:
 			kill(-1, SIGKILL);
 			break;
-
 		default:
 			kill(pid, was_interrupted);
 			break;
@@ -235,7 +239,7 @@ int main(int argc, char *argv[])
 			if (errno == EINTR)
 				continue;
 
-			ERROR("failed to wait child : %s",
+			ERROR("Failed to wait child : %s",
 			      strerror(errno));
 			goto out;
 		}

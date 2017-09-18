@@ -282,9 +282,9 @@ container_setup() {
     echo '### lxc-gentoo template stuff starts here' >> "$path/config"
 
     #Determine rootfs
-    #If backingstore was specified, lxc.rootfs should be present or --rootfs did the rootfs var creation
+    #If backingstore was specified, lxc.rootfs.path should be present or --rootfs did the rootfs var creation
     if [ -z "${rootfs}" ]; then
-        rootfs=`awk -F= '$1 ~ /^lxc.rootfs/ { print $2 }' "$path/config" 2>/dev/null`
+        rootfs=`awk -F= '$1 ~ /^lxc.rootfs.path/ { print $2 }' "$path/config" 2>/dev/null`
         if [ -z "${rootfs}" ]; then
             #OK it's default
             rootfs="${path}/rootfs"
@@ -517,7 +517,7 @@ container_conf_net()
         value=$(echo "${line}" | sed 's/^.*_real_ugly_sep_42_//')
 
         #new nic !
-        if [[ "${key}" == "lxc.network.type" ]]; then
+        if [[ "${key}" == "lxc.net.0.type" ]]; then
             #we don't know what to do with it.
             [[ "${value}" == "empty" ]] && continue
 
@@ -535,15 +535,15 @@ container_conf_net()
             nic_type="${value}"
         fi
 
-                if [[ "${key}" == "lxc.network.hwaddr" ]]; then
+                if [[ "${key}" == "lxc.net.0.hwaddr" ]]; then
                 nic_hwaddr=1
         fi
 
-        if [[ "${key}" =~ ^lxc.network.ipv(4|6) ]]; then
+        if [[ "${key}" =~ ^lxc.net.0.ipv(4|6) ]]; then
             #tell openrc to not manage this NIC as LXC set there address
             nic_conf="null"
         fi
-        if [[ "${key}" =~ ^lxc.network.name ]]; then
+        if [[ "${key}" =~ ^lxc.net.0.name ]]; then
             nic_name="${value}"
             let nic_named=nic_named+1
         fi
@@ -583,10 +583,10 @@ container_net()
                         store_user_message "No network interface for this container
 It's a pitty, you have bridge, ${bridge}.
 If it is for Lxc, use it next time by adding this to your default.conf :
-lxc.network.type = veth
-lxc.network.link = ${bridge}
-lxc.network.flags = up
-lxc.network.hwaddr = fe:xx:xx:xx:xx:xx"
+lxc.net.0.type = veth
+lxc.net.0.link = ${bridge}
+lxc.net.0.flags = up
+lxc.net.0.hwaddr = fe:xx:xx:xx:xx:xx"
                         return 0
         else
                 store_user_message "No network interface for this container"
@@ -681,16 +681,16 @@ container_conf()
 
     # if there is exactly one veth network entry, make sure it has an
     # associated hwaddr.
-    nics=`grep -e '^lxc\.network\.type[ \t]*=[ \t]*veth' ${conf_file} | wc -l`
+    nics=`grep -e '^lxc\.net\.0\.type[ \t]*=[ \t]*veth' ${conf_file} | wc -l`
     if [ $nics -eq 1 ]; then
-        grep -q "^lxc.network.hwaddr" ${conf_file} || sed -i -e "/^lxc\.network\.type[ \t]*=[ \t]*veth/a lxc.network.hwaddr = 00:16:3e:$(openssl rand -hex 3| sed 's/\(..\)/\1:/g; s/.$//')" ${conf_file}
+        grep -q "^lxc.net.0.hwaddr" ${conf_file} || sed -i -e "/^lxc\.net\.0\.type[ \t]*=[ \t]*veth/a lxc.net.0.hwaddr = 00:16:3e:$(openssl rand -hex 3| sed 's/\(..\)/\1:/g; s/.$//')" ${conf_file}
     fi
 
-    if grep -q "^lxc.rootfs" "${conf_file}" ; then
+    if grep -q "^lxc.rootfs.path" "${conf_file}" ; then
         #lxc-create already provided one
         conf_rootfs_line=""
     else
-        conf_rootfs_line="lxc.rootfs = $(readlink -f "${rootfs}")"
+        conf_rootfs_line="lxc.rootfs.path = $(readlink -f "${rootfs}")"
     fi
     if [[ "${arch}" == "x86" || "${arch}" == "amd64" ]]; then
         local conf_arch_line="lxc.arch = ${arch}"
@@ -705,8 +705,8 @@ container_conf()
 ${conf_arch_line}
 
 # set the hostname
-lxc.utsname = ${name}
-lxc.tty = ${tty}
+lxc.uts.name = ${name}
+lxc.tty.max = ${tty}
 
 ${conf_rootfs_line}
 ${portage_mount}

@@ -71,7 +71,7 @@ cleanup() {
 
 	run_cmd lxc-stop -n c2 -k || true
 	run_cmd lxc-stop -n c1 -k || true
-	pkill -u $(id -u $TUSER) -9
+	pkill -u $(id -u $TUSER) -9 || true
 
 	sed -i '/lxcunpriv/d' /run/lxc/nics /etc/lxc/lxc-usernet
 	sed -i '/^lxcunpriv:/d' /etc/subuid /etc/subgid
@@ -116,10 +116,10 @@ usermod -v 910000-919999 -w 910000-919999 $TUSER
 
 mkdir -p $HDIR/.config/lxc/
 cat > $HDIR/.config/lxc/default.conf << EOF
-lxc.network.type = veth
-lxc.network.link = lxcbr0
-lxc.id_map = u 0 910000 9999
-lxc.id_map = g 0 910000 9999
+lxc.net.0.type = veth
+lxc.net.0.link = lxcbr0
+lxc.idmap = u 0 910000 9999
+lxc.idmap = g 0 910000 9999
 EOF
 chown -R $TUSER: $HDIR
 

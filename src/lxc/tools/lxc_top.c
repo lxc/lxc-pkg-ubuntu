@@ -21,11 +21,14 @@
  * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA
  */
 
+#define __STDC_FORMAT_MACROS /* Required for PRIu64 to work. */
 #include <errno.h>
+#include <inttypes.h>
 #include <signal.h>
 #include <stdbool.h>
 #include <stdio.h>
 #include <stdlib.h>
+#include <stdint.h>
 #include <termios.h>
 #include <unistd.h>
 #include <sys/epoll.h>
@@ -47,15 +50,24 @@ lxc_log_define(lxc_top_ui, lxc);
 #define TERMBOLD  ESC "[1m"
 #define TERMRVRS  ESC "[7m"
 
+struct blkio_stats {
+	uint64_t read;
+	uint64_t write;
+	uint64_t total;
+};
+
 struct stats {
 	uint64_t mem_used;
 	uint64_t mem_limit;
+	uint64_t memsw_used;
+	uint64_t memsw_limit;
 	uint64_t kmem_used;
 	uint64_t kmem_limit;
 	uint64_t cpu_use_nanos;
 	uint64_t cpu_use_user;
 	uint64_t cpu_use_sys;
-	uint64_t blkio;
+	struct blkio_stats io_service_bytes;
+	struct blkio_stats io_serviced;
 };
 
 struct ct {
@@ -63,10 +75,11 @@ struct ct {
 	struct stats *stats;
 };
 
+static int batch = 0;
+static int delay_set = 0;
 static int delay = 3;
 static char sort_by = 'n';
 static int sort_reverse = 0;
-
 static struct termios oldtios;
 static struct ct *ct = NULL;
 static int ct_alloc_cnt = 0;
@@ -75,8 +88,12 @@ static int my_parser(struct lxc_arguments* args, int c, char* arg)
 {
 	switch (c) {
 	case 'd':
+		delay_set = 1;
 		if (lxc_safe_int(arg, &delay) < 0)
 			return -1;
+		break;
+	case 'b':
+		batch=1;
 		break;
 	case 's':
 		sort_by = arg[0];
@@ -90,6 +107,7 @@ static int my_parser(struct lxc_arguments* args, int c, char* arg)
 
 static const struct option my_longopts[] = {
 	{"delay",   required_argument, 0, 'd'},
+	{"batch",   no_argument,       0, 'b'},
 	{"sort",    required_argument, 0, 's'},
 	{"reverse", no_argument,       0, 'r'},
 	LXC_COMMON_OPTIONS
@@ -104,11 +122,13 @@ lxc-top monitors the state of the active containers\n\
 \n\
 Options :\n\
   -d, --delay     delay in seconds between refreshes (default: 3.0)\n\
+  -b, --batch     output designed to capture to a file\n\
   -s, --sort      sort by [n,c,b,m] (default: n) where\n\
                   n = Name\n\
                   c = CPU use\n\
                   b = Block I/O use\n\
                   m = Memory use\n\
+                  s = Memory + Swap use\n\
                   k = Kernel memory use\n\
   -r, --reverse   sort in reverse (descending) order\n",
 	.name     = ".*",
@@ -189,19 +209,19 @@ static void sig_handler(int sig)
 static void size_humanize(unsigned long long val, char *buf, size_t bufsz)
 {
 	if (val > 1 << 30) {
-		snprintf(buf, bufsz, "%u.%2.2u GB",
-			    (int)(val >> 30),
-			    (int)(val & ((1 << 30) - 1)) / 10737419);
+		snprintf(buf, bufsz, "%u.%2.2u GiB",
+			    (unsigned int)(val >> 30),
+			    (unsigned int)(val & ((1 << 30) - 1)) / 10737419);
 	} else if (val > 1 << 20) {
-		int x = val + 5243;  /* for rounding */
-		snprintf(buf, bufsz, "%u.%2.2u MB",
+		unsigned int x = val + 5243;  /* for rounding */
+		snprintf(buf, bufsz, "%u.%2.2u MiB",
 			    x >> 20, ((x & ((1 << 20) - 1)) * 100) >> 20);
 	} else if (val > 1 << 10) {
-		int x = val + 5;  /* for rounding */
-		snprintf(buf, bufsz, "%u.%2.2u KB",
+		unsigned int x = val + 5;  /* for rounding */
+		snprintf(buf, bufsz, "%u.%2.2u KiB",
 			    x >> 10, ((x & ((1 << 10) - 1)) * 100) >> 10);
 	} else {
-		snprintf(buf, bufsz, "%3u.00   ", (int)val);
+		snprintf(buf, bufsz, "%3u.00   ", (unsigned int)val);
 	}
 }
 
@@ -262,39 +282,103 @@ out:
 	return val;
 }
 
+/*
+examples:
+	blkio.throttle.io_serviced
+	8:0 Read 4259
+	8:0 Write 835
+	8:0 Sync 292
+	8:0 Async 4802
+	8:0 Total 5094
+	Total 5094
+
+	blkio.throttle.io_service_bytes
+	8:0 Read 110309376
+	8:0 Write 39018496
+	8:0 Sync 2818048
+	8:0 Async 146509824
+	8:0 Total 149327872
+	Total 149327872
+*/
+static void stat_get_blk_stats(struct lxc_container *c, const char *item,
+			      struct blkio_stats *stats) {
+	char buf[4096];
+	int i, len;
+	char **lines, **cols;
+
+	len = c->get_cgroup_item(c, item, buf, sizeof(buf));
+	if (len <= 0 || len >= sizeof(buf)) {
+		ERROR("unable to read cgroup item %s", item);
+		return;
+	}
+
+	lines = lxc_string_split_and_trim(buf, '\n');
+	if (!lines)
+		return;
+
+	memset(stats, 0, sizeof(struct blkio_stats));
+	for (i = 0; lines[i]; i++) {
+		cols = lxc_string_split_and_trim(lines[i], ' ');
+		if (!cols)
+			goto out;
+		if (strcmp(cols[1], "Read") == 0)
+			stats->read += strtoull(cols[2], NULL, 0);
+		else if (strcmp(cols[1], "Write") == 0)
+			stats->write += strtoull(cols[2], NULL, 0);
+		if (strcmp(cols[0], "Total") == 0)
+			stats->total = strtoull(cols[1], NULL, 0);
+
+		lxc_free_array((void **)cols, free);
+	}
+out:
+	lxc_free_array((void **)lines, free);
+	return;
+}
+
 static void stats_get(struct lxc_container *c, struct ct *ct, struct stats *total)
 {
 	ct->c = c;
 	ct->stats->mem_used      = stat_get_int(c, "memory.usage_in_bytes");
 	ct->stats->mem_limit     = stat_get_int(c, "memory.limit_in_bytes");
+	ct->stats->memsw_used    = stat_get_int(c, "memory.memsw.usage_in_bytes");
+	ct->stats->memsw_limit   = stat_get_int(c, "memory.memsw.limit_in_bytes");
 	ct->stats->kmem_used     = stat_get_int(c, "memory.kmem.usage_in_bytes");
 	ct->stats->kmem_limit    = stat_get_int(c, "memory.kmem.limit_in_bytes");
 	ct->stats->cpu_use_nanos = stat_get_int(c, "cpuacct.usage");
 	ct->stats->cpu_use_user  = stat_match_get_int(c, "cpuacct.stat", "user", 1);
 	ct->stats->cpu_use_sys   = stat_match_get_int(c, "cpuacct.stat", "system", 1);
-	ct->stats->blkio         = stat_match_get_int(c, "blkio.throttle.io_service_bytes", "Total", 1);
+	stat_get_blk_stats(c, "blkio.throttle.io_service_bytes", &ct->stats->io_service_bytes);
+	stat_get_blk_stats(c, "blkio.throttle.io_serviced", &ct->stats->io_serviced);
 
 	if (total) {
 		total->mem_used      = total->mem_used      + ct->stats->mem_used;
 		total->mem_limit     = total->mem_limit     + ct->stats->mem_limit;
+		total->memsw_used    = total->memsw_used    + ct->stats->memsw_used;
+		total->memsw_limit   = total->memsw_limit   + ct->stats->memsw_limit;
 		total->kmem_used     = total->kmem_used     + ct->stats->kmem_used;
 		total->kmem_limit    = total->kmem_limit    + ct->stats->kmem_limit;
 		total->cpu_use_nanos = total->cpu_use_nanos + ct->stats->cpu_use_nanos;
 		total->cpu_use_user  = total->cpu_use_user  + ct->stats->cpu_use_user;
 		total->cpu_use_sys   = total->cpu_use_sys   + ct->stats->cpu_use_sys;
-		total->blkio         = total->blkio         + ct->stats->blkio;
+		total->io_service_bytes.total += ct->stats->io_service_bytes.total;
+		total->io_service_bytes.read += ct->stats->io_service_bytes.read;
+		total->io_service_bytes.write += ct->stats->io_service_bytes.write;
 	}
 }
 
 static void stats_print_header(struct stats *stats)
 {
 	printf(TERMRVRS TERMBOLD);
-	printf("%-18s %12s %12s %12s %14s %10s", "Container", "CPU",  "CPU",  "CPU",  "BlkIO", "Mem");
+	printf("%-18s %12s %12s %12s %36s %10s", "Container", "CPU",  "CPU",  "CPU",  "BlkIO", "Mem");
+	if (stats->memsw_used > 0)
+		printf(" %10s", "MemSw");
 	if (stats->kmem_used > 0)
 		printf(" %10s", "KMem");
 	printf("\n");
 
-	printf("%-18s %12s %12s %12s %14s %10s", "Name",      "Used", "Sys",  "User", "Total", "Used");
+	printf("%-18s %12s %12s %12s %36s %10s", "Name",      "Used", "Sys",  "User", "Total(Read/Write)", "Used");
+	if (stats->memsw_used > 0)
+		printf(" %10s", "Used");
 	if (stats->kmem_used > 0)
 		printf(" %10s", "Used");
 	printf("\n");
@@ -304,24 +388,55 @@ static void stats_print_header(struct stats *stats)
 static void stats_print(const char *name, const struct stats *stats,
 			const struct stats *total)
 {
-	char blkio_str[20];
+	char iosb_str[63];
+	char iosb_total_str[20];
+	char iosb_read_str[20];
+	char iosb_write_str[20];
 	char mem_used_str[20];
+	char memsw_used_str[20];
 	char kmem_used_str[20];
+	struct timeval time_val;
+	unsigned long long time_ms;
+	int ret;
 
-	size_humanize(stats->blkio, blkio_str, sizeof(blkio_str));
-	size_humanize(stats->mem_used, mem_used_str, sizeof(mem_used_str));
+	if (!batch) {
+		size_humanize(stats->io_service_bytes.total, iosb_total_str, sizeof(iosb_total_str));
+		size_humanize(stats->io_service_bytes.read, iosb_read_str, sizeof(iosb_read_str));
+		size_humanize(stats->io_service_bytes.write, iosb_write_str, sizeof(iosb_write_str));
+		size_humanize(stats->mem_used, mem_used_str, sizeof(mem_used_str));
 
-	printf("%-18.18s %12.2f %12.2f %12.2f %14s %10s",
-	       name,
-	       (float)stats->cpu_use_nanos / 1000000000,
-	       (float)stats->cpu_use_sys  / USER_HZ,
-	       (float)stats->cpu_use_user / USER_HZ,
-	       blkio_str,
-	       mem_used_str);
-	if (total->kmem_used > 0) {
-		size_humanize(stats->kmem_used, kmem_used_str, sizeof(kmem_used_str));
-		printf(" %10s", kmem_used_str);
+		ret = snprintf(iosb_str, sizeof(iosb_str), "%s(%s/%s)", iosb_total_str, iosb_read_str, iosb_write_str);
+		if (ret < 0 || ret >= sizeof(iosb_str))
+			WARN("snprintf'd too many characters: %d", ret);
+
+		printf("%-18.18s %12.2f %12.2f %12.2f %36s %10s",
+		       name,
+		       (float)stats->cpu_use_nanos / 1000000000,
+		       (float)stats->cpu_use_sys  / USER_HZ,
+		       (float)stats->cpu_use_user / USER_HZ,
+		       iosb_str,
+		       mem_used_str);
+
+		if (total->memsw_used > 0) {
+			size_humanize(stats->memsw_used, memsw_used_str, sizeof(memsw_used_str));
+			printf(" %10s", memsw_used_str);
+		}
+		if (total->kmem_used > 0) {
+			size_humanize(stats->kmem_used, kmem_used_str, sizeof(kmem_used_str));
+			printf(" %10s", kmem_used_str);
+		}
+	} else {
+		gettimeofday(&time_val, NULL);
+		time_ms = (unsigned long long) (time_val.tv_sec) * 1000 + (unsigned long long) (time_val.tv_usec) / 1000;
+		printf("%" PRIu64 ",%s,%" PRIu64 ",%" PRIu64 ",%" PRIu64
+		       ",%" PRIu64 ",%" PRIu64 ",%" PRIu64 ",%" PRIu64 ",%" PRIu64,
+		       (uint64_t)time_ms, name, (uint64_t)stats->cpu_use_nanos,
+		       (uint64_t)stats->cpu_use_sys,
+		       (uint64_t)stats->cpu_use_user, (uint64_t)stats->io_service_bytes.total,
+		       (uint64_t)stats->io_serviced.total, (uint64_t)stats->mem_used,
+		       (uint64_t)stats->memsw_used, (uint64_t)stats->kmem_used);
 	}
+
 }
 
 static int cmp_name(const void *sct1, const void *sct2)
@@ -350,8 +465,8 @@ static int cmp_blkio(const void *sct1, const void *sct2)
 	const struct ct *ct2 = sct2;
 
 	if (sort_reverse)
-		return ct2->stats->blkio < ct1->stats->blkio;
-	return ct1->stats->blkio < ct2->stats->blkio;
+		return ct2->stats->io_service_bytes.total < ct1->stats->io_service_bytes.total;
+	return ct1->stats->io_service_bytes.total < ct2->stats->io_service_bytes.total;
 }
 
 static int cmp_memory(const void *sct1, const void *sct2)
@@ -362,6 +477,16 @@ static int cmp_memory(const void *sct1, const void *sct2)
 	if (sort_reverse)
 		return ct2->stats->mem_used < ct1->stats->mem_used;
 	return ct1->stats->mem_used < ct2->stats->mem_used;
+}
+
+static int cmp_memorysw(const void *sct1, const void *sct2)
+{
+	const struct ct *ct1 = sct1;
+	const struct ct *ct2 = sct2;
+
+	if (sort_reverse)
+		return ct2->stats->memsw_used < ct1->stats->memsw_used;
+	return ct1->stats->memsw_used < ct2->stats->memsw_used;
 }
 
 static int cmp_kmemory(const void *sct1, const void *sct2)
@@ -384,6 +509,7 @@ static void ct_sort(int active)
 	case 'c': cmp_func = cmp_cpuuse; break;
 	case 'b': cmp_func = cmp_blkio; break;
 	case 'm': cmp_func = cmp_memory; break;
+	case 's': cmp_func = cmp_memorysw; break;
 	case 'k': cmp_func = cmp_kmemory; break;
 	}
 	qsort(ct, active, sizeof(*ct), (int (*)(const void *,const void *))cmp_func);
@@ -458,6 +584,13 @@ int main(int argc, char *argv[])
 		goto err1;
 	}
 
+	if (batch && !delay_set) {
+		delay = 300;
+	}
+        if (batch) {
+		printf("time_ms,container,cpu_nanos,cpu_sys_userhz,cpu_user_userhz,blkio_bytes,blkio_iops,mem_used_bytes,memsw_used_bytes,kernel_mem_used_bytes\n");
+	}
+
 	for(;;) {
 		struct lxc_container **active;
 		int i, active_cnt;
@@ -473,14 +606,18 @@ int main(int argc, char *argv[])
 
 		ct_sort(active_cnt);
 
-		printf(TERMCLEAR);
-		stats_print_header(&total);
+		if (!batch) {
+		  printf(TERMCLEAR);
+		  stats_print_header(&total);
+		}
 		for (i = 0; i < active_cnt && i < ct_print_cnt; i++) {
 			stats_print(ct[i].c->name, ct[i].stats, &total);
 			printf("\n");
 		}
-		sprintf(total_name, "TOTAL %d of %d", i, active_cnt);
-		stats_print(total_name, &total, &total);
+		if (!batch) {
+			sprintf(total_name, "TOTAL %d of %d", i, active_cnt);
+			stats_print(total_name, &total, &total);
+		}
 		fflush(stdout);
 
 		for (i = 0; i < active_cnt; i++) {
@@ -489,23 +626,28 @@ int main(int argc, char *argv[])
 		}
 
 		in_char = '\0';
-		ret = lxc_mainloop(&descr, 1000 * delay);
-		if (ret != 0 || in_char == 'q')
-			break;
-		switch(in_char) {
-		case 'r':
-			sort_reverse ^= 1;
-			break;
-		case 'n':
-		case 'c':
-		case 'b':
-		case 'm':
-		case 'k':
-			if (sort_by == in_char)
+		if (!batch) {
+			ret = lxc_mainloop(&descr, 1000 * delay);
+			if (ret != 0 || in_char == 'q')
+				break;
+			switch(in_char) {
+			case 'r':
 				sort_reverse ^= 1;
-			else
-				sort_reverse = 0;
-			sort_by = in_char;
+				break;
+			case 'n':
+			case 'c':
+			case 'b':
+			case 'm':
+			case 's':
+			case 'k':
+				if (sort_by == in_char)
+					sort_reverse ^= 1;
+				else
+					sort_reverse = 0;
+				sort_by = in_char;
+			}
+		} else {
+			sleep(delay);
 		}
 	}
 	ret = EXIT_SUCCESS;

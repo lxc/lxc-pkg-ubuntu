@@ -166,14 +166,14 @@ by KATOH Yasufumi <karma at jazz.email.ne.jp>
 
       <para>
 	<!--
-	The kernel version >= 2.6.32 shipped with the distros, will
+	The kernel version >= 3.10 shipped with the distros, will
 	work with <command>lxc</command>, this one will have less
 	functionalities but enough to be interesting.
 
 	The helper script <command>lxc-checkconfig</command> will give
 	you information about your kernel configuration.
 	-->
-	2.6.32 以上のバージョンが採用されているディストリビューションならば、<command>lxc</command> は動作するでしょう。
+	3.10 以上のバージョンが採用されているディストリビューションならば、<command>lxc</command> は動作するでしょう。
         機能的には若干少ない形ですが、充分に楽しめるはずです。
         ヘルパースクリプトの <command>lxc-checkconfig</command> を使って、あなたのカーネルの設定に関する情報を取得できるでしょう。
       </para>
@@ -556,12 +556,12 @@ rootfs
 	command into the container.
 	The pid of the first process is 1. If no command is
 	specified <command>lxc-start</command> will
-	run the command defined in lxc.init_cmd or if not set,
+	run the command defined in lxc.init.cmd or if not set,
 	<filename>/sbin/init</filename> .
         -->
         <command>lxc-start</command> コマンドは、コンテナ内の特定のコマンドを直接実行します。
         最初のプロセスの pid が 1 となります。
-        もし、実行するコマンドが指定されない場合は、<command>lxc-start</command> は lxc.init_cmd で設定されたコマンドを実行します。もし lxc.init_cmd が設定されていない場合は <filename>/sbin/init</filename> を実行します。
+        もし、実行するコマンドが指定されない場合は、<command>lxc-start</command> は lxc.init.cmd で設定されたコマンドを実行します。もし lxc.init.cmd が設定されていない場合は <filename>/sbin/init</filename> を実行します。
       </para>
 
       <para>
