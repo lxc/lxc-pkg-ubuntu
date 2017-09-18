@@ -18,7 +18,8 @@ Build-Depends: autotools-dev,
                libselinux1-dev,
                linux-libc-dev,
                pkg-config,
-               python3-all-dev (>= 3.2.3)
+               python3-all-dev (>= 3.2.3),
+               python3-setuptools
 Standards-Version: 3.9.8
 Homepage: https://linuxcontainers.org
 Vcs-Git: https://github.com/lxc/lxc-pkg-ubuntu
