@@ -1,7 +1,3 @@
-init.d-script-not-marked-as-conffile etc/init.d/lxc-instance
-init.d-script-not-marked-as-conffile etc/init.d/lxc-net
-init.d-script-not-included-in-package etc/init.d/lxc-instance
-init.d-script-not-included-in-package etc/init.d/lxc-net
 non-standard-dir-perm var/cache/lxc/ 0700 != 0755
 non-standard-dir-perm var/lib/lxc/ 0700 != 0755
 binary-without-manpage usr/sbin/init.lxc

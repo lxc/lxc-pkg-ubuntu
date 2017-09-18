@@ -1,6 +1,7 @@
 #!/usr/bin/make -f
 export DEB_BUILD_HARDENING = 1
 export DEB_BUILD_MAINT_OPTIONS = hardening=+all
+include /usr/share/dpkg/default.mk
 
 DEB_DH_INSTALLINIT_ARGS = --upstart-only
 
@@ -97,12 +98,18 @@ override_dh_builddeb:
 	dh_builddeb
 
 override_dh_installinit:
+ifeq (,$(findstring $(DEB_DISTRIBUTION), trusty xenial zesty))
+	# Disable upstart integration on artful+
+	cp debian/lxc1.maintscript.in debian/lxc1.maintscript
+	rm -f debian/lxc1/etc/init/*.conf
+else
 	cp debian/lxc1/etc/init/lxc.conf debian/lxc1.upstart
 	cp debian/lxc1/etc/init/lxc-instance.conf debian/lxc1.lxc-instance.upstart
 	cp debian/lxc1/etc/init/lxc-net.conf debian/lxc1.lxc-net.upstart
+	dh_installinit --no-start --no-restart-on-upgrade --name=lxc-instance
+endif
 	dh_installinit --no-restart-on-upgrade --name=lxc
 	dh_installinit --no-restart-on-upgrade --name=lxc-net
-	dh_installinit --no-start --no-restart-on-upgrade --name=lxc-instance
 
 override_dh_gencontrol:
 	if dpkg --compare-versions "$(shell grep DISTRIB_RELEASE /etc/lsb-release | cut -d= -f2)" ge "14.10"; then \
