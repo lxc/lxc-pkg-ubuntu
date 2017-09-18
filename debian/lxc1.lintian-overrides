@@ -7,3 +7,4 @@ non-standard-dir-perm var/lib/lxc/ 0700 != 0755
 binary-without-manpage usr/sbin/init.lxc
 binary-without-manpage usr/sbin/init.lxc.static
 systemd-service-file-missing-documentation-key lib/systemd/system/lxc-net.service
+old-style-config-script usr/bin/lxc-update-config
