@@ -1,3 +1,10 @@
+lxc (2.0.8-0ubuntu7.1) artful; urgency=medium
+
+  * Cherrypick fixes for netplan to fix release-regressed autopkgtests and
+    unblock proposed migration of reverse-dependencies.
+
+ -- Dimitri John Ledkov <xnox@ubuntu.com>  Wed, 06 Sep 2017 17:10:01 +0100
+
 lxc (2.0.8-0ubuntu7) artful; urgency=medium
 
   * Cherry-pick upstream fix:
