@@ -1,0 +1,26 @@
+From 67bd7b82a73df37ce8f4a719e14bbe8e08c2c5f9 Mon Sep 17 00:00:00 2001
+From: =?UTF-8?q?St=C3=A9phane=20Graber?= <stgraber@ubuntu.com>
+Date: Mon, 18 Sep 2017 19:03:48 -0400
+Subject: Fix typo
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+Signed-off-by: Stéphane Graber <stgraber@ubuntu.com>
+---
+ src/lxc/storage/storage.c | 2 +-
+ 1 file changed, 1 insertion(+), 1 deletion(-)
+
+diff --git a/src/lxc/storage/storage.c b/src/lxc/storage/storage.c
+index fee3d8df..c8909123 100644
+--- a/src/lxc/storage/storage.c
++++ b/src/lxc/storage/storage.c
+@@ -374,7 +374,7 @@ struct lxc_storage *storage_copy(struct lxc_container *c, const char *cname,
+ 		if (ret < 0 && errno == ENOENT) {
+ 			ret = mkdir_p(orig->dest, 0755);
+ 			if (ret < 0)
+-				WARN("Failed to create directoy \"%s\"", orig->dest);
++				WARN("Failed to create directory \"%s\"", orig->dest);
+ 		}
+ 	}
+ 
