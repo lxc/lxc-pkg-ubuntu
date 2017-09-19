@@ -1,0 +1,23 @@
+From d0561f69268848cc0c8818502812f0e9ab052dba Mon Sep 17 00:00:00 2001
+From: Christian Brauner <christian.brauner@ubuntu.com>
+Date: Sun, 10 Sep 2017 08:23:36 +0200
+Subject: lxc-user-nic: remove double initialization
+
+Signed-off-by: Christian Brauner <christian.brauner@ubuntu.com>
+---
+ src/lxc/lxc_user_nic.c | 2 +-
+ 1 file changed, 1 insertion(+), 1 deletion(-)
+
+diff --git a/src/lxc/lxc_user_nic.c b/src/lxc/lxc_user_nic.c
+index 0f79451d..6f550f0d 100644
+--- a/src/lxc/lxc_user_nic.c
++++ b/src/lxc/lxc_user_nic.c
+@@ -638,7 +638,7 @@ static int count_entries(char *buf, off_t len, char *name, char *net_type, char
+ {
+ 	int count = 0;
+ 	bool owner = false;;
+-	char *buf_end = &buf[len];
++	char *buf_end;
+ 
+ 	buf_end = &buf[len];
+ 	while ((buf = find_line(buf, buf_end, name, net_type, net_link, NULL,

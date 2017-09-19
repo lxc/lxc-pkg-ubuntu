@@ -1,0 +1,77 @@
+From d9d6dca3b34fb198276f5d41e25f2b5561242e81 Mon Sep 17 00:00:00 2001
+From: Christian Brauner <christian.brauner@ubuntu.com>
+Date: Sun, 10 Sep 2017 07:04:34 +0200
+Subject: overlay: fix use after free()
+
+Signed-off-by: Christian Brauner <christian.brauner@ubuntu.com>
+---
+ src/lxc/storage/overlay.c | 13 ++++++-------
+ 1 file changed, 6 insertions(+), 7 deletions(-)
+
+diff --git a/src/lxc/storage/overlay.c b/src/lxc/storage/overlay.c
+index cff355eb..e0cd5d5f 100644
+--- a/src/lxc/storage/overlay.c
++++ b/src/lxc/storage/overlay.c
+@@ -201,9 +201,8 @@ int ovl_clonepaths(struct lxc_storage *orig, struct lxc_storage *new, const char
+ 
+ 		nsrc = strchr(osrc, ':') + 1;
+ 		if ((nsrc != osrc + 8) && (nsrc != osrc + 10)) {
++			ERROR("Detected \":\" in \"%s\" at wrong position", osrc);
+ 			free(osrc);
+-			ERROR("Detected \":\" in \"%s\" at wrong position",
+-			      osrc);
+ 			return -22;
+ 		}
+ 
+@@ -220,9 +219,9 @@ int ovl_clonepaths(struct lxc_storage *orig, struct lxc_storage *new, const char
+ 
+ 		ret = mkdir(ndelta, 0755);
+ 		if (ret < 0 && errno != EEXIST) {
++			SYSERROR("Failed to create directory \"%s\"", ndelta);
+ 			free(osrc);
+ 			free(ndelta);
+-			SYSERROR("Failed to create directory \"%s\"", ndelta);
+ 			return -1;
+ 		}
+ 
+@@ -238,9 +237,9 @@ int ovl_clonepaths(struct lxc_storage *orig, struct lxc_storage *new, const char
+ 		 */
+ 		lastslash = strrchr(ndelta, '/');
+ 		if (!lastslash) {
++			ERROR("Failed to detect \"/\" in \"%s\"", ndelta);
+ 			free(osrc);
+ 			free(ndelta);
+-			ERROR("Failed to detect \"/\" in \"%s\"", ndelta);
+ 			return -1;
+ 		}
+ 		lastslash++;
+@@ -260,10 +259,10 @@ int ovl_clonepaths(struct lxc_storage *orig, struct lxc_storage *new, const char
+ 
+ 		ret = mkdir(work, 0755);
+ 		if (ret < 0 && errno != EEXIST) {
++			SYSERROR("Failed to create directory \"%s\"", ndelta);
+ 			free(osrc);
+ 			free(ndelta);
+ 			free(work);
+-			SYSERROR("Failed to create directory \"%s\"", ndelta);
+ 			return -1;
+ 		}
+ 
+@@ -323,7 +322,7 @@ int ovl_clonepaths(struct lxc_storage *orig, struct lxc_storage *new, const char
+ 
+ 		s1 = strrchr(clean_old_path, '/');
+ 		if (!s1) {
+-			ERROR("Failed to detect \"/\" in string \"%s\"", s1);
++			ERROR("Failed to detect \"/\" in string \"%s\"", clean_old_path);
+ 			free(clean_old_path);
+ 			free(clean_new_path);
+ 			return -1;
+@@ -331,7 +330,7 @@ int ovl_clonepaths(struct lxc_storage *orig, struct lxc_storage *new, const char
+ 
+ 		s2 = strrchr(clean_new_path, '/');
+ 		if (!s2) {
+-			ERROR("Failed to detect \"/\" in string \"%s\"", s2);
++			ERROR("Failed to detect \"/\" in string \"%s\"", clean_new_path);
+ 			free(clean_old_path);
+ 			free(clean_new_path);
+ 			return -1;

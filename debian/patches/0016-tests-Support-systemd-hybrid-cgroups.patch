@@ -1,7 +1,7 @@
-From 140dddef9c4929702c8c59d517caaf083b1c6c28 Mon Sep 17 00:00:00 2001
+From fa8a1e7ea9decccbe884f890142dcf64a1dac9f6 Mon Sep 17 00:00:00 2001
 From: =?UTF-8?q?St=C3=A9phane=20Graber?= <stgraber@ubuntu.com>
 Date: Fri, 12 May 2017 12:28:20 -0400
-Subject: systemd hybrid cgroups
+Subject: tests: Support systemd hybrid cgroups
 MIME-Version: 1.0
 Content-Type: text/plain; charset=UTF-8
 Content-Transfer-Encoding: 8bit
