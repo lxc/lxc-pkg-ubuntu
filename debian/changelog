@@ -1,3 +1,41 @@
+lxc (2.1.0-0ubuntu1) artful; urgency=medium
+
+  * New upstream release (LXC 2.1): (LP: #1715278)
+    - https://linuxcontainers.org/lxc/news
+
+    - This is an intermediary release between LXC 2.0 (LTS) and LXC 3.0 (LTS).
+      LXC 2.1 supports both the older configuration keys and the newer ones.
+      A number of options and commands will also now issue deprecation
+      warning before they completely go away in LXC 3.0.
+
+      It is recommended that you run "lxc-update-config" for your
+      containers and make sure that there is no leftover warnings.
+
+  * Cherry-pick fixes from upstream:
+    - 0002-Fix-typo.patch
+    - 0003-network-add-missing-checks-for-empty-links.patch
+    - 0004-cleanup-remove-unnecessary-zeroing.patch
+    - 0005-console-clean-tty-state-return-0-on-peer-exit.patch
+    - 0006-tools-fix-lxc-upate-config.patch
+    - 0007-criu-use-correct-check-initialization-check.patch
+    - 0008-storage-overlay-do-not-write-to-invalid-memory.patch
+    - 0009-utils-do-not-write-to-0-sized-buffer.patch
+    - 0010-overlay-fix-use-after-free.patch
+    - 0011-lxc-unshare-do-not-pass-NULL-pointer.patch
+    - 0012-lxc-user-nic-remove-double-initialization.patch
+    - 0013-execute-enable-console-standard-dev-symlinks.patch
+    - 0014-start-switch-ids-at-last-possible-instance.patch
+    - 0015-storage-avoid-segfault.patch
+    - 0016-tests-Support-systemd-hybrid-cgroups.patch
+
+  * Build depend on python3-setuptools.
+  * Bump standard to 4.0.0.
+  * Drop upstart jobs on artful and higher.
+  * Update lintian overrides.
+  * Build a manpage with help2man for lxc-update-config.
+
+ -- Stéphane Graber <stgraber@ubuntu.com>  Mon, 18 Sep 2017 18:32:38 -0400
+
 lxc (2.0.8-0ubuntu7.1) artful; urgency=medium
 
   * Cherrypick fixes for netplan to fix release-regressed autopkgtests and
