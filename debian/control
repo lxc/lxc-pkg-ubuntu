@@ -5,9 +5,9 @@ Maintainer: Ubuntu Developers <ubuntu-devel-discuss@lists.ubuntu.com>
 Build-Depends: autotools-dev,
                bash-completion,
                debhelper (>= 9),
+               debhelper (>= 9.20160709) | dh-systemd,
                dh-apparmor,
                dh-autoreconf,
-               dh-systemd,
                docbook2x,
                dpkg-dev (>= 1.16.1~) | hardening-wrapper,
                libapparmor-dev,
@@ -20,7 +20,7 @@ Build-Depends: autotools-dev,
                pkg-config,
                python3-all-dev (>= 3.2.3),
                python3-setuptools
-Standards-Version: 4.0.0
+Standards-Version: 4.1.1
 Homepage: https://linuxcontainers.org
 Vcs-Git: https://github.com/lxc/lxc-pkg-ubuntu
 Vcs-Browser: https://github.com/lxc/lxc-pkg-ubuntu
@@ -29,7 +29,6 @@ X-Python3-Version: >= 3.2
 Package: lxc
 Architecture: all
 Depends: lxc1 (>= ${source:Version}), ${misc:Depends}
-Priority: extra
 Section: oldlibs
 Description: Transitional package for lxc1
  This is a transitional dummy package. It can safely be removed.
@@ -132,6 +131,7 @@ Description: Linux Containers userspace tools (test binaries)
 
 Package: liblxc1
 Architecture: linux-any
+Section: libs
 Pre-Depends: ${misc:Pre-Depends}
 Depends: cgroup-lite | systemd,
          lxc-common (= ${binary:Version}),
