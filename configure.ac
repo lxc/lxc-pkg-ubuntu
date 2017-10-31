@@ -4,7 +4,7 @@
 m4_define([lxc_devel], 0)
 m4_define([lxc_version_major], 2)
 m4_define([lxc_version_minor], 1)
-m4_define([lxc_version_micro], 0)
+m4_define([lxc_version_micro], 1)
 m4_define([lxc_version_beta], [])
 
 m4_define([lxc_abi_major], 1)
@@ -785,6 +785,7 @@ AC_CONFIG_FILES([
 	doc/lxc-top.sgml
 	doc/lxc-unfreeze.sgml
 	doc/lxc-unshare.sgml
+	doc/lxc-update-config.sgml
 	doc/lxc-user-nic.sgml
 	doc/lxc-usernsexec.sgml
 	doc/lxc-wait.sgml
@@ -833,6 +834,7 @@ AC_CONFIG_FILES([
 	doc/ja/lxc-top.sgml
 	doc/ja/lxc-unfreeze.sgml
 	doc/ja/lxc-unshare.sgml
+	doc/ja/lxc-update-config.sgml
 	doc/ja/lxc-user-nic.sgml
 	doc/ja/lxc-usernsexec.sgml
 	doc/ja/lxc-wait.sgml

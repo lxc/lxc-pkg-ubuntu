@@ -110,10 +110,10 @@ CONFIG_CLEAN_FILES = lxc-attach.sgml lxc-autostart.sgml \
 	lxc-execute.sgml lxc-freeze.sgml lxc-info.sgml lxc-ls.sgml \
 	lxc-monitor.sgml lxc-snapshot.sgml lxc-start-ephemeral.sgml \
 	lxc-start.sgml lxc-stop.sgml lxc-top.sgml lxc-unfreeze.sgml \
-	lxc-unshare.sgml lxc-user-nic.sgml lxc-usernsexec.sgml \
-	lxc-wait.sgml lxc.conf.sgml lxc.container.conf.sgml \
-	lxc.system.conf.sgml lxc-usernet.sgml lxc.sgml \
-	common_options.sgml see_also.sgml
+	lxc-unshare.sgml lxc-update-config.sgml lxc-user-nic.sgml \
+	lxc-usernsexec.sgml lxc-wait.sgml lxc.conf.sgml \
+	lxc.container.conf.sgml lxc.system.conf.sgml lxc-usernet.sgml \
+	lxc.sgml common_options.sgml see_also.sgml
 CONFIG_CLEAN_VPATH_FILES =
 AM_V_P = $(am__v_P_@AM_V@)
 am__v_P_ = $(am__v_P_@AM_DEFAULT_V@)
@@ -217,9 +217,11 @@ am__DIST_COMMON = $(srcdir)/Makefile.in \
 	$(srcdir)/lxc-start-ephemeral.sgml.in \
 	$(srcdir)/lxc-start.sgml.in $(srcdir)/lxc-stop.sgml.in \
 	$(srcdir)/lxc-top.sgml.in $(srcdir)/lxc-unfreeze.sgml.in \
-	$(srcdir)/lxc-unshare.sgml.in $(srcdir)/lxc-user-nic.sgml.in \
-	$(srcdir)/lxc-usernet.sgml.in $(srcdir)/lxc-usernsexec.sgml.in \
-	$(srcdir)/lxc-wait.sgml.in $(srcdir)/lxc.conf.sgml.in \
+	$(srcdir)/lxc-unshare.sgml.in \
+	$(srcdir)/lxc-update-config.sgml.in \
+	$(srcdir)/lxc-user-nic.sgml.in $(srcdir)/lxc-usernet.sgml.in \
+	$(srcdir)/lxc-usernsexec.sgml.in $(srcdir)/lxc-wait.sgml.in \
+	$(srcdir)/lxc.conf.sgml.in \
 	$(srcdir)/lxc.container.conf.sgml.in $(srcdir)/lxc.sgml.in \
 	$(srcdir)/lxc.system.conf.sgml.in $(srcdir)/see_also.sgml.in
 DISTFILES = $(DIST_COMMON) $(DIST_SOURCES) $(TEXINFOS) $(EXTRA_DIST)
@@ -453,8 +455,9 @@ EXTRA_DIST = \
 @ENABLE_DOCBOOK_TRUE@	lxc-freeze.1 lxc-info.1 lxc-ls.1 \
 @ENABLE_DOCBOOK_TRUE@	lxc-monitor.1 lxc-snapshot.1 lxc-start.1 \
 @ENABLE_DOCBOOK_TRUE@	lxc-stop.1 lxc-top.1 lxc-unfreeze.1 \
-@ENABLE_DOCBOOK_TRUE@	lxc-unshare.1 lxc-user-nic.1 \
-@ENABLE_DOCBOOK_TRUE@	lxc-usernsexec.1 lxc-wait.1 lxc.conf.5 \
+@ENABLE_DOCBOOK_TRUE@	lxc-unshare.1 lxc-update-config.1 \
+@ENABLE_DOCBOOK_TRUE@	lxc-user-nic.1 lxc-usernsexec.1 \
+@ENABLE_DOCBOOK_TRUE@	lxc-wait.1 lxc.conf.5 \
 @ENABLE_DOCBOOK_TRUE@	lxc.container.conf.5 lxc.system.conf.5 \
 @ENABLE_DOCBOOK_TRUE@	lxc-usernet.5 lxc.7 $(am__append_1) \
 @ENABLE_DOCBOOK_TRUE@	$(am__append_2)
@@ -537,6 +540,8 @@ lxc-top.sgml: $(top_builddir)/config.status $(srcdir)/lxc-top.sgml.in
 lxc-unfreeze.sgml: $(top_builddir)/config.status $(srcdir)/lxc-unfreeze.sgml.in
 	cd $(top_builddir) && $(SHELL) ./config.status $(subdir)/$@
 lxc-unshare.sgml: $(top_builddir)/config.status $(srcdir)/lxc-unshare.sgml.in
+	cd $(top_builddir) && $(SHELL) ./config.status $(subdir)/$@
+lxc-update-config.sgml: $(top_builddir)/config.status $(srcdir)/lxc-update-config.sgml.in
 	cd $(top_builddir) && $(SHELL) ./config.status $(subdir)/$@
 lxc-user-nic.sgml: $(top_builddir)/config.status $(srcdir)/lxc-user-nic.sgml.in
 	cd $(top_builddir) && $(SHELL) ./config.status $(subdir)/$@

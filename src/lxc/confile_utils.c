@@ -92,8 +92,6 @@ int parse_idmaps(const char *idmap, char *type, unsigned long *nsid,
 
 	/* Move beyond \0. */
 	slide++;
-	/* align */
-	window = slide;
 	/* Validate that only whitespace follows. */
 	slide += strspn(slide, " \t\r");
 	/* If there was only one whitespace then we whiped it with our \0 above.
@@ -118,8 +116,6 @@ int parse_idmaps(const char *idmap, char *type, unsigned long *nsid,
 
 	/* Move beyond \0. */
 	slide++;
-	/* align */
-	window = slide;
 	/* Validate that only whitespace follows. */
 	slide += strspn(slide, " \t\r");
 	/* If there was only one whitespace then we whiped it with our \0 above.
@@ -676,7 +672,7 @@ int lxc_get_conf_int(struct lxc_conf *c, char *retv, int inlen, int v)
 	return snprintf(retv, inlen, "%d", v);
 }
 
-bool parse_limit_value(const char **value, unsigned long *res)
+bool parse_limit_value(const char **value, rlim_t *res)
 {
 	char *endptr = NULL;
 
@@ -687,7 +683,7 @@ bool parse_limit_value(const char **value, unsigned long *res)
 	}
 
 	errno = 0;
-	*res = strtoul(*value, &endptr, 10);
+	*res = strtoull(*value, &endptr, 10);
 	if (errno || !endptr)
 		return false;
 	*value = endptr;

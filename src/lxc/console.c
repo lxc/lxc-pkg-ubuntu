@@ -475,7 +475,6 @@ static int lxc_console_peer_default(struct lxc_console *console)
 	console->tios = malloc(sizeof(*console->tios));
 	if (!console->tios) {
 		SYSERROR("failed to allocate memory");
-		ret = -ENOMEM;
 		goto on_error1;
 	}
 
@@ -487,7 +486,6 @@ static int lxc_console_peer_default(struct lxc_console *console)
 on_error2:
 	free(console->tios);
 	console->tios = NULL;
-	ret = -ENOTTY;
 
 on_error1:
 	close(console->peer);

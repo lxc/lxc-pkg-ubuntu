@@ -1,16 +1,1 @@
 0001-Allocate-new-lxcbr0-subnet-at-startup-time.patch
-0002-Fix-typo.patch
-0003-network-add-missing-checks-for-empty-links.patch
-0004-cleanup-remove-unnecessary-zeroing.patch
-0005-console-clean-tty-state-return-0-on-peer-exit.patch
-0006-tools-fix-lxc-upate-config.patch
-0007-criu-use-correct-check-initialization-check.patch
-0008-storage-overlay-do-not-write-to-invalid-memory.patch
-0009-utils-do-not-write-to-0-sized-buffer.patch
-0010-overlay-fix-use-after-free.patch
-0011-lxc-unshare-do-not-pass-NULL-pointer.patch
-0012-lxc-user-nic-remove-double-initialization.patch
-0013-execute-enable-console-standard-dev-symlinks.patch
-0014-start-switch-ids-at-last-possible-instance.patch
-0015-storage-avoid-segfault.patch
-0016-tests-Support-systemd-hybrid-cgroups.patch
