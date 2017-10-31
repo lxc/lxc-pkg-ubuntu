@@ -337,6 +337,11 @@ struct lxc_storage *storage_copy(struct lxc_container *c, const char *cname,
 	struct rsync_data data = {0};
 	char cmd_output[MAXPATHLEN] = {0};
 
+	if (!src) {
+		ERROR("No rootfs specified");
+		return NULL;
+	}
+
 	/* If the container name doesn't show up in the rootfs path, then we
 	 * don't know how to come up with a new name.
 	 */
@@ -374,7 +379,7 @@ struct lxc_storage *storage_copy(struct lxc_container *c, const char *cname,
 		if (ret < 0 && errno == ENOENT) {
 			ret = mkdir_p(orig->dest, 0755);
 			if (ret < 0)
-				WARN("Failed to create directoy \"%s\"", orig->dest);
+				WARN("Failed to create directory \"%s\"", orig->dest);
 		}
 	}
 
@@ -502,8 +507,9 @@ struct lxc_storage *storage_copy(struct lxc_container *c, const char *cname,
 	data.orig = orig;
 	data.new = new;
 	if (am_unpriv())
-		ret = userns_exec_1(c->lxc_conf, lxc_storage_rsync_exec_wrapper,
-				    &data, "lxc_storage_rsync_exec_wrapper");
+		ret = userns_exec_full(c->lxc_conf,
+				       lxc_storage_rsync_exec_wrapper, &data,
+				       "lxc_storage_rsync_exec_wrapper");
 	else
 		ret = run_command(cmd_output, sizeof(cmd_output),
 				  lxc_storage_rsync_exec_wrapper, (void *)&data);

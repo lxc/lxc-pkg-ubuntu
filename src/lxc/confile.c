@@ -75,65 +75,66 @@ lxc_log_define(lxc_confile, lxc);
 				     struct lxc_conf *, void *);               \
 	static int clr_config_##name(const char *, struct lxc_conf *, void *);
 
-lxc_config_define(personality);
-lxc_config_define(pty_max);
-lxc_config_define(tty_max);
-lxc_config_define(tty_dir);
-lxc_config_define(apparmor_profile);
+lxc_config_define(autodev);
 lxc_config_define(apparmor_allow_incomplete);
-lxc_config_define(selinux_context);
+lxc_config_define(apparmor_profile);
+lxc_config_define(cap_drop);
+lxc_config_define(cap_keep);
 lxc_config_define(cgroup_controller);
 lxc_config_define(cgroup_dir);
+lxc_config_define(console_logfile);
+lxc_config_define(console_path);
+lxc_config_define(environment);
+lxc_config_define(ephemeral);
+lxc_config_define(group);
+lxc_config_define(hooks);
 lxc_config_define(idmaps);
-lxc_config_define(log_level);
+lxc_config_define(includefiles);
+lxc_config_define(init_cmd);
+lxc_config_define(init_gid);
+lxc_config_define(init_uid);
 lxc_config_define(log_file);
+lxc_config_define(log_level);
+lxc_config_define(log_syslog);
+lxc_config_define(monitor);
 lxc_config_define(mount);
 lxc_config_define(mount_auto);
 lxc_config_define(mount_fstab);
-lxc_config_define(rootfs_mount);
-lxc_config_define(rootfs_options);
-lxc_config_define(rootfs_backend);
-lxc_config_define(rootfs_path);
-lxc_config_define(uts_name);
-lxc_config_define(hooks);
-lxc_config_define(net_type);
+lxc_config_define(net);
 lxc_config_define(net_flags);
-lxc_config_define(net_link);
-lxc_config_define(net_name);
-lxc_config_define(net_veth_pair);
-lxc_config_define(net_macvlan_mode);
 lxc_config_define(net_hwaddr);
-lxc_config_define(net_vlan_id);
-lxc_config_define(net_mtu);
 lxc_config_define(net_ipv4_address);
 lxc_config_define(net_ipv4_gateway);
-lxc_config_define(net_script_up);
-lxc_config_define(net_script_down);
 lxc_config_define(net_ipv6_address);
 lxc_config_define(net_ipv6_gateway);
+lxc_config_define(net_link);
+lxc_config_define(net_macvlan_mode);
+lxc_config_define(net_mtu);
+lxc_config_define(net_name);
 lxc_config_define(net_nic);
-lxc_config_define(net);
-lxc_config_define(cap_drop);
-lxc_config_define(cap_keep);
-lxc_config_define(console_logfile);
-lxc_config_define(console_path);
+lxc_config_define(net_script_down);
+lxc_config_define(net_script_up);
+lxc_config_define(net_type);
+lxc_config_define(net_veth_pair);
+lxc_config_define(net_vlan_id);
+lxc_config_define(no_new_privs);
+lxc_config_define(noop);
+lxc_config_define(personality);
+lxc_config_define(prlimit);
+lxc_config_define(pty_max);
+lxc_config_define(rootfs_backend);
+lxc_config_define(rootfs_mount);
+lxc_config_define(rootfs_options);
+lxc_config_define(rootfs_path);
 lxc_config_define(seccomp_profile);
-lxc_config_define(includefiles);
-lxc_config_define(autodev);
+lxc_config_define(selinux_context);
 lxc_config_define(signal_halt);
 lxc_config_define(signal_reboot);
 lxc_config_define(signal_stop);
 lxc_config_define(start);
-lxc_config_define(monitor);
-lxc_config_define(group);
-lxc_config_define(environment);
-lxc_config_define(init_cmd);
-lxc_config_define(init_uid);
-lxc_config_define(init_gid);
-lxc_config_define(ephemeral);
-lxc_config_define(log_syslog);
-lxc_config_define(no_new_privs);
-lxc_config_define(prlimit);
+lxc_config_define(tty_max);
+lxc_config_define(tty_dir);
+lxc_config_define(uts_name);
 
 static struct lxc_config_t config[] = {
                                            /* REMOVE in LXC 3.0 */
@@ -246,12 +247,14 @@ static struct lxc_config_t config[] = {
 	{ "lxc.rebootsignal",              true,                   set_config_signal_reboot,               get_config_signal_reboot,               clr_config_signal_reboot,             },
 	{ "lxc.stopsignal",                true,                   set_config_signal_stop,                 get_config_signal_stop,                 clr_config_signal_stop,               },
 	{ "lxc.syslog",                    true,                   set_config_log_syslog,                  get_config_log_syslog,                  clr_config_log_syslog,                },
+	{ "lxc.kmsg",                      true,                   set_config_noop,                        get_config_noop,                        clr_config_noop,                      },
 	{ "lxc.loglevel",                  true,                   set_config_log_level,                   get_config_log_level,                   clr_config_log_level,                 },
 	{ "lxc.logfile",                   true,                   set_config_log_file,                    get_config_log_file,                    clr_config_log_file,                  },
 	{ "lxc.init_cmd",                  true,                   set_config_init_cmd,                    get_config_init_cmd,                    clr_config_init_cmd,                  },
 	{ "lxc.init_uid",                  true,                   set_config_init_uid,                    get_config_init_uid,                    clr_config_init_uid,                  },
 	{ "lxc.init_gid",                  true,                   set_config_init_gid,                    get_config_init_gid,                    clr_config_init_gid,                  },
 	{ "lxc.limit",                     true,                   set_config_limit,                       get_config_limit,                       clr_config_limit,                     },
+	{ "lxc.pivotdir",                  true,                   set_config_noop,                        get_config_noop,                        clr_config_noop,                      },
 	/* [END]: REMOVE IN LXC 3.0 */
 };
 
@@ -1439,7 +1442,7 @@ static int set_config_prlimit(const char *key, const char *value,
 {
 	struct lxc_list *iter;
 	struct rlimit limit;
-	unsigned long limit_value;
+	rlim_t limit_value;
 	struct lxc_list *limlist = NULL;
 	struct lxc_limit *limelem = NULL;
 
@@ -1920,42 +1923,51 @@ struct parse_line_conf {
 
 static int parse_line(char *buffer, void *data)
 {
-	struct lxc_config_t *config;
 	char *dot, *key, *line, *linep, *value;
-	struct parse_line_conf *plc = data;
+	bool empty_line;
+	struct lxc_config_t *config;
 	int ret = 0;
+	char *dup = buffer;
+	struct parse_line_conf *plc = data;
 
-	if (lxc_is_line_empty(buffer))
-		return 0;
+	/* If there are newlines in the config file we should keep them. */
+	empty_line = lxc_is_line_empty(dup);
+	if (empty_line)
+		dup = "\n";
 
 	/* We have to dup the buffer otherwise, at the re-exec for reboot we
 	 * modified the original string on the stack by replacing '=' by '\0'
 	 * below.
 	 */
-	linep = line = strdup(buffer);
+	linep = line = strdup(dup);
 	if (!line)
 		return -1;
 
-	if (!plc->from_include)
-		if ((ret = append_unexp_config_line(line, plc->conf)))
-			goto out;
+	if (!plc->from_include) {
+		ret = append_unexp_config_line(line, plc->conf);
+		if (ret < 0)
+			goto on_error;
+	}
+
+	if (empty_line)
+		return 0;
 
 	line += lxc_char_left_gc(line, strlen(line));
 
 	/* ignore comments */
 	if (line[0] == '#')
-		goto out;
+		goto on_error;
 
 	/* martian option - don't add it to the config itself */
 	if (strncmp(line, "lxc.", 4))
-		goto out;
+		goto on_error;
 
 	ret = -1;
 
-	dot = strstr(line, "=");
+	dot = strchr(line, '=');
 	if (!dot) {
-		ERROR("invalid configuration line: %s", line);
-		goto out;
+		ERROR("Invalid configuration line: %s", line);
+		goto on_error;
 	}
 
 	*dot = '\0';
@@ -1980,25 +1992,27 @@ static int parse_line(char *buffer, void *data)
 	config = lxc_get_config(key);
 	if (!config) {
 		ERROR("Unknown configuration key \"%s\"", key);
-		goto out;
+		goto on_error;
 	}
 
 	/* [START]: REMOVE IN LXC 3.0 */
 	if (config->is_legacy_key && !plc->conf->contains_legacy_key) {
 		plc->conf->contains_legacy_key = true;
-		/* Warn the user once loud and clear that there is at least one
-		 * legacy configuration item in the configuration file and then
-		 * an update is required.
-		 */
-		fprintf(stderr, "The configuration file contains legacy "
-				"configuration keys.\nPlease update your "
-				"configuration file!\n");
+		if (getenv("LXC_UPDATE_CONFIG_FORMAT")) {
+			/* Warn the user once loud and clear that there is at
+			 * least one legacy configuration item in the
+			 * configuration file and then an update is required.
+			 */
+			fprintf(stderr, "The configuration file contains "
+					"legacy configuration keys.\nPlease "
+					"update your configuration file!\n");
+		}
 	}
 	/* [END]: REMOVE IN LXC 3.0 */
 
 	ret = config->set(key, value, plc->conf, NULL);
 
-out:
+on_error:
 	free(linep);
 	return ret;
 }
@@ -2557,6 +2571,12 @@ static int set_config_no_new_privs(const char *key, const char *value,
 
 	lxc_conf->no_new_privs = v ? true : false;
 
+	return 0;
+}
+
+static int set_config_noop(const char *key, const char *value,
+			   struct lxc_conf *lxc_conf, void *data)
+{
 	return 0;
 }
 
@@ -3170,6 +3190,12 @@ static int get_config_prlimit(const char *key, char *retv, int inlen,
 	return fulllen;
 }
 
+static int get_config_noop(const char *key, char *retv, int inlen,
+			   struct lxc_conf *c, void *data)
+{
+	return 0;
+}
+
 /* Callbacks to clear config items. */
 static inline int clr_config_personality(const char *key, struct lxc_conf *c,
 					 void *data)
@@ -3484,6 +3510,12 @@ static inline int clr_config_includefiles(const char *key, struct lxc_conf *c,
 					  void *data)
 {
 	lxc_clear_includes(c);
+	return 0;
+}
+
+static inline int clr_config_noop(const char *key, struct lxc_conf *c,
+				  void *data)
+{
 	return 0;
 }
 

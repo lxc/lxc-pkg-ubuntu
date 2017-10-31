@@ -222,7 +222,7 @@ int lxc_unix_epoch_to_utc(char *buf, size_t bufsize, const struct timespec *time
 	seconds = (time->tv_sec - d_in_s - h_in_s - (minutes * 60));
 
 	/* Make string from nanoseconds. */
-	ret = snprintf(nanosec, LXC_NUMSTRLEN64, "%ld", time->tv_nsec);
+	ret = snprintf(nanosec, LXC_NUMSTRLEN64, "%"PRId64, (int64_t)time->tv_nsec);
 	if (ret < 0 || ret >= LXC_NUMSTRLEN64)
 		return -1;
 
@@ -297,7 +297,8 @@ static int log_append_logfile(const struct lxc_log_appender *appender,
 
 	if ((size_t)n < (sizeof(buffer) - 1))
 		n += vsnprintf(buffer + n, sizeof(buffer) - n, event->fmt, *event->vap);
-	else
+
+	if ((size_t)n >= sizeof(buffer))
 		n = sizeof(buffer) - 1;
 
 	buffer[n] = '\n';

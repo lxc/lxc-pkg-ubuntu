@@ -236,6 +236,15 @@ restart:
 		    (i < len_fds && fd == fds_to_ignore[i]))
 			continue;
 
+		if (conf) {
+			for (i = 0; i < LXC_NS_MAX; i++)
+				if (conf->inherit_ns_fd[i] == fd)
+					break;
+
+			if (i < LXC_NS_MAX)
+				continue;
+		}
+
 		if (current_config && fd == current_config->logfd)
 			continue;
 
@@ -631,6 +640,9 @@ int lxc_init(const char *name, struct lxc_handler *handler)
 
 	if (setenv("LXC_CGNS_AWARE", "1", 1))
 		SYSERROR("Failed to set environment variable LXC_CGNS_AWARE=1.");
+
+	if (setenv("LXC_LOG_LEVEL", lxc_log_priority_to_string(handler->conf->loglevel), 1))
+		SYSERROR("Failed to set environment variable LXC_CGNS_AWARE=1.");
 	/* End of environment variable setup for hooks. */
 
 	TRACE("set environment variables");
@@ -913,6 +925,17 @@ static int do_start(void *data)
 		INFO("Unshared CLONE_NEWCGROUP.");
 	}
 
+	/* Add the requested environment variables to the current environment to
+	 * allow them to be used by the various hooks, such as the start hook
+	 * above.
+	 */
+	lxc_list_for_each(iterator, &handler->conf->environment) {
+		if (putenv((char *)iterator->elem)) {
+			SYSERROR("Failed to set environment variable: %s.", (char *)iterator->elem);
+			goto out_warn_father;
+		}
+	}
+
 	/* Setup the container, ip, names, utsname, ... */
 	ret = lxc_setup(handler);
 	close(handler->data_sock[0]);
@@ -962,6 +985,59 @@ static int do_start(void *data)
 		goto out_warn_father;
 	}
 
+	close(handler->sigfd);
+
+	if (devnull_fd < 0) {
+		devnull_fd = open_devnull();
+
+		if (devnull_fd < 0)
+			goto out_warn_father;
+	}
+
+	if (handler->conf->console.slave < 0 && handler->backgrounded)
+		if (set_stdfds(devnull_fd) < 0) {
+			ERROR("Failed to redirect std{in,out,err} to "
+			      "\"/dev/null\"");
+			goto out_warn_father;
+		}
+
+	if (devnull_fd >= 0) {
+		close(devnull_fd);
+		devnull_fd = -1;
+	}
+
+	setsid();
+
+	if (lxc_sync_barrier_parent(handler, LXC_SYNC_CGROUP_LIMITS))
+		goto out_warn_father;
+
+	/* Reset the environment variables the user requested in a clear
+	 * environment.
+	 */
+	if (clearenv()) {
+		SYSERROR("Failed to clear environment.");
+		/* Don't error out though. */
+	}
+
+	lxc_list_for_each(iterator, &handler->conf->environment) {
+		if (putenv((char *)iterator->elem)) {
+			SYSERROR("Failed to set environment variable: %s.", (char *)iterator->elem);
+			goto out_warn_father;
+		}
+	}
+
+	if (putenv("container=lxc")) {
+		SYSERROR("Failed to set environment variable: container=lxc.");
+		goto out_warn_father;
+	}
+
+	if (handler->conf->pty_names) {
+		if (putenv(handler->conf->pty_names)) {
+			SYSERROR("Failed to set environment variable for container ptys.");
+			goto out_warn_father;
+		}
+	}
+
 	/* The container has been setup. We can now switch to an unprivileged
 	 * uid/gid.
 	 */
@@ -988,61 +1064,6 @@ static int do_start(void *data)
 		if (lxc_switch_uid_gid(new_uid, new_gid) < 0)
 			goto out_warn_father;
 	}
-
-	/* The clearenv() and putenv() calls have been moved here to allow us to
-	 * use environment variables passed to the various hooks, such as the
-	 * start hook above. Not all of the variables like CONFIG_PATH or ROOTFS
-	 * are valid in this context but others are.
-	 */
-	if (clearenv()) {
-		SYSERROR("Failed to clear environment.");
-		/* Don't error out though. */
-	}
-
-	lxc_list_for_each(iterator, &handler->conf->environment) {
-		if (putenv((char *)iterator->elem)) {
-			SYSERROR("Failed to set environment variable: %s.", (char *)iterator->elem);
-			goto out_warn_father;
-		}
-	}
-
-	if (putenv("container=lxc")) {
-		SYSERROR("Failed to set environment variable: container=lxc.");
-		goto out_warn_father;
-	}
-
-	if (handler->conf->pty_names) {
-		if (putenv(handler->conf->pty_names)) {
-			SYSERROR("Failed to set environment variable for container ptys.");
-			goto out_warn_father;
-		}
-	}
-
-	close(handler->sigfd);
-
-	if (devnull_fd < 0) {
-		devnull_fd = open_devnull();
-
-		if (devnull_fd < 0)
-			goto out_warn_father;
-	}
-
-	if (handler->conf->console.slave < 0 && handler->backgrounded)
-		if (set_stdfds(devnull_fd) < 0) {
-			ERROR("Failed to redirect std{in,out,err} to "
-			      "\"/dev/null\"");
-			goto out_warn_father;
-		}
-
-	if (devnull_fd >= 0) {
-		close(devnull_fd);
-		devnull_fd = -1;
-	}
-
-	setsid();
-
-	if (lxc_sync_barrier_parent(handler, LXC_SYNC_CGROUP_LIMITS))
-		goto out_warn_father;
 
 	/* After this call, we are in error because this ops should not return
 	 * as it execs.
@@ -1142,7 +1163,7 @@ static int lxc_spawn(struct lxc_handler *handler)
 	bool wants_to_map_ids;
 	int saved_ns_fd[LXC_NS_MAX];
 	struct lxc_list *id_map;
-	int failed_before_rename = 0, preserve_mask = 0;
+	int preserve_mask = 0;
 	bool cgroups_connected = false;
 
 	id_map = &handler->conf->id_map;
@@ -1256,15 +1277,11 @@ static int lxc_spawn(struct lxc_handler *handler)
 		goto out_delete_net;
 	}
 
-	if (lxc_sync_wake_child(handler, LXC_SYNC_STARTUP)) {
-		failed_before_rename = 1;
+	if (lxc_sync_wake_child(handler, LXC_SYNC_STARTUP))
 		goto out_delete_net;
-	}
 
-	if (lxc_sync_wait_child(handler, LXC_SYNC_CONFIGURE)) {
-		failed_before_rename = 1;
+	if (lxc_sync_wait_child(handler, LXC_SYNC_CONFIGURE))
 		goto out_delete_net;
-	}
 
 	if (!cgroup_create_legacy(handler)) {
 		ERROR("Failed to setup legacy cgroups for container \"%s\".", name);
@@ -1279,9 +1296,6 @@ static int lxc_spawn(struct lxc_handler *handler)
 		goto out_delete_net;
 
 	if (!cgroup_chown(handler))
-		goto out_delete_net;
-
-	if (failed_before_rename)
 		goto out_delete_net;
 
 	handler->netnsfd = lxc_preserve_ns(handler->pid, "net");
@@ -1381,14 +1395,8 @@ out_delete_net:
 	if (cgroups_connected)
 		cgroup_disconnect();
 
-	if (handler->clone_flags & CLONE_NEWNET) {
-		DEBUG("Tearing down network devices");
-		if (!lxc_delete_network_priv(handler))
-			DEBUG("Failed tearing down network devices");
-
-		if (!lxc_delete_network_unpriv(handler))
-			DEBUG("Failed tearing down network devices");
-	}
+	if (handler->clone_flags & CLONE_NEWNET)
+		lxc_delete_network(handler);
 
 out_abort:
 	lxc_abort(name, handler);
@@ -1499,17 +1507,7 @@ int __lxc_start(const char *name, struct lxc_handler *handler,
 	err =  lxc_error_set_and_log(handler->pid, status);
 
 out_fini:
-	DEBUG("Tearing down network devices");
-	if (!lxc_delete_network_priv(handler))
-		DEBUG("Failed tearing down network devices");
-
-	if (!lxc_delete_network_unpriv(handler))
-		DEBUG("Failed tearing down network devices");
-
-	if (handler->netnsfd >= 0) {
-		close(handler->netnsfd);
-		handler->netnsfd = -1;
-	}
+	lxc_delete_network(handler);
 
 out_detach_blockdev:
 	detach_block_device(handler->conf);
@@ -1596,8 +1594,8 @@ static void lxc_destroy_container_on_signal(struct lxc_handler *handler,
 	}
 
 	if (!handler->am_root)
-		ret = userns_exec_1(handler->conf, lxc_rmdir_onedev_wrapper,
-				    destroy, "lxc_rmdir_onedev_wrapper");
+		ret = userns_exec_full(handler->conf, lxc_rmdir_onedev_wrapper,
+				       destroy, "lxc_rmdir_onedev_wrapper");
 	else
 		ret = lxc_rmdir_onedev(destroy, NULL);
 
@@ -1615,9 +1613,12 @@ static int lxc_rmdir_onedev_wrapper(void *data)
 }
 
 static bool do_destroy_container(struct lxc_handler *handler) {
+	int ret;
+
 	if (!handler->am_root) {
-		if (userns_exec_1(handler->conf, storage_destroy_wrapper,
-				  handler->conf, "storage_destroy_wrapper") < 0)
+		ret = userns_exec_full(handler->conf, storage_destroy_wrapper,
+				       handler->conf, "storage_destroy_wrapper");
+		if (ret < 0)
 			return false;
 
 		return true;

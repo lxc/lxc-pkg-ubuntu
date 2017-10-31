@@ -92,8 +92,6 @@ int parse_idmaps(const char *idmap, char *type, unsigned long *nsid,
 
 	/* Move beyond \0. */
 	slide++;
-	/* align */
-	window = slide;
 	/* Validate that only whitespace follows. */
 	slide += strspn(slide, " \t\r");
 	/* If there was only one whitespace then we whiped it with our \0 above.
@@ -118,8 +116,6 @@ int parse_idmaps(const char *idmap, char *type, unsigned long *nsid,
 
 	/* Move beyond \0. */
 	slide++;
-	/* align */
-	window = slide;
 	/* Validate that only whitespace follows. */
 	slide += strspn(slide, " \t\r");
 	/* If there was only one whitespace then we whiped it with our \0 above.
@@ -183,15 +179,6 @@ struct lxc_netdev *lxc_network_add(struct lxc_list *networks, int idx, bool tail
 	memset(netdev, 0, sizeof(*netdev));
 	lxc_list_init(&netdev->ipv4);
 	lxc_list_init(&netdev->ipv6);
-	netdev->name[0] = '\0';
-	netdev->link[0] = '\0';
-	memset(&netdev->priv, 0, sizeof(netdev->priv));
-	/* I'm not completely sure if the memset takes care to zero the arrays
-	 * in the union as well. So let's make extra sure and set the first byte
-	 * to zero so that we don't have any surprises.
-	 */
-	netdev->priv.veth_attr.pair[0] = '\0';
-	netdev->priv.veth_attr.veth1[0] = '\0';
 
 	/* give network a unique index */
 	netdev->idx = idx;
@@ -685,7 +672,7 @@ int lxc_get_conf_int(struct lxc_conf *c, char *retv, int inlen, int v)
 	return snprintf(retv, inlen, "%d", v);
 }
 
-bool parse_limit_value(const char **value, unsigned long *res)
+bool parse_limit_value(const char **value, rlim_t *res)
 {
 	char *endptr = NULL;
 
@@ -696,7 +683,7 @@ bool parse_limit_value(const char **value, unsigned long *res)
 	}
 
 	errno = 0;
-	*res = strtoul(*value, &endptr, 10);
+	*res = strtoull(*value, &endptr, 10);
 	if (errno || !endptr)
 		return false;
 	*value = endptr;

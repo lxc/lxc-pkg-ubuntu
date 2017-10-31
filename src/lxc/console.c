@@ -174,6 +174,15 @@ static int lxc_console_cb_con(int fd, uint32_t events, void *data,
 	if (r <= 0) {
 		INFO("console client on fd %d has exited", fd);
 		lxc_mainloop_del_handler(descr, fd);
+		if (fd == console->peer) {
+			if (console->tty_state) {
+				lxc_console_sigwinch_fini(console->tty_state);
+				console->tty_state = NULL;
+			}
+			console->peer = -1;
+			close(fd);
+			return 0;
+		}
 		close(fd);
 		return 1;
 	}
@@ -218,11 +227,6 @@ extern int lxc_console_mainloop_add(struct lxc_epoll_descr *descr,
 				    struct lxc_conf *conf)
 {
 	struct lxc_console *console = &conf->console;
-
-	if (conf->is_execute) {
-		INFO("no console for lxc-execute.");
-		return 0;
-	}
 
 	if (!conf->rootfs.path) {
 		INFO("no rootfs, no console.");
@@ -471,7 +475,6 @@ static int lxc_console_peer_default(struct lxc_console *console)
 	console->tios = malloc(sizeof(*console->tios));
 	if (!console->tios) {
 		SYSERROR("failed to allocate memory");
-		ret = -ENOMEM;
 		goto on_error1;
 	}
 
@@ -483,7 +486,6 @@ static int lxc_console_peer_default(struct lxc_console *console)
 on_error2:
 	free(console->tios);
 	console->tios = NULL;
-	ret = -ENOTTY;
 
 on_error1:
 	close(console->peer);
@@ -518,11 +520,6 @@ int lxc_console_create(struct lxc_conf *conf)
 {
 	struct lxc_console *console = &conf->console;
 	int ret;
-
-	if (conf->is_execute) {
-		INFO("not allocating a console device for lxc-execute.");
-		return 0;
-	}
 
 	if (!conf->rootfs.path) {
 		INFO("container does not have a rootfs, console device will be shared with the host");
