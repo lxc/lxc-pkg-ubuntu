@@ -1671,7 +1671,7 @@ lxc (1.0.0~alpha2-0ubuntu6) trusty; urgency=low
 
 lxc (1.0.0~alpha2-0ubuntu5) trusty; urgency=low
 
-  [ Serge Hallyn] 
+  [ Serge Hallyn]
   * debian/rules and debian/lxc.postinst: set /var/lib/lxc and /var/cache/lxc
     to be perms 700.  That prevents unprivileged users from running setuid-root
     applications.  Install that way by default, and for any previous versions,
@@ -2923,7 +2923,7 @@ lxc (0.8.0~rc1-4ubuntu1) quantal; urgency=low
     - debian/patches/0065-fix-bindhome-relpath
     - debian/patches/0066-confile-typo
     - debian/patches/0067-templates-lxc-profile
-    - debian/patches/0068-fix-lxc-config-layout 
+    - debian/patches/0068-fix-lxc-config-layout
     - debian/patches/0069-ubuntu-cloud-fix
     - debian/patches/0070-templates-rmdir-dev-shm
     - debian/patches/0071-ubuntu-cloud-fix-image-extraction
@@ -3527,7 +3527,7 @@ lxc (0.7.5-3ubuntu38) precise; urgency=low
     - If cloudimg rootfs.tar.gz does not exist, create one from the base
       cloudimg tar.gz.  (LP: #955938)
     - Explicitly set ubuntu user's password.
-    - Switch from daily to released stream (per smoser's suggestion). 
+    - Switch from daily to released stream (per smoser's suggestion).
 
  -- Serge Hallyn <serge.hallyn@ubuntu.com>  Thu, 15 Mar 2012 17:57:10 -0500
 
@@ -3568,7 +3568,7 @@ lxc (0.7.5-3ubuntu35) precise; urgency=low
 lxc (0.7.5-3ubuntu34) precise; urgency=low
 
   [Benji York]
-  * lxc-start-ephemeral: create unique MAC for each new 
+  * lxc-start-ephemeral: create unique MAC for each new
     ephemeral container (LP: #949956)
 
  -- Scott Moser <smoser@ubuntu.com>  Thu, 08 Mar 2012 16:23:49 -0500
@@ -3860,8 +3860,8 @@ lxc (0.7.5-3ubuntu8) precise; urgency=low
   * debian/lxc.init: don't bail if there is no default route.
   * lxc-destroy (in 0022-fix-lxc-destroy-bugs.patch):
     - don't delete a running container
-    - handle case where rootfs is not specififed in config (or config is 
-      corrupt or has been deleted) 
+    - handle case where rootfs is not specififed in config (or config is
+      corrupt or has been deleted)
     - fix broken detection of lvm backing store
   * 0023-set-clone-children-earlier.patch: for cpuset in particular, the
     clone_children flag must be set at cgroup root.  Otherwise we'll fail
@@ -3968,7 +3968,7 @@ lxc (0.7.5-3ubuntu1) precise; urgency=low
   [ Stéphane Graber ]
   * Merge from unstable.  Remaining changes:
     - Remove debian/lxc.templates and debian/lxc.install as we kept our
-      default file and dropped debian's pre/post i:nst scripts. 
+      default file and dropped debian's pre/post i:nst scripts.
     - Add lxc-start-ephemeral and lxc-is-container to debian/local
 
  -- Stéphane Graber <stgraber@ubuntu.com>  Tue, 25 Oct 2011 16:13:32 -0400
@@ -4122,7 +4122,7 @@ lxc (0.7.5-0ubuntu1) oneiric; urgency=low
     - 0012-fix-lxc-netstat.patch
     - 0013-unshare-call-cgroup-create.patch
     - 0014-lxc-ps-accept-n.patch
-    - 0016-fix-lxc-ps-typeo.patch 
+    - 0016-fix-lxc-ps-typeo.patch
   * Remaining patches
     - 01-libdir.patch
     - 02-distclean.patch
@@ -4168,8 +4168,8 @@ lxc (0.7.4.2-3ubuntu6) oneiric; urgency=low
 
 lxc (0.7.4.2-3ubuntu5) oneiric; urgency=low
 
-  * debian/patches/0011-fix-lxc-ls.patch: 
-    debian/patches/0012-fix-lxc-netstat.patch: 
+  * debian/patches/0011-fix-lxc-ls.patch:
+    debian/patches/0012-fix-lxc-netstat.patch:
     The cgroup mounts created by cgroup-bin do not show up in /etc/mtab.
     lxc-ls and lxc-netstat, as lxc-ps before, assume that /etc/mtab is
     symlinked to /proc/mounts. (LP: #819319)

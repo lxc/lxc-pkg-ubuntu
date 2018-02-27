@@ -5,4 +5,4 @@ lxc source: ored-build-depends-on-obsolete-package build-depends: hardening-wrap
 lxc source: intra-source-package-circular-dependency liblxc1 lxc-common
 
 # Required for backports
-lxc source: ored-build-depends-on-obsolete-package build-depends: dh-systemd => use debhelper (>= 9.20160709)
+lxc source: package-uses-old-debhelper-compat-version 10
