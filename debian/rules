@@ -43,46 +43,46 @@ override_dh_install:
 
 	# copy apport hook
 	mkdir -p debian/tmp/usr/share/apport/package-hooks
-	cp debian/lxc1.apport debian/tmp/usr/share/apport/package-hooks/source_lxc.py
+	cp debian/lxc-utils.apport debian/tmp/usr/share/apport/package-hooks/source_lxc.py
 
 	# copy dnsmasq configuration
 	mkdir -p debian/tmp/etc/dnsmasq.d-available
-	cp debian/lxc1.dnsmasq debian/tmp/etc/dnsmasq.d-available/lxc
+	cp debian/lxc-utils.dnsmasq debian/tmp/etc/dnsmasq.d-available/lxc
 
 	# move the examples
-	mv debian/tmp/usr/share/doc/lxc debian/tmp/usr/share/doc/lxc-common
+	mv debian/tmp/usr/share/doc/lxc debian/tmp/usr/share/doc/liblxc-common
 
 	# move the bash completion profile
 	mkdir -p debian/tmp/usr/share/bash-completion/completions
 	if [ -f debian/tmp/etc/bash_completion.d/lxc ]; then \
 		mv debian/tmp/etc/bash_completion.d/lxc debian/tmp/usr/share/bash-completion/completions; \
 	fi
-	mv debian/tmp/usr/share/bash-completion/completions/lxc debian/tmp/usr/share/bash-completion/completions/lxc1
-	grep complete debian/tmp/usr/share/bash-completion/completions/lxc1 | sed "s/.* //g" | while read cmd; do \
-		ln -s lxc1 debian/tmp/usr/share/bash-completion/completions/$${cmd}; \
+	mv debian/tmp/usr/share/bash-completion/completions/lxc debian/tmp/usr/share/bash-completion/completions/lxc-utils
+	grep complete debian/tmp/usr/share/bash-completion/completions/lxc-utils | sed "s/.* //g" | while read cmd; do \
+		ln -s lxc-utils debian/tmp/usr/share/bash-completion/completions/$${cmd}; \
 	done
 
 	dh_install --fail-missing
 
 override_dh_fixperms:
 	dh_fixperms
-	chmod u+s debian/lxc-common/usr/lib/${DEB_HOST_MULTIARCH}/lxc/lxc-user-nic
+	chmod u+s debian/liblxc-common/usr/lib/${DEB_HOST_MULTIARCH}/lxc/lxc-user-nic
 
 override_dh_builddeb:
 	# prevent system users from using setuid-root binaries under /var/lib/lxc
-	chmod 700 debian/lxc1/var/lib/lxc
-	chmod 700 debian/lxc1/var/cache/lxc
+	chmod 700 debian/lxc-utils/var/lib/lxc
+	chmod 700 debian/lxc-utils/var/cache/lxc
 	dh_builddeb
 
 override_dh_installinit:
-ifeq (,$(findstring $(DEB_DISTRIBUTION), trusty xenial zesty))
+ifeq (,$(findstring $(DEB_DISTRIBUTION), trusty xenial))
 	# Disable upstart integration on artful+
-	cp debian/lxc1.maintscript.in debian/lxc1.maintscript
-	rm -f debian/lxc1/etc/init/*.conf
+	cp debian/lxc-utils.maintscript.in debian/lxc-utils.maintscript
+	rm -f debian/lxc-utils/etc/init/*.conf
 else
-	cp debian/lxc1/etc/init/lxc.conf debian/lxc1.upstart
-	cp debian/lxc1/etc/init/lxc-instance.conf debian/lxc1.lxc-instance.upstart
-	cp debian/lxc1/etc/init/lxc-net.conf debian/lxc1.lxc-net.upstart
+	cp debian/lxc-utils/etc/init/lxc.conf debian/lxc-utils.upstart
+	cp debian/lxc-utils/etc/init/lxc-instance.conf debian/lxc-utils.lxc-instance.upstart
+	cp debian/lxc-utils/etc/init/lxc-net.conf debian/lxc-utils.lxc-net.upstart
 	dh_installinit --no-start --no-restart-on-upgrade --name=lxc-instance
 endif
 	dh_installinit --no-restart-on-upgrade --name=lxc
