@@ -1,3 +1,32 @@
+lxc (2.1.1-0ubuntu2) bionic; urgency=medium
+
+  * Drop some packages ahead of LXC 3.0:
+    - lxc-tests (not needed for autopkgtests anymore)
+    - lua-lxc (unused and moved out of tree upstream)
+
+  * Rename packages:
+    - lxc1 to lxc-utils (lxc1 becomes transitional)
+    - lxc-common to liblxc-common
+    - lxc-dev to liblxc-dev (lxc-dev becomes transitional)
+
+  * Update debian/tests/exercise
+    - Make it build the test binaries
+
+  * Drop backward compatibility code for pre-16.04 Ubuntu
+
+  * Update to current standards
+    - Fix trailing whitespaces in debian/changelog
+    - Move debian/source.lintian-overrides to debian/lintian-overrides
+    - Update all URLs in debian/changelog to https
+    - Bump compat to 10
+    - Bump standards to 4.1.3
+    - Drop --with autotools_dev from debian/rules
+    - Bump debhelper dependency to 10 or higher
+    - Drop dh-autoreconf, autotools-dev and dh-systemd build-dependencies
+    - Drop un-needed lintian source overrides
+
+ -- Stéphane Graber <stgraber@ubuntu.com>  Mon, 26 Feb 2018 16:01:23 -0500
+
 lxc (2.1.1-0ubuntu1) bionic; urgency=medium
 
   * New upstream bugfix release (LXC 2.1.1)
