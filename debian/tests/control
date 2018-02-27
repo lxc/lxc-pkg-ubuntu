@@ -7,5 +7,6 @@ Depends: busybox-static,
          lxcfs,
          uidmap,
          xz-utils,
+         @builddeps@,
          @
 Restrictions: needs-root allow-stderr isolation-machine

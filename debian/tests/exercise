@@ -59,24 +59,35 @@ EOF
     chmod +x /usr/bin/dirmngr
 fi
 
+# Build the tests (don't install anything, we want the system lib and tools)
+MULTIARCH=$(gcc -print-multiarch)
+./configure --enable-tests --disable-rpath --disable-doc --with-distro=ubuntu \
+    --prefix=/usr --sysconfdir=/etc --localstatedir=/var \
+    --libdir=\${prefix}/lib/${MULTIARCH} \
+    --libexecdir=\${prefix}/lib/${MULTIARCH} \
+    --with-rootfs-path=\${prefix}/lib/${MULTIARCH}/lxc
+make
+cd src/tests/
+
 # The actual tests
 ## Default testsuite
-for testbin in /usr/bin/lxc-test-*; do
+for testbin in lxc-test-*; do
+    [ -x "$testbin" ] || continue
+    echo "${testbin}" | grep -qv "\.in$" || continue
     STRING="lxc-tests: $testbin"
-    [ ! -x "$testbin" ] && continue
 
     # Some tests can't be run standalone
-    [ "$testbin" = "/usr/bin/lxc-test-may-control" ] && continue
+    [ "$testbin" = "lxc-test-may-control" ] && continue
 
     # Skip some tests when running in a container
     if [ -f /run/container_type ] || (type systemd-detect-virt >/dev/null 2>&1 && systemd-detect-virt  --container >/dev/null 2>&1); then
-        [ "$testbin" = "/usr/bin/lxc-test-apparmor" ] && \
+        [ "$testbin" = "lxc-test-apparmor" ] && \
             ignore "$STRING" && continue
 
-        [ "$testbin" = "/usr/bin/lxc-test-device-add-remove" ] && \
+        [ "$testbin" = "lxc-test-device-add-remove" ] && \
             ignore "$STRING" && continue
 
-        [ "$testbin" = "/usr/bin/lxc-test-reboot" ] && \
+        [ "$testbin" = "lxc-test-reboot" ] && \
             ignore "$STRING" && continue
     fi
 
@@ -84,25 +95,25 @@ for testbin in /usr/bin/lxc-test-*; do
     if [ -f /proc/self/uid_map ] && \
             ! grep -q "4294967295$" /proc/self/uid_map; then
 
-        [ "$testbin" = "/usr/bin/lxc-test-unpriv" ] && \
+        [ "$testbin" = "lxc-test-unpriv" ] && \
             ignore "$STRING" && continue
 
-        [ "$testbin" = "/usr/bin/lxc-test-usernic" ] && \
+        [ "$testbin" = "lxc-test-usernic" ] && \
             ignore "$STRING" && continue
     fi
 
     # Skip some tests on old kernels
     if [ ! -f /proc/self/uid_map ] || [ ! -f /etc/subuid ] || \
        [ ! -f /etc/subgid ]; then
-        [ "$testbin" = "/usr/bin/lxc-test-unpriv" ] && \
+        [ "$testbin" = "lxc-test-unpriv" ] && \
             ignore "$STRING" && continue
 
-        [ "$testbin" = "/usr/bin/lxc-test-usernic" ] && \
+        [ "$testbin" = "lxc-test-usernic" ] && \
             ignore "$STRING" && continue
     fi
 
     OUT=$(mktemp)
-    $testbin >$OUT 2>&1 && pass "$STRING" || fail "$STRING" "$testbin" "$OUT"
+    ./$testbin >$OUT 2>&1 && pass "$STRING" || fail "$STRING" "$testbin" "$OUT"
     rm $OUT
 done
 

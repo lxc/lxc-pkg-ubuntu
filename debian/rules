@@ -80,10 +80,6 @@ override_dh_install:
 
 	dh_install --fail-missing
 
-	# move the tests
-	mkdir -p debian/lxc-tests/usr/bin
-	mv debian/lxc1/usr/bin/lxc-test-* debian/lxc-tests/usr/bin/
-
 override_dh_fixperms:
 	dh_fixperms
 	chmod u+s debian/lxc-common/usr/lib/${DEB_HOST_MULTIARCH}/lxc/lxc-user-nic
