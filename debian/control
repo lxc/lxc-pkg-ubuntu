@@ -59,7 +59,7 @@ Depends: adduser,
          liblxc1 (= ${binary:Version}),
          ${misc:Depends},
          ${shlibs:Depends}
-Recommends: libpam-cgfs, lxc-templates (= ${binary:Version})
+Recommends: libpam-cgfs, lxc-templates
 Suggests: btrfs-tools, lvm2, lxctl
 Replaces: lxc1 (<< 2.1.1-0ubuntu2~)
 Breaks: lxc1 (<< 2.1.1-0ubuntu2~)
