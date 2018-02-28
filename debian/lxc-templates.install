@@ -1,5 +1,0 @@
-usr/lib/*/lxc/hooks
-usr/share/lxc/config
-usr/share/lxc/hooks
-usr/share/lxc/lxc-patch.py
-usr/share/lxc/templates

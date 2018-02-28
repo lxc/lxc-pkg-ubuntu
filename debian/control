@@ -56,7 +56,7 @@ Depends: adduser,
          liblxc1 (= ${binary:Version}),
          ${misc:Depends},
          ${shlibs:Depends}
-Recommends: libpam-cgfs, lxc-templates (= ${binary:Version})
+Recommends: libpam-cgfs, lxc-templates
 Suggests: btrfs-tools, lvm2, lxctl
 Replaces: lxc1 (<< 2.1.1-0ubuntu2~)
 Breaks: lxc1 (<< 2.1.1-0ubuntu2~)
@@ -100,25 +100,6 @@ Description: Linux Containers userspace tools (development)
  kernel.
  .
  This package contains the development files.
-
-Package: lxc-templates
-Architecture: linux-any
-Depends: lxc-utils (= ${binary:Version}), ${misc:Depends}, ${shlibs:Depends}
-Recommends: busybox-static,
-            cloud-image-utils | cloud-utils,
-            debootstrap | cdebootstrap,
-            openssl,
-            rsync,
-            uuid-runtime,
-            xz-utils
-Suggests: qemu-user-static
-Description: Linux Containers userspace tools (templates)
- Containers are insulated areas inside a system, which have their own namespace
- for filesystem, network, PID, IPC, CPU and memory allocation and which can be
- created using the Control Group and Namespace features included in the Linux
- kernel.
- .
- This package contains the templates.
 
 Package: liblxc1
 Architecture: linux-any
