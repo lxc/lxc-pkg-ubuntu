@@ -1,3 +1,9 @@
+lxc (2.1.1-0ubuntu3) bionic; urgency=medium
+
+  * Drop lxc-utils dependency on python3-lxc.
+
+ -- Stéphane Graber <stgraber@ubuntu.com>  Wed, 28 Feb 2018 18:26:35 -0500
+
 lxc (2.1.1-0ubuntu2) bionic; urgency=medium
 
   * Drop some packages ahead of LXC 3.0:
