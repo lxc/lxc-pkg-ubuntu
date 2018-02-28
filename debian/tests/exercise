@@ -117,22 +117,6 @@ for testbin in lxc-test-*; do
     rm $OUT
 done
 
-## Python3 testsuite
-STRING="python3: API"
-if [ ! -f /usr/share/doc/python3-lxc/examples/api_test.py.gz ]; then
-    ignore "$STRING"
-else
-    OUT=$(mktemp)
-
-    PYTEST=$(mktemp)
-    cat /usr/share/doc/python3-lxc/examples/api_test.py.gz | gzip -d > $PYTEST
-    python3 $PYTEST >$OUT 2>&1 && pass "$STRING" || \
-        fail "$STRING" "python3" "$OUT"
-    rm $PYTEST
-
-    rm $OUT
-fi
-
 # Workaround for broken gpg2
 if [ -n "${http_proxy:-}" ] && [ -e /usr/bin/dirmngr ]; then
     rm /usr/bin/dirmngr
