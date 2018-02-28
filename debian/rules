@@ -12,26 +12,14 @@ DEB_HOST_MULTIARCH ?= $(shell dpkg-architecture -qDEB_HOST_MULTIARCH)
 PY3V := $(filter-out $(shell py3versions -vd),$(shell py3versions -vr))
 
 %:
-	dh ${@} --with autoreconf --with python3 --with systemd
+	dh ${@} --with autoreconf --with systemd
 
 override_dh_auto_configure:
 	dh_auto_configure -- --libdir=\$${prefix}/lib/$(DEB_HOST_MULTIARCH) \
 		--libexecdir=\$${prefix}/lib/$(DEB_HOST_MULTIARCH) \
 		--with-rootfs-path=\$${prefix}/lib/$(DEB_HOST_MULTIARCH)/lxc \
-		--enable-python $(shell dpkg-buildflags --export=configure) \
+		$(shell dpkg-buildflags --export=configure) \
 		--enable-doc --disable-rpath --with-distro=ubuntu
-
-override_dh_auto_build:
-	dh_auto_build
-	set -e; cd src/python-lxc && for pv in $(PY3V); do \
-	  CFLAGS="$$(python$$pv-config --includes) -I ../../src -L../../src/lxc/" python$$pv setup.py build; \
-	done
-
-override_dh_auto_install:
-	dh_auto_install
-	set -e; cd src/python-lxc && for pv in $(PY3V); do \
-	  CFLAGS="$$(python$$pv-config --includes) -I ../../src -L../../src/lxc/" python$$pv setup.py install --root=$(CURDIR)/debian/tmp --install-layout=deb; \
-	done
 
 override_dh_install:
 	if [ -x /usr/bin/dh_apparmor ]; then \
