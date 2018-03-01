@@ -17,12 +17,16 @@ override_dh_auto_configure:
 		--libexecdir=\$${prefix}/lib/$(DEB_HOST_MULTIARCH) \
 		--with-rootfs-path=\$${prefix}/lib/$(DEB_HOST_MULTIARCH)/lxc \
 		$(shell dpkg-buildflags --export=configure) \
-		--enable-doc --disable-rpath --with-distro=ubuntu
+		--enable-doc --disable-rpath --with-distro=ubuntu --enable-pam
 
 override_dh_install:
 	if [ -x /usr/bin/dh_apparmor ]; then \
 		dh_apparmor -p liblxc-common --profile-name=usr.bin.lxc-start; \
 	fi
+
+	# libpam-cgfs
+	mkdir -p debian/tmp/usr/share/pam-configs/
+	cp debian/libpam-cgfs.pam debian/tmp/usr/share/pam-configs/cgfs
 
 	# cleanup .la files
 	find debian/tmp/ -type f -name \*.la -delete

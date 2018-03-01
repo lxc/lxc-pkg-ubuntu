@@ -10,6 +10,7 @@ Build-Depends: bash-completion,
                libapparmor-dev (>= 2.8.96~2652-0ubuntu1),
                libcap-dev,
                libgnutls28-dev,
+               libpam0g-dev,
                libseccomp-dev,
                libselinux1-dev,
                linux-libc-dev,
@@ -118,3 +119,22 @@ Description: Linux Containers userspace tools (library)
  kernel.
  .
  This package contains the libraries.
+
+Package: libpam-cgfs
+Architecture: linux-any
+Pre-Depends: ${misc:Pre-Depends}
+Depends: ${shlibs:Depends},
+         ${misc:Depends},
+         libpam-runtime (>= 1.0.1-6),
+         ${lxcfs:Depends}
+Conflicts: libpam-cgm
+Description: PAM module for managing cgroups for LXC
+ Containers are insulated areas inside a system, which have their own namespace
+ for filesystem, network, PID, IPC, CPU and memory allocation and which can be
+ created using the Control Group and Namespace features included in the Linux
+ kernel.
+ .
+ This provides a Pluggable Authentication Module (PAM) to provide
+ logged-in users with a set of cgroups which they can administer.
+ This allows for instance unprivileged containers, and session
+ management using cgroup process tracking.
