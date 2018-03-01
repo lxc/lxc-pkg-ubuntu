@@ -29,8 +29,9 @@
 #include "confile.h"
 #include "confile_utils.h"
 #include "error.h"
-#include "log.h"
 #include "list.h"
+#include "log.h"
+#include "lxccontainer.h"
 #include "network.h"
 #include "parse.h"
 #include "utils.h"
@@ -61,8 +62,11 @@ int parse_idmaps(const char *idmap, char *type, unsigned long *nsid,
 		goto on_error;
 
 	/* Validate type. */
-	if (*slide != 'u' && *slide != 'g')
+	if (*slide != 'u' && *slide != 'g') {
+		ERROR("Invalid id mapping type: %c", *slide);
 		goto on_error;
+	}
+
 	/* Assign type. */
 	tmp_type = *slide;
 
@@ -76,19 +80,21 @@ int parse_idmaps(const char *idmap, char *type, unsigned long *nsid,
 	if (slide == window)
 		goto on_error;
 
-	/* Mark beginning of nsuid. */
+	/* Mark beginning of nsid. */
 	window = slide;
 	/* Validate that non-whitespace follows. */
 	slide += strcspn(slide, " \t\r");
 	/* There must be non-whitespace. */
 	if (slide == window || *slide == '\0')
 		goto on_error;
-	/* Mark end of nsuid. */
+	/* Mark end of nsid. */
 	*slide = '\0';
 
-	/* Parse nsuid. */
-	if (lxc_safe_ulong(window, &tmp_nsid) < 0)
+	/* Parse nsid. */
+	if (lxc_safe_ulong(window, &tmp_nsid) < 0) {
+		ERROR("Failed to parse nsid: %s", window);
 		goto on_error;
+	}
 
 	/* Move beyond \0. */
 	slide++;
@@ -107,12 +113,14 @@ int parse_idmaps(const char *idmap, char *type, unsigned long *nsid,
 	/* There must be non-whitespace. */
 	if (slide == window || *slide == '\0')
 		goto on_error;
-	/* Mark end of nsuid. */
+	/* Mark end of nsid. */
 	*slide = '\0';
 
 	/* Parse hostid. */
-	if (lxc_safe_ulong(window, &tmp_hostid) < 0)
+	if (lxc_safe_ulong(window, &tmp_hostid) < 0) {
+		ERROR("Failed to parse hostid: %s", window);
 		goto on_error;
+	}
 
 	/* Move beyond \0. */
 	slide++;
@@ -133,7 +141,7 @@ int parse_idmaps(const char *idmap, char *type, unsigned long *nsid,
 		goto on_error;
 
 	/* The range is the last valid entry we expect. So make sure that there
-	 * is not trailing garbage and if there is, error out.
+	 * is no trailing garbage and if there is, error out.
 	 */
 	if (*(slide + strspn(slide, " \t\r\n")) != '\0')
 		goto on_error;
@@ -141,8 +149,10 @@ int parse_idmaps(const char *idmap, char *type, unsigned long *nsid,
 	*slide = '\0';
 
 	/* Parse range. */
-	if (lxc_safe_ulong(window, &tmp_range) < 0)
+	if (lxc_safe_ulong(window, &tmp_range) < 0) {
+		ERROR("Failed to parse id mapping range: %s", window);
 		goto on_error;
+	}
 
 	*type = tmp_type;
 	*nsid = tmp_nsid;
@@ -544,61 +554,18 @@ int rand_complete_hwaddr(char *hwaddr)
 
 bool lxc_config_net_hwaddr(const char *line)
 {
-	char *copy, *p;
+	unsigned index;
+	char tmp[7];
 
 	if (strncmp(line, "lxc.net", 7) != 0)
 		return false;
+	if (strncmp(line, "lxc.net.hwaddr", 14) == 0)
+		return true;
 	if (strncmp(line, "lxc.network.hwaddr", 18) == 0)
 		return true;
+	if (sscanf(line, "lxc.net.%u.%6s", &index, tmp) == 2 || sscanf(line, "lxc.network.%u.%6s", &index, tmp) == 2)
+		return strncmp(tmp, "hwaddr", 6) == 0;
 
-	/* We have to dup the line, if line is something like
-	 * "lxc.net.[i].xxx = xxxxx ", we need to remove
-	 * '[i]' and compare its key with 'lxc.net.hwaddr'*/
-	copy = strdup(line);
-	if (!copy) {
-		SYSERROR("failed to allocate memory");
-		return false;
-	}
-	if (*(copy + 8) >= '0' && *(copy + 8) <= '9') {
-		p = strchr(copy + 8, '.');
-		if (!p) {
-			free(copy);
-			return false;
-		}
-		/* strlen("hwaddr") = 6 */
-		strncpy(copy + 8, p + 1, 6);
-		copy[8 + 6] = '\0';
-	}
-	if (strncmp(copy, "lxc.net.hwaddr", 14) == 0) {
-		free(copy);
-		return true;
-	}
-	free(copy);
-
-	/* We have to dup the line second time, if line is something like
-	 * "lxc.network.[i].xxx = xxxxx ", we need to remove
-	 * '[i]' and compare its key with 'lxc.network.hwaddr'*/
-	copy = strdup(line);
-	if (!copy) {
-		SYSERROR("failed to allocate memory");
-		return false;
-	}
-	if (*(copy + 12) >= '0' && *(copy + 12) <= '9') {
-		p = strchr(copy + 12, '.');
-		if (!p) {
-			free(copy);
-			return false;
-		}
-		/* strlen("hwaddr") = 6 */
-		strncpy(copy + 12, p + 1, 6);
-		copy[12 + 6] = '\0';
-	}
-	if (strncmp(copy, "lxc.network.hwaddr", 18) == 0) {
-		free(copy);
-		return true;
-	}
-
-	free(copy);
 	return false;
 }
 
@@ -672,6 +639,16 @@ int lxc_get_conf_int(struct lxc_conf *c, char *retv, int inlen, int v)
 	return snprintf(retv, inlen, "%d", v);
 }
 
+int lxc_get_conf_uint64(struct lxc_conf *c, char *retv, int inlen, uint64_t v)
+{
+	if (!retv)
+		inlen = 0;
+	else
+		memset(retv, 0, inlen);
+
+	return snprintf(retv, inlen, "%"PRIu64, v);
+}
+
 bool parse_limit_value(const char **value, rlim_t *res)
 {
 	char *endptr = NULL;
@@ -689,4 +666,78 @@ bool parse_limit_value(const char **value, rlim_t *res)
 	*value = endptr;
 
 	return true;
+}
+
+static int lxc_container_name_to_pid(const char *lxcname_or_pid,
+				     const char *lxcpath)
+{
+	int ret;
+	signed long int pid;
+	char *err = NULL;
+
+	pid = strtol(lxcname_or_pid, &err, 10);
+	if (*err != '\0' || pid < 1) {
+		struct lxc_container *c;
+
+		c = lxc_container_new(lxcname_or_pid, lxcpath);
+		if (!c) {
+			ERROR("\"%s\" is not a valid pid nor a container name",
+			      lxcname_or_pid);
+			return -1;
+		}
+
+		if (!c->may_control(c)) {
+			ERROR("Insufficient privileges to control container "
+			      "\"%s\"", c->name);
+			lxc_container_put(c);
+			return -1;
+		}
+
+		pid = c->init_pid(c);
+		if (pid < 1) {
+			ERROR("Container \"%s\" is not running", c->name);
+			lxc_container_put(c);
+			return -1;
+		}
+
+		lxc_container_put(c);
+	}
+
+	ret = kill(pid, 0);
+	if (ret < 0) {
+		ERROR("%s - Failed to send signal to pid %d", strerror(errno),
+		      (int)pid);
+		return -EPERM;
+	}
+
+	return pid;
+}
+
+int lxc_inherit_namespace(const char *lxcname_or_pid, const char *lxcpath,
+			  const char *namespace)
+{
+	int fd, pid;
+	char *dup, *lastslash;
+
+	lastslash = strrchr(lxcname_or_pid, '/');
+	if (lastslash) {
+		dup = strdup(lxcname_or_pid);
+		if (!dup)
+			return -ENOMEM;
+
+		dup[lastslash - lxcname_or_pid] = '\0';
+		pid = lxc_container_name_to_pid(lastslash + 1, dup);
+		free(dup);
+	} else {
+		pid = lxc_container_name_to_pid(lxcname_or_pid, lxcpath);
+	}
+
+	if (pid < 0)
+		return -EINVAL;
+
+	fd = lxc_preserve_ns(pid, namespace);
+	if (fd < 0)
+		return -EINVAL;
+
+	return fd;
 }

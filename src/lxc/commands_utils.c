@@ -33,6 +33,7 @@
 #include "commands_utils.h"
 #include "initutils.h"
 #include "log.h"
+#include "lxclock.h"
 #include "monitor.h"
 #include "state.h"
 #include "utils.h"
@@ -68,16 +69,14 @@ again:
 			goto again;
 		}
 
-		ERROR("failed to receive message: %s", strerror(errno));
+		ERROR("Failed to receive message: %s", strerror(errno));
 		return -1;
 	}
 
-	if (ret == 0) {
-		ERROR("length of message was 0");
+	if (ret < 0)
 		return -1;
-	}
 
-	TRACE("received state %s from state client %d",
+	TRACE("Received state %s from state client %d",
 	      lxc_state2str(msg.value), state_client_fd);
 
 	return msg.value;
@@ -163,7 +162,7 @@ int lxc_make_abstract_socket_name(char *path, int len, const char *lxcname,
 }
 
 int lxc_cmd_connect(const char *name, const char *lxcpath,
-		    const char *hashed_sock_name)
+		    const char *hashed_sock_name, const char *suffix)
 {
 	int ret, client_fd;
 	char path[sizeof(((struct sockaddr_un *)0)->sun_path)] = {0};
@@ -176,7 +175,7 @@ int lxc_cmd_connect(const char *name, const char *lxcpath,
 	 */
 	size_t len = sizeof(path) - 2;
 	ret = lxc_make_abstract_socket_name(offset, len, name, lxcpath,
-					    hashed_sock_name, "command");
+					    hashed_sock_name, suffix);
 	if (ret < 0)
 		return -1;
 
@@ -194,7 +193,8 @@ int lxc_cmd_connect(const char *name, const char *lxcpath,
 int lxc_add_state_client(int state_client_fd, struct lxc_handler *handler,
 			 lxc_state_t states[MAX_STATE])
 {
-	struct state_client *newclient;
+	int state;
+	struct lxc_state_client *newclient;
 	struct lxc_list *tmplist;
 
 	newclient = malloc(sizeof(*newclient));
@@ -211,10 +211,16 @@ int lxc_add_state_client(int state_client_fd, struct lxc_handler *handler,
 		return -ENOMEM;
 	}
 
-	lxc_list_add_elem(tmplist, newclient);
-	lxc_list_add_tail(&handler->state_clients, tmplist);
+	state = handler->state;
+	if (states[state] != 1) {
+		lxc_list_add_elem(tmplist, newclient);
+		lxc_list_add_tail(&handler->conf->state_clients, tmplist);
+	} else {
+		free(newclient);
+		free(tmplist);
+		return state;
+	}
 
 	TRACE("added state client %d to state client list", state_client_fd);
-
-	return 0;
+	return MAX_STATE;
 }

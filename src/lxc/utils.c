@@ -47,32 +47,8 @@
 #include "log.h"
 #include "lxclock.h"
 #include "namespace.h"
+#include "parse.h"
 #include "utils.h"
-
-#ifndef PR_SET_MM
-#define PR_SET_MM 35
-#endif
-
-#ifndef PR_SET_MM_MAP
-#define PR_SET_MM_MAP 14
-
-struct prctl_mm_map {
-        uint64_t   start_code;
-        uint64_t   end_code;
-        uint64_t   start_data;
-        uint64_t   end_data;
-        uint64_t   start_brk;
-        uint64_t   brk;
-        uint64_t   start_stack;
-        uint64_t   arg_start;
-        uint64_t   arg_end;
-        uint64_t   env_start;
-        uint64_t   env_end;
-        uint64_t   *auxv;
-        uint32_t   auxv_size;
-        uint32_t   exe_fd;
-};
-#endif
 
 #ifndef O_PATH
 #define O_PATH      010000000
@@ -89,7 +65,7 @@ lxc_log_define(lxc_utils, lxc);
  */
 extern bool btrfs_try_remove_subvol(const char *path);
 
-static int _recursive_rmdir(char *dirname, dev_t pdev,
+static int _recursive_rmdir(const char *dirname, dev_t pdev,
 			    const char *exclude, int level, bool onedev)
 {
 	struct dirent *direntp;
@@ -204,18 +180,18 @@ static bool is_native_overlayfs(const char *path)
 }
 
 /* returns 0 on success, -1 if there were any failures */
-extern int lxc_rmdir_onedev(char *path, const char *exclude)
+extern int lxc_rmdir_onedev(const char *path, const char *exclude)
 {
 	struct stat mystat;
 	bool onedev = true;
 
-	if (is_native_overlayfs(path)) {
+	if (is_native_overlayfs(path))
 		onedev = false;
-	}
 
 	if (lstat(path, &mystat) < 0) {
 		if (errno == ENOENT)
 			return 0;
+
 		ERROR("Failed to stat %s", path);
 		return -1;
 	}
@@ -269,8 +245,13 @@ char *get_rundir()
 {
 	char *rundir;
 	const char *homedir;
+	struct stat sb;
 
-	if (geteuid() == 0) {
+	if (stat(RUNTIME_PATH, &sb) < 0) {
+		return NULL;
+	}
+
+	if (geteuid() == sb.st_uid || getegid() == sb.st_gid) {
 		rundir = strdup(RUNTIME_PATH);
 		return rundir;
 	}
@@ -497,7 +478,7 @@ struct lxc_popen_FILE *lxc_popen(const char *command)
 			ret = fcntl(pipe_fds[1], F_SETFD, 0);
 		if (ret < 0) {
 			close(pipe_fds[1]);
-			exit(EXIT_FAILURE);
+			_exit(EXIT_FAILURE);
 		}
 
 		/* duplicate stderr */
@@ -507,19 +488,19 @@ struct lxc_popen_FILE *lxc_popen(const char *command)
 			ret = fcntl(pipe_fds[1], F_SETFD, 0);
 		close(pipe_fds[1]);
 		if (ret < 0)
-			exit(EXIT_FAILURE);
+			_exit(EXIT_FAILURE);
 
 		/* unblock all signals */
 		ret = sigfillset(&mask);
 		if (ret < 0)
-			exit(EXIT_FAILURE);
+			_exit(EXIT_FAILURE);
 
 		ret = sigprocmask(SIG_UNBLOCK, &mask, NULL);
 		if (ret < 0)
-			exit(EXIT_FAILURE);
+			_exit(EXIT_FAILURE);
 
 		execl("/bin/sh", "sh", "-c", command, (char *)NULL);
-		exit(127);
+		_exit(127);
 	}
 
 	close(pipe_fds[1]);
@@ -528,10 +509,14 @@ struct lxc_popen_FILE *lxc_popen(const char *command)
 	fp = malloc(sizeof(*fp));
 	if (!fp)
 		goto on_error;
+	memset(fp, 0, sizeof(*fp));
 
 	fp->child_pid = child_pid;
 	fp->pipe = pipe_fds[0];
 
+	/* From now on, closing fp->f will also close fp->pipe. So only ever
+	 * call fclose(fp->f).
+	 */
 	fp->f = fdopen(pipe_fds[0], "r");
 	if (!fp->f)
 		goto on_error;
@@ -539,14 +524,21 @@ struct lxc_popen_FILE *lxc_popen(const char *command)
 	return fp;
 
 on_error:
-	if (fp)
-		free(fp);
-
-	if (pipe_fds[0] >= 0)
+	/* We can only close pipe_fds[0] if fdopen() didn't succeed or wasn't
+	 * called yet. Otherwise the fd belongs to the file opened by fdopen()
+	 * since it isn't dup()ed.
+	 */
+	if (fp && !fp->f && pipe_fds[0] >= 0)
 		close(pipe_fds[0]);
 
 	if (pipe_fds[1] >= 0)
 		close(pipe_fds[1]);
+
+	if (fp && fp->f)
+		fclose(fp->f);
+
+	if (fp)
+		free(fp);
 
 	return NULL;
 }
@@ -563,7 +555,6 @@ int lxc_pclose(struct lxc_popen_FILE *fp)
 		wait_pid = waitpid(fp->child_pid, &wstatus, 0);
 	} while (wait_pid < 0 && errno == EINTR);
 
-	close(fp->pipe);
 	fclose(fp->f);
 	free(fp);
 
@@ -741,10 +732,12 @@ char *lxc_deslashify(const char *path)
 
 char *lxc_append_paths(const char *first, const char *second)
 {
-	size_t len = strlen(first) + strlen(second) + 1;
-	const char *pattern = "%s%s";
+	int ret;
+	size_t len;
 	char *result = NULL;
+	const char *pattern = "%s%s";
 
+	len = strlen(first) + strlen(second) + 1;
 	if (second[0] != '/') {
 		len += 1;
 		pattern = "%s/%s";
@@ -754,7 +747,12 @@ char *lxc_append_paths(const char *first, const char *second)
 	if (!result)
 		return NULL;
 
-	snprintf(result, len, pattern, first, second);
+	ret = snprintf(result, len, pattern, first, second);
+	if (ret < 0 || (size_t)ret >= len) {
+		free(result);
+		return NULL;
+	}
+
 	return result;
 }
 
@@ -814,6 +812,74 @@ error_out:
 	lxc_free_array((void **)result, free);
 	errno = saved_errno;
 	return NULL;
+}
+
+static bool complete_word(char ***result, char *start, char *end, size_t *cap, size_t *cnt)
+{
+	int r;
+
+	r = lxc_grow_array((void ***)result, cap, 2 + *cnt, 16);
+	if (r < 0)
+		return false;
+	(*result)[*cnt] = strndup(start, end - start);
+	if (!(*result)[*cnt])
+		return false;
+	(*cnt)++;
+
+	return true;
+}
+
+/*
+ * Given a a string 'one two "three four"', split into three words,
+ * one, two, and "three four"
+ */
+char **lxc_string_split_quoted(char *string)
+{
+	char *nextword = string, *p, state;
+	char **result = NULL;
+	size_t result_capacity = 0;
+	size_t result_count = 0;
+
+	if (!string || !*string)
+		return calloc(1, sizeof(char *));
+
+	// TODO I'm *not* handling escaped quote
+	state = ' ';
+	for (p = string; *p; p++) {
+		switch(state) {
+		case ' ':
+			if (isspace(*p))
+				continue;
+			else if (*p == '"' || *p == '\'') {
+				nextword = p;
+				state = *p;
+				continue;
+			}
+			nextword = p;
+			state = 'a';
+			continue;
+		case 'a':
+			if (isspace(*p)) {
+				complete_word(&result, nextword, p, &result_capacity, &result_count);
+				state = ' ';
+				continue;
+			}
+			continue;
+		case '"':
+		case '\'':
+			if (*p == state) {
+				complete_word(&result, nextword+1, p, &result_capacity, &result_count);
+				state = ' ';
+				continue;
+			}
+			continue;
+		}
+	}
+
+	if (state == 'a')
+		complete_word(&result, nextword, p, &result_capacity, &result_count);
+
+	return realloc(result, (result_count + 1) * sizeof(char *));
 }
 
 char **lxc_string_split_and_trim(const char *string, char _sep)
@@ -1371,110 +1437,6 @@ char *get_template_path(const char *t)
 }
 
 /*
- * Sets the process title to the specified title. Note that this may fail if
- * the kernel doesn't support PR_SET_MM_MAP (kernels <3.18).
- */
-int setproctitle(char *title)
-{
-	static char *proctitle = NULL;
-	char buf[2048], *tmp;
-	FILE *f;
-	int i, len, ret = 0;
-
-	/* We don't really need to know all of this stuff, but unfortunately
-	 * PR_SET_MM_MAP requires us to set it all at once, so we have to
-	 * figure it out anyway.
-	 */
-	unsigned long start_data, end_data, start_brk, start_code, end_code,
-			start_stack, arg_start, arg_end, env_start, env_end,
-			brk_val;
-	struct prctl_mm_map prctl_map;
-
-	f = fopen_cloexec("/proc/self/stat", "r");
-	if (!f) {
-		return -1;
-	}
-
-	tmp = fgets(buf, sizeof(buf), f);
-	fclose(f);
-	if (!tmp) {
-		return -1;
-	}
-
-	/* Skip the first 25 fields, column 26-28 are start_code, end_code,
-	 * and start_stack */
-	tmp = strchr(buf, ' ');
-	for (i = 0; i < 24; i++) {
-		if (!tmp)
-			return -1;
-		tmp = strchr(tmp+1, ' ');
-	}
-	if (!tmp)
-		return -1;
-
-	i = sscanf(tmp, "%lu %lu %lu", &start_code, &end_code, &start_stack);
-	if (i != 3)
-		return -1;
-
-	/* Skip the next 19 fields, column 45-51 are start_data to arg_end */
-	for (i = 0; i < 19; i++) {
-		if (!tmp)
-			return -1;
-		tmp = strchr(tmp+1, ' ');
-	}
-
-	if (!tmp)
-		return -1;
-
-	i = sscanf(tmp, "%lu %lu %lu %*u %*u %lu %lu",
-		&start_data,
-		&end_data,
-		&start_brk,
-		&env_start,
-		&env_end);
-	if (i != 5)
-		return -1;
-
-	/* Include the null byte here, because in the calculations below we
-	 * want to have room for it. */
-	len = strlen(title) + 1;
-
-	proctitle = realloc(proctitle, len);
-	if (!proctitle)
-		return -1;
-
-	arg_start = (unsigned long) proctitle;
-	arg_end = arg_start + len;
-
-	brk_val = syscall(__NR_brk, 0);
-
-	prctl_map = (struct prctl_mm_map) {
-		.start_code = start_code,
-		.end_code = end_code,
-		.start_stack = start_stack,
-		.start_data = start_data,
-		.end_data = end_data,
-		.start_brk = start_brk,
-		.brk = brk_val,
-		.arg_start = arg_start,
-		.arg_end = arg_end,
-		.env_start = env_start,
-		.env_end = env_end,
-		.auxv = NULL,
-		.auxv_size = 0,
-		.exe_fd = -1,
-	};
-
-	ret = prctl(PR_SET_MM, PR_SET_MM_MAP, (long) &prctl_map, sizeof(prctl_map), 0);
-	if (ret == 0)
-		strcpy((char*)arg_start, title);
-	else
-		INFO("setting cmdline failed - %s", strerror(errno));
-
-	return ret;
-}
-
-/*
  * @path:    a pathname where / replaced with '\0'.
  * @offsetp: pointer to int showing which path segment was last seen.
  *           Updated on return to reflect the next segment.
@@ -1704,7 +1666,7 @@ int safe_mount(const char *src, const char *dest, const char *fstype,
 	close(destfd);
 	if (ret < 0) {
 		errno = saved_errno;
-		SYSERROR("Failed to mount %s onto %s", src, dest);
+		SYSERROR("Failed to mount %s onto %s", src ? src : "(null)", dest);
 		return ret;
 	}
 
@@ -1754,7 +1716,7 @@ int lxc_mount_proc_if_needed(const char *rootfs)
 		return -1;
 	}
 
-	mypid = getpid();
+	mypid = lxc_raw_getpid();
 	INFO("I am %d, /proc/self points to \"%s\"", mypid, link);
 
 	if (lxc_safe_int(link, &link_to_pid) < 0)
@@ -1848,33 +1810,6 @@ int lxc_count_file_lines(const char *fn)
 	return n;
 }
 
-void *lxc_strmmap(void *addr, size_t length, int prot, int flags, int fd,
-		  off_t offset)
-{
-	void *tmp = NULL, *overlap = NULL;
-
-	/* We establish an anonymous mapping that is one byte larger than the
-	 * underlying file. The pages handed to us are zero filled. */
-	tmp = mmap(addr, length + 1, PROT_READ, MAP_PRIVATE | MAP_ANONYMOUS, -1, 0);
-	if (tmp == MAP_FAILED)
-		return tmp;
-
-	/* Now we establish a fixed-address mapping starting at the address we
-	 * received from our anonymous mapping and replace all bytes excluding
-	 * the additional \0-byte with the file. This allows us to use normal
-	 * string-handling functions. */
-	overlap = mmap(tmp, length, prot, MAP_FIXED | flags, fd, offset);
-	if (overlap == MAP_FAILED)
-		munmap(tmp, length + 1);
-
-	return overlap;
-}
-
-int lxc_strmunmap(void *addr, size_t length)
-{
-	return munmap(addr, length + 1);
-}
-
 /* Check whether a signal is blocked by a process. */
 /* /proc/pid-to-str/status\0 = (5 + 21 + 7 + 1) */
 #define __PROC_STATUS_LEN (5 + (LXC_NUMSTRLEN64) + 7 + 1)
@@ -1966,8 +1901,9 @@ int lxc_preserve_ns(const int pid, const char *ns)
 	ret = snprintf(path, __NS_PATH_LEN, "/proc/%d/ns%s%s", pid,
 		       !ns || strcmp(ns, "") == 0 ? "" : "/",
 		       !ns || strcmp(ns, "") == 0 ? "" : ns);
+	errno = EFBIG;
 	if (ret < 0 || (size_t)ret >= __NS_PATH_LEN)
-		return -1;
+		return -EFBIG;
 
 	return open(path, O_RDONLY | O_CLOEXEC);
 }
@@ -2052,6 +1988,26 @@ int lxc_safe_long(const char *numstr, long int *converted)
 	errno = 0;
 	sli = strtol(numstr, &err, 0);
 	if (errno == ERANGE && (sli == LONG_MAX || sli == LONG_MIN))
+		return -ERANGE;
+
+	if (errno != 0 && sli == 0)
+		return -EINVAL;
+
+	if (err == numstr || *err != '\0')
+		return -EINVAL;
+
+	*converted = sli;
+	return 0;
+}
+
+int lxc_safe_long_long(const char *numstr, long long int *converted)
+{
+	char *err = NULL;
+	signed long long int sli;
+
+	errno = 0;
+	sli = strtoll(numstr, &err, 0);
+	if (errno == ERANGE && (sli == LLONG_MAX || sli == LLONG_MIN))
 		return -ERANGE;
 
 	if (errno != 0 && sli == 0)
@@ -2262,7 +2218,7 @@ int run_command(char *buf, size_t buf_size, int (*child_fn)(void *), void *args)
 		return -1;
 	}
 
-	child = fork();
+	child = lxc_raw_clone(0);
 	if (child < 0) {
 		close(pipefd[0]);
 		close(pipefd[1]);
@@ -2286,13 +2242,13 @@ int run_command(char *buf, size_t buf_size, int (*child_fn)(void *), void *args)
 
 		if (ret < 0) {
 			SYSERROR("failed to duplicate std{err,out} file descriptor");
-			exit(EXIT_FAILURE);
+			_exit(EXIT_FAILURE);
 		}
 
 		/* Does not return. */
 		child_fn(args);
 		ERROR("failed to exec command");
-		exit(EXIT_FAILURE);
+		_exit(EXIT_FAILURE);
 	}
 
 	/* close the write-end of the pipe */
@@ -2327,6 +2283,33 @@ char *must_make_path(const char *first, ...)
 		dest = must_realloc(dest, full_len + 1);
 		if (cur[0] != '/')
 			strcat(dest, "/");
+		strcat(dest, cur);
+	}
+	va_end(args);
+
+	return dest;
+}
+
+char *must_append_path(char *first, ...)
+{
+	char *cur;
+	size_t full_len;
+	va_list args;
+	char *dest = first;
+
+	full_len = strlen(first);
+	va_start(args, first);
+	while ((cur = va_arg(args, char *)) != NULL) {
+		full_len += strlen(cur);
+
+		if (cur[0] != '/')
+			full_len++;
+
+		dest = must_realloc(dest, full_len + 1);
+
+		if (cur[0] != '/')
+			strcat(dest, "/");
+
 		strcat(dest, cur);
 	}
 	va_end(args);
@@ -2399,4 +2382,130 @@ bool lxc_nic_exists(char *nic)
 		return false;
 
 	return true;
+}
+
+int lxc_make_tmpfile(char *template, bool rm)
+{
+	int fd, ret;
+
+	fd = mkstemp(template);
+	if (fd < 0)
+		return -1;
+
+	if (!rm)
+		return fd;
+
+	ret = unlink(template);
+	if (ret < 0) {
+		close(fd);
+		return -1;
+	}
+
+	return fd;
+}
+
+int parse_byte_size_string(const char *s, int64_t *converted)
+{
+	int ret, suffix_len;
+	long long int conv;
+	int64_t mltpl, overflow;
+	char *end;
+	char dup[LXC_NUMSTRLEN64 + 2];
+	char suffix[3] = {0};
+
+	if (!s || !strcmp(s, ""))
+		return -EINVAL;
+
+	end = stpncpy(dup, s, sizeof(dup));
+	if (*end != '\0')
+		return -EINVAL;
+
+	if (isdigit(*(end - 1)))
+		suffix_len = 0;
+	else if (isalpha(*(end - 1)))
+		suffix_len = 1;
+	else
+		return -EINVAL;
+
+	if (suffix_len > 0 && (end - 2) == dup && !isdigit(*(end - 2)))
+		return -EINVAL;
+
+	if (suffix_len > 0 && isalpha(*(end - 2)))
+		suffix_len++;
+
+	if (suffix_len > 0) {
+		memcpy(suffix, end - suffix_len, suffix_len);
+		*(suffix + suffix_len) = '\0';
+		*(end - suffix_len) = '\0';
+	}
+	dup[lxc_char_right_gc(dup, strlen(dup))] = '\0';
+
+	ret = lxc_safe_long_long(dup, &conv);
+	if (ret < 0)
+		return -ret;
+
+	if (suffix_len != 2) {
+		*converted = conv;
+		return 0;
+	}
+
+	if (!strcmp(suffix, "kB"))
+		mltpl = 1024;
+	else if (!strcmp(suffix, "MB"))
+		mltpl = 1024 * 1024;
+	else if (!strcmp(suffix, "GB"))
+		mltpl = 1024 * 1024 * 1024;
+	else
+		return -EINVAL;
+
+	overflow = conv * mltpl;
+	if (conv != 0 && (overflow / conv) != mltpl)
+		return -ERANGE;
+
+	*converted = overflow;
+	return 0;
+}
+
+uint64_t lxc_find_next_power2(uint64_t n)
+{
+	/* 0 is not valid input. We return 0 to the caller since 0 is not a
+	 * valid power of two.
+	 */
+	if (n == 0)
+		return 0;
+
+	if (!(n & (n - 1)))
+		return n;
+
+	while (n & (n - 1))
+		n = n & (n - 1);
+
+	n = n << 1;
+	return n;
+}
+
+int lxc_set_death_signal(int signal)
+{
+	int ret;
+	pid_t ppid;
+
+	ret = prctl(PR_SET_PDEATHSIG, signal, 0, 0, 0);
+
+	/* Check whether we have been orphaned. */
+	ppid = (pid_t)syscall(SYS_getppid);
+	if (ppid == 1) {
+		pid_t self;
+
+		self = lxc_raw_getpid();
+		ret = kill(self, SIGKILL);
+		if (ret < 0)
+			return -1;
+	}
+
+	if (ret < 0) {
+		SYSERROR("Failed to set PR_SET_PDEATHSIG to %d", signal);
+		return -1;
+	}
+
+	return 0;
 }

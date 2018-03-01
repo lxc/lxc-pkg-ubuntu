@@ -72,10 +72,11 @@ static void lock_mutex(pthread_mutex_t *l)
 {
 	int ret;
 
-	if ((ret = pthread_mutex_lock(l)) != 0) {
-		fprintf(stderr, "pthread_mutex_lock returned:%d %s\n", ret, strerror(ret));
+	ret = pthread_mutex_lock(l);
+	if (ret != 0) {
+		fprintf(stderr, "%s - Failed acquire mutex", strerror(ret));
 		dump_stacktrace();
-		exit(EXIT_FAILURE);
+		_exit(EXIT_FAILURE);
 	}
 }
 
@@ -83,10 +84,11 @@ static void unlock_mutex(pthread_mutex_t *l)
 {
 	int ret;
 
-	if ((ret = pthread_mutex_unlock(l)) != 0) {
-		fprintf(stderr, "pthread_mutex_unlock returned:%d %s\n", ret, strerror(ret));
+	ret = pthread_mutex_unlock(l);
+	if (ret != 0) {
+		fprintf(stderr, "%s - Failed to release mutex", strerror(ret));
 		dump_stacktrace();
-		exit(EXIT_FAILURE);
+		_exit(EXIT_FAILURE);
 	}
 }
 
@@ -315,23 +317,6 @@ void process_unlock(void)
 {
 	unlock_mutex(&thread_mutex);
 }
-
-/* One thread can do fork() while another one is holding a mutex.
- * There is only one thread in child just after the fork(), so no one will ever release that mutex.
- * We setup a "child" fork handler to unlock the mutex just after the fork().
- * For several mutex types, unlocking an unlocked mutex can lead to undefined behavior.
- * One way to deal with it is to setup "prepare" fork handler
- * to lock the mutex before fork() and both "parent" and "child" fork handlers
- * to unlock the mutex.
- * This forbids doing fork() while explicitly holding the lock.
- */
-#ifdef HAVE_PTHREAD_ATFORK
-__attribute__((constructor))
-static void process_lock_setup_atfork(void)
-{
-	pthread_atfork(process_lock, process_unlock, process_unlock);
-}
-#endif
 
 int container_mem_lock(struct lxc_container *c)
 {

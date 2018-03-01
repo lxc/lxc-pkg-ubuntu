@@ -337,15 +337,25 @@ by KATOH Yasufumi <karma at jazz.email.ne.jp>
       <para>
         <!--
         Sets the command to use as the init system for the containers.
-
-        This option is ignored when using lxc-execute.
-
-        Defaults to: /sbin/init
           -->
         コンテナの init として使うコマンドを設定します。
-        このオプションは lxc-execute では無視されます。
-        デフォルトは /sbin/init です。
       </para>
+      <variablelist>
+        <varlistentry>
+          <term>
+            <option>lxc.execute.cmd</option>
+          </term>
+          <listitem>
+            <para>
+              <!--
+              Absolute path from container rootfs to the binary to run by default.  This
+              mostly makes sense for lxc-execute.
+              -->
+              デフォルトで実行するバイナリのコンテナの root からの絶対パスを指定します。これは <command>lxc-execute</command> のための設定です。
+            </para>
+          </listitem>
+        </varlistentry>
+      </variablelist>
       <variablelist>
         <varlistentry>
           <term>
@@ -354,9 +364,36 @@ by KATOH Yasufumi <karma at jazz.email.ne.jp>
           <listitem>
             <para>
               <!--
-                  Absolute path from container rootfs to the binary to use as init.
+                  Absolute path from container rootfs to the binary to use as init. This
+                  mostly makes sense for lxc-start. Default is /sbin/init.
                 -->
-              init として使うバイナリの、コンテナの rootfs からの絶対パスを指定します。
+              init として使うバイナリの、コンテナの root からの絶対パスを指定します。これは <command>lxc-start</command> のための設定です。デフォルトは <command>/sbin/init</command> です。
+            </para>
+          </listitem>
+        </varlistentry>
+      </variablelist>
+    </refsect2>
+
+    <refsect2>
+      <title>Init のワーキングディレクトリ <!-- Init working directory --></title>
+      <para>
+        <!--
+        Sets the absolute path inside the container as the working directory for the containers.
+        LXC will switch to this directory before executing init.
+          -->
+        コンテナのワーキングディレクトリとして、コンテナ内の絶対パスを設定します。LXC は init を実行する前に、このディレクトリに移動します。
+      </para>
+      <variablelist>
+        <varlistentry>
+          <term>
+            <option>lxc.init.cwd</option>
+          </term>
+          <listitem>
+            <para>
+              <!--
+              Absolute path inside the container to use as the working directory.
+                -->
+              ワーキングディレクトリとして使うコンテナ内の絶対パス
             </para>
           </listitem>
         </varlistentry>
@@ -403,6 +440,37 @@ by KATOH Yasufumi <karma at jazz.email.ne.jp>
                 -->
               init が使う GID です。
             </para>
+          </listitem>
+        </varlistentry>
+      </variablelist>
+    </refsect2>
+
+    <refsect2>
+      <title>Proc</title>
+      <para>
+        <!--
+        Configure proc filesystem for the container.
+          -->
+        コンテナ内の proc ファイルシステムで設定できるパラメータを設定します。
+      </para>
+      <variablelist>
+        <varlistentry>
+          <term>
+            <option>lxc.proc.[proc file name]</option>
+          </term>
+          <listitem>
+            <para>
+              <!--
+              Specify the proc file name to be set. The file name available
+              are those listed under /proc/PID/.
+              Example:
+                -->
+              設定したい proc ファイルシステムのファイル名を指定します。指定できるファイル名は /proc/PID/ 以下に存在するものです。
+              例:
+            </para>
+            <programlisting>
+              lxc.proc.oom_score_adj = 10
+            </programlisting>
           </listitem>
         </varlistentry>
       </variablelist>
@@ -789,21 +857,67 @@ by KATOH Yasufumi <karma at jazz.email.ne.jp>
           <listitem>
             <para>
               <!--
-              add a configuration option to specify a script to be
+              Add a configuration option to specify a script to be
               executed after creating and configuring the network used
-              from the host side. The following arguments are passed
-              to the script: container name and config section name
-              (net) Additional arguments depend on the config section
-              employing a script hook; the following are used by the
-              network system: execution context (up), network type
-              (empty/veth/macvlan/phys), Depending on the network
-              type, other arguments may be passed:
-              veth/macvlan/phys. And finally (host-sided) device name.
-              -->
-              ホスト側から使われる、ネットワークの作成と設定が済んだ後に実行するスクリプトを指定します。以下の引数がスクリプトに渡されます: コンテナ名、設定セクション名(net)。
-              その後の引数はスクリプトのフックで使われる設定セクションに依存します。以下がネットワークシステムによって使われます: 実行コンテキスト (up)、ネットワークのタイプ (empty/veth/macvlan/phys)
-              ネットワークのタイプによっては、更に別の引数が渡されるかもしれません: veth/macvlan/phys の場合 (ホスト側の) デバイス名
+              from the host side.
+                -->
+              ホスト側から使われる、ネットワークの作成と設定が済んだ後に実行するスクリプトを指定します。
             </para>
+
+            <para>
+              <!--
+              In addition to the information available to all hooks. The
+              following information is provided to the script:
+                -->
+              すべてのフックで追加の情報が使えます。以下の情報がスクリプトに提供されます:
+              <itemizedlist>
+                <listitem>
+                 <para>
+                 LXC_HOOK_TYPE: フックタイプ。'up' か 'down' のいずれかです <!-- the hook type. This is either 'up' or 'down'. -->
+                  </para>
+                </listitem>
+
+                <listitem>
+                 <para>
+                 LXC_HOOK_SECTION: セクションタイプとして 'net' が設定されます<!-- the section type 'net'. -->
+                  </para>
+                </listitem>
+
+                <listitem>
+                 <para>
+                 LXC_NET_TYPE: ネットワークタイプ。有効なネットワークタイプのうちのひとつです (例: 'macvlan', 'veth') <!-- the network type. This is one of the valid
+                 network types listed here (e.g. 'macvlan', 'veth'). -->
+                  </para>
+                </listitem>
+
+                <listitem>
+                 <para>
+                 LXC_NET_PARENT: ホスト上の親デバイス名。これはネットワークタイプが 'macvlan'、'veth'、'phys' のどれかのときだけ設定されます <!-- the parent device on the host. This is only
+                 set for network types 'mavclan', 'veth', 'phys'. -->
+                  </para>
+                </listitem>
+
+                <listitem>
+                 <para>
+                   LXC_NET_PEER: ホスト上のピアデバイス名。これはネットワークタイプが 'veth' の場合のみ設定されます。この情報は <option>lxc.hook.version</option> が 1 に設定されている場合のみ設定されます
+                   <!-- the name of the peer device on the host. This is
+                 only set for 'veth' network types. Note that this information
+                 is only available when <option>lxc.hook.version</option> is set
+                 to 1. -->
+                  </para>
+                </listitem>
+              </itemizedlist>
+
+              <!--
+              Whether this information is provided in the form of environment
+              variables or as arguments to the script depends on the value of
+              <option>lxc.hook.version</option>. If set to 1 then information is
+              provided in the form of environment variables. If set to 0
+              information is provided as arguments to the script.
+              -->
+              この情報が環境変数の形で提供されるか、スクリプトへの引数の形で提供されるかは <option>lxc.hook.version</option> の値によって決まります。もし <option>lxc.hook.version</option> が 1 に設定されている場合は、環境変数の形で提供されます。もし 0 が設定されている場合は、スクリプトへの引数として提供されます。
+            </para>
+
             <para>
               <!--
               Standard output from the script is logged at debug level.
@@ -822,21 +936,67 @@ by KATOH Yasufumi <karma at jazz.email.ne.jp>
           <listitem>
             <para>
               <!--
-              add a configuration option to specify a script to be
+              Add a configuration option to specify a script to be
               executed before destroying the network used from the
-              host side. The following arguments are passed to the
-              script: container name and config section name (net)
-              Additional arguments depend on the config section
-              employing a script hook; the following are used by the
-              network system: execution context (down), network type
-              (empty/veth/macvlan/phys), Depending on the network
-              type, other arguments may be passed:
-              veth/macvlan/phys. And finally (host-sided) device name.
-              -->
-              ホスト側から使われる、ネットワークを破壊する前に実行するスクリプトを指定します。以下の引数がスクリプトに渡されます: コンテナ名、設定セクション名(net)。
-              その後の引数はスクリプトのフックで使われる設定セクションに依存します。以下がネットワークシステムによって使われます: 実行コンテキスト (up)、ネットワークのタイプ (empty/veth/macvlan/phys)。
-              ネットワークのタイプによっては、更に別の引数が渡されるかもしれません: veth/macvlan/phys。そして最後に (ホスト側の) デバイス名が渡されます。
+              host side.
+                -->
+              ホスト側から使われる、ネットワークを破壊する前に実行するスクリプトを指定します。
             </para>
+
+            <para>
+              <!--
+              In addition to the information available to all hooks. The
+              following information is provided to the script:
+                -->
+              すべてのフックで追加の情報が使えます。以下の情報がスクリプトに提供されます:
+              <itemizedlist>
+                <listitem>
+                 <para>
+                 LXC_HOOK_TYPE: フックタイプ。'up' か 'down' のいずれかです <!-- the hook type. This is either 'up' or 'down'. -->
+                  </para>
+                </listitem>
+
+                <listitem>
+                 <para>
+                 LXC_HOOK_SECTION: セクションタイプとして 'net' が設定されます<!-- the section type 'net'. -->
+                  </para>
+                </listitem>
+
+                <listitem>
+                 <para>
+                 LXC_NET_TYPE: ネットワークタイプ。有効なネットワークタイプのうちのひとつです (例: 'macvlan', 'veth') <!-- the network type. This is one of the valid
+                 network types listed here (e.g. 'macvlan', 'veth'). -->
+                  </para>
+                </listitem>
+
+                <listitem>
+                 <para>
+                 LXC_NET_PARENT: ホスト上の親デバイス名。これはネットワークタイプが 'macvlan'、'veth'、'phys' のどれかのときだけ設定されます <!-- the parent device on the host. This is only
+                 set for network types 'mavclan', 'veth', 'phys'. -->
+                  </para>
+                </listitem>
+
+                <listitem>
+                 <para>
+                   LXC_NET_PEER: ホスト上のピアデバイス名。これはネットワークタイプが 'veth' の場合のみ設定されます。この情報は <option>lxc.hook.version</option> が 1 に設定されている場合のみ設定されます
+                   <!-- the name of the peer device on the host. This is
+                 only set for 'veth' network types. Note that this information
+                 is only available when <option>lxc.hook.version</option> is set
+                 to 1. -->
+                  </para>
+                </listitem>
+              </itemizedlist>
+
+              <!--
+              Whether this information is provided in the form of environment
+              variables or as arguments to the script depends on the value of
+              <option>lxc.hook.version</option>. If set to 1 then information is
+              provided in the form of environment variables. If set to 0
+              information is provided as arguments to the script.
+              -->
+              この情報が環境変数の形で提供されるか、スクリプトへの引数の形で提供されるかは <option>lxc.hook.version</option> の値によって決まります。もし <option>lxc.hook.version</option> が 1 に設定されている場合は、環境変数の形で提供されます。もし 0 が設定されている場合は、スクリプトへの引数として提供されます。
+            </para>
+
             <para>
               <!--
               Standard output from the script is logged at debug level.
@@ -892,6 +1052,66 @@ by KATOH Yasufumi <karma at jazz.email.ne.jp>
         コンテナでルートファイルシステムを持つように設定されており、inittab ファイルでコンソールの使用が設定されている場合、このコンソールの出力がどこになされるのかを指定したいと思うでしょう。
       </para>
       <variablelist>
+
+        <varlistentry>
+          <term>
+            <option>lxc.console.buffer.size</option>
+          </term>
+          <listitem>
+            <para>
+              <!--
+            Setting this option instructs liblxc to allocate an in-memory
+            ringbuffer. The container's console output will be written to the
+            ringbuffer. Note that ringbuffer must be at least as big as a
+            standard page size. When passed a value smaller than a single page
+            size liblxc will allocate a ringbuffer of a single page size. A page
+            size is usually 4kB.
+                -->
+              このオプションを設定すると、liblxc はインメモリのリングバッファを割り当てます。コンテナのコンソールはリングバッファに出力されます。リングバッファは少なくとも標準ページサイズの大きさでなければなりません。ページサイズより小さい値を与えた場合は、liblxc  はページサイズのリングバッファを割り当てます。ページサイズは通常は 4kB です。
+
+              <!--
+            The keyword 'auto' will cause liblxc to allocate a ringbuffer of
+            128kB.
+                -->
+              'auto' を指定すると、liblxc は 128kB のリングバッファを割り当てます。
+
+              <!--
+            When manually specifying a size for the ringbuffer the value should
+            be a power of 2 when converted to bytes. Valid size prefixes are
+            'kB', 'MB', 'GB'. (Note that all conversions are based on multiples
+            of 1024. That means 'kb' == 'KiB', 'MB' == 'MiB', 'GB' == 'GiB'.)
+                -->
+              リングバッファサイズを数値指定する場合、値がバイトに変換されるときに 2 の累乗になります。サイズ接頭辞付きの単位として 'kB'、'MB'、'GB' が使えます。(この場合の変換は 1024 の倍数に基づいています。つまり 'kB' == 'KiB'、'MB' == 'MiB'、'GB' == 'GiB' という意味です。)
+            </para>
+          </listitem>
+        </varlistentry>
+
+        <varlistentry>
+          <term>
+            <option>lxc.console.buffer.logfile</option>
+          </term>
+          <listitem>
+            <para>
+              <!--
+            Setting this option instructs liblxc to write the in-memory
+            ringbuffer to disk. For performance reasons liblxc will only write
+            the in-memory ringbuffer to disk when requested. Note that the this
+            option is only used by liblxc when
+            <option>lxc.console.buffer.size</option> is set.
+            -->
+              このオプションを設定すると、liblxc はインメモリのリングバッファをディスクに書き込みます。パフォーマンスを考慮して、liblxc は指定をした場合に限り、インメモリのリングバッファをディスクに書き込みます。liblxc はこのオプションを、<option>lxc.console.buffer.size</option> が指定された場合のみ使います。
+
+              <!--
+            By default liblxc will dump the contents of the in-memory ringbuffer
+            to disk when the container terminates. This allows users to diagnose
+            boot failures when the container crashed before an API request to
+            retrieve the in-memory ringbuffer could be sent or handled.
+                -->
+              デフォルトでは liblxc は、コンテナが終了した際にインメモリのリングバッファの内容をディスクに書き出します。これによりユーザは、インメモリのリングバッファを取得する API リクエストが送られたり処理される前に、コンテナがクラッシュした場合、ブートの失敗を調査できます。
+            </para>
+          </listitem>
+        </varlistentry>
+
         <varlistentry>
           <term>
             <option>lxc.console.logfile</option>
@@ -899,13 +1119,45 @@ by KATOH Yasufumi <karma at jazz.email.ne.jp>
           <listitem>
             <para>
               <!--
-              Specify a path to a file where the console output will
-              be written.
+              Specify a path to a file where the console output will be written.
+              Note that in contrast to the on-disk ringbuffer logfile this file
+              will keep growing potentially filling up the users disks if not
+              rotated and deleted. This problem can also be avoided by using the
+              in-memory ringbuffer options
+              <option>lxc.console.buffer.size</option> and
+              <option>lxc.console.buffer.logfile</option>.
               -->
-              コンソール出力を書き込むファイルのパスを指定します。
+              コンソール出力を書き込むファイルのパスを指定します。ディスクに保存されるリングバッファログと異なり、このファイルはサイズが大きくなり続けるので、ファイルがローテートや削除されない限りは、ユーザのディスクをいっぱいにしてしまう可能性があります。この問題は、インメモリのリングバッファオプションである、<option>lxc.console.buffer.size</option> と <option>lxc.console.buffer.logfile</option> を使うことでも回避できます。
             </para>
           </listitem>
         </varlistentry>
+
+        <varlistentry>
+          <term>
+            <option>lxc.console.rotate</option>
+          </term>
+          <listitem>
+            <para>
+              <!--
+              Whether to rotate the console logfile specified in
+              <option>lxc.console.logfile</option>. Users can send an API
+              request to rotate the logfile. Note that the old logfile will have
+              the same name as the original with the suffix ".1" appended.
+              -->
+              <option>lxc.console.logfile</option> で指定したコンソールログファイルをローテートするかどうかを指定します。ユーザはログファイルをローテートするように API リクエストを送ることができます。古いログファイルは、元のファイル名と同じ名前のファイルに ".1" というサフィックスが付け加わります。
+
+              <!--
+              Users wishing to prevent the console log file from filling the
+              disk should rotate the logfile and delete it if unneeded. This
+              problem can also be avoided by using the in-memory ringbuffer
+              options <option>lxc.console.buffer.size</option> and
+              <option>lxc.console.buffer.logfile</option>.
+              -->
+              ユーザがコンソールログでディスクがいっぱいになるのを防ぐには、ログファイルをローテートし、不要なログファイルを削除してください。この問題はインメモリのリングバッファオプションである <option>lxc.console.buffer.size</option> と <option>lxc.console.buffer.logfile</option> を使うことでも防げます。
+            </para>
+          </listitem>
+        </varlistentry>
+
         <varlistentry>
           <term>
             <option>lxc.console.path</option>
@@ -1140,21 +1392,35 @@ by KATOH Yasufumi <karma at jazz.email.ne.jp>
           <listitem>
             <para>
               <!--
-              specify a mount point corresponding to a line in the
+              Specify a mount point corresponding to a line in the
               fstab format.
               -->
               fstab フォーマットの一行と同じフォーマットのマウントポイントの指定をします。
 
               <!--
-              Moreover lxc add two options to mount.
+              Moreover lxc supports mount propagation, such as rslave or
+              rprivate, and adds three additional mount options.
               <option>optional</option> don't fail if mount does not work.
               <option>create=dir</option> or <option>create=file</option>
               to create dir (or file) when the point will be mounted.
+              <option>relative</option> source path is taken to be relative to
+              the mounted container root. For instance,
               -->
-              fstab フォーマットに加えて、LXC ではマウントに対して独自の 2 つのオプションが使えます。
+              加えて、LXC では rslave や rprivate といったマウント・プロパゲーションオプションと、独自の 3 つのマウントオプションが使えます。
               <option>optional</option> は、マウントが失敗しても失敗を返さずに無視します。
               <option>create=dir</option> と <option>create=file</option> は、マウントポイントをマウントする際にディレクトリもしくはファイルを作成します。
+              <option>relative</option> を指定すると、マウントされたコンテナルートからの相対パスとして取得されます。
             </para>
+            <screen>
+              dev/null proc/kcore none bind,relative 0 0
+            </screen>
+            <para>
+              <!--
+              Will expand dev/null to ${<option>LXC_ROOTFS_MOUNT</option>}/dev/null,
+              and mount it to proc/kcore inside the container.
+                -->
+              は dev/null を ${<option>LXC_ROOTFS_MOUNT</option>}/dev/null と展開し、コンテナ内の proc/kcore にマウントします。
+             </para>
           </listitem>
         </varlistentry>
 
@@ -1174,138 +1440,160 @@ by KATOH Yasufumi <karma at jazz.email.ne.jp>
             </para>
             <itemizedlist>
               <listitem>
-                <!--
                 <para>
                   <option>proc:mixed</option> (or <option>proc</option>):
+                <!--
                   mount <filename>/proc</filename> as read-write, but
                   remount <filename>/proc/sys</filename> and
                   <filename>/proc/sysrq-trigger</filename> read-only
                   for security / container isolation purposes.
-                </para>
                 -->
-                <para>
-                  <option>proc:mixed</option> (or <option>proc</option>):
                   <filename>/proc</filename> を読み書き可能でマウントします。
                   ただし、<filename>/proc/sys</filename> と <filename>/proc/sysrq-trigger</filename> は、セキュリティとコンテナの隔離の目的でリードオンリーで再マウントされます。
                 </para>
               </listitem>
               <listitem>
-                <!--
-                <para>
-                  <option>proc:rw</option>: mount
-                  <filename>/proc</filename> as read-write
-                </para>
-                -->
                 <para>
                   <option>proc:rw</option>:
+                <!--
+                  <filename>/proc</filename> as read-write
+                -->
                   <filename>/proc</filename> を読み書き可能でマウントします。
                 </para>
               </listitem>
               <listitem>
-                <!--
                 <para>
                   <option>sys:mixed</option> (or <option>sys</option>):
+                <!--
                   mount <filename>/sys</filename> as read-only but with
                   /sys/devices/virtual/net writable.
-                </para>
                 -->
-                <para>
-                  <option>sys:mixed</option> (or <option>sys</option>):
                   /sys/devices/virtual/net のみ書き込み可能で、その他の <filename>/sys</filename> はリードオンリーでマウントします。
                 </para>
               </listitem>
               <listitem>
-                <!--
-                <para>
-                  <option>sys:ro</option>
-                  mount <filename>/sys</filename> as read-only
-                  for security / container isolation purposes.
-                </para>
-                -->
                 <para>
                   <option>sys:ro</option>:
+                <!--
+                  mount <filename>/sys</filename> as read-only
+                  for security / container isolation purposes.
+                -->
                   <filename>/sys</filename> を、セキュリティとコンテナの隔離の目的でリードオンリーでマウントします。
                 </para>
               </listitem>
               <listitem>
-                <!--
-                <para>
-                  <option>sys:rw</option>: mount
-                  <filename>/sys</filename> as read-write
-                </para>
-                -->
                 <para>
                   <option>sys:rw</option>:
+                <!--
+                  <filename>/sys</filename> as read-write
+                -->
                   <filename>/sys</filename> を読み書き可能でマウントします。
                 </para>
               </listitem>
               <listitem>
-                <!--
                 <para>
                   <option>cgroup:mixed</option>:
-                  mount a tmpfs to <filename>/sys/fs/cgroup</filename>,
-                  create directories for all hierarchies to which
-                  the container is added, create subdirectories
-                  there with the name of the cgroup, and bind-mount
-                  the container's own cgroup into that directory.
-                  The container will be able to write to its own
-                  cgroup directory, but not the parents, since they
-                  will be remounted read-only
-                </para>
-                -->
-                <para>
-                  <option>cgroup:mixed</option>:
-                  <filename>/sys/fs/cgroup</filename> を tmpfs でマウントし、そのコンテナの追加が行われた全ての階層構造に対するディレクトリを作製し、その cgroup の名前でその中にサブディレクトリを作製し、そのコンテナ自身の cgroup をそのディレクトリにバインドマウントします。
-                  コンテナは自身の cgroup ディレクトリに書き込みが可能ですが、親ディレクトリはリードオンリーで再マウントされているため書き込めません。
+                  <!--
+                  Mount a tmpfs to <filename>/sys/fs/cgroup</filename>,
+                  create directories for all hierarchies to which the container
+                  is added, create subdirectories in those hierarchies with the
+                  name of the cgroup, and bind-mount the container's own cgroup
+                  into that directory. The container will be able to write to
+                  its own cgroup directory, but not the parents, since they will
+                  be remounted read-only.
+                    -->
+                  <filename>/sys/fs/cgroup</filename> を tmpfs でマウントし、そのコンテナの追加が行われた全ての階層に対するディレクトリを作成し、それらの階層内に cgroup 名でサブディレクトリを作成し、そのコンテナ自身の cgroup をそのディレクトリにバインドマウントします。コンテナは自身の cgroup ディレクトリに書き込みが可能ですが、親ディレクトリはリードオンリーで再マウントされているため書き込めません。
                 </para>
               </listitem>
+
               <listitem>
-                <!--
                 <para>
-                  <option>cgroup:ro</option>: similar to
-                  <option>cgroup:mixed</option>, but everything will
-                be mounted read-only.
+                  <option>cgroup:mixed:force</option>:
+                  <!--
+                  The <option>force</option> option will cause LXC to perform
+                  the cgroup mounts for the container under all circumstances.
+                  Otherwise it is similar to <option>cgroup:mixed</option>.
+                  This is mainly useful when the cgroup namespaces are enabled
+                  where LXC will normally leave mounting cgroups to the init
+                  binary of the container since it is perfectly safe to do so.
+                    -->
+                  <option>force</option> を指定すると、LXC はあらゆる状況でコンテナのための cgroup マウントを実行します。それ以外は <option>cgroup:mixed</option> と同様です。これは主に cgroup 名前空間が有効な場合に便利です。この場合は完全に安全ですので、LXC は通常コンテナの init バイナリが cgroup をマウントしたままの状態にしておきます。
                 </para>
-                -->
+              </listitem>
+
+              <listitem>
                 <para>
                   <option>cgroup:ro</option>:
+                <!--
+                  <option>cgroup:mixed</option>, but everything will
+                be mounted read-only.
+                -->
                   <option>cgroup:mixed</option> と同様にマウントされますが、全てリードオンリーでマウントされます。
                 </para>
               </listitem>
+
               <listitem>
-                <!--
                 <para>
-                  <option>cgroup:rw</option>: similar to
-                  <option>cgroup:mixed</option>, but everything will
-                  be mounted read-write. Note that the paths leading
-                  up to the container's own cgroup will be writable,
-                  but will not be a cgroup filesystem but just part
-                  of the tmpfs of <filename>/sys/fs/cgroup</filename>
+                  <option>cgroup:ro:force</option>:
+                  <!--
+                  The <option>force</option> option will cause LXC to perform
+                  the cgroup mounts for the container under all circumstances.
+                  Otherwise it is similar to <option>cgroup:ro</option>.
+                  This is mainly useful when the cgroup namespaces are enabled
+                  where LXC will normally leave mounting cgroups to the init
+                  binary of the container since it is perfectly safe to do so.
+                    -->
+                  <option>force</option> を指定すると、LXC はあらゆる状況でコンテナのための cgroup マウントを実行します。それ以外は <option>cgroup:ro</option> と同様です。これは主に cgroup 名前空間が有効な場合に便利です。この場合は完全に安全ですので、LXC は通常コンテナの init バイナリが cgroup をマウントしたままの状態にしておきます。
                 </para>
-                -->
+              </listitem>
+
+              <listitem>
                 <para>
                   <option>cgroup:rw</option>:
+                <!--
+                  <option>cgroup:mixed</option>, but everything will be mounted
+                  read-write. Note that the paths leading up to the container's
+                  own cgroup will be writable, but will not be a cgroup
+                  filesystem but just part of the tmpfs of
+                  <filename>/sys/fs/cgroup</filename>
+                -->
                   <option>cgroup:mixed</option> と同様にマウントされますが、全て読み書き可能でマウントされます。
                   コンテナ自身の cgroup に至るまでのパスも書き込み可能になることに注意が必要ですが、cgroup ファイルシステムにはならず、
                   <filename>/sys/fs/cgroup</filename> の tmpfs の一部分になるでしょう。
                 </para>
               </listitem>
+
               <listitem>
                 <para>
+                  <option>cgroup:rw:force</option>:
                   <!--
-                  <option>cgroup</option> (without specifier):
+                  The <option>force</option> option will cause LXC to perform
+                  the cgroup mounts for the container under all circumstances.
+                  Otherwise it is similar to <option>cgroup:rw</option>.
+                  This is mainly useful when the cgroup namespaces are enabled
+                  where LXC will normally leave mounting cgroups to the init
+                  binary of the container since it is perfectly safe to do so.
+                    -->
+                  <option>force</option> を指定すると、LXC はあらゆる状況でコンテナのための cgroup マウントを実行します。それ以外は <option>cgroup:rw</option> と同様です。これは主に cgroup 名前空間が有効な場合に便利です。この場合は完全に安全ですので、LXC は通常コンテナの init バイナリが cgroup をマウントしたままの状態にしておきます。
+                </para>
+              </listitem>
+
+              <listitem>
+                <para>
+                  <option>cgroup</option> (マウントオプションなしの場合):
+                  <!--
                   defaults to <option>cgroup:rw</option> if the
                   container retains the CAP_SYS_ADMIN capability,
                   <option>cgroup:mixed</option> otherwise.
                   -->
-                  <option>cgroup</option> (マウントオプションなしの場合):
                   コンテナが CAP_SYS_ADMIN ケーパビリティを保持している場合、<option>cgroup:rw</option> となります。保持していない場合、<option>cgroup:mixed</option> となります。
                 </para>
               </listitem>
+	      
               <listitem>
-                <!--
                 <para>
                   <option>cgroup-full:mixed</option>:
+                <!--
                   mount a tmpfs to <filename>/sys/fs/cgroup</filename>,
                   create directories for all hierarchies to which
                   the container is added, bind-mount the hierarchies
@@ -1320,46 +1608,87 @@ by KATOH Yasufumi <karma at jazz.email.ne.jp>
                   albeit read-only outside the container's own cgroup.
                   This may leak quite a bit of information into the
                   container.
-                </para>
                 -->
-                <para>
-                  <option>cgroup-full:mixed</option>:
                   <filename>/sys/fs/cgroup</filename> を tmpfs でマウントし、そのコンテナの追加が行われた全ての階層構造に対するディレクトリを作製し、ホストからコンテナまでの階層構造を全てバインドマウントし、コンテナ自身の cgroup を除いてリードオンリーにします。
                   <option>cgroup</option> と比べると、コンテナ自身の cgroup に至るまでの全てのパスが tmpfs の下層のシンプルなディレクトリとなり、コンテナ自身の cgroup の外ではリードオンリーになりますが、<filename>/sys/fs/cgroup/$hierarchy</filename> はホストの全ての cgroup 階層構造を含みます。
                   これにより、コンテナにはかなりの情報が漏洩します。
                 </para>
               </listitem>
-              <listitem>
-                <!--
+
+	      <listitem>
                 <para>
-                  <option>cgroup-full:ro</option>: similar to
-                  <option>cgroup-full:mixed</option>, but everything
-                  will be mounted read-only.
+                  <option>cgroup-full:mixed:force</option>:
+		  <!--
+                  The <option>force</option> option will cause LXC to perform
+                  the cgroup mounts for the container under all circumstances.
+                  Otherwise it is similar to <option>cgroup-full:mixed</option>.
+                  This is mainly useful when the cgroup namespaces are enabled
+                  where LXC will normally leave mounting cgroups to the init
+                  binary of the container since it is perfectly safe to do so.
+		  -->
+                  <option>force</option> を指定すると、LXC はあらゆる状況でコンテナのための cgroup マウントを実行します。それ以外は <option>cgroup-full:mixed</option> と同様です。これは主に cgroup 名前空間が有効な場合に便利です。この場合は完全に安全ですので、LXC は通常コンテナの init バイナリが cgroup をマウントしたままの状態にしておきます。
                 </para>
-                -->
+              </listitem>
+
+              <listitem>
                 <para>
                   <option>cgroup-full:ro</option>:
+                <!--
+                  similar to
+                  <option>cgroup-full:mixed</option>, but everything
+                  will be mounted read-only.
+                -->
                   <option>cgroup-full:mixed</option> と同様にマウントされますが、全てリードオンリーでマウントされます。
                 </para>
               </listitem>
+
               <listitem>
-                <!--
                 <para>
-                  <option>cgroup-full:rw</option>: similar to
+                  <option>cgroup-full:ro:force</option>:
+		  <!--
+                  The <option>force</option> option will cause LXC to perform
+                  the cgroup mounts for the container under all circumstances.
+                  Otherwise it is similar to <option>cgroup-full:ro</option>.
+                  This is mainly useful when the cgroup namespaces are enabled
+                  where LXC will normally leave mounting cgroups to the init
+                  binary of the container since it is perfectly safe to do so.
+		    -->
+                  <option>force</option> を指定すると、LXC はあらゆる状況でコンテナのための cgroup マウントを実行します。それ以外は <option>cgroup-full:ro</option> と同様です。これは主に cgroup 名前空間が有効な場合に便利です。この場合は完全に安全ですので、LXC は通常コンテナの init バイナリが cgroup をマウントしたままの状態にしておきます。
+                </para>
+              </listitem>
+
+              <listitem>
+                <para>
+                  <option>cgroup-full:rw</option>:
+                <!--
+                  similar to
                   <option>cgroup-full:mixed</option>, but everything
                   will be mounted read-write. Note that in this case,
                   the container may escape its own cgroup. (Note also
                   that if the container has CAP_SYS_ADMIN support
                   and can mount the cgroup filesystem itself, it may
                   do so anyway.)
-                </para>
                 -->
-                <para>
-                  <option>cgroup-full:rw</option>:
                   <option>cgroup-full:mixed</option>と同様にマウントされますが、全て読み書き可能でマウントされます。
                   この場合、コンテナは自身の cgroup から脱出する可能性があることに注意してください (コンテナが CAP_SYS_ADMIN を持ち、自身で cgroup ファイルシステムをマウント可能なら、いずれにせよそのようにするかもしれないことにも注意してください)。
                 </para>
               </listitem>
+
+              <listitem>
+                <para>
+                  <option>cgroup-full:rw:force</option>:
+		  <!--
+                  The <option>force</option> option will cause LXC to perform
+                  the cgroup mounts for the container under all circumstances.
+                  Otherwise it is similar to <option>cgroup-full:rw</option>.
+                  This is mainly useful when the cgroup namespaces are enabled
+                  where LXC will normally leave mounting cgroups to the init
+                  binary of the container since it is perfectly safe to do so.
+		    -->
+                  <option>force</option> を指定すると、LXC はあらゆる状況でコンテナのための cgroup マウントを実行します。それ以外は <option>cgroup-full:rw</option> と同様です。これは主に cgroup 名前空間が有効な場合に便利です。この場合は完全に安全ですので、LXC は通常コンテナの init バイナリが cgroup をマウントしたままの状態にしておきます。
+                </para>
+              </listitem>
+
               <listitem>
                 <para>
                   <!--
@@ -1372,6 +1701,7 @@ by KATOH Yasufumi <karma at jazz.email.ne.jp>
                   コンテナが CAP_SYS_ADMIN ケーパビリティを保持している場合、<option>cgroup-full:rw</option> となります。保持していない場合、<option>cgroup-full:mixed</option> となります。
                 </para>
               </listitem>
+
             </itemizedlist>
             <para>
               <!--
@@ -1541,23 +1871,41 @@ by KATOH Yasufumi <karma at jazz.email.ne.jp>
       <variablelist>
         <varlistentry>
           <term>
-            <option>lxc.cgroup.[subsystem name]</option>
+            <option>lxc.cgroup.[controll name]</option>
           </term>
           <listitem>
             <para>
               <!--
-              specify the control group value to be set.  The
-              subsystem name is the literal name of the control group
-              subsystem.  The permitted names and the syntax of their
-              values is not dictated by LXC, instead it depends on the
-              features of the Linux kernel running at the time the
-              container is started,
-              eg. <option>lxc.cgroup.cpuset.cpus</option>
+              Specify the control group value to be set on a legacy cgroup
+              hierarchy. The controller name is the literal name of the control
+              group. The permitted names and the syntax of their values is not
+              dictated by LXC, instead it depends on the features of the Linux
+              kernel running at the time the container is started, eg.
+              <option>lxc.cgroup.cpuset.cpus</option>
               -->
-              設定する control group の値を指定します。
-              サブシステム名は、control group のそのままの名前です。
-              許される名前や値の書式は LXC が指示することはなく、コンテナが実行された時に実行されている Linux カーネルの機能に依存します。
-              例えば <option>lxc.cgroup.cpuset.cpus</option>
+              legacy な cgroup 階層 (cgroup v1) に設定する値を指定します。コントローラー名は control group そのままの名前です。
+              許される名前や値の書式は LXC が指定することはなく、コンテナが実行された時に実行されている Linux カーネルの機能に依存します。
+              例えば <option>lxc.cgroup.cpuset.cpus</option> のようになります。
+            </para>
+          </listitem>
+        </varlistentry>
+        <varlistentry>
+          <term>
+            <option>lxc.cgroup2.[controller name]</option>
+          </term>
+          <listitem>
+            <para>
+              <!--
+              Specify the control group value to be set on the unified cgroup
+              shierarchy. The controller name is the literal name of the control
+              group. The permitted names and the syntax of their values is not
+              dictated by LXC, instead it depends on the features of the Linux
+              kernel running at the time the container is started, eg.
+              <option>lxc.cgroup2.memory.high</option>
+              -->
+              単一の cgroup 階層 (cgroup v2) に設定する値を指定します。
+              許される名前や値の書式は LXC が指定することはなく、コンテナが実行された時に実行されている Linux カーネルの機能に依存します。
+              例えば <option>lxc.cgroup2.memory.high</option> のようになります。
             </para>
           </listitem>
         </varlistentry>
@@ -1567,7 +1915,7 @@ by KATOH Yasufumi <karma at jazz.email.ne.jp>
           </term>
           <listitem>
             <para>
-	      <!--
+              <!--
               specify a directory or path in which the container's cgroup will
               be created. For example, setting
               <option>lxc.cgroup.dir = my-cgroup/first</option> for a container
@@ -1578,11 +1926,11 @@ by KATOH Yasufumi <karma at jazz.email.ne.jp>
               "/sys/fs/cgroup/cpuset/my-user/my-cgroup/first/c1" for the
               container. Any missing cgroups will be created by LXC. This
               presupposes that the user has write access to its current cgroup.
-	      -->
-	      コンテナの cgroup を作成するパスやディレクトリを指定します。
-	      例えば、"c1" という名前のコンテナで <option>lxc.cgroup.dir = my-cgroup/first</option> のように設定すると、"my-cgroup" のサブ cgroup のようにコンテナの cgroup を作成します。
-	      例えば、ユーザのカレントの cgroup である "my-user" が cgroup v1 階層にある cpuset コントローラの root cgroup 内に存在する場合、この設定は "/sys/fs/cgroup/cpuset/my-user/my-cgroup/first/c1" という cgroup をこのコンテナ向けに作成します。
-	      存在しない cgroup は LXC が作成しますが、ユーザがカレントの cgroup に書き込み権を持っていることが前提となります。
+              -->
+              コンテナの cgroup を作成するパスやディレクトリを指定します。
+              例えば、"c1" という名前のコンテナで <option>lxc.cgroup.dir = my-cgroup/first</option> のように設定すると、"my-cgroup" のサブ cgroup のようにコンテナの cgroup を作成します。
+              例えば、ユーザのカレントの cgroup である "my-user" が cgroup v1 階層にある cpuset コントローラの root cgroup 内に存在する場合、この設定は "/sys/fs/cgroup/cpuset/my-user/my-cgroup/first/c1" という cgroup をこのコンテナ向けに作成します。
+              存在しない cgroup は LXC が作成しますが、ユーザがカレントの cgroup に書き込み権を持っていることが前提となります。
             </para>
           </listitem>
         </varlistentry>
@@ -1654,6 +2002,166 @@ by KATOH Yasufumi <karma at jazz.email.ne.jp>
     </refsect2>
 
     <refsect2>
+      <title>名前空間 <!-- Namespace --></title>
+      <para>
+        <!--
+        A namespace can be cloned (<option>lxc.namespace.clone</option>),
+        kept (<option>lxc.namespace.keep</option>) or shared
+        (<option>lxc.namespace.share.[namespace identifier]</option>).
+        -->
+        名前空間は clone したり (<option>lxc.namespace.clone</option>)、keep したり (<option>lxc.namespace.keep</option>)、share したり (<option>lxc.namespace.share.[namespace identifier]</option>) できます。
+      </para>
+      <variablelist>
+        <varlistentry>
+          <term>
+            <option>lxc.namespace.clone</option>
+          </term>
+          <listitem>
+            <para>
+              <!--
+            Specify namespaces which the container is supposed to be created
+            with. The namespaces to create are specified as a space separated
+            list. Each namespace must correspond to one of the standard
+            namespace identifiers as seen in the
+            <filename>/proc/PID/ns</filename> directory.
+            When <option>lxc.namespace.clone</option> is not explicitly set all
+            namespaces supported by the kernel and the current configuration
+            will be used.
+            -->
+              コンテナ作成時に作成する名前空間を指定します。作成する名前空間はスペース区切りのリストで指定します。指定する名前空間名は、<filename>/proc/PID/ns</filename> ディレクトリ内に存在する標準の名前空間指示子でなければなりません。
+              <option>lxc.namespace.clone</option> を明示的に設定していない場合は、カーネルがサポートするすべての名前空間と現在の設定が使われます。
+            </para>
+
+            <para>
+              <!--
+            To create a new mount, net and ipc namespace set
+            <option>lxc.namespace.clone=mount net ipc</option>.
+            -->
+              新しいマウント、ネット、IPC 名前空間を作る場合は <option>lxc.namespace.clone=mount net ipc</option> と指定します。
+            </para>
+          </listitem>
+        </varlistentry>
+
+        <varlistentry>
+          <term>
+            <option>lxc.namespace.keep</option>
+          </term>
+          <listitem>
+            <para>
+              <!--
+            Specify namespaces which the container is supposed to inherit from
+            the process that created it. The namespaces to keep are specified as
+            a space separated list. Each namespace must correspond to one of the
+            standard namespace identifiers as seen in the
+            <filename>/proc/PID/ns</filename> directory.
+            The <option>lxc.namespace.keep</option> is a
+            blacklist option, i.e. it is useful when enforcing that containers
+            must keep a specific set of namespaces.
+            -->
+              コンテナが、作成元のプロセスから継承する (新しい名前空間を作らずに元のプロセスの名前空間のまま実行する) 名前空間を指定します。継承する名前空間はスペース区切りのリストで指定します。指定する名前空間名は、<filename>/proc/PID/ns</filename> ディレクトリ内に存在する標準の名前空間指示子でなければなりません。<option>lxc.namespace.keep</option> はブラックリストを指定するオプションです。つまり、コンテナに特定の名前空間を使い続けることを強制したい場合に便利です。
+            </para>
+
+            <para>
+              <!--
+            To keep the network, user and ipc namespace set
+            <option>lxc.namespace.keep=user net ipc</option>.
+            -->
+              ネットワーク、ユーザ、IPC 名前空間を元のプロセスの名前空間のままで実行したい場合は <option>lxc.namespace.keep=user net ipc</option> と指定します。
+            </para>
+
+            <para>
+              <!--
+            Note that sharing pid namespaces will likely not work with most init
+            systems.
+                -->
+              PID 名前空間を共有すると、ほとんどの init で動作しない可能性があることに注意してください。
+            </para>
+
+            <para>
+              <!--
+            Note that if the container requests a new user namespace and the
+            container wants to inherit the network namespace it needs to inherit
+            the user namespace as well.
+                -->
+              コンテナが新しいユーザ名前空間をリクエストし、そのコンテナがネットワーク名前空間は継承したい場合は、ユーザ名前空間は継承する必要があることに注意してください。
+            </para>
+          </listitem>
+        </varlistentry>
+
+        <varlistentry>
+          <term>
+            <option>lxc.namespace.share.[namespace identifier]</option>
+          </term>
+          <listitem>
+            <para>
+              <!--
+            Specify a namespace to inherit from another container or process.
+            The <option>[namespace identifier]</option> suffix needs to be
+            replaced with one of the namespaces that appear in the
+            <filename>/proc/PID/ns</filename> directory.
+            -->
+              他のコンテナやプロセスから継承する名前空間を指定します。<option>[namespace identifier]</option> には、<filename>/proc/PID/ns</filename> ディレクトリ内に現れる名前空間のひとつが入ります。
+            </para>
+
+            <para>
+              <!--
+            To inherit the namespace from another process set the
+            <option>lxc.namespace.share.[namespace identifier]</option> to the PID of
+            the process, e.g. <option>lxc.namespace.share.net=42</option>.
+            -->
+              他のプロセスから名前空間を継承するには、<option>lxc.namespace.share.[namespace identifier]</option> の値をプロセスの PID に設定します。例えば <option>lxc.namespace.share.net=42</option> のようになります。
+            </para>
+
+            <para>
+              <!--
+            To inherit the namespace from another container set the 
+            <option>lxc.namespace.share.[namespace identifier]</option> to the name of
+            the container, e.g. <option>lxc.namespace.share.pid=c3</option>.
+            -->
+              他のコンテナから名前空間を継承するには、<option>lxc.namespace.share.[namespace identifier]</option> の値をコンテナ名に設定します。例えば <option>lxc.namespace.share.pid=c3</option> のようになります。
+            </para>
+
+            <para>
+              <!--
+            To inherit the namespace from another container located in a
+            different path than the standard liblxc path set the
+            <option>lxc.namespace.share.[namespace identifier]</option> to the full
+            path to the container, e.g.
+            <option>lxc.namespace.share.user=/opt/c3</option>.
+            -->
+              標準の liblxc のパスとは異なるコンテナパスに存在する他のコンテナから名前空間を継承するには、<option>lxc.namespace.share.[namespace identifier]</option> をそのコンテナのフルパスで指定します。例えば <option>lxc.namespace.share.user=/opt/c3</option> のようになります。
+            </para>
+
+            <para>
+              <!--
+            In order to inherit namespaces the caller needs to have sufficient
+            privilege over the process or container.
+                -->
+              名前空間を継承するためには、呼び出し元が継承元のプロセスまたはコンテナに対して十分な権限を持っている必要があります。
+            </para>
+
+            <para>
+              <!--
+            Note that sharing pid namespaces between system containers will
+            likely not work with most init systems.
+                -->
+              システムコンテナ間での PID 名前空間の共有は、ほとんどの init システムではうまく動作しない可能性があることに注意が必要です。
+            </para>
+
+            <para>
+              <!--
+            Note that if two processes are in different user namespaces and one
+            process wants to inherit the other's network namespace it usually
+            needs to inherit the user namespace as well.
+                -->
+              ふたつのプロセスが異なるユーザ名前空間に存在し、そのうちのひとつが他のネットワーク名前空間を継承したい場合、通常はユーザ名前空間も同様に継承する必要があることに注意が必要です。
+            </para>
+          </listitem>
+        </varlistentry>
+      </variablelist>
+    </refsect2>
+
+    <refsect2>
       <title>リソース制限 <!-- Resource limits --></title>
       <para>
         <!--
@@ -1692,6 +2200,44 @@ by KATOH Yasufumi <karma at jazz.email.ne.jp>
                 <manvolnum>2</manvolnum>
               </citerefentry> を参照してください。
               値を指定せずに使用した場合、lxc はこの指定以前に設定されたリソース制限をクリアします。明示的に制限が設定されていないリソースについては、コンテナを起動したプロセスから継承します。
+            </para>
+          </listitem>
+        </varlistentry>
+      </variablelist>
+    </refsect2>
+
+    <refsect2>
+      <title>Sysctl</title>
+      <para>
+        <!--
+        Configure kernel parameters for the container.
+          -->
+        コンテナ用のカーネルパラメータを設定します。
+      </para>
+      <variablelist>
+        <varlistentry>
+          <term>
+            <option>lxc.sysctl.[kernel parameters name]</option>
+          </term>
+          <listitem>
+            <para>
+              <!--
+              Specify the kernel parameters to be set. The parameters available 
+              are those listed under /proc/sys/.
+              Note that not all sysctls are namespaced. Changing Non-namespaced
+              sysctls will cause the system-wide setting to be modified.
+                -->
+              設定したいカーネルパラメータを指定します。指定できるパラメータは /proc/sys 以下に存在するものです。
+              すべての sysctl パラメータが仮想化（名前空間化）されているわけではないことに注意してください。仮想化されていない sysctl を設定すると、システムワイドで設定が変更されてしまいます。
+              <citerefentry>
+                <refentrytitle><command>sysctl</command></refentrytitle>
+                <manvolnum>8</manvolnum>
+              </citerefentry>.
+              <!--
+              If used with no value, lxc will clear the parameters specified up 
+              to this point.
+                -->
+              値を指定しないでこの設定を指定した場合は、この設定より前に設定されたパラメータをクリアします。
             </para>
           </listitem>
         </varlistentry>
@@ -1958,48 +2504,69 @@ by KATOH Yasufumi <karma at jazz.email.ne.jp>
         <!--
         Container hooks are programs or scripts which can be executed
         at various times in a container's lifetime.
-        -->
+          -->
         コンテナのフックは、コンテナの存続期間の色々な場面で実行することのできるプログラムやスクリプトです。
       </para>
       <para>
         <!--
-        When a container hook is executed, information is passed both
-        as command line arguments and through environment variables.
-        The arguments are:
+        When a container hook is executed, additional information is passed
+        along. The <option>lxc.hook.version</option> argument can be used to
+        determine if the following arguments are passed as command line
+        arguments or through environment variables. The arguments are:
+          -->
+        コンテナフックが実行されるとき、追加の情報が渡されます。追加の引数がコマンドライン引数で渡されるか、環境変数経由で渡されるかを判断するのに、<option>lxc.hook.version</option> が使えます。引数は:
         <itemizedlist>
-          <listitem><para> Container name. </para></listitem>
-          <listitem><para> Section (always 'lxc'). </para></listitem>
-          <listitem><para> The hook type (i.e. 'clone' or 'pre-mount'). </para></listitem>
-          <listitem><para> Additional arguments. In the
+          <listitem><para> コンテナ名 <!-- Container name.--></para></listitem>
+          <listitem><para> セクション (常に 'lxc') <!-- Section (always 'lxc'). --></para></listitem>
+          <listitem><para> フックのタイプ ('clone' や 'pre-mount' など) <!-- The hook type (i.e. 'clone' or 'pre-mount'). --></para></listitem>
+          <listitem><para> 追加の引数。clone フックの場合、lxc-clone に渡される追加の引数は、フックへの引数として追加されます。stop フックの場合は、コンテナの名前空間のそれぞれに対するファイルディスクリプタへのパスが、名前空間名とともに渡されます。 <!-- Additional arguments. In the
           case of the clone hook, any extra arguments passed to
           lxc-clone will appear as further arguments to the hook.
           In the case of the stop hook, paths to filedescriptors
           for each of the container's namespaces along with their types
-          are passed. </para></listitem>
+          are passed. --></para></listitem>
         </itemizedlist>
+        <!--
         The following environment variables are set:
+          -->
+        次の環境変数がセットされます。
         <itemizedlist>
-          <listitem><para> LXC_NAME: is the container's name. </para></listitem>
-          <listitem><para> LXC_ROOTFS_MOUNT: the path to the mounted root filesystem. </para></listitem>
-          <listitem><para> LXC_CONFIG_FILE: the path to the container configuration file. </para></listitem>
-          <listitem><para> LXC_SRC_NAME: in the case of the clone hook, this is the original container's name. </para></listitem>
-          <listitem><para> LXC_ROOTFS_PATH: this is the lxc.rootfs.path entry for the container.  Note this is likely not where the mounted rootfs is to be found, use LXC_ROOTFS_MOUNT for that. </para></listitem>
-        </itemizedlist>
-        -->
-        コンテナのフックが実行されるとき、情報がコマンドライン引数と環境変数の両方を通して渡されます。引数は:
-        <itemizedlist>
-          <listitem><para>コンテナ名</para></listitem>
-          <listitem><para>セクション (常に 'lxc')</para></listitem>
-          <listitem><para>フックのタイプ ('clone' や 'pre-mount' など)</para></listitem>
-          <listitem><para>追加の引数。clone フックの場合、lxc-clone に渡される追加の引数は、フックへの引数として追加されます。stop フックの場合は、コンテナの名前空間のそれぞれに対するファイルディスクリプタへのパスが、名前空間名とともに渡されます。</para></listitem>
-        </itemizedlist>
-        以下の環境変数がセットされます。
-        <itemizedlist>
-          <listitem><para> LXC_NAME: コンテナ名</para></listitem>
-          <listitem><para> LXC_ROOTFS_MOUNT: マウントされた root ファイルシステムへのパス</para></listitem>
-          <listitem><para> LXC_CONFIG_FILE: コンテナの設定ファイルのパス </para></listitem>
-          <listitem><para> LXC_SRC_NAME: clone フックの場合、元のコンテナの名前</para></listitem>
-          <listitem><para> LXC_ROOTFS_PATH: コンテナの lxc.rootfs.path エントリ。これはマウントされた rootfs が存在する場所にはならないでしょう。それには LXC_ROOTFS_MOUNT を使用してください。</para></listitem>
+          <listitem><para> LXC_CGNS_AWARE: コンテナで cgroup namespace が使えるかどうか <!-- indicator whether the container is
+          cgroup namespace aware. --></para></listitem>
+          <listitem><para> LXC_CONFIG_FILE: コンテナの設定ファイルのパス <!-- the path to the container
+          configuration file. --></para></listitem>
+          <listitem><para> LXC_HOOK_TYPE: フックのタイプ (例えば 'clone'、'mount'、'pre-mount')。この環境変数が存在するかどうかは <option>lxc.hook.version</option> の値次第です。この値が 1 なら、LXC_HOOK_TYPE が設定されています。
+              <!-- the hook type (e.g. 'clone', 'mount',
+          'pre-mount'). Note that the existence of this environment variable is
+          conditional on the value of <option>lxc.hook.version</option>. If it
+          is set to 1 then LXC_HOOK_TYPE will be set. -->
+          </para></listitem>
+          <listitem><para> LXC_HOOK_SECTION: セクションタイプ (例えば 'lxc'、'net')。この環境変数が存在するかどうかは <option>lxc.hook.version</option> の値次第です。この値が 1 なら、LXC_HOOK_TYPE が設定されています。
+              <!-- the section type (e.g. 'lxc',
+          'net'). Note that the existence of this environment variable is
+          conditional on the value of <option>lxc.hook.version</option>. If it
+          is set to 1 then LXC_HOOK_SECTION will be set. -->
+          </para></listitem>
+          <listitem><para> LXC_HOOK_VERSION: フックのバージョン。この値は、コンテナの <option>lxc.hook.version</option> の値と同じです。もし、この値が 0 に設定されているなら、古いスタイルのフックが使われます。もし 1 に設定されているなら、新しいスタイルのフックが使われます。
+              <!-- the version of the hooks. This
+          value is identical to the value of the container's
+          <option>lxc.hook.version</option> config item. If it is set to 0 then
+          old-style hooks are used. If it is set to 1 then new-style hooks are
+          used. --></para></listitem>
+          <listitem><para> LXC_LOG_LEVEL: コンテナのログレベル <!-- the container's log level. --></para></listitem>
+          <listitem><para> LXC_NAME: コンテナ名 <!-- is the container's name. --></para></listitem>
+          <listitem><para> LXC_[NAMESPACE IDENTIFIER]_NS: コンテナの名前空間が参照する /proc/PID/fd/ 以下のファイルディスクリプタのパス。それぞれの名前空間ごとに別々の環境変数になります。これらの環境変数は <option>lxc.hook.version</option> が 1 に設定されてる場合のみ設定されます。
+              <!-- path under
+          /proc/PID/fd/ to a file descriptor referring to the container's
+          namespace. For each preserved namespace type there will be a separate
+          environment variable. These environment variables will only be set if
+          <option>lxc.hook.version</option> is set to 1. --></para></listitem>
+          <listitem><para> LXC_ROOTFS_MOUNT: マウントされた root ファイルシステムへのパス <!-- the path to the mounted root filesystem. --></para></listitem>
+          <listitem><para> LXC_ROOTFS_PATH: コンテナの lxc.rootfs.path エントリ。これはマウントされた rootfs が存在する場所にはならないでしょう。それには LXC_ROOTFS_MOUNT を使用してください。 <!-- this is the lxc.rootfs.path entry
+          for the container. Note this is likely not where the mounted rootfs is
+          to be found, use LXC_ROOTFS_MOUNT for that. --></para></listitem>
+          <listitem><para> LXC_SRC_NAME: clone フックの場合、元のコンテナの名前 <!-- in the case of the clone hook, this is
+          the original container's name. --></para></listitem>
         </itemizedlist>
       </para>
       <para>
@@ -2007,11 +2574,43 @@ by KATOH Yasufumi <karma at jazz.email.ne.jp>
         Standard output from the hooks is logged at debug level.
         Standard error is not logged, but can be captured by the
         hook redirecting its standard error to standard output.
-        -->
+          -->
         スクリプトからの標準出力は debug レベルでロギングされます。
         標準エラー出力はロギングされません。
         しかし、フックの標準エラー出力を標準出力にリダイレクトすることにより保存することは可能です。
       </para>
+      <variablelist>
+        <varlistentry>
+          <term>
+            <option>lxc.hook.version</option>
+          </term>
+          <listitem>
+            <para>
+              <!--
+            To pass the arguments in new style via environment variables set to
+            1 otherwise set to 0 to pass them as arguments.
+            This setting affects all hooks arguments that were traditionally
+            passed as arguments to the script. Specifically, it affects the
+            container name, section (e.g. 'lxc', 'net') and hook type (e.g.
+            'clone', 'mount', 'pre-mount') arguments. If new-style hooks are
+            used then the arguments will be available as environment variables.
+            The container name will be set in LXC_NAME. (This is set
+            independently of the value used for this config item.) The section
+            will be set in LXC_HOOK_SECTION and the hook type will be set in
+            LXC_HOOK_TYPE.
+            It also affects how the paths to file descriptors referring to the
+            container's namespaces are passed. If set to 1 then for each
+            namespace a separate environment variable LXC_[NAMESPACE
+            IDENTIFIER]_NS will be set. If set to 0 then the paths will be
+            passed as arguments to the stop hook.
+                -->
+              環境変数経由の新しいスタイルで引数を渡すには 1 に設定します。そうでなく、引数として渡すには 0 に設定します。この設定は、古い方法でスクリプトに引数として渡されているすべてのフック引数に影響します。特に、コンテナ名のセクション (例: 'lxc', 'net') とフックタイプ (例: 'clone', 'mount', 'pre-mount') 引数に影響します。新しいスタイルのフックが使われる場合、引数は環境変数として利用できます。
+              コンテナ名は LXC_NAME に設定されます(これはこの設定項目に設定されている値とは関係なく設定されます)。セクションは LXC_HOOK_SECTION に設定されます。そしてフックタイプは LXC_HOOK_TYPE に設定されます。
+              この設定は、コンテナの名前空間を参照するファイルディスクリプタのパスをどのように渡すかにも影響します。1 に設定した場合、名前空間ごとに別の環境変数 LXC_[NAMESPACE IDENTIFIER]_NS に設定されます。0 に設定すると、パスは stop フックの引数として渡されます。
+            </para>
+          </listitem>
+        </varlistentry>
+      </variablelist>
       <variablelist>
         <varlistentry>
           <term>
@@ -2089,6 +2688,23 @@ by KATOH Yasufumi <karma at jazz.email.ne.jp>
               -->
               <option>lxc.autodev</option> == 1 が設定されている場合で、マウントが完了し、マウント時のフックも実行された後ですが、pivot_root の前にコンテナの名前空間で実行するフック。
               このフックの目的は、systemd ベースのコンテナ向けの autodev オプションが設定されている時に、コンテナの /dev ディレクトリを設定するのを支援することです。コンテナの /dev ディレクトリは、このフックが実行される時有効な ${<option>LXC_ROOTFS_MOUNT</option>} 環境変数からの相対パスとなります。
+            </para>
+          </listitem>
+        </varlistentry>
+      </variablelist>
+      <variablelist>
+        <varlistentry>
+          <term>
+            <option>lxc.hook.start-host</option>
+          </term>
+          <listitem>
+            <para>
+              <!--
+              A hook to be run in the host's namespace after the
+              container has been setup, and immediately before starting
+              the container init.
+              -->
+              コンテナのセットアップが済んだあと、コンテナの init を実行する直前に、ホストの名前空間で実行するためのフックです。
             </para>
           </listitem>
         </varlistentry>
@@ -2422,7 +3038,7 @@ by KATOH Yasufumi <karma at jazz.email.ne.jp>
         </varlistentry>
         <varlistentry>
           <term>
-            <option>lxc.log</option>
+            <option>lxc.log.file</option>
           </term>
           <listitem>
             <para>

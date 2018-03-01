@@ -35,9 +35,14 @@
 #include <unistd.h>
 #include <linux/loop.h>
 #include <linux/magic.h>
+#include <linux/types.h>
 #include <sys/syscall.h>
 #include <sys/types.h>
 #include <sys/vfs.h>
+
+#ifdef HAVE_LINUX_MEMFD_H
+#include <linux/memfd.h>
+#endif
 
 #include "initutils.h"
 
@@ -46,14 +51,59 @@
 #define __S_ISTYPE(mode, mask) (((mode)&S_IFMT) == (mask))
 #endif
 
+#if HAVE_LIBCAP
+#ifndef CAP_SETFCAP
+#define CAP_SETFCAP 31
+#endif
+
+#ifndef CAP_MAC_OVERRIDE
+#define CAP_MAC_OVERRIDE 32
+#endif
+
+#ifndef CAP_MAC_ADMIN
+#define CAP_MAC_ADMIN 33
+#endif
+#endif
+
+#ifndef PR_CAPBSET_DROP
+#define PR_CAPBSET_DROP 24
+#endif
+
+#ifndef LO_FLAGS_AUTOCLEAR
+#define LO_FLAGS_AUTOCLEAR 4
+#endif
+
+#ifndef CAP_SETUID
+#define CAP_SETUID 7
+#endif
+
+#ifndef CAP_SETGID
+#define CAP_SETGID 6
+#endif
+
+/* needed for cgroup automount checks, regardless of whether we
+ * have included linux/capability.h or not */
+#ifndef CAP_SYS_ADMIN
+#define CAP_SYS_ADMIN 21
+#endif
+
+#ifndef CGROUP_SUPER_MAGIC
+#define CGROUP_SUPER_MAGIC 0x27e0eb
+#endif
+
+#ifndef CGROUP2_SUPER_MAGIC
+#define CGROUP2_SUPER_MAGIC 0x63677270
+#endif
+
 /* Useful macros */
 /* Maximum number for 64 bit integer is a string with 21 digits: 2^64 - 1 = 21 */
 #define LXC_NUMSTRLEN64 21
 #define LXC_LINELEN 4096
 #define LXC_IDMAPLEN 4096
+#define LXC_MAX_BUFFER 4096
 
 /* returns 1 on success, 0 if there were any failures */
-extern int lxc_rmdir_onedev(char *path, const char *exclude);
+extern int lxc_rmdir_onedev(const char *path, const char *exclude);
 extern int get_u16(unsigned short *val, const char *arg, int base);
 extern int mkdir_p(const char *dir, mode_t mode);
 extern char *get_rundir(void);
@@ -76,6 +126,19 @@ static inline int setns(int fd, int nstype)
 #else
 	errno = ENOSYS;
 	return -1;
+#endif
+}
+#endif
+
+/* Define sethostname() if missing from the C library */
+#ifndef HAVE_SETHOSTNAME
+static inline int sethostname(const char * name, size_t len)
+{
+#ifdef __NR_sethostname
+return syscall(__NR_sethostname, name, len);
+#else
+errno = ENOSYS;
+return -1;
 #endif
 }
 #endif
@@ -183,6 +246,64 @@ static inline int signalfd(int fd, const sigset_t *mask, int flags)
 #ifndef LOOP_CTL_GET_FREE
 #define LOOP_CTL_GET_FREE 0x4C82
 #endif
+
+/* memfd_create() */
+#ifndef MFD_CLOEXEC
+#define MFD_CLOEXEC 0x0001U
+#endif
+
+#ifndef MFD_ALLOW_SEALING
+#define MFD_ALLOW_SEALING 0x0002U
+#endif
+
+#ifndef HAVE_MEMFD_CREATE
+static inline int memfd_create(const char *name, unsigned int flags) {
+	#ifndef __NR_memfd_create
+		#if defined __i386__
+			#define __NR_memfd_create 356
+		#elif defined __x86_64__
+			#define __NR_memfd_create 319
+		#elif defined __arm__
+			#define __NR_memfd_create 385
+		#elif defined __aarch64__
+			#define __NR_memfd_create 279
+		#elif defined __s390__
+			#define __NR_memfd_create 350
+		#elif defined __powerpc__
+			#define __NR_memfd_create 360
+		#elif defined __sparc__
+			#define __NR_memfd_create 348
+		#elif defined __blackfin__
+			#define __NR_memfd_create 390
+		#elif defined __ia64__
+			#define __NR_memfd_create 1340
+		#elif defined _MIPS_SIM
+			#if _MIPS_SIM == _MIPS_SIM_ABI32
+				#define __NR_memfd_create 4354
+			#endif
+			#if _MIPS_SIM == _MIPS_SIM_NABI32
+				#define __NR_memfd_create 6318
+			#endif
+			#if _MIPS_SIM == _MIPS_SIM_ABI64
+				#define __NR_memfd_create 5314
+			#endif
+		#endif
+	#endif
+	#ifdef __NR_memfd_create
+	return syscall(__NR_memfd_create, name, flags);
+	#else
+	errno = ENOSYS;
+	return -1;
+	#endif
+}
+#else
+extern int memfd_create(const char *name, unsigned int flags);
+#endif
+
+static inline int lxc_set_cloexec(int fd)
+{
+	return fcntl(fd, F_SETFD, FD_CLOEXEC);
+}
 
 /* Struct to carry child pid from lxc_popen() to lxc_pclose().
  * Not an opaque struct to allow direct access to the underlying FILE *
@@ -292,6 +413,7 @@ extern bool lxc_string_in_list(const char *needle, const char *haystack,
 			       char sep);
 extern char **lxc_string_split(const char *string, char sep);
 extern char **lxc_string_split_and_trim(const char *string, char sep);
+extern char **lxc_string_split_quoted(char *string);
 /* Append string to NULL-terminated string array. */
 extern int lxc_append_string(char ***list, char *entry);
 
@@ -305,18 +427,41 @@ extern size_t lxc_array_len(void **array);
 
 extern void **lxc_append_null_to_array(void **array, size_t count);
 
-/* mmap() wrapper. lxc_strmmap() will take care to \0-terminate files so that
- * normal string-handling functions can be used on the buffer. */
-extern void *lxc_strmmap(void *addr, size_t length, int prot, int flags, int fd,
-			 off_t offset);
-/* munmap() wrapper. Use it to free memory mmap()ed with lxc_strmmap(). */
-extern int lxc_strmunmap(void *addr, size_t length);
-
 /* initialize rand with urandom */
 extern int randseed(bool);
 
-inline static bool am_unpriv(void) {
+/* are we unprivileged with respect to our namespaces */
+inline static bool am_guest_unpriv(void) {
 	return geteuid() != 0;
+}
+
+/* are we unprivileged with respect to init_user_ns */
+inline static bool am_host_unpriv(void)
+{
+	FILE *f;
+	uid_t user, host, count;
+	int ret;
+
+	if (geteuid() != 0)
+		return true;
+
+	/* Now: are we in a user namespace? Because then we're also
+	 * unprivileged.
+	 */
+	f = fopen("/proc/self/uid_map", "r");
+	if (!f) {
+		return false;
+	}
+
+	ret = fscanf(f, "%u %u %u", &user, &host, &count);
+	fclose(f);
+	if (ret != 3) {
+		return false;
+	}
+
+	if (user != 0 || host != 0 || count != UINT32_MAX)
+		return true;
+	return false;
 }
 
 /*
@@ -339,7 +484,6 @@ extern int print_to_file(const char *file, const char *content);
 extern bool switch_to_ns(pid_t pid, const char *ns);
 extern int is_dir(const char *path);
 extern char *get_template_path(const char *t);
-extern int setproctitle(char *title);
 extern int safe_mount(const char *src, const char *dest, const char *fstype,
 		      unsigned long flags, const void *data,
 		      const char *rootfs);
@@ -357,7 +501,10 @@ extern bool task_blocking_signal(pid_t pid, int signal);
 extern int lxc_safe_uint(const char *numstr, unsigned int *converted);
 extern int lxc_safe_int(const char *numstr, int *converted);
 extern int lxc_safe_long(const char *numstr, long int *converted);
+extern int lxc_safe_long_long(const char *numstr, long long int *converted);
 extern int lxc_safe_ulong(const char *numstr, unsigned long *converted);
+/* Handles B, kb, MB, GB. Detects overflows and reports -ERANGE. */
+extern int parse_byte_size_string(const char *s, int64_t *converted);
 
 /* Switch to a new uid and gid. */
 extern int lxc_switch_uid_gid(uid_t uid, gid_t gid);
@@ -391,7 +538,8 @@ extern int run_command(char *buf, size_t buf_size, int (*child_fn)(void *),
 /* Concatenate all passed-in strings into one path. Do not fail. If any piece
  * is not prefixed with '/', add a '/'.
  */
-extern char *must_make_path(const char *first, ...) __attribute__((sentinel));
+__attribute__((sentinel)) extern char *must_make_path(const char *first, ...);
+__attribute__((sentinel)) extern char *must_append_path(char *first, ...);
 
 /* return copy of string @entry;  do not fail. */
 extern char *must_copy_string(const char *entry);
@@ -404,5 +552,39 @@ typedef __typeof__(((struct statfs *)NULL)->f_type) fs_type_magic;
 extern bool has_fs_type(const char *path, fs_type_magic magic_val);
 extern bool is_fs_type(const struct statfs *fs, fs_type_magic magic_val);
 extern bool lxc_nic_exists(char *nic);
+extern int lxc_make_tmpfile(char *template, bool rm);
+
+static inline uint64_t lxc_getpagesize(void)
+{
+	int64_t pgsz;
+
+	pgsz = sysconf(_SC_PAGESIZE);
+	if (pgsz <= 0)
+		pgsz = 1 << 12;
+
+	return pgsz;
+}
+
+/* If n is not a power of 2 this function will return the next power of 2
+ * greater than that number. Note that this function always returns the *next*
+ * power of 2 *greater* that number not the *nearest*. For example, passing 1025
+ * as argument this function will return 2048 although the closest power of 2
+ * would be 1024.
+ * If the caller passes in 0 they will receive 0 in return since this is invalid
+ * input and 0 is not a power of 2.
+ */
+extern uint64_t lxc_find_next_power2(uint64_t n);
+
+static inline pid_t lxc_raw_gettid(void)
+{
+#ifdef SYS_gettid
+	return syscall(SYS_gettid);
+#else
+	return lxc_raw_getpid();
+#endif
+}
+
+/* Set a signal the child process will receive after the parent has died. */
+extern int lxc_set_death_signal(int signal);
 
 #endif /* __LXC_UTILS_H */

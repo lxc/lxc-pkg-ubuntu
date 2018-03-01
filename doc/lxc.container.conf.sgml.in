@@ -255,11 +255,20 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA
       <title>Init command</title>
       <para>
         Sets the command to use as the init system for the containers.
-
-        This option is ignored when using lxc-execute.
-
-        Defaults to: /sbin/init
       </para>
+      <variablelist>
+        <varlistentry>
+          <term>
+            <option>lxc.execute.cmd</option>
+          </term>
+          <listitem>
+            <para>
+              Absolute path from container rootfs to the binary to run by default.  This
+	      mostly makes sense for <command>lxc-execute</command>.
+            </para>
+          </listitem>
+        </varlistentry>
+      </variablelist>
       <variablelist>
         <varlistentry>
           <term>
@@ -267,7 +276,28 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA
           </term>
           <listitem>
             <para>
-              Absolute path from container rootfs to the binary to use as init.
+              Absolute path from container rootfs to the binary to use as init. This
+	      mostly makes sense for <command>lxc-start</command>. Default is <command>/sbin/init</command>.
+            </para>
+          </listitem>
+        </varlistentry>
+      </variablelist>
+    </refsect2>
+
+    <refsect2>
+      <title>Init working directory</title>
+      <para>
+        Sets the absolute path inside the container as the working directory for the containers.
+        LXC will switch to this directory before executing init.
+      </para>
+      <variablelist>
+        <varlistentry>
+          <term>
+            <option>lxc.init.cwd</option>
+          </term>
+          <listitem>
+            <para>
+              Absolute path inside the container to use as the working directory.
             </para>
           </listitem>
         </varlistentry>
@@ -278,9 +308,9 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA
       <title>Init ID</title>
       <para>
         Sets the UID/GID to use for the init system, and subsequent commands.
-        Note that using a non-root uid when booting a system container will
+        Note that using a non-root UID when booting a system container will
         likely not work due to missing privileges. Setting the UID/GID is mostly
-        useful when running application container.
+        useful when running application containers.
 
         Defaults to: UID(0), GID(0)
       </para>
@@ -303,6 +333,30 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA
             <para>
               GID to use for init.
             </para>
+          </listitem>
+        </varlistentry>
+      </variablelist>
+    </refsect2>
+
+    <refsect2>
+      <title>Proc</title>
+      <para>
+        Configure proc filesystem for the container.
+      </para>
+      <variablelist>
+        <varlistentry>
+          <term>
+            <option>lxc.proc.[proc file name]</option>
+          </term>
+          <listitem>
+            <para>
+              Specify the proc file name to be set. The file name available
+              are those listed under /proc/PID/.
+              Example:
+            </para>
+            <programlisting>
+              lxc.proc.oom_score_adj = 10
+            </programlisting>
           </listitem>
         </varlistentry>
       </variablelist>
@@ -554,7 +608,6 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA
           </listitem>
         </varlistentry>
 
-
         <varlistentry>
           <term>
             <option>lxc.net.[i].ipv6.address</option>
@@ -597,15 +650,56 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA
             <para>
               Add a configuration option to specify a script to be
               executed after creating and configuring the network used
-              from the host side. The following arguments are passed
-              to the script: container name and config section name
-              (net) Additional arguments depend on the config section
-              employing a script hook; the following are used by the
-              network system: execution context (up), network type
-              (empty/veth/macvlan/phys), Depending on the network
-              type, other arguments may be passed:
-              veth/macvlan/phys. And finally (host-sided) device name.
+              from the host side.
             </para>
+
+            <para>
+              In addition to the information available to all hooks. The
+              following information is provided to the script:
+              <itemizedlist>
+                <listitem>
+                 <para>
+                 LXC_HOOK_TYPE: the hook type. This is either 'up' or 'down'.
+                  </para>
+                </listitem>
+
+                <listitem>
+                 <para>
+                 LXC_HOOK_SECTION: the section type 'net'.
+                  </para>
+                </listitem>
+
+                <listitem>
+                 <para>
+                 LXC_NET_TYPE: the network type. This is one of the valid
+                 network types listed here (e.g. 'macvlan', 'veth').
+                  </para>
+                </listitem>
+
+                <listitem>
+                 <para>
+                 LXC_NET_PARENT: the parent device on the host. This is only
+                 set for network types 'mavclan', 'veth', 'phys'.
+                  </para>
+                </listitem>
+
+                <listitem>
+                 <para>
+                 LXC_NET_PEER: the name of the peer device on the host. This is
+                 only set for 'veth' network types. Note that this information
+                 is only available when <option>lxc.hook.version</option> is set
+                 to 1.
+                  </para>
+                </listitem>
+              </itemizedlist>
+
+              Whether this information is provided in the form of environment
+              variables or as arguments to the script depends on the value of
+              <option>lxc.hook.version</option>. If set to 1 then information is
+              provided in the form of environment variables. If set to 0
+              information is provided as arguments to the script.
+            </para>
+
             <para>
               Standard output from the script is logged at debug level.
               Standard error is not logged, but can be captured by the
@@ -622,15 +716,56 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA
             <para>
               Add a configuration option to specify a script to be
               executed before destroying the network used from the
-              host side. The following arguments are passed to the
-              script: container name and config section name (net)
-              Additional arguments depend on the config section
-              employing a script hook; the following are used by the
-              network system: execution context (down), network type
-              (empty/veth/macvlan/phys), Depending on the network
-              type, other arguments may be passed:
-              veth/macvlan/phys. And finally (host-sided) device name.
+              host side.
             </para>
+
+            <para>
+              In addition to the information available to all hooks. The
+              following information is provided to the script:
+              <itemizedlist>
+                <listitem>
+                 <para>
+                 LXC_HOOK_TYPE: the hook type. This is either 'up' or 'down'.
+                  </para>
+                </listitem>
+
+                <listitem>
+                 <para>
+                 LXC_HOOK_SECTION: the section type 'net'.
+                  </para>
+                </listitem>
+
+                <listitem>
+                 <para>
+                 LXC_NET_TYPE: the network type. This is one of the valid
+                 network types listed here (e.g. 'macvlan', 'veth').
+                  </para>
+                </listitem>
+
+                <listitem>
+                 <para>
+                 LXC_NET_PARENT: the parent device on the host. This is only
+                 set for network types 'mavclan', 'veth', 'phys'.
+                  </para>
+                </listitem>
+
+                <listitem>
+                 <para>
+                 LXC_NET_PEER: the name of the peer device on the host. This is
+                 only set for 'veth' network types. Note that this information
+                 is only available when <option>lxc.hook.version</option> is set
+                 to 1.
+                  </para>
+                </listitem>
+              </itemizedlist>
+
+              Whether this information is provided in the form of environment
+              variables or as arguments to the script depends on the value of
+              <option>lxc.hook.version</option>. If set to 1 then information is
+              provided in the form of environment variables. If set to 0
+              information is provided as arguments to the script.
+            </para>
+
             <para>
               Standard output from the script is logged at debug level.
               Standard error is not logged, but can be captured by the
@@ -672,17 +807,96 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA
         where the output of this console goes.
       </para>
       <variablelist>
+
+        <varlistentry>
+          <term>
+            <option>lxc.console.buffer.size</option>
+          </term>
+          <listitem>
+            <para>
+            Setting this option instructs liblxc to allocate an in-memory
+            ringbuffer. The container's console output will be written to the
+            ringbuffer. Note that ringbuffer must be at least as big as a
+            standard page size. When passed a value smaller than a single page
+            size liblxc will allocate a ringbuffer of a single page size. A page
+            size is usually 4kB.
+
+            The keyword 'auto' will cause liblxc to allocate a ringbuffer of
+            128kB.
+
+            When manually specifying a size for the ringbuffer the value should
+            be a power of 2 when converted to bytes. Valid size prefixes are
+            'kB', 'MB', 'GB'. (Note that all conversions are based on multiples
+            of 1024. That means 'kb' == 'KiB', 'MB' == 'MiB', 'GB' == 'GiB'.)
+            </para>
+          </listitem>
+        </varlistentry>
+
+        <varlistentry>
+          <term>
+            <option>lxc.console.size</option>
+          </term>
+          <listitem>
+            <para>
+            Setting this option instructs liblxc to place a limit on the size of
+            the console log file specified in
+            <option>lxc.console.logfile</option>. Note that size of the log file
+            must be at least as big as a standard page size. When passed a value
+            smaller than a single page size liblxc will set the size of log file
+            to a single page size. A page size is usually 4kB.
+
+            The keyword 'auto' will cause liblxc to place a limit of 128kB on
+            the log file.
+
+            When manually specifying a size for the log file the value should
+            be a power of 2 when converted to bytes. Valid size prefixes are
+            'kB', 'MB', 'GB'. (Note that all conversions are based on multiples
+            of 1024. That means 'kb' == 'KiB', 'MB' == 'MiB', 'GB' == 'GiB'.)
+
+            If users want to mirror the console ringbuffer on disk they should set
+            <option>lxc.console.size</option> equal to
+            <option>lxc.console.buffer.size</option>.
+            </para>
+          </listitem>
+        </varlistentry>
+
         <varlistentry>
           <term>
             <option>lxc.console.logfile</option>
           </term>
           <listitem>
             <para>
-              Specify a path to a file where the console output will
-              be written.
+              Specify a path to a file where the console output will be written.
+              Note that in contrast to the on-disk ringbuffer logfile this file
+              will keep growing potentially filling up the users disks if not
+              rotated and deleted. This problem can also be avoided by using the
+              in-memory ringbuffer options
+              <option>lxc.console.buffer.size</option> and
+              <option>lxc.console.buffer.logfile</option>.
             </para>
           </listitem>
         </varlistentry>
+
+        <varlistentry>
+          <term>
+            <option>lxc.console.rotate</option>
+          </term>
+          <listitem>
+            <para>
+              Whether to rotate the console logfile specified in
+              <option>lxc.console.logfile</option>. Users can send an API
+              request to rotate the logfile. Note that the old logfile will have
+              the same name as the original with the suffix ".1" appended.
+
+              Users wishing to prevent the console log file from filling the
+              disk should rotate the logfile and delete it if unneeded. This
+              problem can also be avoided by using the in-memory ringbuffer
+              options <option>lxc.console.buffer.size</option> and
+              <option>lxc.console.buffer.logfile</option>.
+            </para>
+          </listitem>
+        </varlistentry>
+
         <varlistentry>
           <term>
             <option>lxc.console.path</option>
@@ -853,14 +1067,24 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA
           </term>
           <listitem>
             <para>
-              specify a mount point corresponding to a line in the
+              Specify a mount point corresponding to a line in the
               fstab format.
 
-              Moreover lxc add two options to mount.
+              Moreover lxc supports mount propagation, such as rslave or
+              rprivate, and adds three additional mount options.
               <option>optional</option> don't fail if mount does not work.
               <option>create=dir</option> or <option>create=file</option>
               to create dir (or file) when the point will be mounted.
-            </para>
+              <option>relative</option> source path is taken to be relative to
+              the mounted container root. For instance,
+             </para>
+<screen>
+dev/null proc/kcore none bind,relative 0 0
+</screen>
+             <para>
+              Will expand dev/null to ${<option>LXC_ROOTFS_MOUNT</option>}/dev/null,
+              and mount it to proc/kcore inside the container.
+             </para>
           </listitem>
         </varlistentry>
 
@@ -910,36 +1134,75 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA
                   <filename>/sys</filename> as read-write
                 </para>
               </listitem>
+
               <listitem>
                 <para>
                   <option>cgroup:mixed</option>:
-                  mount a tmpfs to <filename>/sys/fs/cgroup</filename>,
-                  create directories for all hierarchies to which
-                  the container is added, create subdirectories
-                  there with the name of the cgroup, and bind-mount
-                  the container's own cgroup into that directory.
-                  The container will be able to write to its own
-                  cgroup directory, but not the parents, since they
-                  will be remounted read-only.
+                  Mount a tmpfs to <filename>/sys/fs/cgroup</filename>,
+                  create directories for all hierarchies to which the container
+                  is added, create subdirectories in those hierarchies with the
+                  name of the cgroup, and bind-mount the container's own cgroup
+                  into that directory. The container will be able to write to
+                  its own cgroup directory, but not the parents, since they will
+                  be remounted read-only.
                 </para>
               </listitem>
+
               <listitem>
                 <para>
-                  <option>cgroup:ro</option>: similar to
-                  <option>cgroup:mixed</option>, but everything will
-                be mounted read-only.
+                  <option>cgroup:mixed:force</option>:
+                  The <option>force</option> option will cause LXC to perform
+                  the cgroup mounts for the container under all circumstances.
+                  Otherwise it is similar to <option>cgroup:mixed</option>.
+                  This is mainly useful when the cgroup namespaces are enabled
+                  where LXC will normally leave mounting cgroups to the init
+                  binary of the container since it is perfectly safe to do so.
                 </para>
               </listitem>
+
+              <listitem>
+                <para>
+                  <option>cgroup:ro</option>:
+                  similar to <option>cgroup:mixed</option>, but everything will
+                  be mounted read-only.
+                </para>
+              </listitem>
+
+              <listitem>
+                <para>
+                  <option>cgroup:ro:force</option>:
+                  The <option>force</option> option will cause LXC to perform
+                  the cgroup mounts for the container under all circumstances.
+                  Otherwise it is similar to <option>cgroup:ro</option>.
+                  This is mainly useful when the cgroup namespaces are enabled
+                  where LXC will normally leave mounting cgroups to the init
+                  binary of the container since it is perfectly safe to do so.
+                </para>
+              </listitem>
+
               <listitem>
                 <para>
                   <option>cgroup:rw</option>: similar to
-                  <option>cgroup:mixed</option>, but everything will
-                  be mounted read-write. Note that the paths leading
-                  up to the container's own cgroup will be writable,
-                  but will not be a cgroup filesystem but just part
-                  of the tmpfs of <filename>/sys/fs/cgroup</filename>
+                  <option>cgroup:mixed</option>, but everything will be mounted
+                  read-write. Note that the paths leading up to the container's
+                  own cgroup will be writable, but will not be a cgroup
+                  filesystem but just part of the tmpfs of
+                  <filename>/sys/fs/cgroup</filename>
                 </para>
               </listitem>
+
+              <listitem>
+                <para>
+                  <option>cgroup:rw:force</option>:
+                  The <option>force</option> option will cause LXC to perform
+                  the cgroup mounts for the container under all circumstances.
+                  Otherwise it is similar to <option>cgroup:rw</option>.
+                  This is mainly useful when the cgroup namespaces are enabled
+                  where LXC will normally leave mounting cgroups to the init
+                  binary of the container since it is perfectly safe to do so.
+                </para>
+              </listitem>
+
               <listitem>
                 <para>
                   <option>cgroup</option> (without specifier):
@@ -948,6 +1211,7 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA
                   <option>cgroup:mixed</option> otherwise.
                 </para>
               </listitem>
+
               <listitem>
                 <para>
                   <option>cgroup-full:mixed</option>:
@@ -967,6 +1231,19 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA
                   container.
                 </para>
               </listitem>
+
+              <listitem>
+                <para>
+                  <option>cgroup-full:mixed:force</option>:
+                  The <option>force</option> option will cause LXC to perform
+                  the cgroup mounts for the container under all circumstances.
+                  Otherwise it is similar to <option>cgroup-full:mixed</option>.
+                  This is mainly useful when the cgroup namespaces are enabled
+                  where LXC will normally leave mounting cgroups to the init
+                  binary of the container since it is perfectly safe to do so.
+                </para>
+              </listitem>
+
               <listitem>
                 <para>
                   <option>cgroup-full:ro</option>: similar to
@@ -974,6 +1251,19 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA
                   will be mounted read-only.
                 </para>
               </listitem>
+
+              <listitem>
+                <para>
+                  <option>cgroup-full:ro:force</option>:
+                  The <option>force</option> option will cause LXC to perform
+                  the cgroup mounts for the container under all circumstances.
+                  Otherwise it is similar to <option>cgroup-full:ro</option>.
+                  This is mainly useful when the cgroup namespaces are enabled
+                  where LXC will normally leave mounting cgroups to the init
+                  binary of the container since it is perfectly safe to do so.
+                </para>
+              </listitem>
+
               <listitem>
                 <para>
                   <option>cgroup-full:rw</option>: similar to
@@ -985,6 +1275,19 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA
                   do so anyway.)
                 </para>
               </listitem>
+
+              <listitem>
+                <para>
+                  <option>cgroup-full:rw:force</option>:
+                  The <option>force</option> option will cause LXC to perform
+                  the cgroup mounts for the container under all circumstances.
+                  Otherwise it is similar to <option>cgroup-full:rw</option>.
+                  This is mainly useful when the cgroup namespaces are enabled
+                  where LXC will normally leave mounting cgroups to the init
+                  binary of the container since it is perfectly safe to do so.
+                </para>
+              </listitem>
+
               <listitem>
                 <para>
                   <option>cgroup-full</option> (without specifier):
@@ -993,6 +1296,7 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA
                   <option>cgroup-full:mixed</option> otherwise.
                 </para>
               </listitem>
+
             </itemizedlist>
             <para>
 	      If cgroup namespaces are enabled, then any <option>cgroup</option>
@@ -1115,17 +1419,31 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA
       <variablelist>
         <varlistentry>
           <term>
-            <option>lxc.cgroup.[subsystem name]</option>
+            <option>lxc.cgroup.[controller name]</option>
           </term>
           <listitem>
             <para>
-              specify the control group value to be set.  The
-              subsystem name is the literal name of the control group
-              subsystem.  The permitted names and the syntax of their
-              values is not dictated by LXC, instead it depends on the
-              features of the Linux kernel running at the time the
-              container is started,
-              eg. <option>lxc.cgroup.cpuset.cpus</option>
+              Specify the control group value to be set on a legacy cgroup
+              hierarchy. The controller name is the literal name of the control
+              group. The permitted names and the syntax of their values is not
+              dictated by LXC, instead it depends on the features of the Linux
+              kernel running at the time the container is started, eg.
+              <option>lxc.cgroup.cpuset.cpus</option>
+            </para>
+          </listitem>
+        </varlistentry>
+        <varlistentry>
+          <term>
+            <option>lxc.cgroup2.[controller name]</option>
+          </term>
+          <listitem>
+            <para>
+              Specify the control group value to be set on the unified cgroup
+              shierarchy. The controller name is the literal name of the control
+              group. The permitted names and the syntax of their values is not
+              dictated by LXC, instead it depends on the features of the Linux
+              kernel running at the time the container is started, eg.
+              <option>lxc.cgroup2.memory.high</option>
             </para>
           </listitem>
         </varlistentry>
@@ -1197,6 +1515,123 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA
     </refsect2>
 
     <refsect2>
+      <title>Namespaces</title>
+      <para>
+        A namespace can be cloned (<option>lxc.namespace.clone</option>),
+        kept (<option>lxc.namespace.keep</option>) or shared
+        (<option>lxc.namespace.share.[namespace identifier]</option>).
+      </para>
+      <variablelist>
+        <varlistentry>
+          <term>
+            <option>lxc.namespace.clone</option>
+          </term>
+          <listitem>
+            <para>
+            Specify namespaces which the container is supposed to be created
+            with. The namespaces to create are specified as a space separated
+            list. Each namespace must correspond to one of the standard
+            namespace identifiers as seen in the
+            <filename>/proc/PID/ns</filename> directory.
+            When <option>lxc.namespace.clone</option> is not explicitly set all
+            namespaces supported by the kernel and the current configuration
+            will be used.
+            </para>
+
+            <para>
+            To create a new mount, net and ipc namespace set
+            <option>lxc.namespace.clone=mount net ipc</option>.
+            </para>
+          </listitem>
+        </varlistentry>
+
+        <varlistentry>
+          <term>
+            <option>lxc.namespace.keep</option>
+          </term>
+          <listitem>
+            <para>
+            Specify namespaces which the container is supposed to inherit from
+            the process that created it. The namespaces to keep are specified as
+            a space separated list. Each namespace must correspond to one of the
+            standard namespace identifiers as seen in the
+            <filename>/proc/PID/ns</filename> directory.
+            The <option>lxc.namespace.keep</option> is a
+            blacklist option, i.e. it is useful when enforcing that containers
+            must keep a specific set of namespaces.
+            </para>
+
+            <para>
+            To keep the network, user and ipc namespace set
+            <option>lxc.namespace.keep=user net ipc</option>.
+            </para>
+
+            <para>
+            Note that sharing pid namespaces will likely not work with most init
+            systems.
+            </para>
+
+            <para>
+            Note that if the container requests a new user namespace and the
+            container wants to inherit the network namespace it needs to inherit
+            the user namespace as well.
+            </para>
+          </listitem>
+        </varlistentry>
+
+        <varlistentry>
+          <term>
+            <option>lxc.namespace.share.[namespace identifier]</option>
+          </term>
+          <listitem>
+            <para>
+            Specify a namespace to inherit from another container or process.
+            The <option>[namespace identifier]</option> suffix needs to be
+            replaced with one of the namespaces that appear in the
+            <filename>/proc/PID/ns</filename> directory.
+            </para>
+
+            <para>
+            To inherit the namespace from another process set the
+            <option>lxc.namespace.share.[namespace identifier]</option> to the PID of
+            the process, e.g. <option>lxc.namespace.share.net=42</option>.
+            </para>
+
+            <para>
+            To inherit the namespace from another container set the 
+            <option>lxc.namespace.share.[namespace identifier]</option> to the name of
+            the container, e.g. <option>lxc.namespace.share.pid=c3</option>.
+            </para>
+
+            <para>
+            To inherit the namespace from another container located in a
+            different path than the standard liblxc path set the
+            <option>lxc.namespace.share.[namespace identifier]</option> to the full
+            path to the container, e.g.
+            <option>lxc.namespace.share.user=/opt/c3</option>.
+            </para>
+
+            <para>
+            In order to inherit namespaces the caller needs to have sufficient
+            privilege over the process or container.
+            </para>
+
+            <para>
+            Note that sharing pid namespaces between system containers will
+            likely not work with most init systems.
+            </para>
+
+            <para>
+            Note that if two processes are in different user namespaces and one
+            process wants to inherit the other's network namespace it usually
+            needs to inherit the user namespace as well.
+            </para>
+          </listitem>
+        </varlistentry>
+      </variablelist>
+    </refsect2>
+
+    <refsect2>
       <title>Resource limits</title>
       <para>
         The soft and hard resource limits for the container can be changed.
@@ -1224,6 +1659,34 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA
               specified up to this point. A resource with no explicitly
               configured limitation will be inherited from the process starting
               up the container.
+            </para>
+          </listitem>
+        </varlistentry>
+      </variablelist>
+    </refsect2>
+
+    <refsect2>
+      <title>Sysctl</title>
+      <para>
+        Configure kernel parameters for the container.
+      </para>
+      <variablelist>
+        <varlistentry>
+          <term>
+            <option>lxc.sysctl.[kernel parameters name]</option>
+          </term>
+          <listitem>
+            <para>
+              Specify the kernel parameters to be set. The parameters available 
+              are those listed under /proc/sys/.
+              Note that not all sysctls are namespaced. Changing Non-namespaced
+              sysctls will cause the system-wide setting to be modified.
+              <citerefentry>
+                <refentrytitle><command>sysctl</command></refentrytitle>
+                <manvolnum>8</manvolnum>
+              </citerefentry>.
+              If used with no value, lxc will clear the parameters specified up 
+              to this point.
             </para>
           </listitem>
         </varlistentry>
@@ -1425,29 +1888,54 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA
         at various times in a container's lifetime.
       </para>
       <para>
-        When a container hook is executed, information is passed both
-        as command line arguments and through environment variables.
-        The arguments are:
+        When a container hook is executed, additional information is passed
+        along. The <option>lxc.hook.version</option> argument can be used to
+        determine if the following arguments are passed as command line
+        arguments or through environment variables. The arguments are:
         <itemizedlist>
           <listitem><para> Container name. </para></listitem>
           <listitem><para> Section (always 'lxc'). </para></listitem>
           <listitem><para> The hook type (i.e. 'clone' or 'pre-mount'). </para></listitem>
           <listitem><para> Additional arguments. In the
-          case of the clone hook, any extra arguments passed to
-          lxc-clone will appear as further arguments to the hook.
-          In the case of the stop hook, paths to filedescriptors
-          for each of the container's namespaces along with their types
-          are passed. </para></listitem>
+          case of the clone hook, any extra arguments passed will appear as
+          further arguments to the hook.  In the case of the stop hook, paths to
+          filedescriptors for each of the container's namespaces along with
+          their types are passed. </para></listitem>
         </itemizedlist>
         The following environment variables are set:
         <itemizedlist>
+          <listitem><para> LXC_CGNS_AWARE: indicator whether the container is
+          cgroup namespace aware. </para></listitem>
+          <listitem><para> LXC_CONFIG_FILE: the path to the container
+          configuration file. </para></listitem>
+          <listitem><para> LXC_HOOK_TYPE: the hook type (e.g. 'clone', 'mount',
+          'pre-mount'). Note that the existence of this environment variable is
+          conditional on the value of <option>lxc.hook.version</option>. If it
+          is set to 1 then LXC_HOOK_TYPE will be set.
+          </para></listitem>
+          <listitem><para> LXC_HOOK_SECTION: the section type (e.g. 'lxc',
+          'net'). Note that the existence of this environment variable is
+          conditional on the value of <option>lxc.hook.version</option>. If it
+          is set to 1 then LXC_HOOK_SECTION will be set.
+          </para></listitem>
+          <listitem><para> LXC_HOOK_VERSION: the version of the hooks. This
+          value is identical to the value of the container's
+          <option>lxc.hook.version</option> config item. If it is set to 0 then
+          old-style hooks are used. If it is set to 1 then new-style hooks are
+          used. </para></listitem>
+          <listitem><para> LXC_LOG_LEVEL: the container's log level. </para></listitem>
           <listitem><para> LXC_NAME: is the container's name. </para></listitem>
+          <listitem><para> LXC_[NAMESPACE IDENTIFIER]_NS: path under
+          /proc/PID/fd/ to a file descriptor referring to the container's
+          namespace. For each preserved namespace type there will be a separate
+          environment variable. These environment variables will only be set if
+          <option>lxc.hook.version</option> is set to 1. </para></listitem>
           <listitem><para> LXC_ROOTFS_MOUNT: the path to the mounted root filesystem. </para></listitem>
-          <listitem><para> LXC_CONFIG_FILE: the path to the container configuration file. </para></listitem>
-          <listitem><para> LXC_SRC_NAME: in the case of the clone hook, this is the original container's name. </para></listitem>
-          <listitem><para> LXC_ROOTFS_PATH: this is the lxc.rootfs.path entry for the container.  Note this is likely not where the mounted rootfs is to be found, use LXC_ROOTFS_MOUNT for that. </para></listitem>
-          <listitem><para> LXC_CGNS_AWARE: indicated whether the container is cgroup namespace aware.  </para></listitem>
-          <listitem><para> LXC_LOG_LEVEL: the container's log level.  </para></listitem>
+          <listitem><para> LXC_ROOTFS_PATH: this is the lxc.rootfs.path entry
+          for the container. Note this is likely not where the mounted rootfs is
+          to be found, use LXC_ROOTFS_MOUNT for that. </para></listitem>
+          <listitem><para> LXC_SRC_NAME: in the case of the clone hook, this is
+          the original container's name. </para></listitem>
         </itemizedlist>
       </para>
       <para>
@@ -1455,6 +1943,33 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA
         Standard error is not logged, but can be captured by the
         hook redirecting its standard error to standard output.
       </para>
+      <variablelist>
+        <varlistentry>
+          <term>
+            <option>lxc.hook.version</option>
+          </term>
+          <listitem>
+            <para>
+            To pass the arguments in new style via environment variables set to
+            1 otherwise set to 0 to pass them as arguments.
+            This setting affects all hooks arguments that were traditionally
+            passed as arguments to the script. Specifically, it affects the
+            container name, section (e.g. 'lxc', 'net') and hook type (e.g.
+            'clone', 'mount', 'pre-mount') arguments. If new-style hooks are
+            used then the arguments will be available as environment variables.
+            The container name will be set in LXC_NAME. (This is set
+            independently of the value used for this config item.) The section
+            will be set in LXC_HOOK_SECTION and the hook type will be set in
+            LXC_HOOK_TYPE.
+            It also affects how the paths to file descriptors referring to the
+            container's namespaces are passed. If set to 1 then for each
+            namespace a separate environment variable LXC_[NAMESPACE
+            IDENTIFIER]_NS will be set. If set to 0 then the paths will be
+            passed as arguments to the stop hook.
+            </para>
+          </listitem>
+        </varlistentry>
+      </variablelist>
       <variablelist>
         <varlistentry>
           <term>
@@ -1515,6 +2030,20 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA
               directory is relative to the
               ${<option>LXC_ROOTFS_MOUNT</option>} environment
               variable available when the hook is run.
+            </para>
+          </listitem>
+        </varlistentry>
+      </variablelist>
+      <variablelist>
+        <varlistentry>
+          <term>
+            <option>lxc.hook.start-host</option>
+          </term>
+          <listitem>
+            <para>
+              A hook to be run in the host's namespace after the
+              container has been setup, and immediately before starting
+	      the container init.
             </para>
           </listitem>
         </varlistentry>
@@ -1768,7 +2297,7 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA
         </varlistentry>
         <varlistentry>
           <term>
-            <option>lxc.log</option>
+            <option>lxc.log.file</option>
           </term>
           <listitem>
             <para>

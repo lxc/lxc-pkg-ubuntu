@@ -21,19 +21,18 @@
  * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA
  */
 
+#define _GNU_SOURCE
 #include <libgen.h>
 #include <stdio.h>
 #include <stdlib.h>
+#include <string.h>
 #include <unistd.h>
 #include <sys/types.h>
 
 #include <lxc/lxccontainer.h>
 
 #include "arguments.h"
-#include "log.h"
-#include "lxc.h"
-
-lxc_log_define(lxc_cgroup_ui, lxc);
+#include "tool_utils.h"
 
 static int my_checker(const struct lxc_arguments* args)
 {
@@ -41,6 +40,7 @@ static int my_checker(const struct lxc_arguments* args)
 		lxc_error(args, "missing state object");
 		return -1;
 	}
+
 	return 0;
 }
 
@@ -85,10 +85,6 @@ int main(int argc, char *argv[])
 
 	if (lxc_log_init(&log))
 		exit(EXIT_FAILURE);
-	lxc_log_options_no_override();
-
-	/* REMOVE IN LXC 3.0 */
-	setenv("LXC_UPDATE_CONFIG_FORMAT", "1", 0);
 
 	state_object = my_args.argv[0];
 
@@ -99,26 +95,26 @@ int main(int argc, char *argv[])
 	if (my_args.rcfile) {
 		c->clear_config(c);
 		if (!c->load_config(c, my_args.rcfile)) {
-			ERROR("Failed to load rcfile");
+			fprintf(stderr, "Failed to load rcfile\n");
 			lxc_container_put(c);
 			exit(EXIT_FAILURE);
 		}
 		c->configfile = strdup(my_args.rcfile);
 		if (!c->configfile) {
-			ERROR("Out of memory setting new config filename");
+			fprintf(stderr, "Out of memory setting new config filename\n");
 			lxc_container_put(c);
 			exit(EXIT_FAILURE);
 		}
 	}
 
 	if (!c->may_control(c)) {
-		ERROR("Insufficent privileges to control %s:%s", my_args.lxcpath[0], my_args.name);
+		fprintf(stderr, "Insufficent privileges to control %s:%s\n", my_args.lxcpath[0], my_args.name);
 		lxc_container_put(c);
 		exit(EXIT_FAILURE);
 	}
 
 	if (!c->is_running(c)) {
-		ERROR("'%s:%s' is not running", my_args.lxcpath[0], my_args.name);
+		fprintf(stderr, "'%s:%s' is not running\n", my_args.lxcpath[0], my_args.name);
 		lxc_container_put(c);
 		exit(EXIT_FAILURE);
 	}
@@ -126,16 +122,16 @@ int main(int argc, char *argv[])
 	if ((my_args.argc) > 1) {
 		value = my_args.argv[1];
 		if (!c->set_cgroup_item(c, state_object, value)) {
-			ERROR("failed to assign '%s' value to '%s' for '%s'",
+			fprintf(stderr, "failed to assign '%s' value to '%s' for '%s'\n",
 				value, state_object, my_args.name);
 			lxc_container_put(c);
 			exit(EXIT_FAILURE);
 		}
 	} else {
-		char buffer[MAXPATHLEN];
-		int ret = c->get_cgroup_item(c, state_object, buffer, MAXPATHLEN);
+		char buffer[TOOL_MAXPATHLEN];
+		int ret = c->get_cgroup_item(c, state_object, buffer, TOOL_MAXPATHLEN);
 		if (ret < 0) {
-			ERROR("failed to retrieve value of '%s' for '%s:%s'",
+			fprintf(stderr, "failed to retrieve value of '%s' for '%s:%s'\n",
 			      state_object, my_args.lxcpath[0], my_args.name);
 			lxc_container_put(c);
 			exit(EXIT_FAILURE);

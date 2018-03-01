@@ -26,6 +26,7 @@
 
 #include "cgroup.h"
 #include "conf.h"
+#include "initutils.h"
 #include "log.h"
 #include "start.h"
 
@@ -33,27 +34,19 @@ lxc_log_define(lxc_cgroup, lxc);
 
 static struct cgroup_ops *ops = NULL;
 
-extern struct cgroup_ops *cgfs_ops_init(void);
 extern struct cgroup_ops *cgfsng_ops_init(void);
-extern struct cgroup_ops *cgm_ops_init(void);
 
 __attribute__((constructor)) void cgroup_ops_init(void)
 {
 	if (ops) {
-		INFO("cgroup driver %s", ops->name);
+		INFO("Running with %s in version %s", ops->driver, ops->version);
 		return;
 	}
 
 	DEBUG("cgroup_init");
-#if HAVE_CGMANAGER
-	ops = cgm_ops_init();
-#endif
-	if (!ops)
-		ops = cgfsng_ops_init();
-	if (!ops)
-		ops = cgfs_ops_init();
+	ops = cgfsng_ops_init();
 	if (ops)
-		INFO("Initialized cgroup driver %s", ops->name);
+		INFO("Initialized cgroup driver %s", ops->driver);
 }
 
 bool cgroup_init(struct lxc_handler *handler)
@@ -64,7 +57,7 @@ bool cgroup_init(struct lxc_handler *handler)
 	}
 
 	if (ops) {
-		INFO("cgroup driver %s initing for %s", ops->name, handler->name);
+		INFO("cgroup driver %s initing for %s", ops->driver, handler->name);
 		handler->cgroup_data = ops->init(handler);
 	}
 
@@ -150,7 +143,7 @@ bool cgroup_setup_limits(struct lxc_handler *handler, bool with_devices)
 {
 	if (ops)
 		return ops->setup_limits(handler->cgroup_data,
-					 &handler->conf->cgroup, with_devices);
+					 handler->conf, with_devices);
 
 	return false;
 }
@@ -166,7 +159,7 @@ bool cgroup_chown(struct lxc_handler *handler)
 bool cgroup_mount(const char *root, struct lxc_handler *handler, int type)
 {
 	if (ops)
-		return ops->mount_cgroup(handler->cgroup_data, root, type);
+		return ops->mount_cgroup(handler, root, type);
 
 	return false;
 }
@@ -177,7 +170,7 @@ int cgroup_nrtasks(struct lxc_handler *handler)
 		if (ops->nrtasks)
 			return ops->nrtasks(handler->cgroup_data);
 		else
-			WARN("cgroup driver \"%s\" doesn't implement nrtasks", ops->name);
+			WARN("cgroup driver \"%s\" doesn't implement nrtasks", ops->driver);
 	}
 
 	return -1;
@@ -215,11 +208,6 @@ void cgroup_disconnect(void)
 		ops->disconnect();
 }
 
-cgroup_driver_t cgroup_driver(void)
-{
-	return ops->driver;
-}
-
 #define INIT_SCOPE "/init.scope"
 void prune_init_scope(char *cg)
 {
@@ -246,9 +234,14 @@ void prune_init_scope(char *cg)
  * is not mounted then it will be ignored. But if systemd is mounted, then it
  * must be setup so that lxc can create cgroups in it, else containers will
  * fail.
+ *
+ * cgroups listed in lxc.cgroup.use are also treated as crucial
+ *
  */
 bool is_crucial_cgroup_subsystem(const char *s)
 {
+	const char *cgroup_use;
+
 	if (strcmp(s, "systemd") == 0)
 		return true;
 
@@ -256,6 +249,10 @@ bool is_crucial_cgroup_subsystem(const char *s)
 		return true;
 
 	if (strcmp(s, "freezer") == 0)
+		return true;
+
+	cgroup_use = lxc_global_config_value("lxc.cgroup.use");
+	if (cgroup_use && strstr(cgroup_use, s))
 		return true;
 
 	return false;

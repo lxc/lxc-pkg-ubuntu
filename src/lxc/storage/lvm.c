@@ -51,6 +51,7 @@ struct lvcreate_args {
 	const char *vg;
 	const char *lv;
 	const char *thinpool;
+	const char *fstype;
 
 	/* snapshot specific arguments */
 	const char *source_lv;
@@ -234,7 +235,7 @@ bool lvm_detect(const char *path)
 
 int lvm_mount(struct lxc_storage *bdev)
 {
-	char *src;
+	const char *src;
 
 	if (strcmp(bdev->type, "lvm"))
 		return -22;
@@ -313,12 +314,28 @@ int lvm_is_thin_pool(const char *path)
 	return lvm_compare_lv_attr(path, 0, 't');
 }
 
-int lvm_snapshot(const char *orig, const char *path, uint64_t size)
+static int lvm_snapshot_create_new_uuid_wrapper(void *data)
+{
+	struct lvcreate_args *args = data;
+
+	if (strcmp(args->fstype, "xfs") == 0)
+		execlp("xfs_admin", "xfs_admin", "-U", "generate", args->lv, (char *)NULL);
+
+	if (strcmp(args->fstype, "btrfs") == 0)
+		execlp("btrfstune", "btrfstune", "-f", "-u", args->lv, (char *)NULL);
+
+	return -1;
+}
+
+static int lvm_snapshot(struct lxc_storage *orig, const char *path, uint64_t size)
 {
 	int ret;
-	char *pathdup, *lv;
+	char *lv, *pathdup;
 	char sz[24];
+	char fstype[100];
 	char cmd_output[MAXPATHLEN];
+	char repairchar;
+	const char *origsrc;
 	struct lvcreate_args cmd_args = {0};
 
 	ret = snprintf(sz, 24, "%" PRIu64 "b", size);
@@ -339,6 +356,7 @@ int lvm_snapshot(const char *orig, const char *path, uint64_t size)
 		free(pathdup);
 		return -1;
 	}
+	repairchar = *lv;
 	*lv = '\0';
 	lv++;
 	TRACE("Parsed logical volume \"%s\"", lv);
@@ -347,24 +365,43 @@ int lvm_snapshot(const char *orig, const char *path, uint64_t size)
 	 * which case we cannot specify a size that's different from the
 	 * original size.
 	 */
-	ret = lvm_is_thin_volume(orig);
+	origsrc = lxc_storage_get_path(orig->src, "lvm");
+	ret = lvm_is_thin_volume(origsrc);
 	if (ret < 0) {
 		free(pathdup);
 		return -1;
 	} else if (ret) {
-		cmd_args.thinpool = orig;
+		cmd_args.thinpool = origsrc;
 	}
 
 	cmd_args.lv = lv;
-	cmd_args.source_lv = orig;
+	cmd_args.source_lv = origsrc;
 	cmd_args.size = sz;
 	TRACE("Creating new lvm snapshot \"%s\" of \"%s\" with size \"%s\"", lv,
-	      orig, sz);
+	      origsrc, sz);
 	ret = run_command(cmd_output, sizeof(cmd_output),
 			  lvm_snapshot_exec_wrapper, (void *)&cmd_args);
 	if (ret < 0) {
-		ERROR("Failed to create logical volume \"%s\": %s", orig,
-		      cmd_output);
+		ERROR("Failed to create logical volume \"%s\": %s", lv, cmd_output);
+		free(pathdup);
+		return -1;
+	}
+
+	if (detect_fs(orig, fstype, 100) < 0) {
+		INFO("Failed to detect filesystem type for \"%s\"", origsrc);
+		free(pathdup);
+		return -1;
+	}
+
+	/* repair path */
+	lv--;
+	*lv = repairchar;
+	cmd_args.lv = pathdup;
+	cmd_args.fstype = fstype;
+	ret = run_command(cmd_output, sizeof(cmd_output),
+			  lvm_snapshot_create_new_uuid_wrapper, (void *)&cmd_args);
+	if (ret < 0) {
+		ERROR("Failed to create new uuid for volume \"%s\": %s", pathdup, cmd_output);
 		free(pathdup);
 		return -1;
 	}
@@ -397,7 +434,8 @@ int lvm_clonepaths(struct lxc_storage *orig, struct lxc_storage *new,
 		    (const char *[]){"lvm:", "dev", vg, cname, NULL},
 		    false);
 	} else {
-		char *dup, *slider, *src;
+		const char *src;
+		char *dup, *slider;
 
 		src = lxc_storage_get_path(orig->src, orig->type);
 
@@ -461,11 +499,11 @@ int lvm_clonepaths(struct lxc_storage *orig, struct lxc_storage *new,
 bool lvm_create_clone(struct lxc_conf *conf, struct lxc_storage *orig,
 		      struct lxc_storage *new, uint64_t newsize)
 {
-	char *src;
-	const char *thinpool;
 	int ret;
+	const char *src;
+	const char *thinpool;
 	struct rsync_data data;
-	char *cmd_args[2];
+	const char *cmd_args[2];
 	char cmd_output[MAXPATHLEN] = {0};
 	char fstype[100] = "ext4";
 	uint64_t size = newsize;
@@ -524,7 +562,7 @@ bool lvm_create_snapshot(struct lxc_conf *conf, struct lxc_storage *orig,
 			 struct lxc_storage *new, uint64_t newsize)
 {
 	int ret;
-	char *newsrc, *origsrc;
+	const char *newsrc;
 	uint64_t size = newsize;
 
 	if (is_blktype(orig)) {
@@ -537,10 +575,9 @@ bool lvm_create_snapshot(struct lxc_conf *conf, struct lxc_storage *orig,
 			size = DEFAULT_FS_SIZE;
 	}
 
-	origsrc = lxc_storage_get_path(orig->src, "lvm");
 	newsrc = lxc_storage_get_path(new->src, "lvm");
 
-	ret = lvm_snapshot(origsrc, newsrc, size);
+	ret = lvm_snapshot(orig, newsrc, size);
 	if (ret < 0) {
 		ERROR("Failed to create lvm \"%s\" snapshot of \"%s\"",
 		      new->src, orig->src);

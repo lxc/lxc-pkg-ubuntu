@@ -20,20 +20,18 @@
  * License along with this library; if not, write to the Free Software
  * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA
  */
+
+#define _GNU_SOURCE
+#include <libgen.h>
 #include <stdio.h>
+#include <string.h>
+#include <unistd.h>
 #include <unistd.h>
 #include <sys/types.h>
-#include <libgen.h>
-#include <string.h>
 
 #include <lxc/lxccontainer.h>
 
-#include "lxc.h"
-#include "log.h"
-
 #include "arguments.h"
-
-lxc_log_define(lxc_freeze_ui, lxc);
 
 static const struct option my_longopts[] = {
 	LXC_COMMON_OPTIONS
@@ -74,40 +72,36 @@ int main(int argc, char *argv[])
 
 	if (lxc_log_init(&log))
 		exit(EXIT_FAILURE);
-	lxc_log_options_no_override();
-
-	/* REMOVE IN LXC 3.0 */
-	setenv("LXC_UPDATE_CONFIG_FORMAT", "1", 0);
 
 	c = lxc_container_new(my_args.name, my_args.lxcpath[0]);
 	if (!c) {
-		ERROR("No such container: %s:%s", my_args.lxcpath[0], my_args.name);
+		fprintf(stderr, "No such container: %s:%s\n", my_args.lxcpath[0], my_args.name);
 		exit(EXIT_FAILURE);
 	}
 
 	if (my_args.rcfile) {
 		c->clear_config(c);
 		if (!c->load_config(c, my_args.rcfile)) {
-			ERROR("Failed to load rcfile");
+			fprintf(stderr, "Failed to load rcfile\n");
 			lxc_container_put(c);
 			exit(EXIT_FAILURE);
 		}
 		c->configfile = strdup(my_args.rcfile);
 		if (!c->configfile) {
-			ERROR("Out of memory setting new config filename");
+			fprintf(stderr, "Out of memory setting new config filename\n");
 			lxc_container_put(c);
 			exit(EXIT_FAILURE);
 		}
 	}
 
 	if (!c->may_control(c)) {
-		ERROR("Insufficent privileges to control %s:%s", my_args.lxcpath[0], my_args.name);
+		fprintf(stderr, "Insufficent privileges to control %s:%s\n", my_args.lxcpath[0], my_args.name);
 		lxc_container_put(c);
 		exit(EXIT_FAILURE);
 	}
 
 	if (!c->freeze(c)) {
-		ERROR("Failed to freeze %s:%s", my_args.lxcpath[0], my_args.name);
+		fprintf(stderr, "Failed to freeze %s:%s\n", my_args.lxcpath[0], my_args.name);
 		lxc_container_put(c);
 		exit(EXIT_FAILURE);
 	}

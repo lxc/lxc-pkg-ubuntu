@@ -37,11 +37,32 @@
 #include "state.h"
 
 struct lxc_handler {
-	/* The clone flags that were requested. */
-	int clone_flags;
-
-	/* File descriptors referring to the network namespace of the container. */
-	int netnsfd;
+	/* Record the clone for namespaces flags that the container requested.
+	 *
+	 * @ns_clone_flags
+	 * - All clone flags that were requested.
+	 *
+	 * @ns_on_clone_flags
+	 * - The clone flags for namespaces to actually use when calling
+	 *   lxc_clone(): After the container has started ns_on_clone_flags will
+	 *   list the clone flags that were unshare()ed rather then clone()ed
+	 *   because of ordering requirements (e.g. e.g. CLONE_NEWNET and
+	 *   CLONE_NEWUSER) or implementation details.
+         *
+	 * @ns_keep_flags;
+	 * - The clone flags for the namespaces that the container will inherit
+	 *   from the parent. They are not recorded in the handler itself but
+	 *   are present in the container's config.
+	 *
+	 * @ns_share_flags;
+	 * - The clone flags for the namespaces that the container will share
+	 *   with another process.  They are not recorded in the handler itself
+	 *   but are present in the container's config.
+	 */
+	struct /* lxc_ns */ {
+		int ns_clone_flags;
+		int ns_on_clone_flags;
+	};
 
 	/* File descriptor to pin the rootfs for privileged containers. */
 	int pinfd;
@@ -67,10 +88,10 @@ struct lxc_handler {
 	/* Socketpair to synchronize processes during container creation. */
 	int sync_sock[2];
 
-	/* The name of the container. */
-	char *name;
+	/* Pointer to the name of the container. Do not free! */
+	const char *name;
 
-	/* The path the container is running in. */
+	/* Pointer to the path the container. Do not free! */
 	const char *lxcpath;
 
 	/* Whether the container's startup process euid is 0. */
@@ -82,14 +103,14 @@ struct lxc_handler {
 	/* The child's pid. */
 	pid_t pid;
 
+	/* Whether the child has already exited. */
+	bool init_died;
+
 	/* The signal mask prior to setting up the signal file descriptor. */
 	sigset_t oldmask;
 
 	/* The container's in-memory configuration. */
 	struct lxc_conf *conf;
-
-	/* A list of clients registered to be informed about a container state. */
-	struct lxc_list state_clients;
 
 	/* A set of operations to be performed at various stages of the
 	 * container's life.
@@ -106,6 +127,11 @@ struct lxc_handler {
 
 	/* Current state of the container. */
 	lxc_state_t state;
+
+	/* The exit status of the container; not defined unless ->init_died ==
+	 * true.
+	 */
+	int exit_status;
 };
 
 struct lxc_operations {
@@ -113,18 +139,18 @@ struct lxc_operations {
 	int (*post_start)(struct lxc_handler *, void *);
 };
 
-struct state_client {
-	int clientfd;
-	lxc_state_t states[MAX_STATE];
-};
-
 extern int lxc_poll(const char *name, struct lxc_handler *handler);
-extern int lxc_set_state(const char *name, struct lxc_handler *handler, lxc_state_t state);
+extern int lxc_set_state(const char *name, struct lxc_handler *handler,
+			 lxc_state_t state);
+extern int lxc_serve_state_clients(const char *name,
+				   struct lxc_handler *handler,
+				   lxc_state_t state);
 extern void lxc_abort(const char *name, struct lxc_handler *handler);
 extern struct lxc_handler *lxc_init_handler(const char *name,
 					    struct lxc_conf *conf,
 					    const char *lxcpath,
 					    bool daemonize);
+extern void lxc_zero_handler(struct lxc_handler *handler);
 extern void lxc_free_handler(struct lxc_handler *handler);
 extern int lxc_init(const char *name, struct lxc_handler *handler);
 extern void lxc_fini(const char *name, struct lxc_handler *handler);
@@ -141,6 +167,6 @@ extern int lxc_check_inherited(struct lxc_conf *conf, bool closeall,
 extern int __lxc_start(const char *, struct lxc_handler *,
 		       struct lxc_operations *, void *, const char *, bool);
 
-extern void resolve_clone_flags(struct lxc_handler *handler);
-#endif
+extern int resolve_clone_flags(struct lxc_handler *handler);
 
+#endif

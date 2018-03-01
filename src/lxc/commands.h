@@ -29,6 +29,7 @@
 #include <sys/types.h>
 
 #include "state.h"
+#include "lxccontainer.h"
 
 #define LXC_CMD_DATA_MAX (MAXPATHLEN * 2)
 
@@ -38,7 +39,7 @@
 
 typedef enum {
 	LXC_CMD_CONSOLE,
-	LXC_CMD_CONSOLE_WINCH,
+	LXC_CMD_TERMINAL_WINCH,
 	LXC_CMD_STOP,
 	LXC_CMD_GET_STATE,
 	LXC_CMD_GET_INIT_PID,
@@ -48,6 +49,8 @@ typedef enum {
 	LXC_CMD_GET_NAME,
 	LXC_CMD_GET_LXCPATH,
 	LXC_CMD_ADD_STATE_CLIENT,
+	LXC_CMD_CONSOLE_LOG,
+	LXC_CMD_SERVE_STATE_CLIENTS,
 	LXC_CMD_MAX,
 } lxc_cmd_t;
 
@@ -73,7 +76,15 @@ struct lxc_cmd_console_rsp_data {
 	int ttynum;
 };
 
-extern int lxc_cmd_console_winch(const char *name, const char *lxcpath);
+struct lxc_cmd_console_log {
+	bool clear;
+	bool read;
+	uint64_t read_max;
+	bool write_logfile;
+
+};
+
+extern int lxc_cmd_terminal_winch(const char *name, const char *lxcpath);
 extern int lxc_cmd_console(const char *name, int *ttynum, int *fd,
 			   const char *lxcpath);
 /*
@@ -106,14 +117,17 @@ extern int lxc_cmd_stop(const char *name, const char *lxcpath);
 extern int lxc_cmd_add_state_client(const char *name, const char *lxcpath,
 				    lxc_state_t states[MAX_STATE],
 				    int *state_client_fd);
+extern int lxc_cmd_serve_state_clients(const char *name, const char *lxcpath,
+				       lxc_state_t state);
 
 struct lxc_epoll_descr;
 struct lxc_handler;
 
-extern int lxc_cmd_init(const char *name, struct lxc_handler *handler,
-			    const char *lxcpath);
+extern int lxc_cmd_init(const char *name, const char *lxcpath, const char *suffix);
 extern int lxc_cmd_mainloop_add(const char *name, struct lxc_epoll_descr *descr,
 				    struct lxc_handler *handler);
 extern int lxc_try_cmd(const char *name, const char *lxcpath);
+extern int lxc_cmd_console_log(const char *name, const char *lxcpath,
+			       struct lxc_console_log *log);
 
 #endif /* __commands_h */

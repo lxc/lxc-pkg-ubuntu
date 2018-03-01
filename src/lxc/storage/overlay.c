@@ -54,7 +54,7 @@ int ovl_clonepaths(struct lxc_storage *orig, struct lxc_storage *new, const char
 		   int snap, uint64_t newsize, struct lxc_conf *conf)
 {
 	int ret;
-	char *src;
+	const char *src;
 
 	if (!snap) {
 		ERROR("The overlay storage driver can only be used for "
@@ -73,7 +73,7 @@ int ovl_clonepaths(struct lxc_storage *orig, struct lxc_storage *new, const char
 		return -1;
 	}
 
-	if (am_unpriv()) {
+	if (am_guest_unpriv()) {
 		ret = chown_mapped_root(new->dest, conf);
 		if (ret < 0)
 			WARN("Failed to update ownership of %s", new->dest);
@@ -120,7 +120,7 @@ int ovl_clonepaths(struct lxc_storage *orig, struct lxc_storage *new, const char
 			return -1;
 		}
 
-		if (am_unpriv()) {
+		if (am_guest_unpriv()) {
 			ret = chown_mapped_root(delta, conf);
 			if (ret < 0)
 				WARN("Failed to update ownership of %s", delta);
@@ -153,7 +153,7 @@ int ovl_clonepaths(struct lxc_storage *orig, struct lxc_storage *new, const char
 			return -1;
 		}
 
-		if (am_unpriv()) {
+		if (am_guest_unpriv()) {
 			ret = chown_mapped_root(work, conf);
 			if (ret < 0)
 				WARN("Failed to update ownership of %s", work);
@@ -199,17 +199,16 @@ int ovl_clonepaths(struct lxc_storage *orig, struct lxc_storage *new, const char
 			return -22;
 		}
 
-		nsrc = strchr(osrc, ':') + 1;
-		if ((nsrc != osrc + 8) && (nsrc != osrc + 10)) {
-			ERROR("Detected \":\" in \"%s\" at wrong position", osrc);
-			free(osrc);
-			return -22;
-		}
+		nsrc = osrc;
+		if (strncmp(osrc, "overlay:", 8) == 0)
+			nsrc += 8;
+		else if (strncmp(osrc, "overlayfs:", 10) == 0)
+			nsrc += 10;
 
 		odelta = strchr(nsrc, ':');
 		if (!odelta) {
-			free(osrc);
 			ERROR("Failed to find \":\" in \"%s\"", nsrc);
+			free(osrc);
 			return -22;
 		}
 
@@ -225,7 +224,7 @@ int ovl_clonepaths(struct lxc_storage *orig, struct lxc_storage *new, const char
 			return -1;
 		}
 
-		if (am_unpriv()) {
+		if (am_guest_unpriv()) {
 			ret = chown_mapped_root(ndelta, conf);
 			if (ret < 0)
 				WARN("Failed to update ownership of %s",
@@ -266,7 +265,7 @@ int ovl_clonepaths(struct lxc_storage *orig, struct lxc_storage *new, const char
 			return -1;
 		}
 
-		if (am_unpriv()) {
+		if (am_guest_unpriv()) {
 			ret = chown_mapped_root(work, conf);
 			if (ret < 0)
 				WARN("Failed to update ownership of %s", work);
@@ -411,15 +410,12 @@ int ovl_create(struct lxc_storage *bdev, const char *dest, const char *n,
 		return -1;
 	}
 
-	delta = malloc(len + 1);
+	delta = strdup(dest);
 	if (!delta) {
 		ERROR("Failed to allocate memory");
 		return -1;
 	}
-
-	memcpy(delta, dest, len);
 	memcpy(delta + len - 6, "delta0", sizeof("delta0") - 1);
-	delta[len + sizeof("delta0")] = '\0';
 
 	ret = mkdir_p(delta, 0755);
 	if (ret < 0) {
@@ -457,12 +453,7 @@ int ovl_create(struct lxc_storage *bdev, const char *dest, const char *n,
 
 int ovl_destroy(struct lxc_storage *orig)
 {
-	bool ovl;
 	char *upper = orig->src;
-
-	ovl = !strncmp(upper, "overlay:", 8);
-	if (!ovl && strncmp(upper, "overlayfs:", 10))
-		return -22;
 
 	/* For an overlay container the rootfs is considered immutable
 	 * and cannot be removed when restoring from a snapshot.
@@ -470,9 +461,9 @@ int ovl_destroy(struct lxc_storage *orig)
 	if (orig->flags & LXC_STORAGE_INTERNAL_OVERLAY_RESTORE)
 		return 0;
 
-	if (ovl)
+	if (strncmp(upper, "overlay:", 8) == 0)
 		upper += 8;
-	else
+	else if (strncmp(upper, "overlayfs:", 10) == 0)
 		upper += 10;
 
 	upper = strchr(upper, ':');
@@ -485,10 +476,10 @@ int ovl_destroy(struct lxc_storage *orig)
 
 bool ovl_detect(const char *path)
 {
-	if (!strncmp(path, "overlayfs:", 10))
+	if (!strncmp(path, "overlay:", 8))
 		return true;
 
-	if (!strncmp(path, "overlay:", 8))
+	if (!strncmp(path, "overlayfs:", 10))
 		return true;
 
 	return false;
@@ -521,18 +512,19 @@ int ovl_mount(struct lxc_storage *bdev)
 		ERROR("Failed to allocate memory");
 		return -1;
 	}
+	upper = dup;
+	lower = dup;
+
+	if (strncmp(dup, "overlay:", 8) == 0)
+		lower += 8;
+	else if (strncmp(dup, "overlayfs:", 10) == 0)
+		lower += 10;
+	if (upper != lower)
+		upper = lower;
 
 	/* support multiple lower layers */
-	lower = strstr(dup, ":/");
-	if (!lower) {
-		ERROR("Failed to detect \":/\" in string \"%s\"", dup);
-		free(dup);
-		return -22;
-	}
-
-	lower++;
-	upper = lower;
-	while ((tmp = strstr(++upper, ":/"))) {
+	while ((tmp = strstr(upper, ":/"))) {
+		tmp++;
 		upper = tmp;
 	}
 
@@ -545,7 +537,7 @@ int ovl_mount(struct lxc_storage *bdev)
 	upper++;
 
 	/* if delta doesn't yet exist, create it */
-	ret = mkdir_p(upper, 0755) < 0;
+	ret = mkdir_p(upper, 0755);
 	if (ret < 0 && errno != EEXIST) {
 		SYSERROR("Failed to create directory \"%s\"", upper);
 		free(dup);
@@ -688,14 +680,14 @@ int ovl_umount(struct lxc_storage *bdev)
 	return ret;
 }
 
-char *ovl_get_lower(const char *rootfs_path)
+const char *ovl_get_lower(const char *rootfs_path)
 {
-	char *s1;
+	const char *s1 = rootfs_path;
 
-	s1 = strstr(rootfs_path, ":/");
-	if (!s1)
-		return NULL;
-	s1++;
+	if (strncmp(rootfs_path, "overlay:", 8) == 0)
+		s1 += 8;
+	else if (strncmp(rootfs_path, "overlayfs:", 10) == 0)
+		s1 += 10;
 
 	s1 = strstr(s1, ":/");
 	if (!s1)
@@ -719,22 +711,20 @@ char *ovl_get_rootfs(const char *rootfs_path, size_t *rootfslen)
 	if (!s1)
 		return NULL;
 
-	s2 = strstr(s1, ":/");
-	if (s2) {
-		s2 = s2 + 1;
-		if ((s3 = strstr(s2, ":/")))
-			*s3 = '\0';
-		rootfsdir = strdup(s2);
-		if (!rootfsdir) {
-			free(s1);
-			return NULL;
-		}
-	}
+	s2 = s1;
+	if (strncmp(rootfs_path, "overlay:", 8) == 0)
+		s2 += 8;
+	else if (strncmp(rootfs_path, "overlayfs:", 10) == 0)
+		s2 += 10;
 
+	s3 = strstr(s2, ":/");
+	if (s3)
+		*s3 = '\0';
+
+	rootfsdir = strdup(s2);
+	free(s1);
 	if (!rootfsdir)
-		rootfsdir = s1;
-	else
-		free(s1);
+		return NULL;
 
 	*rootfslen = strlen(rootfsdir);
 
@@ -970,7 +960,7 @@ static int ovl_do_rsync(const char *src, const char *dest,
 
 	rdata.src = (char *)src;
 	rdata.dest = (char *)dest;
-	if (am_unpriv())
+	if (am_guest_unpriv())
 		ret = userns_exec_full(conf, lxc_rsync_exec_wrapper, &rdata,
 				       "lxc_rsync_exec_wrapper");
 	else

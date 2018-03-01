@@ -53,7 +53,6 @@ typedef int (*config_clr_cb)(const char *key, struct lxc_conf *conf,
 
 struct lxc_config_t {
 	char *name;
-	bool is_legacy_key; /* REMOVE in LXC 3.0 */
 	config_set_cb set;
 	config_get_cb get;
 	config_clr_cb clr;
@@ -92,11 +91,9 @@ extern int lxc_config_define_load(struct lxc_list *defines,
 /* needed for lxc-attach */
 extern signed long lxc_config_parse_arch(const char *arch);
 
-extern int lxc_fill_elevated_privileges(char *flaglist, int *flags);
-
 extern int lxc_clear_config_item(struct lxc_conf *c, const char *key);
 
-extern void write_config(FILE *fout, struct lxc_conf *c);
+extern int write_config(int fd, const struct lxc_conf *conf);
 
 extern bool do_append_unexp_config_line(struct lxc_conf *conf, const char *key,
 					const char *v);
