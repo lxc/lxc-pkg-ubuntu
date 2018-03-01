@@ -1,3 +1,14 @@
+lxc (3.0.0~beta1-0ubuntu1) bionic; urgency=medium
+
+  * New upstream beta (3.0.0~beta1)
+  * Remove lxc-templates, now its own source
+    - Move lxc-templates from recommends to suggests
+    - liblxc-common now replaces part of lxc-templates
+  * Remove python3-lxc, now its own source
+  * Add libpam-cgfs (moved from lxcfs)
+
+ -- Stéphane Graber <stgraber@ubuntu.com>  Thu, 01 Mar 2018 14:02:28 -0500
+
 lxc (2.1.1-0ubuntu4) bionic; urgency=medium
 
   * Loosen dependency on lxc-templates ahead of LXC 3.0.
