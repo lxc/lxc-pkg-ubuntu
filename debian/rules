@@ -9,8 +9,6 @@ SHELL := sh -e
 
 DEB_HOST_MULTIARCH ?= $(shell dpkg-architecture -qDEB_HOST_MULTIARCH)
 
-PY3V := $(filter-out $(shell py3versions -vd),$(shell py3versions -vr))
-
 %:
 	dh ${@} --with autoreconf --with systemd
 
