@@ -17,23 +17,20 @@
  * 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
  */
 
-#include "confile.h"
-#include <stdio.h>
-#include <libgen.h>
-#include <unistd.h>
+#define _GNU_SOURCE
 #include <ctype.h>
-#include <sys/types.h>
 #include <fcntl.h>
+#include <libgen.h>
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
+#include <unistd.h>
+#include <sys/types.h>
 
 #include <lxc/lxccontainer.h>
 
-#include "lxc.h"
-#include "log.h"
 #include "arguments.h"
-#include "storage.h"
-#include "utils.h"
-
-lxc_log_define(lxc_snapshot_ui, lxc);
+#include "tool_utils.h"
 
 static int my_parser(struct lxc_arguments *args, int c, char *arg);
 
@@ -99,10 +96,6 @@ int main(int argc, char *argv[])
 
 	if (lxc_log_init(&log))
 		exit(EXIT_FAILURE);
-	lxc_log_options_no_override();
-
-	/* REMOVE IN LXC 3.0 */
-	setenv("LXC_UPDATE_CONFIG_FORMAT", "1", 0);
 
 	if (geteuid()) {
 		if (access(my_args.lxcpath[0], O_RDONLY) < 0) {
@@ -131,6 +124,12 @@ int main(int argc, char *argv[])
 			lxc_container_put(c);
 			exit(EXIT_FAILURE);
 		}
+	}
+
+	if (!c->lxc_conf) {
+		fprintf(stderr, "No container config specified\n");
+		lxc_container_put(c);
+		exit(EXIT_FAILURE);
 	}
 
 	if (!c->may_control(c)) {
@@ -208,11 +207,9 @@ static int do_snapshot(struct lxc_container *c, char *commentfile)
 
 	ret = c->snapshot(c, commentfile);
 	if (ret < 0) {
-		ERROR("Error creating a snapshot");
+		fprintf(stderr, "Error creating a snapshot\n");
 		return -1;
 	}
-
-	INFO("Created snapshot snap%d", ret);
 
 	return 0;
 }
@@ -227,7 +224,7 @@ static int do_snapshot_destroy(struct lxc_container *c, char *snapname)
 		ret = c->snapshot_destroy(c, snapname);
 
 	if (!ret) {
-		ERROR("Error destroying snapshot %s", snapname);
+		fprintf(stderr, "Error destroying snapshot %s\n", snapname);
 		return -1;
 	}
 
@@ -241,7 +238,7 @@ static int do_snapshot_list(struct lxc_container *c, int print_comments)
 
 	n = c->snapshot_list(c, &s);
 	if (n < 0) {
-		ERROR("Error listing snapshots");
+		fprintf(stderr, "Error listing snapshots\n");
 		return -1;
 	}
 	if (n == 0) {
@@ -281,7 +278,7 @@ static int do_snapshot_restore(struct lxc_container *c,
 
 	bret = c->snapshot_restore(c, args->snapname, args->newname);
 	if (!bret) {
-		ERROR("Error restoring snapshot %s", args->snapname);
+		fprintf(stderr, "Error restoring snapshot %s\n", args->snapname);
 		return -1;
 	}
 

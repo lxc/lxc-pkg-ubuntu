@@ -25,11 +25,10 @@
 #include <sys/types.h>
 #include <sys/stat.h>
 #include <sys/mount.h>
-#include <sys/apparmor.h>
 #include <sys/vfs.h>
 
 #include "log.h"
-#include "lsm/lsm.h"
+#include "lsm.h"
 #include "conf.h"
 #include "utils.h"
 
@@ -135,7 +134,7 @@ again:
  */
 static bool apparmor_am_unconfined(void)
 {
-	char *p = apparmor_process_label_get(getpid());
+	char *p = apparmor_process_label_get(lxc_raw_getpid());
 	bool ret = false;
 	if (!p || strcmp(p, "unconfined") == 0)
 		ret = true;
@@ -163,8 +162,8 @@ static bool aa_needs_transition(char *curlabel)
  * apparmor_process_label_set: Set AppArmor process profile
  *
  * @label   : the profile to set
- * @conf    : the container configuration to use @label is NULL
- * @default : use the default profile if label is NULL
+ * @conf    : the container configuration to use if @label is NULL
+ * @default : use the default profile if @label is NULL
  * @on_exec : this is ignored.  Apparmor profile will be changed immediately
  *
  * Returns 0 on success, < 0 on failure
@@ -172,8 +171,10 @@ static bool aa_needs_transition(char *curlabel)
  * Notes: This relies on /proc being available.
  */
 static int apparmor_process_label_set(const char *inlabel, struct lxc_conf *conf,
-				      int use_default, int on_exec)
+				      bool use_default, bool on_exec)
 {
+	int label_fd, ret;
+	pid_t tid;
 	const char *label = inlabel ? inlabel : conf->lsm_aa_profile;
 	char *curlabel;
 
@@ -186,7 +187,7 @@ static int apparmor_process_label_set(const char *inlabel, struct lxc_conf *conf
 		return 0;
 	}
 
-	curlabel = apparmor_process_label_get(getpid());
+	curlabel = apparmor_process_label_get(lxc_raw_getpid());
 
 	if (!aa_stacking_supported() && aa_needs_transition(curlabel)) {
 		/* we're already confined, and stacking isn't supported */
@@ -229,13 +230,21 @@ static int apparmor_process_label_set(const char *inlabel, struct lxc_conf *conf
 		INFO("apparmor profile unchanged");
 		return 0;
 	}
-
-	if (aa_change_profile(label) < 0) {
-		SYSERROR("failed to change apparmor profile to %s", label);
+	tid = lxc_raw_gettid();
+	label_fd = lsm_process_label_fd_get(tid, on_exec);
+	if (label_fd < 0) {
+		SYSERROR("Failed to change apparmor profile to %s", label);
 		return -1;
 	}
 
-	INFO("changed apparmor profile to %s", label);
+	ret = lsm_process_label_set_at(label_fd, label, on_exec);
+	close(label_fd);
+	if (ret < 0) {
+		SYSERROR("Failed to change apparmor profile to %s", label);
+		return -1;
+	}
+
+	INFO("Changed apparmor profile to %s", label);
 	return 0;
 }
 

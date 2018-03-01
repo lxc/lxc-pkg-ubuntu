@@ -3,15 +3,6 @@
 /* "Prefix for shared files." */
 #undef DATADIR
 
-/* Python3 is available */
-#undef ENABLE_PYTHON
-
-/* Have cgmanager_get_pid_cgroup_abs_sync */
-#undef HAVE_CGMANAGER_GET_PID_CGROUP_ABS_SYNC
-
-/* Have cgmanager_list_controllers */
-#undef HAVE_CGMANAGER_LIST_CONTROLLERS
-
 /* Define to 1 if you have the `confstr' function. */
 #undef HAVE_CONFSTR
 
@@ -61,9 +52,6 @@
 /* Define to 1 if you have the <inttypes.h> header file. */
 #undef HAVE_INTTYPES_H
 
-/* Define to 1 if you have the `apparmor' library (-lapparmor). */
-#undef HAVE_LIBAPPARMOR
-
 /* Define to 1 if you have the `cap' library (-lcap). */
 #undef HAVE_LIBCAP
 
@@ -103,8 +91,14 @@
 /* Define to 1 if you have the `prlimit' function. */
 #undef HAVE_PRLIMIT
 
-/* Define to 1 if you have the `pthread_atfork' function. */
-#undef HAVE_PTHREAD_ATFORK
+/* Define to 1 if you have the `prlimit64' function. */
+#undef HAVE_PRLIMIT64
+
+/* Define if you have POSIX threads libraries and header files. */
+#undef HAVE_PTHREAD
+
+/* Have PTHREAD_PRIO_INHERIT. */
+#undef HAVE_PTHREAD_PRIO_INHERIT
 
 /* Define to 1 if you have the <pty.h> header file. */
 #undef HAVE_PTY_H
@@ -218,6 +212,10 @@
 
 /* Define to the version of this package. */
 #undef PACKAGE_VERSION
+
+/* Define to necessary symbol if this constant uses a non-standard name on
+   your system. */
+#undef PTHREAD_CREATE_JOINABLE
 
 /* Define to 1 if you have the ANSI C header files. */
 #undef STDC_HEADERS

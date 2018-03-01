@@ -28,6 +28,9 @@
 #include <errno.h>
 #include <fcntl.h>
 
+#include "lxctest.h"
+#include "utils.h"
+
 #define MYNAME "shortlived"
 
 static int destroy_container(void)
@@ -92,18 +95,37 @@ again:
 
 int main(int argc, char *argv[])
 {
-	struct lxc_container *c;
+	int fd, i;
 	const char *s;
 	bool b;
-	int i;
-	int ret = 0;
+	struct lxc_container *c;
+	struct lxc_log log;
+	char template[sizeof(P_tmpdir"/shortlived_XXXXXX")];
+	int ret = EXIT_FAILURE;
 
-	ret = 1;
+	strcpy(template, P_tmpdir"/shortlived_XXXXXX");
+	i = lxc_make_tmpfile(template, false);
+	if (i < 0) {
+		lxc_error("Failed to create temporary log file for container %s\n", MYNAME);
+		exit(EXIT_FAILURE);
+	} else {
+		lxc_debug("Using \"%s\" as temporary log file for container %s\n", template, MYNAME);
+		close(i);
+	}
+
+	log.name = MYNAME;
+	log.file = template;
+	log.level = "TRACE";
+	log.prefix = "shortlived";
+	log.quiet = false;
+	log.lxcpath = NULL;
+	if (lxc_log_init(&log))
+		exit(EXIT_FAILURE);
+
 	/* test a real container */
 	c = lxc_container_new(MYNAME, NULL);
 	if (!c) {
 		fprintf(stderr, "%d: error creating lxc_container %s\n", __LINE__, MYNAME);
-		ret = 1;
 		goto out;
 	}
 
@@ -112,8 +134,7 @@ int main(int argc, char *argv[])
 		goto out;
 	}
 
-	ret = create_container();
-	if (ret) {
+	if (create_container() < 0) {
 		fprintf(stderr, "%d: failed to create a container\n", __LINE__);
 		goto out;
 	}
@@ -141,16 +162,37 @@ int main(int argc, char *argv[])
 		goto out;
 	}
 
+	if (!c->set_config_item(c, "lxc.execute.cmd", "echo hello")) {
+		fprintf(stderr, "%d: failed setting lxc.execute.cmd\n", __LINE__);
+		goto out;
+	}
+
 	c->want_daemonize(c, true);
 
-	/* Test whether we can start a really short-lived daemonized container.
-	 */
+	/* Test whether we can start a really short-lived daemonized container. */
 	for (i = 0; i < 10; i++) {
 		if (!c->startl(c, 0, NULL)) {
-			fprintf(stderr, "%d: %s failed to start\n", __LINE__, c->name);
+			fprintf(stderr, "%d: %s failed to start on %dth iteration\n", __LINE__, c->name, i);
 			goto out;
 		}
-		sleep(1);
+
+		if (!c->wait(c, "STOPPED", 30)) {
+			fprintf(stderr, "%d: %s failed to wait on %dth iteration\n", __LINE__, c->name, i);
+			goto out;
+		}
+	}
+
+	/* Test whether we can start a really short-lived daemonized container with lxc-init. */
+	for (i = 0; i < 10; i++) {
+		if (!c->startl(c, 1, NULL)) {
+			fprintf(stderr, "%d: %s failed to start on %dth iteration\n", __LINE__, c->name, i);
+			goto out;
+		}
+
+		if (!c->wait(c, "STOPPED", 30)) {
+			fprintf(stderr, "%d: %s failed to wait on %dth iteration\n", __LINE__, c->name, i);
+			goto out;
+		}
 	}
 
 	if (!c->set_config_item(c, "lxc.init.cmd", "you-shall-fail")) {
@@ -158,15 +200,38 @@ int main(int argc, char *argv[])
 		goto out;
 	}
 
-	/* Test whether we catch the start failure of a really short-lived
-	 * daemonized container.
-	 */
+	if (!c->set_config_item(c, "lxc.execute.cmd", "you-shall-fail")) {
+		fprintf(stderr, "%d: failed setting lxc.init.cmd\n", __LINE__);
+		goto out;
+	}
+
+	/* Test whether we can start a really short-lived daemonized container. */
 	for (i = 0; i < 10; i++) {
 		if (c->startl(c, 0, NULL)) {
-			fprintf(stderr, "%d: %s failed to start\n", __LINE__, c->name);
+			fprintf(stderr, "%d: %s failed to start on %dth iteration\n", __LINE__, c->name, i);
 			goto out;
 		}
-		sleep(1);
+
+		if (!c->wait(c, "STOPPED", 30)) {
+			fprintf(stderr, "%d: %s failed to wait on %dth iteration\n", __LINE__, c->name, i);
+			goto out;
+		}
+	}
+
+	/* Test whether we can start a really short-lived daemonized container with lxc-init. */
+	for (i = 0; i < 10; i++) {
+		/* An container started with lxc-init will always start
+		 * succesfully unless lxc-init has a bug.
+		 */
+		if (!c->startl(c, 1, NULL)) {
+			fprintf(stderr, "%d: %s failed to start on %dth iteration\n", __LINE__, c->name, i);
+			goto out;
+		}
+
+		if (!c->wait(c, "STOPPED", 30)) {
+			fprintf(stderr, "%d: %s failed to wait on %dth iteration\n", __LINE__, c->name, i);
+			goto out;
+		}
 	}
 
 	c->stop(c);
@@ -180,5 +245,21 @@ out:
 		destroy_container();
 	}
 	lxc_container_put(c);
+
+	if (ret != 0) {
+		fd = open(template, O_RDONLY);
+		if (fd >= 0) {
+			char buf[4096];
+			ssize_t buflen;
+			while ((buflen = read(fd, buf, 1024)) > 0) {
+				buflen = write(STDERR_FILENO, buf, buflen);
+				if (buflen <= 0)
+					break;
+			}
+			close(fd);
+		}
+	}
+
+	unlink(template);
 	exit(ret);
 }

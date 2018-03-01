@@ -17,40 +17,30 @@
  */
 
 #define _GNU_SOURCE
-#include "config.h"
-
-#include <unistd.h>
+#include <ctype.h>
+#include <errno.h>
+#include <fcntl.h>
 #include <getopt.h>
 #include <signal.h>
-#include <stdio.h>
-#include <sys/types.h>
-#include <stdint.h>
-#include <sys/wait.h>
-#include <stdlib.h>
-#include <errno.h>
-#include <ctype.h>
-#include <sys/stat.h>
-#include <fcntl.h>
-#include <time.h>
 #include <stdbool.h>
+#include <stdint.h>
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
+#include <time.h>
+#include <unistd.h>
+#include <sys/stat.h>
+#include <sys/types.h>
+#include <sys/wait.h>
 
 #include <lxc/lxccontainer.h>
 
-#include "attach.h"
-#include "log.h"
-#include "confile.h"
 #include "arguments.h"
-#include "lxc.h"
-#include "conf.h"
-#include "state.h"
-#include "storage.h"
-#include "utils.h"
+#include "tool_utils.h"
 
 #ifndef HAVE_GETSUBOPT
-#include <../include/getsubopt.h>
+#include "include/getsubopt.h"
 #endif
-
-lxc_log_define(lxc_copy_ui, lxc);
 
 enum mnttype {
 	LXC_MNT_BIND,
@@ -188,10 +178,6 @@ int main(int argc, char *argv[])
 
 	if (lxc_log_init(&log))
 		exit(ret);
-	lxc_log_options_no_override();
-
-	/* REMOVE IN LXC 3.0 */
-	setenv("LXC_UPDATE_CONFIG_FORMAT", "1", 0);
 
 	if (geteuid()) {
 		if (access(my_args.lxcpath[0], O_RDONLY) < 0) {
@@ -275,17 +261,17 @@ static struct mnts *add_mnt(struct mnts **mnts, unsigned int *num, enum mnttype 
 
 static int mk_rand_ovl_dirs(struct mnts *mnts, unsigned int num, struct lxc_arguments *arg)
 {
-	char upperdir[MAXPATHLEN];
-	char workdir[MAXPATHLEN];
+	char upperdir[TOOL_MAXPATHLEN];
+	char workdir[TOOL_MAXPATHLEN];
 	unsigned int i;
 	int ret;
 	struct mnts *m = NULL;
 
 	for (i = 0, m = mnts; i < num; i++, m++) {
 		if ((m->mnt_type == LXC_MNT_OVL) || (m->mnt_type == LXC_MNT_AUFS)) {
-			ret = snprintf(upperdir, MAXPATHLEN, "%s/%s/delta#XXXXXX",
+			ret = snprintf(upperdir, TOOL_MAXPATHLEN, "%s/%s/delta#XXXXXX",
 					arg->newpath, arg->newname);
-			if (ret < 0 || ret >= MAXPATHLEN)
+			if (ret < 0 || ret >= TOOL_MAXPATHLEN)
 				return -1;
 			if (!mkdtemp(upperdir))
 				return -1;
@@ -295,9 +281,9 @@ static int mk_rand_ovl_dirs(struct mnts *mnts, unsigned int num, struct lxc_argu
 		}
 
 		if (m->mnt_type == LXC_MNT_OVL) {
-			ret = snprintf(workdir, MAXPATHLEN, "%s/%s/work#XXXXXX",
+			ret = snprintf(workdir, TOOL_MAXPATHLEN, "%s/%s/work#XXXXXX",
 					arg->newpath, arg->newname);
-			if (ret < 0 || ret >= MAXPATHLEN)
+			if (ret < 0 || ret >= TOOL_MAXPATHLEN)
 				return -1;
 			if (!mkdtemp(workdir))
 				return -1;
@@ -394,8 +380,6 @@ static int do_clone(struct lxc_container *c, char *newname, char *newpath,
 		return -1;
 	}
 
-	INFO("Created %s as %s of %s\n", newname, task ? "snapshot" : "copy", c->name);
-
 	lxc_container_put(clone);
 
 	return 0;
@@ -404,24 +388,24 @@ static int do_clone(struct lxc_container *c, char *newname, char *newpath,
 static int do_clone_ephemeral(struct lxc_container *c,
 		struct lxc_arguments *arg, char **args, int flags)
 {
-	char *bdev;
 	char *premount;
-	char randname[MAXPATHLEN];
+	char randname[TOOL_MAXPATHLEN];
 	unsigned int i;
 	int ret = 0;
 	bool bret = true, started = false;
+	char *tmp_buf = randname;
 	struct lxc_container *clone;
 	lxc_attach_options_t attach_options = LXC_ATTACH_OPTIONS_DEFAULT;
 	attach_options.env_policy = LXC_ATTACH_CLEAR_ENV;
 
 	if (!arg->newname) {
-		ret = snprintf(randname, MAXPATHLEN, "%s/%s_XXXXXX", arg->newpath, arg->name);
-		if (ret < 0 || ret >= MAXPATHLEN)
+		ret = snprintf(randname, TOOL_MAXPATHLEN, "%s/%s_XXXXXX", arg->newpath, arg->name);
+		if (ret < 0 || ret >= TOOL_MAXPATHLEN)
 			return -1;
 		if (!mkdtemp(randname))
 			return -1;
 		if (chmod(randname, 0770) < 0) {
-			remove(randname);
+			(void)remove(randname);
 			return -1;
 		}
 		arg->newname = randname + strlen(arg->newpath) + 1;
@@ -433,12 +417,6 @@ static int do_clone_ephemeral(struct lxc_container *c,
 		return -1;
 
 	if (arg->tmpfs) {
-		bdev = c->lxc_conf->rootfs.bdev_type;
-		if (bdev && strcmp(bdev, "dir")) {
-			fprintf(stderr, "Cannot currently use tmpfs with %s storage backend.\n", bdev);
-			goto destroy_and_put;
-		}
-
 		premount = mount_tmpfs(arg->name, arg->newname, arg->newpath, arg);
 		if (!premount)
 			goto destroy_and_put;
@@ -505,7 +483,8 @@ static int do_clone_ephemeral(struct lxc_container *c,
 destroy_and_put:
 	if (started)
 		clone->shutdown(clone, -1);
-	if (!started || clone->lxc_conf->ephemeral != 1)
+	ret = clone->get_config_item(clone, "lxc.ephemeral", tmp_buf, TOOL_MAXPATHLEN);
+	if (ret > 0 && strcmp(tmp_buf, "0"))
 		clone->destroy(clone);
 	free_mnts();
 	lxc_container_put(clone);
@@ -515,11 +494,9 @@ destroy_and_put:
 static int do_clone_rename(struct lxc_container *c, char *newname)
 {
 	if (!c->rename(c, newname)) {
-		ERROR("Error: Renaming container %s to %s failed\n", c->name, newname);
+		fprintf(stderr, "Error: Renaming container %s to %s failed\n", c->name, newname);
 		return -1;
 	}
-
-	INFO("Renamed container %s to %s\n", c->name, newname);
 
 	return 0;
 }
@@ -679,7 +656,7 @@ static int parse_aufs_mnt(char *mntstring, enum mnttype type)
 	else if (len == 2) /* aufs=src:dest */
 		m->dest = construct_path(mntarray[1], false);
 	else
-		INFO("Excess elements in mount specification");
+		printf("Excess elements in mount specification\n");
 
 	if (!m->dest)
 		goto err;
@@ -733,7 +710,7 @@ static int parse_bind_mnt(char *mntstring, enum mnttype type)
 			m->dest = construct_path(mntarray[1], false);
 			m->options = strdup(mntarray[2]);
 	} else {
-		INFO("Excess elements in mount specification");
+		printf("Excess elements in mount specification\n");
 	}
 
 	if (!m->dest)
@@ -802,7 +779,7 @@ static int parse_ovl_mnt(char *mntstring, enum mnttype type)
 	else if (len == 2) /* overlay=src:dest */
 		m->dest = construct_path(mntarray[1], false);
 	else
-		INFO("Excess elements in mount specification");
+		printf("Excess elements in mount specification\n");
 
 	if (!m->dest)
 		goto err;
@@ -863,7 +840,7 @@ static char *mount_tmpfs(const char *oldname, const char *newname,
 		goto err_free;
 
 	if (fcntl(fd, F_SETFD, FD_CLOEXEC)) {
-		SYSERROR("Failed to set close-on-exec on file descriptor.");
+		fprintf(stderr, "Failed to set close-on-exec on file descriptor.\n");
 		goto err_close;
 	}
 

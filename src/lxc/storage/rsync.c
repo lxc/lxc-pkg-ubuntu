@@ -80,13 +80,14 @@ int lxc_rsync_exec(const char *src, const char *dest)
 	s[l - 1] = '\0';
 
 	execlp("rsync", "rsync", "-aHXS", "--delete", s, dest, (char *)NULL);
+	free(s);
 	return -1;
 }
 
 int lxc_rsync(struct rsync_data *data)
 {
 	int ret;
-	char *dest, *src;
+	const char *dest, *src;
 	struct lxc_storage *orig = data->orig, *new = data->new;
 
 	ret = unshare(CLONE_NEWNS);

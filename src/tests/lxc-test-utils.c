@@ -180,6 +180,7 @@ void test_detect_ramfs_rootfs(void)
 	}
 	fclose(fp1);
 	fp1 = NULL;
+	fd1 = -1;
 
 	/* Test if it correctly fails to detect when no - rootfs rootfs */
 	for (i = 0; i < sizeof(mountinfo) / sizeof(mountinfo[0]); i++) {
@@ -192,6 +193,7 @@ void test_detect_ramfs_rootfs(void)
 	}
 	fclose(fp2);
 	fp2 = NULL;
+	fd2 = -1;
 
 	if (mount(tmpf1, "/proc/self/mountinfo", NULL, MS_BIND, 0) < 0) {
 		lxc_error("%s\n", "Could not overmount \"/proc/self/mountinfo\".");
@@ -380,6 +382,131 @@ void test_lxc_string_in_array(void)
 	lxc_test_assert_abort(lxc_string_in_array("XYZ", (const char *[]){"BERTA", "ARQWE(9", "C8Zhkd", "7U", "XYZ", "UOIZ9", "=)()", NULL}));
 }
 
+void test_parse_byte_size_string(void)
+{
+	int ret;
+	int64_t n;
+
+	ret = parse_byte_size_string("0", &n);
+	if (ret < 0) {
+		lxc_error("%s\n", "Failed to parse \"0\"");
+		exit(EXIT_FAILURE);
+	}
+	if (n != 0) {
+		lxc_error("%s\n", "Failed to parse \"0\"");
+		exit(EXIT_FAILURE);
+	}
+
+	ret = parse_byte_size_string("1", &n);
+	if (ret < 0) {
+		lxc_error("%s\n", "Failed to parse \"1\"");
+		exit(EXIT_FAILURE);
+	}
+	if (n != 1) {
+		lxc_error("%s\n", "Failed to parse \"1\"");
+		exit(EXIT_FAILURE);
+	}
+
+	ret = parse_byte_size_string("1 ", &n);
+	if (ret == 0) {
+		lxc_error("%s\n", "Failed to parse \"1 \"");
+		exit(EXIT_FAILURE);
+	}
+
+	ret = parse_byte_size_string("1B", &n);
+	if (ret < 0) {
+		lxc_error("%s\n", "Failed to parse \"1B\"");
+		exit(EXIT_FAILURE);
+	}
+	if (n != 1) {
+		lxc_error("%s\n", "Failed to parse \"1B\"");
+		exit(EXIT_FAILURE);
+	}
+
+	ret = parse_byte_size_string("1kB", &n);
+	if (ret < 0) {
+		lxc_error("%s\n", "Failed to parse \"1kB\"");
+		exit(EXIT_FAILURE);
+	}
+	if (n != 1024) {
+		lxc_error("%s\n", "Failed to parse \"1kB\"");
+		exit(EXIT_FAILURE);
+	}
+
+	ret = parse_byte_size_string("1MB", &n);
+	if (ret < 0) {
+		lxc_error("%s\n", "Failed to parse \"1MB\"");
+		exit(EXIT_FAILURE);
+	}
+	if (n != 1048576) {
+		lxc_error("%s\n", "Failed to parse \"1MB\"");
+		exit(EXIT_FAILURE);
+	}
+
+	ret = parse_byte_size_string("1TB", &n);
+	if (ret == 0) {
+		lxc_error("%s\n", "Failed to parse \"1TB\"");
+		exit(EXIT_FAILURE);
+	}
+
+	ret = parse_byte_size_string("1 B", &n);
+	if (ret < 0) {
+		lxc_error("%s\n", "Failed to parse \"1 B\"");
+		exit(EXIT_FAILURE);
+	}
+	if (n != 1) {
+		lxc_error("%s\n", "Failed to parse \"1 B\"");
+		exit(EXIT_FAILURE);
+	}
+
+	ret = parse_byte_size_string("1 kB", &n);
+	if (ret < 0) {
+		lxc_error("%s\n", "Failed to parse \"1 kB\"");
+		exit(EXIT_FAILURE);
+	}
+	if (n != 1024) {
+		lxc_error("%s\n", "Failed to parse \"1 kB\"");
+		exit(EXIT_FAILURE);
+	}
+
+	ret = parse_byte_size_string("1 MB", &n);
+	if (ret < 0) {
+		lxc_error("%s\n", "Failed to parse \"1 MB\"");
+		exit(EXIT_FAILURE);
+	}
+	if (n != 1048576) {
+		lxc_error("%s\n", "Failed to parse \"1 MB\"");
+		exit(EXIT_FAILURE);
+	}
+
+	ret = parse_byte_size_string("1 TB", &n);
+	if (ret == 0) {
+		lxc_error("%s\n", "Failed to parse \"1 TB\"");
+		exit(EXIT_FAILURE);
+	}
+
+	ret = parse_byte_size_string("asdf", &n);
+	if (ret == 0) {
+		lxc_error("%s\n", "Failed to parse \"asdf\"");
+		exit(EXIT_FAILURE);
+	}
+}
+
+void test_lxc_config_net_hwaddr(void)
+{
+	bool lxc_config_net_hwaddr(const char *line);
+
+	if (!lxc_config_net_hwaddr("lxc.net.0.hwaddr = 00:16:3e:04:65:b8\n"))
+		exit(EXIT_FAILURE);
+
+	if (lxc_config_net_hwaddr("lxc.net"))
+		exit(EXIT_FAILURE);
+	if (lxc_config_net_hwaddr("lxc.net."))
+		exit(EXIT_FAILURE);
+	if (lxc_config_net_hwaddr("lxc.net.0."))
+		exit(EXIT_FAILURE);
+}
+
 int main(int argc, char *argv[])
 {
 	test_lxc_string_replace();
@@ -389,6 +516,8 @@ int main(int argc, char *argv[])
 	test_lxc_safe_uint();
 	test_lxc_safe_int();
 	test_lxc_safe_long();
+	test_parse_byte_size_string();
+	test_lxc_config_net_hwaddr();
 
 	exit(EXIT_SUCCESS);
 }

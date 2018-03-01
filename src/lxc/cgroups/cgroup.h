@@ -33,13 +33,15 @@ struct lxc_conf;
 struct lxc_list;
 
 typedef enum {
-	CGFS,
-	CGMANAGER,
-	CGFSNG,
-} cgroup_driver_t;
+        CGROUP_LAYOUT_UNKNOWN = -1,
+        CGROUP_LAYOUT_LEGACY  =  0,
+        CGROUP_LAYOUT_HYBRID  =  1,
+        CGROUP_LAYOUT_UNIFIED =  2,
+} cgroup_layout_t;
 
 struct cgroup_ops {
-	const char *name;
+	const char *driver;
+	const char *version;
 
 	void *(*init)(struct lxc_handler *handler);
 	void (*destroy)(void *hdata, struct lxc_conf *conf);
@@ -53,13 +55,12 @@ struct cgroup_ops {
 	int (*set)(const char *filename, const char *value, const char *name, const char *lxcpath);
 	int (*get)(const char *filename, char *value, size_t len, const char *name, const char *lxcpath);
 	bool (*unfreeze)(void *hdata);
-	bool (*setup_limits)(void *hdata, struct lxc_list *cgroup_conf, bool with_devices);
+	bool (*setup_limits)(void *hdata, struct lxc_conf *conf, bool with_devices);
 	bool (*chown)(void *hdata, struct lxc_conf *conf);
 	bool (*attach)(const char *name, const char *lxcpath, pid_t pid);
 	bool (*mount_cgroup)(void *hdata, const char *root, int type);
 	int (*nrtasks)(void *hdata);
 	void (*disconnect)(void);
-	cgroup_driver_t driver;
 };
 
 extern bool cgroup_attach(const char *name, const char *lxcpath, pid_t pid);
@@ -73,13 +74,13 @@ extern bool cgroup_enter(struct lxc_handler *handler);
 extern void cgroup_cleanup(struct lxc_handler *handler);
 extern bool cgroup_create_legacy(struct lxc_handler *handler);
 extern int cgroup_nrtasks(struct lxc_handler *handler);
-extern const char *cgroup_get_cgroup(struct lxc_handler *handler, const char *subsystem);
+extern const char *cgroup_get_cgroup(struct lxc_handler *handler,
+				     const char *subsystem);
 extern bool cgroup_escape();
 extern int cgroup_num_hierarchies();
 extern bool cgroup_get_hierarchies(int i, char ***out);
 extern bool cgroup_unfreeze(struct lxc_handler *handler);
 extern void cgroup_disconnect(void);
-extern cgroup_driver_t cgroup_driver(void);
 
 extern void prune_init_scope(char *cg);
 extern bool is_crucial_cgroup_subsystem(const char *s);

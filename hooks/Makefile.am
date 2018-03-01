@@ -5,7 +5,10 @@ hooks_SCRIPTS = \
 	clonehostname \
 	mountecryptfsroot \
 	ubuntu-cloud-prep \
-	squid-deb-proxy-client
+	dhclient-script \
+	dhclient \
+	squid-deb-proxy-client \
+	nvidia
 
 binhooks_PROGRAMS = \
 	unmount-namespace

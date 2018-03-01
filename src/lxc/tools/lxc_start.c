@@ -20,41 +20,30 @@
  * License along with this library; if not, write to the Free Software
  * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA
  */
-#include "config.h"
 
-#include <stdio.h>
-#include <libgen.h>
-#include <stdlib.h>
-#include <unistd.h>
-#include <string.h>
+#define _GNU_SOURCE
 #include <errno.h>
 #include <fcntl.h>
+#include <libgen.h>
+#include <net/if.h>
 #include <signal.h>
-#include <sys/param.h>
-#include <sys/utsname.h>
-#include <sys/types.h>
-#include <sys/socket.h>
-#include <sys/stat.h>
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
+#include <unistd.h>
 #include <arpa/inet.h>
 #include <netinet/in.h>
-#include <net/if.h>
+#include <sys/param.h>
+#include <sys/socket.h>
+#include <sys/stat.h>
+#include <sys/types.h>
+#include <sys/utsname.h>
 
 #include <lxc/lxccontainer.h>
 
-#include "log.h"
-#include "caps.h"
-#include "lxc.h"
-#include "conf.h"
-#include "cgroup.h"
-#include "utils.h"
-#include "confile.h"
 #include "arguments.h"
-
-#define OPT_SHARE_NET OPT_USAGE + 1
-#define OPT_SHARE_IPC OPT_USAGE + 2
-#define OPT_SHARE_UTS OPT_USAGE + 3
-
-lxc_log_define(lxc_start_ui, lxc);
+#include "tool_list.h"
+#include "tool_utils.h"
 
 static struct lxc_list defines;
 
@@ -67,7 +56,7 @@ static int ensure_path(char **confpath, const char *path)
 		if (access(path, W_OK)) {
 			fd = creat(path, 0600);
 			if (fd < 0 && errno != EEXIST) {
-				SYSERROR("failed to create '%s'", path);
+				fprintf(stderr, "failed to create '%s'\n", path);
 				goto err;
 			}
 			if (fd >= 0)
@@ -76,7 +65,7 @@ static int ensure_path(char **confpath, const char *path)
 
 		fullpath = realpath(path, NULL);
 		if (!fullpath) {
-			SYSERROR("failed to get the real path of '%s'", path);
+			fprintf(stderr, "failed to get the real path of '%s'\n", path);
 			goto err;
 		}
 
@@ -88,67 +77,44 @@ err:
 	return err;
 }
 
-static int pid_from_lxcname(const char *lxcname_or_pid, const char *lxcpath) {
-	char *eptr;
-	int pid = strtol(lxcname_or_pid, &eptr, 10);
-	if (*eptr != '\0' || pid < 1) {
-		struct lxc_container *s;
-		s = lxc_container_new(lxcname_or_pid, lxcpath);
-		if (!s) {
-			SYSERROR("'%s' is not a valid pid nor a container name", lxcname_or_pid);
-			return -1;
-		}
-
-		if (!s->may_control(s)) {
-			SYSERROR("Insufficient privileges to control container '%s'", s->name);
-			lxc_container_put(s);
-			return -1;
-		}
-
-		pid = s->init_pid(s);
-		if (pid < 1) {
-			SYSERROR("Is container '%s' running?", s->name);
-			lxc_container_put(s);
-			return -1;
-		}
-
-		lxc_container_put(s);
-	}
-	if (kill(pid, 0) < 0) {
-		SYSERROR("Can't send signal to pid %d", pid);
-		return -1;
-	}
-
-	return pid;
-}
-
-static int open_ns(int pid, const char *ns_proc_name) {
-	int fd;
-	char path[MAXPATHLEN];
-	snprintf(path, MAXPATHLEN, "/proc/%d/ns/%s", pid, ns_proc_name);
-
-	fd = open(path, O_RDONLY);
-	if (fd < 0) {
-		SYSERROR("failed to open %s", path);
-		return -1;
-	}
-	return fd;
-}
-
-static int my_parser(struct lxc_arguments* args, int c, char* arg)
+static int my_parser(struct lxc_arguments *args, int c, char *arg)
 {
 	switch (c) {
-	case 'c': args->console = arg; break;
-	case 'L': args->console_log = arg; break;
-	case 'd': args->daemonize = 1; break;
-	case 'F': args->daemonize = 0; break;
-	case 'f': args->rcfile = arg; break;
-	case 'C': args->close_all_fds = 1; break;
-	case 's': return lxc_config_define_add(&defines, arg);
-	case 'p': args->pidfile = arg; break;
-	case OPT_SHARE_NET: args->share_ns[LXC_NS_NET] = arg; break;
-	case OPT_SHARE_IPC: args->share_ns[LXC_NS_IPC] = arg; break;
-	case OPT_SHARE_UTS: args->share_ns[LXC_NS_UTS] = arg; break;
+	case 'c':
+		args->console = arg;
+		break;
+	case 'L':
+		args->console_log = arg;
+		break;
+	case 'd':
+		args->daemonize = 1;
+		break;
+	case 'F':
+		args->daemonize = 0;
+		break;
+	case 'f':
+		args->rcfile = arg;
+		break;
+	case 'C':
+		args->close_all_fds = 1;
+		break;
+	case 's':
+		return lxc_config_define_add(&defines, arg);
+	case 'p':
+		args->pidfile = arg;
+		break;
+	case OPT_SHARE_NET:
+		args->share_ns[LXC_NS_NET] = arg;
+		break;
+	case OPT_SHARE_IPC:
+		args->share_ns[LXC_NS_IPC] = arg;
+		break;
+	case OPT_SHARE_UTS:
+		args->share_ns[LXC_NS_UTS] = arg;
+		break;
+	case OPT_SHARE_PID:
+		args->share_ns[LXC_NS_PID] = arg;
+		break;
 	}
 	return 0;
 }
@@ -165,6 +131,7 @@ static const struct option my_longopts[] = {
 	{"share-net", required_argument, 0, OPT_SHARE_NET},
 	{"share-ipc", required_argument, 0, OPT_SHARE_IPC},
 	{"share-uts", required_argument, 0, OPT_SHARE_UTS},
+	{"share-pid", required_argument, 0, OPT_SHARE_PID},
 	LXC_COMMON_OPTIONS
 };
 
@@ -187,7 +154,7 @@ Options :\n\
                          If not specified, exit with failure instead\n\
                          Note: --daemon implies --close-all-fds\n\
   -s, --define KEY=VAL   Assign VAL to configuration variable KEY\n\
-      --share-[net|ipc|uts]=NAME Share a namespace with another container or pid\n\
+      --share-[net|ipc|uts|pid]=NAME Share a namespace with another container or pid\n\
 ",
 	.options   = my_longopts,
 	.parser    = my_parser,
@@ -198,16 +165,16 @@ Options :\n\
 
 int main(int argc, char *argv[])
 {
-	int err = EXIT_FAILURE;
-	struct lxc_conf *conf;
-	struct lxc_log log;
+	const char *lxcpath;
 	char *const *args;
+	struct lxc_container *c;
+	struct lxc_log log;
+	int err = EXIT_FAILURE;
 	char *rcfile = NULL;
 	char *const default_args[] = {
 		"/sbin/init",
 		NULL,
 	};
-	struct lxc_container *c;
 
 	lxc_list_init(&defines);
 
@@ -231,18 +198,13 @@ int main(int argc, char *argv[])
 
 	if (lxc_log_init(&log))
 		exit(err);
-	lxc_log_options_no_override();
 
-	if (access(my_args.lxcpath[0], O_RDONLY) < 0) {
+	lxcpath = my_args.lxcpath[0];
+	if (access(lxcpath, O_RDONLY) < 0) {
 		if (!my_args.quiet)
-			fprintf(stderr, "You lack access to %s\n", my_args.lxcpath[0]);
+			fprintf(stderr, "You lack access to %s\n", lxcpath);
 		exit(err);
 	}
-
-	const char *lxcpath = my_args.lxcpath[0];
-
-	/* REMOVE IN LXC 3.0 */
-	setenv("LXC_UPDATE_CONFIG_FORMAT", "1", 0);
 
 	/*
 	 * rcfile possibilities:
@@ -255,18 +217,18 @@ int main(int argc, char *argv[])
 		rcfile = (char *)my_args.rcfile;
 		c = lxc_container_new(my_args.name, lxcpath);
 		if (!c) {
-			ERROR("Failed to create lxc_container");
+			fprintf(stderr, "Failed to create lxc_container\n");
 			exit(err);
 		}
 		c->clear_config(c);
 		if (!c->load_config(c, rcfile)) {
-			ERROR("Failed to load rcfile");
+			fprintf(stderr, "Failed to load rcfile\n");
 			lxc_container_put(c);
 			exit(err);
 		}
 		c->configfile = strdup(my_args.rcfile);
 		if (!c->configfile) {
-			ERROR("Out of memory setting new config filename");
+			fprintf(stderr, "Out of memory setting new config filename\n");
 			goto out;
 		}
 	} else {
@@ -274,10 +236,9 @@ int main(int argc, char *argv[])
 
 		rc = asprintf(&rcfile, "%s/%s/config", lxcpath, my_args.name);
 		if (rc == -1) {
-			SYSERROR("failed to allocate memory");
+			fprintf(stderr, "failed to allocate memory\n");
 			exit(err);
 		}
-		INFO("using rcfile %s", rcfile);
 
 		/* container configuration does not exist */
 		if (access(rcfile, F_OK)) {
@@ -286,7 +247,7 @@ int main(int argc, char *argv[])
 		}
 		c = lxc_container_new(my_args.name, lxcpath);
 		if (!c) {
-			ERROR("Failed to create lxc_container");
+			fprintf(stderr, "Failed to create lxc_container\n");
 			exit(err);
 		}
 	}
@@ -303,7 +264,7 @@ int main(int argc, char *argv[])
 	}
 
 	if (c->is_running(c)) {
-		ERROR("Container is already running.");
+		fprintf(stderr, "Container is already running.\n");
 		err = EXIT_SUCCESS;
 		goto out;
 	}
@@ -311,49 +272,36 @@ int main(int argc, char *argv[])
 	 * We should use set_config_item() over &defines, which would handle
 	 * unset c->lxc_conf for us and let us not use lxc_config_define_load()
 	 */
-	if (!c->lxc_conf)
-		c->lxc_conf = lxc_conf_init();
-	conf = c->lxc_conf;
+	if (!c->lxc_conf) {
+		fprintf(stderr, "No container config specified\n");
+		goto out;
+	}
 
-	if (lxc_config_define_load(&defines, conf))
+	if (lxc_config_define_load(&defines, c))
 		goto out;
 
 	if (!rcfile && !strcmp("/sbin/init", args[0])) {
-		ERROR("Executing '/sbin/init' with no configuration file may crash the host");
-		goto out;
-	}
-
-	if (ensure_path(&conf->console.path, my_args.console) < 0) {
-		ERROR("failed to ensure console path '%s'", my_args.console);
-		goto out;
-	}
-
-	if (ensure_path(&conf->console.log_path, my_args.console_log) < 0) {
-		ERROR("failed to ensure console log '%s'", my_args.console_log);
+		fprintf(stderr, "Executing '/sbin/init' with no configuration file may crash the host\n");
 		goto out;
 	}
 
 	if (my_args.pidfile != NULL) {
 		if (ensure_path(&c->pidfile, my_args.pidfile) < 0) {
-			ERROR("failed to ensure pidfile '%s'", my_args.pidfile);
+			fprintf(stderr, "failed to ensure pidfile '%s'\n", my_args.pidfile);
 			goto out;
 		}
 	}
 
-	int i;
-	for (i = 0; i < LXC_NS_MAX; i++) {
-		if (my_args.share_ns[i] == NULL)
-			continue;
-
-		int pid = pid_from_lxcname(my_args.share_ns[i], lxcpath);
-		if (pid < 1)
+	if (my_args.console)
+		if (!c->set_config_item(c, "lxc.console.path", my_args.console))
 			goto out;
 
-		int fd = open_ns(pid, ns_info[i].proc_name);
-		if (fd < 0)
+	if (my_args.console_log)
+		if (!c->set_config_item(c, "lxc.console.logfile", my_args.console_log))
 			goto out;
-		conf->inherit_ns_fd[i] = fd;
-	}
+
+	if (!lxc_setup_shared_ns(&my_args, c))
+		goto out;
 
 	if (!my_args.daemonize) {
 		c->want_daemonize(c, false);
@@ -368,11 +316,11 @@ int main(int argc, char *argv[])
 		err = c->start(c, 0, args) ? EXIT_SUCCESS : EXIT_FAILURE;
 
 	if (err) {
-		ERROR("The container failed to start.");
+		fprintf(stderr, "The container failed to start.\n");
 		if (my_args.daemonize)
-			ERROR("To get more details, run the container in foreground mode.");
-		ERROR("Additional information can be obtained by setting the "
-		      "--logfile and --logpriority options.");
+			fprintf(stderr, "To get more details, run the container in foreground mode.\n");
+		fprintf(stderr, "Additional information can be obtained by setting the "
+		      "--logfile and --logpriority options.\n");
 		err = c->error_num;
 		lxc_container_put(c);
 		exit(err);

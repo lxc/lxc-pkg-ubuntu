@@ -21,37 +21,23 @@
  * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA
  */
 
-#include "config.h"
-
+#define _GNU_SOURCE
 #include <errno.h>
 #include <fcntl.h>
 #include <stdio.h>
 #include <stdlib.h>
-#include <sys/ioctl.h>
-#include <sys/types.h>
-#include <sys/wait.h>
+#include <string.h>
 #include <termios.h>
 #include <unistd.h>
+#include <sys/ioctl.h>
+#include <sys/stat.h>
+#include <sys/types.h>
+#include <sys/wait.h>
 
 #include <lxc/lxccontainer.h>
 
-#include "attach.h"
 #include "arguments.h"
-#include "caps.h"
-#include "confile.h"
-#include "console.h"
-#include "log.h"
-#include "list.h"
-#include "mainloop.h"
-#include "utils.h"
-
-#if HAVE_PTY_H
-#include <pty.h>
-#else
-#include <../include/openpty.h>
-#endif
-
-lxc_log_define(lxc_attach_ui, lxc);
+#include "tool_utils.h"
 
 static const struct option my_longopts[] = {
 	{"elevated-privileges", optional_argument, 0, 'e'},
@@ -242,129 +228,29 @@ Options :\n\
 	.checker  = NULL,
 };
 
-struct wrapargs {
-	lxc_attach_options_t *options;
-	lxc_attach_command_t *command;
-	struct lxc_console *console;
-	int ptyfd;
-};
-
-/* Minimalistic login_tty() implementation. */
-static int login_pty(int fd)
-{
-	setsid();
-	if (ioctl(fd, TIOCSCTTY, NULL) < 0)
-		return -1;
-	if (lxc_console_set_stdfds(fd) < 0)
-		return -1;
-	if (fd > STDERR_FILENO)
-		close(fd);
-	return 0;
-}
-
-static int get_pty_on_host_callback(void *p)
-{
-	struct wrapargs *wrap = p;
-
-	close(wrap->console->master);
-	if (login_pty(wrap->console->slave) < 0)
-		return -1;
-
-	if (wrap->command->program)
-		lxc_attach_run_command(wrap->command);
-	else
-		lxc_attach_run_shell(NULL);
-	return -1;
-}
-
-static int get_pty_on_host(struct lxc_container *c, struct wrapargs *wrap, int *pid)
-{
-	int ret = -1;
-	struct wrapargs *args = wrap;
-	struct lxc_epoll_descr descr;
-	struct lxc_conf *conf;
-	struct lxc_tty_state *ts;
-
-	INFO("Trying to allocate a pty on the host");
-
-	if (!isatty(args->ptyfd)) {
-		ERROR("Standard file descriptor does not refer to a pty\n.");
-		return -1;
-	}
-
-	conf = c->lxc_conf;
-	free(conf->console.log_path);
-	if (my_args.console_log)
-		conf->console.log_path = strdup(my_args.console_log);
-	else
-		conf->console.log_path = NULL;
-
-	/* In the case of lxc-attach our peer pty will always be the current
-	 * controlling terminal. We clear whatever was set by the user for
-	 * lxc.console.path here and set it NULL. lxc_console_peer_default()
-	 * will then try to open /dev/tty. If the process doesn't have a
-	 * controlling terminal we should still proceed.
-	 */
-	free(conf->console.path);
-	conf->console.path = NULL;
-
-	/* Create pty on the host. */
-	if (lxc_console_create(conf) < 0)
-		return -1;
-	ts = conf->console.tty_state;
-	conf->console.descr = &descr;
-
-	/* Shift ttys to container. */
-	if (lxc_ttys_shift_ids(conf) < 0) {
-		ERROR("Failed to shift tty into container");
-		goto err1;
-	}
-
-	/* Send wrapper function on its way. */
-	wrap->console = &conf->console;
-	if (c->attach(c, get_pty_on_host_callback, wrap, wrap->options, pid) < 0)
-		goto err1;
-	close(conf->console.slave); /* Close slave side. */
-
-	ret = lxc_mainloop_open(&descr);
-	if (ret) {
-		ERROR("failed to create mainloop");
-		goto err2;
-	}
-
-	if (lxc_console_mainloop_add(&descr, conf) < 0) {
-		ERROR("Failed to add handlers to lxc mainloop.");
-		goto err3;
-	}
-
-	ret = lxc_mainloop(&descr, -1);
-	if (ret) {
-		ERROR("mainloop returned an error");
-		goto err3;
-	}
-	ret = 0;
-
-err3:
-	lxc_mainloop_close(&descr);
-err2:
-	if (ts && ts->sigfd != -1)
-		lxc_console_sigwinch_fini(ts);
-err1:
-	lxc_console_delete(&conf->console);
-
-	return ret;
-}
-
-static int stdfd_is_pty(void)
+static bool stdfd_is_pty(void)
 {
 	if (isatty(STDIN_FILENO))
-		return STDIN_FILENO;
+		return true;
 	if (isatty(STDOUT_FILENO))
-		return STDOUT_FILENO;
+		return true;
 	if (isatty(STDERR_FILENO))
-		return STDERR_FILENO;
+		return true;
 
-	return -1;
+	return false;
+}
+
+int lxc_attach_create_log_file(const char *log_file)
+{
+	int fd;
+
+	fd = open(log_file, O_CLOEXEC | O_RDWR | O_CREAT | O_APPEND, 0600);
+	if (fd < 0) {
+		fprintf(stderr, "Failed to open log file \"%s\"\n", log_file);
+		return -1;
+	}
+
+	return fd;
 }
 
 int main(int argc, char *argv[])
@@ -396,7 +282,6 @@ int main(int argc, char *argv[])
 	r = lxc_log_init(&log);
 	if (r)
 		exit(EXIT_FAILURE);
-	lxc_log_options_no_override();
 
 	if (geteuid()) {
 		if (access(my_args.lxcpath[0], O_RDONLY) < 0) {
@@ -406,9 +291,6 @@ int main(int argc, char *argv[])
 		}
 	}
 
-	/* REMOVE IN LXC 3.0 */
-	setenv("LXC_UPDATE_CONFIG_FORMAT", "1", 0);
-
 	struct lxc_container *c = lxc_container_new(my_args.name, my_args.lxcpath[0]);
 	if (!c)
 		exit(EXIT_FAILURE);
@@ -416,13 +298,13 @@ int main(int argc, char *argv[])
 	if (my_args.rcfile) {
 		c->clear_config(c);
 		if (!c->load_config(c, my_args.rcfile)) {
-			ERROR("Failed to load rcfile");
+			fprintf(stderr, "Failed to load rcfile\n");
 			lxc_container_put(c);
 			exit(EXIT_FAILURE);
 		}
 		c->configfile = strdup(my_args.rcfile);
 		if (!c->configfile) {
-			ERROR("Out of memory setting new config filename");
+			fprintf(stderr, "Out of memory setting new config filename\n");
 			lxc_container_put(c);
 			exit(EXIT_FAILURE);
 		}
@@ -434,16 +316,12 @@ int main(int argc, char *argv[])
 		exit(EXIT_FAILURE);
 	}
 
-	if (!c->is_defined(c)) {
-		fprintf(stderr, "Error: container %s is not defined\n", c->name);
-		lxc_container_put(c);
-		exit(EXIT_FAILURE);
-	}
-
 	if (remount_sys_proc)
 		attach_options.attach_flags |= LXC_ATTACH_REMOUNT_PROC_SYS;
 	if (elevated_privileges)
 		attach_options.attach_flags &= ~(elevated_privileges);
+	if (stdfd_is_pty())
+		attach_options.attach_flags |= LXC_ATTACH_TERMINAL;
 	attach_options.namespaces = namespace_flags;
 	attach_options.personality = new_personality;
 	attach_options.env_policy = env_policy;
@@ -455,28 +333,16 @@ int main(int argc, char *argv[])
 		command.argv = (char**)my_args.argv;
 	}
 
-	struct wrapargs wrap = (struct wrapargs){
-		.command = &command,
-			.options = &attach_options
-	};
-
-	wrap.ptyfd = stdfd_is_pty();
-	if (wrap.ptyfd >= 0) {
-		if ((!isatty(STDOUT_FILENO) || !isatty(STDERR_FILENO)) && my_args.console_log) {
-			fprintf(stderr, "-L/--pty-log can only be used when stdout and stderr refer to a pty.\n");
+	if (my_args.console_log) {
+		attach_options.log_fd = lxc_attach_create_log_file(my_args.console_log);
+		if (attach_options.log_fd < 0)
 			goto out;
-		}
-		ret = get_pty_on_host(c, &wrap, &pid);
-	} else {
-		if (my_args.console_log) {
-			fprintf(stderr, "-L/--pty-log can only be used when stdout and stderr refer to a pty.\n");
-			goto out;
-		}
-		if (command.program)
-			ret = c->attach(c, lxc_attach_run_command, &command, &attach_options, &pid);
-		else
-			ret = c->attach(c, lxc_attach_run_shell, NULL, &attach_options, &pid);
 	}
+
+	if (command.program)
+		ret = c->attach(c, lxc_attach_run_command, &command, &attach_options, &pid);
+	else
+		ret = c->attach(c, lxc_attach_run_shell, NULL, &attach_options, &pid);
 
 	if (ret < 0)
 		goto out;

@@ -4,7 +4,6 @@ pkginclude_HEADERS = \
 	version.h
 
 noinst_HEADERS = \
-	arguments.h \
 	attach.h \
 	storage/storage.h \
 	storage/aufs.h \
@@ -18,14 +17,15 @@ noinst_HEADERS = \
 	storage/rsync.h \
 	storage/zfs.h \
 	storage/storage_utils.h \
+	tools/arguments.h \
+	tools/tool_utils.h \
+	tools/tool_list.h \
 	cgroups/cgroup.h \
 	cgroups/cgroup_utils.h \
 	caps.h \
 	conf.h \
 	confile.h \
-	confile_legacy.h \
 	confile_utils.h \
-	console.h \
 	error.h \
 	initutils.h \
 	list.h \
@@ -36,6 +36,7 @@ noinst_HEADERS = \
 	namespace.h \
 	start.h \
 	state.h \
+	terminal.h \
 	utils.h \
 	criu.h \
 	../tests/lxctest.h
@@ -45,7 +46,10 @@ noinst_HEADERS += \
 	../include/ifaddrs.h \
 	../include/openpty.h \
 	../include/lxcmntent.h
+endif
+
 if !HAVE_PRLIMIT
+if HAVE_PRLIMIT64
 noinst_HEADERS += ../include/prlimit.h
 endif
 endif
@@ -57,7 +61,7 @@ endif
 endif
 
 if !HAVE_GETSUBOPT
-noinst_HEADERS += ../include/getsubopt.h
+noinst_HEADERS += tools/include/getsubopt.h
 endif
 
 sodir=$(libdir)
@@ -76,7 +80,6 @@ endif
 
 lib_LTLIBRARIES = liblxc.la
 liblxc_la_SOURCES = \
-	arguments.c arguments.h \
 	storage/storage.c storage/storage.h \
 	storage/aufs.c storage/aufs.h \
 	storage/btrfs.c storage/btrfs.h \
@@ -89,7 +92,6 @@ liblxc_la_SOURCES = \
 	storage/rsync.c storage/rsync.h \
 	storage/zfs.c storage/zfs.h \
 	storage/storage_utils.c storage/storage_utils.h \
-	cgroups/cgfs.c \
 	cgroups/cgfsng.c \
 	cgroups/cgroup_utils.c cgroups/cgroup_utils.h \
 	cgroups/cgroup.c cgroups/cgroup.h \
@@ -98,7 +100,7 @@ liblxc_la_SOURCES = \
 	start.c start.h \
 	execute.c \
 	monitor.c monitor.h \
-	console.c \
+	terminal.c \
 	freezer.c \
 	error.h error.c \
 	parse.c parse.h \
@@ -109,13 +111,13 @@ liblxc_la_SOURCES = \
 	namespace.h namespace.c \
 	conf.c conf.h \
 	confile.c confile.h \
-	confile_legacy.c confile_legacy.h \
 	confile_utils.c confile_utils.h \
 	list.h \
 	state.c state.h \
 	log.c log.h \
 	attach.c attach.h \
 	criu.c criu.h \
+	ringbuf.c ringbuf.h \
 	\
 	network.c network.h \
 	nl.c nl.h \
@@ -133,16 +135,15 @@ liblxc_la_SOURCES = \
 	\
 	$(LSM_SOURCES)
 
-if ENABLE_CGMANAGER
-liblxc_la_SOURCES += cgroups/cgmanager.c
-endif
-
 if IS_BIONIC
 liblxc_la_SOURCES += \
 	../include/ifaddrs.c ../include/ifaddrs.h \
 	../include/openpty.c ../include/openpty.h \
 	../include/lxcmntent.c ../include/lxcmntent.h
+endif
+
 if !HAVE_PRLIMIT
+if HAVE_PRLIMIT64
 liblxc_la_SOURCES += ../include/prlimit.c ../include/prlimit.h
 endif
 endif
@@ -176,10 +177,6 @@ if ENABLE_APPARMOR
 AM_CFLAGS += -DHAVE_APPARMOR
 endif
 
-if ENABLE_CGMANAGER
-AM_CFLAGS += -DHAVE_CGMANAGER
-endif
-
 if ENABLE_SELINUX
 AM_CFLAGS += -DHAVE_SELINUX
 endif
@@ -201,25 +198,16 @@ liblxc_la_LDFLAGS = \
 	-Wl,-soname,liblxc.so.$(firstword $(subst ., ,@LXC_ABI@)) \
 	-version-info @LXC_ABI_MAJOR@
 
-liblxc_la_LIBADD = $(CAP_LIBS) $(APPARMOR_LIBS) $(SELINUX_LIBS) $(SECCOMP_LIBS)
+liblxc_la_LIBADD = $(CAP_LIBS) $(SELINUX_LIBS) $(SECCOMP_LIBS)
 
-if ENABLE_CGMANAGER
-liblxc_la_LIBADD += $(CGMANAGER_LIBS) $(DBUS_LIBS) $(NIH_LIBS) $(NIH_DBUS_LIBS)
-liblxc_la_CFLAGS += $(CGMANAGER_CFLAGS) $(DBUS_CFLAGS) $(NIH_CFLAGS) $(NIH_DBUS_CFLAGS)
+bin_SCRIPTS=
+
+if ENABLE_COMMANDS
+bin_SCRIPTS += cmd/lxc-checkconfig \
+	       cmd/lxc-update-config
 endif
 
-bin_SCRIPTS = tools/lxc-checkconfig \
-	      tools/lxc-update-config
-
-EXTRA_DIST = \
-	tools/lxc-top.lua
-
-if ENABLE_DEPRECATED
-if ENABLE_PYTHON
-bin_SCRIPTS += tools/lxc-start-ephemeral
-endif
-endif
-
+if ENABLE_TOOLS
 bin_PROGRAMS = \
 	lxc-attach \
 	lxc-autostart \
@@ -244,61 +232,66 @@ bin_PROGRAMS = \
 	lxc-unshare \
 	lxc-usernsexec \
 	lxc-wait
-
-if ENABLE_DEPRECATED
-bin_PROGRAMS += lxc-clone
 endif
 
+if ENABLE_COMMANDS
 sbin_PROGRAMS = init.lxc
 pkglibexec_PROGRAMS = \
 	lxc-monitord \
 	lxc-user-nic
+endif
 
 AM_LDFLAGS = -Wl,-E
 if ENABLE_RPATH
 AM_LDFLAGS += -Wl,-rpath -Wl,$(libdir)
 endif
-LDADD=liblxc.la @CAP_LIBS@ @APPARMOR_LIBS@ @SELINUX_LIBS@ @SECCOMP_LIBS@
+LDADD=liblxc.la @CAP_LIBS@ @SELINUX_LIBS@ @SECCOMP_LIBS@
 
-lxc_attach_SOURCES = tools/lxc_attach.c
-lxc_autostart_SOURCES = tools/lxc_autostart.c
-lxc_cgroup_SOURCES = tools/lxc_cgroup.c
-lxc_config_SOURCES = tools/lxc_config.c
-lxc_console_SOURCES = tools/lxc_console.c
-lxc_destroy_SOURCES = tools/lxc_destroy.c
-lxc_device_SOURCES = tools/lxc_device.c
-lxc_execute_SOURCES = tools/lxc_execute.c
-lxc_freeze_SOURCES = tools/lxc_freeze.c
-lxc_info_SOURCES = tools/lxc_info.c
-init_lxc_SOURCES = tools/lxc_init.c
-lxc_monitor_SOURCES = tools/lxc_monitor.c
-lxc_ls_SOURCES = tools/lxc_ls.c
-lxc_copy_SOURCES = tools/lxc_copy.c
-lxc_start_SOURCES = tools/lxc_start.c
-lxc_stop_SOURCES = tools/lxc_stop.c
-lxc_top_SOURCES = tools/lxc_top.c
-lxc_unfreeze_SOURCES = tools/lxc_unfreeze.c
-lxc_unshare_SOURCES = tools/lxc_unshare.c
-lxc_wait_SOURCES = tools/lxc_wait.c
-lxc_create_SOURCES = tools/lxc_create.c
-lxc_snapshot_SOURCES = tools/lxc_snapshot.c
-lxc_usernsexec_SOURCES = tools/lxc_usernsexec.c
-lxc_checkpoint_SOURCES = tools/lxc_checkpoint.c
-lxc_user_nic_SOURCES = lxc_user_nic.c network.c network.h
-lxc_monitord_SOURCES = lxc_monitord.c
-
-if ENABLE_DEPRECATED
-lxc_clone_SOURCES = tools/lxc_clone.c
+if ENABLE_TOOLS
+lxc_attach_SOURCES = tools/lxc_attach.c tools/arguments.c tools/tool_utils.c
+lxc_autostart_SOURCES = tools/lxc_autostart.c tools/arguments.c tools/tool_utils.c
+lxc_cgroup_SOURCES = tools/lxc_cgroup.c tools/arguments.c tools/tool_utils.c
+lxc_config_SOURCES = tools/lxc_config.c tools/arguments.c tools/tool_utils.c
+lxc_console_SOURCES = tools/lxc_console.c tools/arguments.c tools/tool_utils.c
+lxc_destroy_SOURCES = tools/lxc_destroy.c tools/arguments.c tools/tool_utils.c
+lxc_device_SOURCES = tools/lxc_device.c tools/arguments.c tools/tool_utils.c
+lxc_execute_SOURCES = tools/lxc_execute.c tools/arguments.c tools/tool_utils.c
+lxc_freeze_SOURCES = tools/lxc_freeze.c tools/arguments.c tools/tool_utils.c
+lxc_info_SOURCES = tools/lxc_info.c tools/arguments.c tools/tool_utils.c
+lxc_monitor_SOURCES = tools/lxc_monitor.c tools/arguments.c tools/tool_utils.c
+lxc_ls_SOURCES = tools/lxc_ls.c tools/arguments.c tools/tool_utils.c
+lxc_copy_SOURCES = tools/lxc_copy.c tools/arguments.c tools/tool_utils.c
+lxc_start_SOURCES = tools/lxc_start.c tools/arguments.c tools/tool_utils.c
+lxc_stop_SOURCES = tools/lxc_stop.c tools/arguments.c tools/tool_utils.c
+lxc_top_SOURCES = tools/lxc_top.c tools/arguments.c tools/tool_utils.c
+lxc_unfreeze_SOURCES = tools/lxc_unfreeze.c tools/arguments.c tools/tool_utils.c
+lxc_unshare_SOURCES = tools/lxc_unshare.c tools/arguments.c tools/tool_utils.c
+lxc_wait_SOURCES = tools/lxc_wait.c tools/arguments.c tools/tool_utils.c
+lxc_create_SOURCES = tools/lxc_create.c tools/arguments.c tools/tool_utils.c
+lxc_snapshot_SOURCES = tools/lxc_snapshot.c tools/arguments.c tools/tool_utils.c
+lxc_checkpoint_SOURCES = tools/lxc_checkpoint.c tools/arguments.c tools/tool_utils.c
 endif
 
+if ENABLE_COMMANDS
+# Binaries shipping with liblxc
+init_lxc_SOURCES = cmd/lxc_init.c
+lxc_monitord_SOURCES = cmd/lxc_monitord.c
+lxc_user_nic_SOURCES = cmd/lxc_user_nic.c namespace.c network.c parse.c
+lxc_usernsexec_SOURCES = cmd/lxc_usernsexec.c
+endif
+
+
+if ENABLE_TOOLS
 if !HAVE_GETSUBOPT
-lxc_copy_SOURCES += ../include/getsubopt.c ../include/getsubopt.h
+lxc_copy_SOURCES += tools/include/getsubopt.c tools/include/getsubopt.h
+endif
 endif
 
+if ENABLE_COMMANDS
 if HAVE_STATIC_LIBCAP
 sbin_PROGRAMS += init.lxc.static
 
-init_lxc_static_SOURCES = tools/lxc_init.c error.c log.c initutils.c caps.c
+init_lxc_static_SOURCES = cmd/lxc_init.c error.c log.c initutils.c caps.c parse.c namespace.c
 
 if !HAVE_GETLINE
 if HAVE_FGETLN
@@ -309,6 +302,17 @@ endif
 init_lxc_static_LDFLAGS = -all-static
 init_lxc_static_LDADD = @CAP_LIBS@
 init_lxc_static_CFLAGS = $(AM_CFLAGS) -DNO_LXC_CONF
+endif
+endif
+
+if ENABLE_PAM
+if HAVE_PAM
+pam_LTLIBRARIES = pam_cgfs.la
+pam_cgfs_la_SOURCES = pam/pam_cgfs.c
+pam_cgfs_la_CFLAGS = $(AM_CFLAGS)
+pam_cgfs_la_LIBADD = $(AM_LIBS) $(PAM_LIBS) -L$(top_srcdir)
+pam_cgfs_la_LDFLAGS = $(AM_LDFLAGS) -module -avoid-version -shared
+endif
 endif
 
 install-exec-local: install-libLTLIBRARIES
@@ -325,3 +329,12 @@ install-exec-hook:
 
 uninstall-local:
 	$(RM) $(DESTDIR)$(libdir)/liblxc.so*
+if ENABLE_PAM
+if HAVE_PAM
+	$(RM) $(DESTDIR)$(pamdir)/pam_cgfs.so*
+
+install-data-hook: install-pamLTLIBRARIES
+	$(RM) "$(DESTDIR)$(pamdir)/pam_cgfs.la"
+	$(RM) "$(DESTDIR)$(pamdir)/pam_cgfs.a"
+endif
+endif

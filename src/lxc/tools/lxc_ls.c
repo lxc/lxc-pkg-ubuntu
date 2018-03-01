@@ -16,9 +16,9 @@
  * 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
  */
 
-#include "config.h"
-
+#define _GNU_SOURCE
 #include <getopt.h>
+#include <limits.h>
 #include <regex.h>
 #include <stdbool.h>
 #include <stdio.h>
@@ -35,13 +35,7 @@
 #include <lxc/lxccontainer.h>
 
 #include "arguments.h"
-#include "conf.h"
-#include "confile.h"
-#include "log.h"
-#include "lxc.h"
-#include "utils.h"
-
-lxc_log_define(lxc_ls, lxc);
+#include "tool_utils.h"
 
 /* Per default we only allow five levels of recursion to protect the stack at
  * least a little bit. */
@@ -73,6 +67,7 @@ struct ls {
 	double swap;
 	bool autostart;
 	bool running;
+	bool unprivileged;
 };
 
 /* Keep track of field widths for printing. */
@@ -87,6 +82,7 @@ struct lengths {
 	unsigned int ram_length;
 	unsigned int swap_length;
 	unsigned int autostart_length;
+	unsigned int unprivileged_length;
 };
 
 static int ls_deserialize(int rpipefd, struct ls **m, size_t *len);
@@ -189,7 +185,7 @@ Options :\n\
   -f, --fancy        use a fancy, column-based output\n\
   -F, --fancy-format comma separated list of columns to show in the fancy output\n\
                      valid columns are: NAME, STATE, PID, RAM, SWAP, AUTOSTART,\n\
-                     GROUPS, INTERFACE, IPV4 and IPV6\n\
+                     GROUPS, INTERFACE, IPV4 and IPV6, UNPRIVILEGED\n\
   --active           list only active containers\n\
   --running          list only running containers\n\
   --frozen           list only frozen containers\n\
@@ -231,23 +227,20 @@ int main(int argc, char *argv[])
 
 	if (lxc_log_init(&log))
 		exit(EXIT_FAILURE);
-	lxc_log_options_no_override();
-
-	/* REMOVE IN LXC 3.0 */
-	setenv("LXC_UPDATE_CONFIG_FORMAT", "1", 0);
 
 	struct lengths max_len = {
 		/* default header length */
-		.name_length = 4,      /* NAME */
-		.state_length = 5,     /* STATE */
-		.groups_length = 6,    /* GROUPS */
-		.interface_length = 9, /* INTERFACE */
-		.ipv4_length = 4,      /* IPV4 */
-		.ipv6_length = 4,      /* IPV6 */
-		.init_length = 3,      /* PID */
-		.ram_length = 3,       /* RAM */
-		.swap_length = 4,      /* SWAP */
-		.autostart_length = 9, /* AUTOSTART */
+		.name_length = 4,          /* NAME */
+		.state_length = 5,         /* STATE */
+		.groups_length = 6,        /* GROUPS */
+		.interface_length = 9,     /* INTERFACE */
+		.ipv4_length = 4,          /* IPV4 */
+		.ipv6_length = 4,          /* IPV6 */
+		.init_length = 3,          /* PID */
+		.ram_length = 3,           /* RAM */
+		.swap_length = 4,          /* SWAP */
+		.autostart_length = 9,     /* AUTOSTART */
+		.unprivileged_length = 12, /* UNPRIVILEGED */
 	};
 
 	char **grps = NULL;
@@ -475,15 +468,19 @@ static int ls_get(struct ls **m, size_t *size, const struct lxc_arguments *args,
 			if (tmp) {
 				unsigned int astart = 0;
 				if (lxc_safe_uint(tmp, &astart) < 0)
-					WARN("Could not parse value for 'lxc.start.auto'.");
+					printf("Could not parse value for 'lxc.start.auto'.\n");
 				if (astart > 1)
-					DEBUG("Wrong value for 'lxc.start.auto = %d'.", astart);
+					printf("Wrong value for 'lxc.start.auto = %d'.\n", astart);
 				l->autostart = astart == 1 ? true : false;
 			}
 			free(tmp);
 
 			if (running) {
+				char *val;
+
 				l->init = c->init_pid(c);
+				if (l->init <= 0)
+					goto put_and_next;
 
 				l->interface = ls_get_interface(c);
 
@@ -499,6 +496,15 @@ static int ls_get(struct ls **m, size_t *size, const struct lxc_arguments *args,
 				}
 
 				l->swap = ls_get_swap(c);
+
+				val = c->get_running_config_item(c, "lxc.idmap");
+				l->unprivileged = !(val == NULL);
+				free(val);
+			} else {
+				int ret;
+
+				ret = c->get_config_item(c, "lxc.idmap", NULL, 0);
+				l->unprivileged = !(ret == 0);
 			}
 		}
 
@@ -550,11 +556,6 @@ static int ls_get(struct ls **m, size_t *size, const struct lxc_arguments *args,
 			 * problem with the ovl_mkdir() function in
 			 * lxcoverlay.{c,h}. */
 			char *curr_path = ls_get_config_item(c, "lxc.rootfs.path", running);
-			/* REMOVE IN LXC 3.0
-			   legacy rootfs key
-			   */
-			if (!curr_path)
-				curr_path = ls_get_config_item(c, "lxc.rootfs", running);
 			if (!curr_path)
 				goto put_and_next;
 
@@ -815,10 +816,11 @@ static void ls_print_fancy_format(struct ls *l, struct lengths *lht,
 	/* Check for invalid keys. */
 	for (s = tmp; s && *s; s++) {
 		if (strcasecmp(*s, "NAME") && strcasecmp(*s, "STATE") &&
-				strcasecmp(*s, "PID") && strcasecmp(*s, "RAM") &&
-				strcasecmp(*s, "SWAP") && strcasecmp(*s, "AUTOSTART") &&
-				strcasecmp(*s, "GROUPS") && strcasecmp(*s, "INTERFACE") &&
-				strcasecmp(*s, "IPV4") && strcasecmp(*s, "IPV6")) {
+		    strcasecmp(*s, "PID") && strcasecmp(*s, "RAM") &&
+		    strcasecmp(*s, "SWAP") && strcasecmp(*s, "AUTOSTART") &&
+		    strcasecmp(*s, "GROUPS") && strcasecmp(*s, "INTERFACE") &&
+		    strcasecmp(*s, "IPV4") && strcasecmp(*s, "IPV6") &&
+		    strcasecmp(*s, "UNPRIVILEGED")) {
 			fprintf(stderr, "Invalid key: %s\n", *s);
 			return;
 		}
@@ -846,6 +848,8 @@ static void ls_print_fancy_format(struct ls *l, struct lengths *lht,
 			printf("%-*s ", lht->ipv4_length, "IPV4");
 		else if (strcasecmp(*s, "IPV6") == 0)
 			printf("%-*s ", lht->ipv6_length, "IPV6");
+		else if (strcasecmp(*s, "UNPRIVILEGED") == 0)
+			printf("%-*s ", lht->unprivileged_length, "UNPRIVILEGED");
 	}
 	printf("\n");
 
@@ -887,6 +891,8 @@ static void ls_print_fancy_format(struct ls *l, struct lengths *lht,
 				printf("%-*s ", lht->ipv4_length, m->ipv4 ? m->ipv4 : "-");
 			} else if (strcasecmp(*s, "IPV6") == 0) {
 				printf("%-*s ", lht->ipv6_length, m->ipv6 ? m->ipv6 : "-");
+			} else if (strcasecmp(*s, "UNPRIVILEGED") == 0) {
+				printf("%-*s ", lht->unprivileged_length, m->unprivileged ? "true" : "false");
 			}
 		}
 		printf("\n");
@@ -909,6 +915,7 @@ static void ls_print_table(struct ls *l, struct lengths *lht,
 	printf("%-*s ", lht->groups_length, "GROUPS");
 	printf("%-*s ", lht->ipv4_length, "IPV4");
 	printf("%-*s ", lht->ipv6_length, "IPV6");
+	printf("%-*s ", lht->unprivileged_length, "UNPRIVILEGED");
 	printf("\n");
 
 	size_t i;
@@ -924,6 +931,7 @@ static void ls_print_table(struct ls *l, struct lengths *lht,
 		printf("%-*s ", lht->groups_length, m->groups ? m->groups : "-");
 		printf("%-*s ", lht->ipv4_length, m->ipv4 ? m->ipv4 : "-");
 		printf("%-*s ", lht->ipv6_length, m->ipv6 ? m->ipv6 : "-");
+		printf("%-*s ", lht->unprivileged_length, m->unprivileged ? "true" : "false");
 		printf("\n");
 	}
 }
@@ -1051,7 +1059,7 @@ static int ls_remove_lock(const char *path, const char *name,
 	if (check < 0 || (size_t)check >= *len_lockpath)
 		goto out;
 
-	lxc_rmdir_onedev(*lockpath, NULL);
+	(void)rm_r(*lockpath);
 	ret = 0;
 
 out:
@@ -1093,6 +1101,10 @@ static int ls_serialize(int wpipefd, struct ls *n)
 
 	nbytes = sizeof(n->running);
 	if (lxc_write_nointr(wpipefd, &n->running, (size_t)nbytes) != nbytes)
+		return -1;
+
+	nbytes = sizeof(n->unprivileged);
+	if (lxc_write_nointr(wpipefd, &n->unprivileged, (size_t)nbytes) != nbytes)
 		return -1;
 
 	nbytes = sizeof(n->nestlvl);
@@ -1176,6 +1188,10 @@ static int ls_deserialize(int rpipefd, struct ls **m, size_t *len)
 
 		nbytes = sizeof(n->running);
 		if (lxc_read_nointr(rpipefd, &n->running, (size_t)nbytes) != nbytes)
+			return -1;
+
+		nbytes = sizeof(n->unprivileged);
+		if (lxc_read_nointr(rpipefd, &n->unprivileged, (size_t)nbytes) != nbytes)
 			return -1;
 
 		nbytes = sizeof(n->nestlvl);

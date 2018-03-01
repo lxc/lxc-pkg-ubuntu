@@ -18,21 +18,18 @@
  */
 
 #define _GNU_SOURCE
-#include "config.h"
-
+#include <fcntl.h>
 #include <libgen.h>
 #include <stdio.h>
+#include <string.h>
 #include <unistd.h>
+#include <sys/stat.h>
 #include <sys/types.h>
 
 #include <lxc/lxccontainer.h>
 
 #include "arguments.h"
-#include "log.h"
-#include "lxc.h"
-#include "utils.h"
-
-lxc_log_define(lxc_destroy_ui, lxc);
+#include "tool_utils.h"
 
 static int my_parser(struct lxc_arguments* args, int c, char* arg);
 static bool quiet;
@@ -85,12 +82,9 @@ int main(int argc, char *argv[])
 
 	if (lxc_log_init(&log))
 		exit(EXIT_FAILURE);
-	lxc_log_options_no_override();
+
 	if (my_args.quiet)
 		quiet = true;
-
-	/* REMOVE IN LXC 3.0 */
-	setenv("LXC_UPDATE_CONFIG_FORMAT", "1", 0);
 
 	c = lxc_container_new(my_args.name, my_args.lxcpath[0]);
 	if (!c) {
@@ -157,11 +151,11 @@ static int my_parser(struct lxc_arguments *args, int c, char *arg)
 static bool do_destroy(struct lxc_container *c)
 {
 	bool bret = true;
-	char path[MAXPATHLEN];
+	char path[TOOL_MAXPATHLEN];
 
 	/* First check whether the container has dependent clones or snapshots. */
-	int ret = snprintf(path, MAXPATHLEN, "%s/%s/lxc_snapshots", c->config_path, c->name);
-	if (ret < 0 || ret >= MAXPATHLEN)
+	int ret = snprintf(path, TOOL_MAXPATHLEN, "%s/%s/lxc_snapshots", c->config_path, c->name);
+	if (ret < 0 || ret >= TOOL_MAXPATHLEN)
 		return false;
 
 	if (file_exists(path)) {
@@ -170,8 +164,8 @@ static bool do_destroy(struct lxc_container *c)
 		return false;
 	}
 
-	ret = snprintf(path, MAXPATHLEN, "%s/%s/snaps", c->config_path, c->name);
-	if (ret < 0 || ret >= MAXPATHLEN)
+	ret = snprintf(path, TOOL_MAXPATHLEN, "%s/%s/snaps", c->config_path, c->name);
+	if (ret < 0 || ret >= TOOL_MAXPATHLEN)
 		return false;
 
 	if (rmdir(path) < 0 && errno != ENOENT) {
@@ -191,8 +185,13 @@ static bool do_destroy(struct lxc_container *c)
 
 	/* If the container was ephemeral we have already removed it when we
 	 * stopped it. */
-	if (c->is_defined(c) && !c->lxc_conf->ephemeral)
-		bret = c->destroy(c);
+	if (c->is_defined(c)) {
+		char buf[256];
+		ret = c->get_config_item(c, "lxc.ephemeral", buf, 256);
+		if (ret > 0 && strcmp(buf, "0") == 0) {
+			bret = c->destroy(c);
+		}
+	}
 
 	if (!bret) {
 		if (!quiet)
@@ -208,7 +207,7 @@ static bool do_destroy_with_snapshots(struct lxc_container *c)
 	struct lxc_container *c1;
 	struct stat fbuf;
 	bool bret = false;
-	char path[MAXPATHLEN];
+	char path[TOOL_MAXPATHLEN];
 	char *buf = NULL;
 	char *lxcpath = NULL;
 	char *lxcname = NULL;
@@ -218,8 +217,8 @@ static bool do_destroy_with_snapshots(struct lxc_container *c)
 	int counter = 0;
 
 	/* Destroy clones. */
-	ret = snprintf(path, MAXPATHLEN, "%s/%s/lxc_snapshots", c->config_path, c->name);
-	if (ret < 0 || ret >= MAXPATHLEN)
+	ret = snprintf(path, TOOL_MAXPATHLEN, "%s/%s/lxc_snapshots", c->config_path, c->name);
+	if (ret < 0 || ret >= TOOL_MAXPATHLEN)
 		return false;
 
 	fd = open(path, O_RDONLY | O_CLOEXEC);
@@ -233,14 +232,14 @@ static bool do_destroy_with_snapshots(struct lxc_container *c)
 		/* Make sure that the string is \0 terminated. */
 		buf = calloc(fbuf.st_size + 1, sizeof(char));
 		if (!buf) {
-			SYSERROR("failed to allocate memory");
+			fprintf(stderr, "failed to allocate memory\n");
 			close(fd);
 			return false;
 		}
 
 		ret = read(fd, buf, fbuf.st_size);
 		if (ret < 0) {
-			ERROR("could not read %s", path);
+			fprintf(stderr, "could not read %s\n", path);
 			close(fd);
 			free(buf);
 			return false;
@@ -270,8 +269,8 @@ static bool do_destroy_with_snapshots(struct lxc_container *c)
 	}
 
 	/* Destroy snapshots located in the containers snap/ folder. */
-	ret = snprintf(path, MAXPATHLEN, "%s/%s/snaps", c->config_path, c->name);
-	if (ret < 0 || ret >= MAXPATHLEN)
+	ret = snprintf(path, TOOL_MAXPATHLEN, "%s/%s/snaps", c->config_path, c->name);
+	if (ret < 0 || ret >= TOOL_MAXPATHLEN)
 		return false;
 
 	if (rmdir(path) < 0 && errno != ENOENT)

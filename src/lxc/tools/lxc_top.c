@@ -21,27 +21,26 @@
  * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA
  */
 
+#define _GNU_SOURCE
 #define __STDC_FORMAT_MACROS /* Required for PRIu64 to work. */
 #include <errno.h>
 #include <inttypes.h>
 #include <signal.h>
 #include <stdbool.h>
+#include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
-#include <stdint.h>
+#include <string.h>
 #include <termios.h>
 #include <unistd.h>
 #include <sys/epoll.h>
 #include <sys/ioctl.h>
+#include <sys/time.h>
+
 #include <lxc/lxccontainer.h>
 
 #include "arguments.h"
-#include "log.h"
-#include "lxc.h"
-#include "mainloop.h"
-#include "utils.h"
-
-lxc_log_define(lxc_top_ui, lxc);
+#include "tool_utils.h"
 
 #define USER_HZ   100
 #define ESC       "\033"
@@ -149,12 +148,12 @@ static int stdin_tios_setup(void)
 	struct termios newtios;
 
 	if (!isatty(0)) {
-		ERROR("stdin is not a tty");
+		fprintf(stderr, "stdin is not a tty\n");
 		return -1;
 	}
 
 	if (tcgetattr(0, &oldtios)) {
-		SYSERROR("failed to get current terminal settings");
+		fprintf(stderr, "failed to get current terminal settings\n");
 		return -1;
 	}
 
@@ -168,7 +167,7 @@ static int stdin_tios_setup(void)
 	newtios.c_cc[VTIME] = 0;
 
 	if (tcsetattr(0, TCSAFLUSH, &newtios)) {
-		ERROR("failed to set new terminal settings");
+		fprintf(stderr, "failed to set new terminal settings\n");
 		return -1;
 	}
 
@@ -183,24 +182,6 @@ static int stdin_tios_rows(void)
 	return 25;
 }
 
-static int stdin_handler(int fd, uint32_t events, void *data,
-			 struct lxc_epoll_descr *descr)
-{
-	char *in_char = data;
-
-	if (events & EPOLLIN) {
-		int rc;
-
-		rc = read(fd, in_char, sizeof(*in_char));
-		if (rc <= 0)
-			*in_char = '\0';
-	}
-
-	if (events & EPOLLHUP)
-		*in_char = 'q';
-	return 1;
-}
-
 static void sig_handler(int sig)
 {
 	exit(EXIT_SUCCESS);
@@ -208,21 +189,26 @@ static void sig_handler(int sig)
 
 static void size_humanize(unsigned long long val, char *buf, size_t bufsz)
 {
+	int ret;
+
 	if (val > 1 << 30) {
-		snprintf(buf, bufsz, "%u.%2.2u GiB",
+		ret = snprintf(buf, bufsz, "%u.%2.2u GiB",
 			    (unsigned int)(val >> 30),
 			    (unsigned int)(val & ((1 << 30) - 1)) / 10737419);
 	} else if (val > 1 << 20) {
 		unsigned int x = val + 5243;  /* for rounding */
-		snprintf(buf, bufsz, "%u.%2.2u MiB",
+		ret = snprintf(buf, bufsz, "%u.%2.2u MiB",
 			    x >> 20, ((x & ((1 << 20) - 1)) * 100) >> 20);
 	} else if (val > 1 << 10) {
 		unsigned int x = val + 5;  /* for rounding */
-		snprintf(buf, bufsz, "%u.%2.2u KiB",
+		ret = snprintf(buf, bufsz, "%u.%2.2u KiB",
 			    x >> 10, ((x & ((1 << 10) - 1)) * 100) >> 10);
 	} else {
-		snprintf(buf, bufsz, "%3u.00   ", (unsigned int)val);
+		ret = snprintf(buf, bufsz, "%3u.00   ", (unsigned int)val);
 	}
+
+	if (ret < 0 || (size_t)ret >= bufsz)
+		fprintf(stderr, "Failed to create string\n");
 }
 
 static uint64_t stat_get_int(struct lxc_container *c, const char *item)
@@ -233,7 +219,7 @@ static uint64_t stat_get_int(struct lxc_container *c, const char *item)
 
 	len = c->get_cgroup_item(c, item, buf, sizeof(buf));
 	if (len <= 0) {
-		ERROR("unable to read cgroup item %s", item);
+		fprintf(stderr, "unable to read cgroup item %s\n", item);
 		return 0;
 	}
 
@@ -252,7 +238,7 @@ static uint64_t stat_match_get_int(struct lxc_container *c, const char *item,
 
 	len = c->get_cgroup_item(c, item, buf, sizeof(buf));
 	if (len <= 0) {
-		ERROR("unable to read cgroup item %s", item);
+		fprintf(stderr, "unable to read cgroup item %s\n", item);
 		goto out;
 	}
 
@@ -307,8 +293,8 @@ static void stat_get_blk_stats(struct lxc_container *c, const char *item,
 	char **lines, **cols;
 
 	len = c->get_cgroup_item(c, item, buf, sizeof(buf));
-	if (len <= 0 || len >= sizeof(buf)) {
-		ERROR("unable to read cgroup item %s", item);
+	if (len <= 0 || (size_t)len >= sizeof(buf)) {
+		fprintf(stderr, "unable to read cgroup item %s\n", item);
 		return;
 	}
 
@@ -406,8 +392,8 @@ static void stats_print(const char *name, const struct stats *stats,
 		size_humanize(stats->mem_used, mem_used_str, sizeof(mem_used_str));
 
 		ret = snprintf(iosb_str, sizeof(iosb_str), "%s(%s/%s)", iosb_total_str, iosb_read_str, iosb_write_str);
-		if (ret < 0 || ret >= sizeof(iosb_str))
-			WARN("snprintf'd too many characters: %d", ret);
+		if (ret < 0 || (size_t)ret >= sizeof(iosb_str))
+			printf("snprintf'd too many characters: %d\n", ret);
 
 		printf("%-18.18s %12.2f %12.2f %12.2f %36s %10s",
 		       name,
@@ -426,7 +412,7 @@ static void stats_print(const char *name, const struct stats *stats,
 			printf(" %10s", kmem_used_str);
 		}
 	} else {
-		gettimeofday(&time_val, NULL);
+		(void)gettimeofday(&time_val, NULL);
 		time_ms = (unsigned long long) (time_val.tv_sec) * 1000 + (unsigned long long) (time_val.tv_usec) / 1000;
 		printf("%" PRIu64 ",%s,%" PRIu64 ",%" PRIu64 ",%" PRIu64
 		       ",%" PRIu64 ",%" PRIu64 ",%" PRIu64 ",%" PRIu64 ",%" PRIu64,
@@ -537,18 +523,155 @@ static void ct_realloc(int active_cnt)
 		ct_free();
 		ct = realloc(ct, sizeof(*ct) * active_cnt);
 		if (!ct) {
-			ERROR("cannot alloc mem");
+			fprintf(stderr, "cannot alloc mem\n");
 			exit(EXIT_FAILURE);
 		}
 		for (i = 0; i < active_cnt; i++) {
 			ct[i].stats = malloc(sizeof(*ct[0].stats));
 			if (!ct[i].stats) {
-				ERROR("cannot alloc mem");
+				fprintf(stderr, "cannot alloc mem\n");
 				exit(EXIT_FAILURE);
 			}
 		}
 		ct_alloc_cnt = active_cnt;
 	}
+}
+
+#define LXC_MAINLOOP_CONTINUE 0
+#define LXC_MAINLOOP_CLOSE 1
+
+struct lxc_epoll_descr {
+	int epfd;
+	struct lxc_list handlers;
+};
+
+typedef int (*lxc_mainloop_callback_t)(int fd, uint32_t event, void *data,
+				       struct lxc_epoll_descr *descr);
+
+struct mainloop_handler {
+	lxc_mainloop_callback_t callback;
+	int fd;
+	void *data;
+};
+
+#define MAX_EVENTS 10
+
+int lxc_mainloop(struct lxc_epoll_descr *descr, int timeout_ms)
+{
+	int i, nfds, ret;
+	struct mainloop_handler *handler;
+	struct epoll_event events[MAX_EVENTS];
+
+	for (;;) {
+		nfds = epoll_wait(descr->epfd, events, MAX_EVENTS, timeout_ms);
+		if (nfds < 0) {
+			if (errno == EINTR)
+				continue;
+
+			return -1;
+		}
+
+		for (i = 0; i < nfds; i++) {
+			handler = events[i].data.ptr;
+
+			/* If the handler returns a positive value, exit the
+			 * mainloop.
+			 */
+			ret = handler->callback(handler->fd, events[i].events,
+						handler->data, descr);
+			if (ret == LXC_MAINLOOP_CLOSE)
+				return 0;
+		}
+
+		if (nfds == 0)
+			return 0;
+
+		if (lxc_list_empty(&descr->handlers))
+			return 0;
+	}
+}
+
+int lxc_mainloop_open(struct lxc_epoll_descr *descr)
+{
+	/* hint value passed to epoll create */
+	descr->epfd = epoll_create1(EPOLL_CLOEXEC);
+	if (descr->epfd < 0)
+		return -1;
+
+	lxc_list_init(&descr->handlers);
+	return 0;
+}
+
+int lxc_mainloop_add_handler(struct lxc_epoll_descr *descr, int fd,
+			     lxc_mainloop_callback_t callback, void *data)
+{
+	struct epoll_event ev;
+	struct mainloop_handler *handler;
+	struct lxc_list *item;
+
+	handler = malloc(sizeof(*handler));
+	if (!handler)
+		return -1;
+
+	handler->callback = callback;
+	handler->fd = fd;
+	handler->data = data;
+
+	ev.events = EPOLLIN;
+	ev.data.ptr = handler;
+
+	if (epoll_ctl(descr->epfd, EPOLL_CTL_ADD, fd, &ev) < 0)
+		goto out_free_handler;
+
+	item = malloc(sizeof(*item));
+	if (!item)
+		goto out_free_handler;
+
+	item->elem = handler;
+	lxc_list_add(&descr->handlers, item);
+	return 0;
+
+out_free_handler:
+	free(handler);
+	return -1;
+}
+
+int lxc_mainloop_close(struct lxc_epoll_descr *descr)
+{
+	struct lxc_list *iterator, *next;
+
+	iterator = descr->handlers.next;
+	while (iterator != &descr->handlers) {
+		next = iterator->next;
+
+		lxc_list_del(iterator);
+		free(iterator->elem);
+		free(iterator);
+		iterator = next;
+	}
+
+	if (descr->epfd >= 0)
+		return close(descr->epfd);
+
+	return 0;
+}
+
+static int stdin_handler(int fd, uint32_t events, void *data,
+			 struct lxc_epoll_descr *descr)
+{
+	char *in_char = data;
+
+	if (events & EPOLLIN) {
+		int rc;
+
+		rc = read(fd, in_char, sizeof(*in_char));
+		if (rc <= 0)
+			*in_char = '\0';
+	}
+
+	if (events & EPOLLHUP)
+		*in_char = 'q';
+	return 1;
 }
 
 int main(int argc, char *argv[])
@@ -563,7 +686,7 @@ int main(int argc, char *argv[])
 
 	ct_print_cnt = stdin_tios_rows() - 3; /* 3 -> header and total */
 	if (stdin_tios_setup() < 0) {
-		ERROR("failed to setup terminal");
+		fprintf(stderr, "failed to setup terminal\n");
 		goto out;
 	}
 
@@ -573,13 +696,13 @@ int main(int argc, char *argv[])
 	signal(SIGQUIT, sig_handler);
 
 	if (lxc_mainloop_open(&descr)) {
-		ERROR("failed to create mainloop");
+		fprintf(stderr, "failed to create mainloop\n");
 		goto out;
 	}
 
 	ret = lxc_mainloop_add_handler(&descr, 0, stdin_handler, &in_char);
 	if (ret) {
-		ERROR("failed to add stdin handler");
+		fprintf(stderr, "failed to add stdin handler\n");
 		ret = EXIT_FAILURE;
 		goto err1;
 	}

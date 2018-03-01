@@ -204,9 +204,17 @@ static int instantiate_veth(struct lxc_handler *handler, struct lxc_netdev *netd
 	}
 
 	if (netdev->upscript) {
-		err = run_script(handler->name, "net", netdev->upscript, "up",
-				 "veth", veth1, (char*) NULL);
-		if (err)
+		char *argv[] = {
+		    "veth",
+		    netdev->link,
+		    veth1,
+		    NULL,
+		};
+
+		err = run_script_argv(handler->name,
+				handler->conf->hooks_version, "net",
+				netdev->upscript, "up", argv);
+		if (err < 0)
 			goto out_delete;
 	}
 
@@ -254,9 +262,16 @@ static int instantiate_macvlan(struct lxc_handler *handler, struct lxc_netdev *n
 	}
 
 	if (netdev->upscript) {
-		err = run_script(handler->name, "net", netdev->upscript, "up",
-				 "macvlan", netdev->link, (char*) NULL);
-		if (err)
+		char *argv[] = {
+		    "macvlan",
+		    netdev->link,
+		    NULL,
+		};
+
+		err = run_script_argv(handler->name,
+				handler->conf->hooks_version, "net",
+				netdev->upscript, "up", argv);
+		if (err < 0)
 			goto on_error;
 	}
 
@@ -323,6 +338,13 @@ static int instantiate_vlan(struct lxc_handler *handler, struct lxc_netdev *netd
 
 static int instantiate_phys(struct lxc_handler *handler, struct lxc_netdev *netdev)
 {
+	int ret;
+	char *argv[] = {
+		"phys",
+		netdev->link,
+		NULL,
+	};
+
 	if (netdev->link[0] == '\0') {
 		ERROR("No link for physical interface specified");
 		return -1;
@@ -346,27 +368,34 @@ static int instantiate_phys(struct lxc_handler *handler, struct lxc_netdev *netd
 	 */
 	netdev->priv.phys_attr.ifindex = netdev->ifindex;
 
-	if (netdev->upscript) {
-		int err;
-		err = run_script(handler->name, "net", netdev->upscript,
-				 "up", "phys", netdev->link, (char*) NULL);
-		if (err)
-			return -1;
-	}
+	if (!netdev->upscript)
+		return 0;
+
+	ret = run_script_argv(handler->name, handler->conf->hooks_version,
+			      "net", netdev->upscript, "up", argv);
+	if (ret < 0)
+		return -1;
 
 	return 0;
 }
 
 static int instantiate_empty(struct lxc_handler *handler, struct lxc_netdev *netdev)
 {
+	int ret;
+	char *argv[] = {
+	    "empty",
+	    NULL,
+	};
+
 	netdev->ifindex = 0;
-	if (netdev->upscript) {
-		int err;
-		err = run_script(handler->name, "net", netdev->upscript,
-				 "up", "empty", (char*) NULL);
-		if (err)
-			return -1;
-	}
+	if (!netdev->upscript)
+		return 0;
+
+	ret = run_script_argv(handler->name, handler->conf->hooks_version,
+			      "net", netdev->upscript, "up", argv);
+	if (ret < 0)
+		return -1;
+
 	return 0;
 }
 
@@ -387,34 +416,48 @@ static  instantiate_cb netdev_conf[LXC_NET_MAXCONFTYPE + 1] = {
 
 static int shutdown_veth(struct lxc_handler *handler, struct lxc_netdev *netdev)
 {
-	char *veth1;
-	int err;
+	int ret;
+	char *argv[] = {
+	    "veth",
+	    netdev->link,
+	    NULL,
+	    NULL,
+	};
+
+	if (!netdev->downscript)
+		return 0;
 
 	if (netdev->priv.veth_attr.pair[0] != '\0')
-		veth1 = netdev->priv.veth_attr.pair;
+		argv[2] = netdev->priv.veth_attr.pair;
 	else
-		veth1 = netdev->priv.veth_attr.veth1;
+		argv[2] = netdev->priv.veth_attr.veth1;
 
-	if (netdev->downscript) {
-		err = run_script(handler->name, "net", netdev->downscript,
-				 "down", "veth", veth1, (char*) NULL);
-		if (err)
-			return -1;
-	}
+	ret = run_script_argv(handler->name,
+			handler->conf->hooks_version, "net",
+			netdev->downscript, "down", argv);
+	if (ret < 0)
+		return -1;
+
 	return 0;
 }
 
 static int shutdown_macvlan(struct lxc_handler *handler, struct lxc_netdev *netdev)
 {
-	int err;
+	int ret;
+	char *argv[] = {
+		"macvlan",
+		netdev->link,
+		NULL,
+	};
 
-	if (netdev->downscript) {
-		err = run_script(handler->name, "net", netdev->downscript,
-				 "down", "macvlan", netdev->link,
-				 (char*) NULL);
-		if (err)
-			return -1;
-	}
+	if (!netdev->downscript)
+		return 0;
+
+	ret = run_script_argv(handler->name, handler->conf->hooks_version,
+			      "net", netdev->downscript, "down", argv);
+	if (ret < 0)
+		return -1;
+
 	return 0;
 }
 
@@ -425,27 +468,40 @@ static int shutdown_vlan(struct lxc_handler *handler, struct lxc_netdev *netdev)
 
 static int shutdown_phys(struct lxc_handler *handler, struct lxc_netdev *netdev)
 {
-	int err;
+	int ret;
+	char *argv[] = {
+	    "phys",
+	    netdev->link,
+	    NULL,
+	};
 
-	if (netdev->downscript) {
-		err = run_script(handler->name, "net", netdev->downscript,
-				 "down", "phys", netdev->link, (char*) NULL);
-		if (err)
-			return -1;
-	}
+	if (!netdev->downscript)
+		return 0;
+
+	ret = run_script_argv(handler->name, handler->conf->hooks_version,
+			      "net", netdev->downscript, "down", argv);
+	if (ret < 0)
+		return -1;
+
 	return 0;
 }
 
 static int shutdown_empty(struct lxc_handler *handler, struct lxc_netdev *netdev)
 {
-	int err;
+	int ret;
+	char *argv[] = {
+	    "empty",
+	    NULL,
+	};
 
-	if (netdev->downscript) {
-		err = run_script(handler->name, "net", netdev->downscript,
-				 "down", "empty", (char*) NULL);
-		if (err)
-			return -1;
-	}
+	if (!netdev->downscript)
+		return 0;
+
+	ret = run_script_argv(handler->name, handler->conf->hooks_version,
+			      "net", netdev->downscript, "down", argv);
+	if (ret < 0)
+		return -1;
+
 	return 0;
 }
 
@@ -579,7 +635,7 @@ static int lxc_netdev_rename_by_name_in_netns(pid_t pid, const char *old,
 	if (!switch_to_ns(pid, "net"))
 		return -1;
 
-	exit(lxc_netdev_rename_by_name(old, new));
+	_exit(lxc_netdev_rename_by_name(old, new));
 }
 
 static int lxc_netdev_move_wlan(char *physname, const char *ifname, pid_t pid,
@@ -607,7 +663,7 @@ static int lxc_netdev_move_wlan(char *physname, const char *ifname, pid_t pid,
 		sprintf(pidstr, "%d", pid);
 		execlp("iw", "iw", "phy", physname, "set", "netns", pidstr,
 		       (char *)NULL);
-		exit(EXIT_FAILURE);
+		_exit(EXIT_FAILURE);
 	}
 
 	if (wait_for_pid(fpid))
@@ -1312,32 +1368,6 @@ static int proc_sys_net_write(const char *path, const char *value)
 	return err;
 }
 
-static int ip_forward_set(const char *ifname, int family, int flag)
-{
-	int rc;
-	char path[MAXPATHLEN];
-
-	if (family != AF_INET && family != AF_INET6)
-		return -EINVAL;
-
-	rc = snprintf(path, MAXPATHLEN, "/proc/sys/net/%s/conf/%s/forwarding",
-		      family == AF_INET ? "ipv4" : "ipv6", ifname);
-	if (rc < 0 || (size_t)rc >= MAXPATHLEN)
-		return -E2BIG;
-
-	return proc_sys_net_write(path, flag ? "1" : "0");
-}
-
-int lxc_ip_forward_on(const char *ifname, int family)
-{
-	return ip_forward_set(ifname, family, 1);
-}
-
-int lxc_ip_forward_off(const char *ifname, int family)
-{
-	return ip_forward_set(ifname, family, 0);
-}
-
 static int neigh_proxy_set(const char *ifname, int family, int flag)
 {
 	int ret;
@@ -1915,6 +1945,7 @@ static const char padchar[] = "0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ";
 
 char *lxc_mkifname(char *template)
 {
+	int ret;
 	unsigned int seed;
 	FILE *urandom;
 	struct ifaddrs *ifa, *ifaddr;
@@ -1926,7 +1957,11 @@ char *lxc_mkifname(char *template)
 		return NULL;
 
 	/* Get all the network interfaces. */
-	getifaddrs(&ifaddr);
+	ret = getifaddrs(&ifaddr);
+	if (ret < 0) {
+		ERROR("%s - Failed to get network interfaces", strerror(errno));
+		return NULL;
+	}
 
 	/* Initialize the random number generator. */
 	urandom = fopen("/dev/urandom", "r");
@@ -2050,7 +2085,7 @@ int lxc_find_gateway_addresses(struct lxc_handler *handler)
 }
 
 #define LXC_USERNIC_PATH LIBEXECDIR "/lxc/lxc-user-nic"
-static int lxc_create_network_unpriv_exec(const char *lxcpath, char *lxcname,
+static int lxc_create_network_unpriv_exec(const char *lxcpath, const char *lxcname,
 					  struct lxc_netdev *netdev, pid_t pid)
 {
 	int ret;
@@ -2091,7 +2126,7 @@ static int lxc_create_network_unpriv_exec(const char *lxcpath, char *lxcname,
 		close(pipefd[1]);
 		if (ret < 0) {
 			SYSERROR("Failed to duplicate std{err,out} file descriptor");
-			exit(EXIT_FAILURE);
+			_exit(EXIT_FAILURE);
 		}
 
 		if (netdev->link[0] != '\0')
@@ -2101,7 +2136,7 @@ static int lxc_create_network_unpriv_exec(const char *lxcpath, char *lxcname,
 
 		ret = snprintf(pidstr, LXC_NUMSTRLEN64, "%d", pid);
 		if (ret < 0 || ret >= LXC_NUMSTRLEN64)
-			exit(EXIT_FAILURE);
+			_exit(EXIT_FAILURE);
 		pidstr[LXC_NUMSTRLEN64 - 1] = '\0';
 
 		INFO("Execing lxc-user-nic create %s %s %s veth %s %s", lxcpath,
@@ -2116,7 +2151,7 @@ static int lxc_create_network_unpriv_exec(const char *lxcpath, char *lxcname,
 			       lxcpath, lxcname, pidstr, "veth", netdev_link,
 			       (char *)NULL);
 		SYSERROR("Failed to execute lxc-user-nic");
-		exit(EXIT_FAILURE);
+		_exit(EXIT_FAILURE);
 	}
 
 	/* close the write-end of the pipe */
@@ -2126,13 +2161,13 @@ static int lxc_create_network_unpriv_exec(const char *lxcpath, char *lxcname,
 	if (bytes < 0) {
 		SYSERROR("Failed to read from pipe file descriptor");
 		close(pipefd[0]);
-		return -1;
+	} else {
+		buffer[bytes - 1] = '\0';
 	}
-	buffer[bytes - 1] = '\0';
 
 	ret = wait_for_pid(child);
 	close(pipefd[0]);
-	if (ret != 0) {
+	if (ret != 0 || bytes < 0) {
 		ERROR("lxc-user-nic failed to configure requested network: %s",
 		      buffer[0] != '\0' ? buffer : "(null)");
 		return -1;
@@ -2194,7 +2229,7 @@ static int lxc_create_network_unpriv_exec(const char *lxcpath, char *lxcname,
 	return 0;
 }
 
-static int lxc_delete_network_unpriv_exec(const char *lxcpath, char *lxcname,
+static int lxc_delete_network_unpriv_exec(const char *lxcpath, const char *lxcname,
 					  struct lxc_netdev *netdev,
 					  const char *netns_path)
 {
@@ -2234,7 +2269,7 @@ static int lxc_delete_network_unpriv_exec(const char *lxcpath, char *lxcname,
 		close(pipefd[1]);
 		if (ret < 0) {
 			SYSERROR("Failed to duplicate std{err,out} file descriptor");
-			exit(EXIT_FAILURE);
+			_exit(EXIT_FAILURE);
 		}
 
 		if (netdev->priv.veth_attr.pair[0] != '\0')
@@ -2243,13 +2278,13 @@ static int lxc_delete_network_unpriv_exec(const char *lxcpath, char *lxcname,
 			hostveth = netdev->priv.veth_attr.veth1;
 		if (hostveth[0] == '\0') {
 			SYSERROR("Host side veth device name is missing");
-			exit(EXIT_FAILURE);
+			_exit(EXIT_FAILURE);
 		}
 
 		if (netdev->link[0] == '\0') {
 			SYSERROR("Network link for network device \"%s\" is "
 				 "missing", netdev->priv.veth_attr.veth1);
-			exit(EXIT_FAILURE);
+			_exit(EXIT_FAILURE);
 		}
 
 		INFO("Execing lxc-user-nic delete %s %s %s veth %s %s", lxcpath,
@@ -2258,7 +2293,7 @@ static int lxc_delete_network_unpriv_exec(const char *lxcpath, char *lxcname,
 		       lxcname, netns_path, "veth", netdev->link, hostveth,
 		       (char *)NULL);
 		SYSERROR("Failed to exec lxc-user-nic.");
-		exit(EXIT_FAILURE);
+		_exit(EXIT_FAILURE);
 	}
 
 	close(pipefd[1]);
@@ -2267,18 +2302,17 @@ static int lxc_delete_network_unpriv_exec(const char *lxcpath, char *lxcname,
 	if (bytes < 0) {
 		SYSERROR("Failed to read from pipe file descriptor.");
 		close(pipefd[0]);
-		return -1;
+	} else {
+		buffer[bytes - 1] = '\0';
 	}
-	buffer[bytes - 1] = '\0';
 
-	if (wait_for_pid(child) != 0) {
+	ret = wait_for_pid(child);
+	close(pipefd[0]);
+	if (ret != 0 || bytes < 0) {
 		ERROR("lxc-user-nic failed to delete requested network: %s",
 		      buffer[0] != '\0' ? buffer : "(null)");
-		close(pipefd[0]);
 		return -1;
 	}
-
-	close(pipefd[0]);
 
 	return 0;
 }
@@ -2302,14 +2336,14 @@ bool lxc_delete_network_unpriv(struct lxc_handler *handler)
 
 	*netns_path = '\0';
 
-	if (handler->netnsfd < 0) {
+	if (handler->nsfd[LXC_NS_NET] < 0) {
 		DEBUG("Cannot not guarantee safe deletion of network devices. "
 		      "Manual cleanup maybe needed");
 		return false;
 	}
 
 	ret = snprintf(netns_path, sizeof(netns_path), "/proc/%d/fd/%d",
-		       getpid(), handler->netnsfd);
+		       lxc_raw_getpid(), handler->nsfd[LXC_NS_NET]);
 	if (ret < 0 || ret >= sizeof(netns_path))
 		return false;
 
@@ -2408,14 +2442,14 @@ int lxc_create_network_priv(struct lxc_handler *handler)
 	return 0;
 }
 
-int lxc_network_move_created_netdev_priv(const char *lxcpath, char *lxcname,
+int lxc_network_move_created_netdev_priv(const char *lxcpath, const char *lxcname,
 					 struct lxc_list *network, pid_t pid)
 {
 	int ret;
 	char ifname[IFNAMSIZ];
 	struct lxc_list *iterator;
 
-	if (am_unpriv())
+	if (am_guest_unpriv())
 		return 0;
 
 	lxc_list_for_each(iterator, network) {
@@ -2448,12 +2482,12 @@ int lxc_network_move_created_netdev_priv(const char *lxcpath, char *lxcname,
 	return 0;
 }
 
-int lxc_create_network_unpriv(const char *lxcpath, char *lxcname,
+int lxc_create_network_unpriv(const char *lxcpath, const char *lxcname,
 			      struct lxc_list *network, pid_t pid)
 {
 	struct lxc_list *iterator;
 
-	if (!am_unpriv())
+	if (!am_guest_unpriv())
 		return 0;
 
 	lxc_list_for_each(iterator, network) {
@@ -2621,7 +2655,7 @@ int lxc_restore_phys_nics_to_netns(struct lxc_handler *handler)
 	int oldfd;
 	char ifname[IFNAMSIZ];
 	struct lxc_list *iterator;
-	int netnsfd = handler->netnsfd;
+	int netnsfd = handler->nsfd[LXC_NS_NET];
 	struct lxc_conf *conf = handler->conf;
 
 	/* We need CAP_NET_ADMIN in the parent namespace in order to setns() to
@@ -2633,7 +2667,7 @@ int lxc_restore_phys_nics_to_netns(struct lxc_handler *handler)
 
 	TRACE("Moving physical network devices back to parent network namespace");
 
-	oldfd = lxc_preserve_ns(getpid(), "net");
+	oldfd = lxc_preserve_ns(lxc_raw_getpid(), "net");
 	if (oldfd < 0) {
 		SYSERROR("Failed to preserve network namespace");
 		return -1;
@@ -2979,13 +3013,6 @@ int lxc_setup_network_in_child_namespaces(const struct lxc_conf *conf,
 
 	lxc_list_for_each(iterator, network) {
 		netdev = iterator->elem;
-
-		/* REMOVE in LXC 3.0 */
-		if (netdev->idx < 0) {
-			ERROR("WARNING: using \"lxc.network.*\" keys to define "
-			      "networks is DEPRECATED, please switch to using "
-			      "\"lxc.net.[i].* keys\"");
-		}
 
 		if (lxc_setup_netdev_in_child_namespaces(netdev)) {
 			ERROR("failed to setup netdev");

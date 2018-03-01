@@ -39,14 +39,7 @@
 #include <lxc/lxccontainer.h>
 
 #include "arguments.h"
-#include "commands.h"
-#include "error.h"
-#include "log.h"
-#include "lxc.h"
-#include "mainloop.h"
-#include "utils.h"
-
-lxc_log_define(lxc_console_ui, lxc);
+#include "tool_utils.h"
 
 static char etoc(const char *expr)
 {
@@ -117,10 +110,6 @@ int main(int argc, char *argv[])
 	ret = lxc_log_init(&log);
 	if (ret)
 		return EXIT_FAILURE;
-	lxc_log_options_no_override();
-
-	/* REMOVE IN LXC 3.0 */
-	setenv("LXC_UPDATE_CONFIG_FORMAT", "1", 0);
 
 	c = lxc_container_new(my_args.name, my_args.lxcpath[0]);
 	if (!c) {
