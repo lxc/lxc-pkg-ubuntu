@@ -57,8 +57,8 @@ Depends: adduser,
          liblxc1 (= ${binary:Version}),
          ${misc:Depends},
          ${shlibs:Depends}
-Recommends: libpam-cgfs, lxc-templates
-Suggests: btrfs-tools, lvm2, lxctl
+Recommends: libpam-cgfs
+Suggests: btrfs-tools, lvm2, lxctl, lxc-templates
 Replaces: lxc1 (<< 2.1.1-0ubuntu2~)
 Breaks: lxc1 (<< 2.1.1-0ubuntu2~)
 Description: Linux Containers userspace tools
