@@ -77,8 +77,8 @@ Depends: liblxc1 (= ${binary:Version}),
          ${lxc:Depends},
          ${misc:Depends},
          ${shlibs:Depends}
-Replaces: lxc-common (<< 2.1.1-0ubuntu2~)
-Breaks: lxc-common (<< 2.1.1-0ubuntu2~)
+Replaces: lxc-common (<< 2.1.1-0ubuntu2~), lxc-templates (<< 3.0.0~beta1-0ubuntu1~)
+Breaks: lxc-common (<< 2.1.1-0ubuntu2~), lxc-templates (<< 3.0.0~beta1-0ubuntu1~)
 Description: Linux Containers userspace tools (common tools)
  Containers are insulated areas inside a system, which have their own namespace
  for filesystem, network, PID, IPC, CPU and memory allocation and which can be
