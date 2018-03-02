@@ -120,6 +120,10 @@ for testbin in lxc-test-*; do
             ignore "$STRING" && continue
     fi
 
+    # Skip some tests because of broken busybox
+    [ "$testbin" = "lxc-test-state-server" ] && \
+        ignore "$STRING" && continue
+
     OUT=$(mktemp)
     START_TIME=$(date +%s)
     ./$testbin >$OUT 2>&1 && pass "$STRING" || fail "$STRING" "$testbin" "$OUT"
