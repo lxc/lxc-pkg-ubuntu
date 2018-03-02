@@ -13,7 +13,11 @@ IGNORE_LIST=""
 # Helper functions
 pass() {
     TEST_PASS=$((${TEST_PASS}+1))
-    echo "PASS: $1"
+
+    CURRENT_TIME=$(date +%s)
+    DURATION=$((CURRENT_TIME-START_TIME))
+
+    echo "PASS: $1 (${DURATION}s)"
 }
 
 fail() {
@@ -25,7 +29,11 @@ fail() {
     done
 
     TEST_FAIL=$((${TEST_FAIL}+1))
-    echo "FAIL: $1"
+
+    CURRENT_TIME=$(date +%s)
+    DURATION=$((CURRENT_TIME-START_TIME))
+
+    echo "FAIL: $1 (${DURATION}s)"
 
     if [ -f "$3" ]; then
         echo "---"
@@ -113,6 +121,7 @@ for testbin in lxc-test-*; do
     fi
 
     OUT=$(mktemp)
+    START_TIME=$(date +%s)
     ./$testbin >$OUT 2>&1 && pass "$STRING" || fail "$STRING" "$testbin" "$OUT"
     rm $OUT
 done
