@@ -1,3 +1,11 @@
+lxc (3.0.0~beta1-0ubuntu2) bionic; urgency=medium
+
+  * Fix autopkgtest
+    - Record timing of tests in autopkgtest.
+    - Disable the lxc-test-state-server test due to broken busybox.
+
+ -- Stéphane Graber <stgraber@ubuntu.com>  Fri, 02 Mar 2018 17:20:11 -0500
+
 lxc (3.0.0~beta1-0ubuntu1) bionic; urgency=medium
 
   * New upstream beta (3.0.0~beta1)
