@@ -1,3 +1,10 @@
+lxc (3.0.0~beta1-0ubuntu3) bionic; urgency=medium
+
+  * Make liblxc-common conflicts/replaces lxc-common rather than
+    breaks/replaces.
+
+ -- Stéphane Graber <stgraber@ubuntu.com>  Mon, 05 Mar 2018 04:31:40 -0500
+
 lxc (3.0.0~beta1-0ubuntu2) bionic; urgency=medium
 
   * Fix autopkgtest
