@@ -58,7 +58,7 @@ Depends: adduser,
          ${misc:Depends},
          ${shlibs:Depends}
 Recommends: libpam-cgfs
-Suggests: btrfs-tools, lvm2, lxctl, lxc-templates
+Suggests: btrfs-tools, lvm2, lxc-templates, lxctl
 Replaces: lxc1 (<< 2.1.1-0ubuntu2~)
 Breaks: lxc1 (<< 2.1.1-0ubuntu2~)
 Description: Linux Containers userspace tools
@@ -78,8 +78,11 @@ Depends: liblxc1 (= ${binary:Version}),
          ${misc:Depends},
          ${shlibs:Depends}
 Conflicts: lxc-common
-Replaces: lxc-common, lxc-templates (<< 3.0.0~beta1-0ubuntu1~), lxc-utils (<< 3.0.0~beta2-0ubuntu2~)
-Breaks: lxc-templates (<< 3.0.0~beta1-0ubuntu1~), lxc-utils (<< 3.0.0~beta2-0ubuntu2~)
+Replaces: lxc-common,
+          lxc-templates (<< 3.0.0~beta1-0ubuntu1~),
+          lxc-utils (<< 3.0.0~beta2-0ubuntu2~)
+Breaks: lxc-templates (<< 3.0.0~beta1-0ubuntu1~),
+        lxc-utils (<< 3.0.0~beta2-0ubuntu2~)
 Provides: lxc-common
 Description: Linux Containers userspace tools (common tools)
  Containers are insulated areas inside a system, which have their own namespace
@@ -125,10 +128,10 @@ Description: Linux Containers userspace tools (library)
 Package: libpam-cgfs
 Architecture: linux-any
 Pre-Depends: ${misc:Pre-Depends}
-Depends: ${shlibs:Depends},
+Depends: libpam-runtime (>= 1.0.1-6),
+         ${lxcfs:Depends},
          ${misc:Depends},
-         libpam-runtime (>= 1.0.1-6),
-         ${lxcfs:Depends}
+         ${shlibs:Depends}
 Conflicts: libpam-cgm
 Description: PAM module for managing cgroups for LXC
  Containers are insulated areas inside a system, which have their own namespace
