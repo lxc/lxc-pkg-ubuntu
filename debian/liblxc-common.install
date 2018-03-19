@@ -2,6 +2,7 @@ etc/apparmor.d
 usr/lib/*/lxc/lxc-apparmor-load
 usr/lib/*/lxc/lxc-monitord
 usr/lib/*/lxc/lxc-user-nic
+usr/sbin/*
 usr/share/doc
 usr/share/lxc/selinux
 
