@@ -255,9 +255,10 @@ liblxc_la_LINK = $(LIBTOOL) $(AM_V_lt) --tag=CC $(AM_LIBTOOLFLAGS) \
 	$(CFLAGS) $(liblxc_la_LDFLAGS) $(LDFLAGS) -o $@
 @ENABLE_PAM_TRUE@@HAVE_PAM_TRUE@pam_cgfs_la_DEPENDENCIES =  \
 @ENABLE_PAM_TRUE@@HAVE_PAM_TRUE@	$(am__DEPENDENCIES_1)
-am__pam_cgfs_la_SOURCES_DIST = pam/pam_cgfs.c
+am__pam_cgfs_la_SOURCES_DIST = pam/pam_cgfs.c pam/utils.c pam/utils.h
 @ENABLE_PAM_TRUE@@HAVE_PAM_TRUE@am_pam_cgfs_la_OBJECTS =  \
-@ENABLE_PAM_TRUE@@HAVE_PAM_TRUE@	pam/pam_cgfs_la-pam_cgfs.lo
+@ENABLE_PAM_TRUE@@HAVE_PAM_TRUE@	pam/pam_cgfs_la-pam_cgfs.lo \
+@ENABLE_PAM_TRUE@@HAVE_PAM_TRUE@	pam/pam_cgfs_la-utils.lo
 pam_cgfs_la_OBJECTS = $(am_pam_cgfs_la_OBJECTS)
 pam_cgfs_la_LINK = $(LIBTOOL) $(AM_V_lt) --tag=CC $(AM_LIBTOOLFLAGS) \
 	$(LIBTOOLFLAGS) --mode=link $(CCLD) $(pam_cgfs_la_CFLAGS) \
@@ -886,7 +887,7 @@ LDADD = liblxc.la @CAP_LIBS@ @SELINUX_LIBS@ @SECCOMP_LIBS@
 @ENABLE_COMMANDS_TRUE@@HAVE_STATIC_LIBCAP_TRUE@init_lxc_static_LDADD = @CAP_LIBS@
 @ENABLE_COMMANDS_TRUE@@HAVE_STATIC_LIBCAP_TRUE@init_lxc_static_CFLAGS = $(AM_CFLAGS) -DNO_LXC_CONF
 @ENABLE_PAM_TRUE@@HAVE_PAM_TRUE@pam_LTLIBRARIES = pam_cgfs.la
-@ENABLE_PAM_TRUE@@HAVE_PAM_TRUE@pam_cgfs_la_SOURCES = pam/pam_cgfs.c
+@ENABLE_PAM_TRUE@@HAVE_PAM_TRUE@pam_cgfs_la_SOURCES = pam/pam_cgfs.c pam/utils.c pam/utils.h
 @ENABLE_PAM_TRUE@@HAVE_PAM_TRUE@pam_cgfs_la_CFLAGS = $(AM_CFLAGS)
 @ENABLE_PAM_TRUE@@HAVE_PAM_TRUE@pam_cgfs_la_LIBADD = $(AM_LIBS) $(PAM_LIBS) -L$(top_srcdir)
 @ENABLE_PAM_TRUE@@HAVE_PAM_TRUE@pam_cgfs_la_LDFLAGS = $(AM_LDFLAGS) -module -avoid-version -shared
@@ -1077,6 +1078,8 @@ pam/$(DEPDIR)/$(am__dirstamp):
 	@$(MKDIR_P) pam/$(DEPDIR)
 	@: > pam/$(DEPDIR)/$(am__dirstamp)
 pam/pam_cgfs_la-pam_cgfs.lo: pam/$(am__dirstamp) \
+	pam/$(DEPDIR)/$(am__dirstamp)
+pam/pam_cgfs_la-utils.lo: pam/$(am__dirstamp) \
 	pam/$(DEPDIR)/$(am__dirstamp)
 
 pam_cgfs.la: $(pam_cgfs_la_OBJECTS) $(pam_cgfs_la_DEPENDENCIES) $(EXTRA_pam_cgfs_la_DEPENDENCIES) 
@@ -1531,6 +1534,7 @@ distclean-compile:
 @AMDEP_TRUE@@am__include@ @am__quote@lsm/$(DEPDIR)/liblxc_la-nop.Plo@am__quote@
 @AMDEP_TRUE@@am__include@ @am__quote@lsm/$(DEPDIR)/liblxc_la-selinux.Plo@am__quote@
 @AMDEP_TRUE@@am__include@ @am__quote@pam/$(DEPDIR)/pam_cgfs_la-pam_cgfs.Plo@am__quote@
+@AMDEP_TRUE@@am__include@ @am__quote@pam/$(DEPDIR)/pam_cgfs_la-utils.Plo@am__quote@
 @AMDEP_TRUE@@am__include@ @am__quote@storage/$(DEPDIR)/liblxc_la-btrfs.Plo@am__quote@
 @AMDEP_TRUE@@am__include@ @am__quote@storage/$(DEPDIR)/liblxc_la-dir.Plo@am__quote@
 @AMDEP_TRUE@@am__include@ @am__quote@storage/$(DEPDIR)/liblxc_la-loop.Plo@am__quote@
@@ -1976,6 +1980,13 @@ pam/pam_cgfs_la-pam_cgfs.lo: pam/pam_cgfs.c
 @AMDEP_TRUE@@am__fastdepCC_FALSE@	$(AM_V_CC)source='pam/pam_cgfs.c' object='pam/pam_cgfs_la-pam_cgfs.lo' libtool=yes @AMDEPBACKSLASH@
 @AMDEP_TRUE@@am__fastdepCC_FALSE@	DEPDIR=$(DEPDIR) $(CCDEPMODE) $(depcomp) @AMDEPBACKSLASH@
 @am__fastdepCC_FALSE@	$(AM_V_CC@am__nodep@)$(LIBTOOL) $(AM_V_lt) --tag=CC $(AM_LIBTOOLFLAGS) $(LIBTOOLFLAGS) --mode=compile $(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(pam_cgfs_la_CFLAGS) $(CFLAGS) -c -o pam/pam_cgfs_la-pam_cgfs.lo `test -f 'pam/pam_cgfs.c' || echo '$(srcdir)/'`pam/pam_cgfs.c
+
+pam/pam_cgfs_la-utils.lo: pam/utils.c
+@am__fastdepCC_TRUE@	$(AM_V_CC)$(LIBTOOL) $(AM_V_lt) --tag=CC $(AM_LIBTOOLFLAGS) $(LIBTOOLFLAGS) --mode=compile $(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(pam_cgfs_la_CFLAGS) $(CFLAGS) -MT pam/pam_cgfs_la-utils.lo -MD -MP -MF pam/$(DEPDIR)/pam_cgfs_la-utils.Tpo -c -o pam/pam_cgfs_la-utils.lo `test -f 'pam/utils.c' || echo '$(srcdir)/'`pam/utils.c
+@am__fastdepCC_TRUE@	$(AM_V_at)$(am__mv) pam/$(DEPDIR)/pam_cgfs_la-utils.Tpo pam/$(DEPDIR)/pam_cgfs_la-utils.Plo
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	$(AM_V_CC)source='pam/utils.c' object='pam/pam_cgfs_la-utils.lo' libtool=yes @AMDEPBACKSLASH@
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	DEPDIR=$(DEPDIR) $(CCDEPMODE) $(depcomp) @AMDEPBACKSLASH@
+@am__fastdepCC_FALSE@	$(AM_V_CC@am__nodep@)$(LIBTOOL) $(AM_V_lt) --tag=CC $(AM_LIBTOOLFLAGS) $(LIBTOOLFLAGS) --mode=compile $(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(pam_cgfs_la_CFLAGS) $(CFLAGS) -c -o pam/pam_cgfs_la-utils.lo `test -f 'pam/utils.c' || echo '$(srcdir)/'`pam/utils.c
 
 cmd/init_lxc_static-lxc_init.o: cmd/lxc_init.c
 @am__fastdepCC_TRUE@	$(AM_V_CC)$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(init_lxc_static_CFLAGS) $(CFLAGS) -MT cmd/init_lxc_static-lxc_init.o -MD -MP -MF cmd/$(DEPDIR)/init_lxc_static-lxc_init.Tpo -c -o cmd/init_lxc_static-lxc_init.o `test -f 'cmd/lxc_init.c' || echo '$(srcdir)/'`cmd/lxc_init.c
