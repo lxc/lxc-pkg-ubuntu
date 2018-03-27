@@ -28,6 +28,6 @@
 #define LXC_VERSION_MINOR 0
 #define LXC_VERSION_MICRO 0
 #define LXC_VERSION_ABI "1.4.0"
-#define LXC_VERSION "3.0.0.beta3"
+#define LXC_VERSION "3.0.0.beta4"
 
 #endif
