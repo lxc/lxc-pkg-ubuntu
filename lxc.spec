@@ -49,8 +49,8 @@ BuildRequires: systemd
 # RPM needs alpha/beta/rc in Release: not Version: to ensure smooth
 # package upgrades from alpha->beta->rc->release. For more info see:
 # http://fedoraproject.org/wiki/Packaging%3aNamingGuidelines#NonNumericRelease
-%if "xbeta3" != "x"
-%global beta_rel beta3
+%if "xbeta4" != "x"
+%global beta_rel beta4
 %global beta_dot .%{beta_rel}
 %else
 %global norm_rel 1

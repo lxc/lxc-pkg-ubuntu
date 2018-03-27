@@ -415,8 +415,8 @@ distclean-generic:
 maintainer-clean-generic:
 	@echo "This command is intended for maintainers to use"
 	@echo "it deletes files that may require special tools to rebuild."
-@INIT_SCRIPT_UPSTART_FALSE@uninstall-local:
 @INIT_SCRIPT_UPSTART_FALSE@install-data-local:
+@INIT_SCRIPT_UPSTART_FALSE@uninstall-local:
 clean: clean-am
 
 clean-am: clean-generic clean-libtool mostlyclean-am
