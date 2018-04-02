@@ -1,3 +1,10 @@
+lxc (3.0.0-0ubuntu2) bionic; urgency=medium
+
+  * Add missing breaks/replaces for lxc-init moving from lxc1 to
+    liblxc-common (LP: #1760609).
+
+ -- Stéphane Graber <stgraber@ubuntu.com>  Mon, 02 Apr 2018 11:56:45 -0400
+
 lxc (3.0.0-0ubuntu1) bionic; urgency=medium
 
   * New upstream LTS release:
