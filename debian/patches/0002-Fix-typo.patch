@@ -1,0 +1,26 @@
+From 6d989a0f5b03d93a309f29f2dd2a9b7e9f16eba8 Mon Sep 17 00:00:00 2001
+From: =?UTF-8?q?St=C3=A9phane=20Graber?= <stgraber@ubuntu.com>
+Date: Tue, 5 Jun 2018 17:13:57 -0400
+Subject: Fix typo
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+Signed-off-by: Stéphane Graber <stgraber@ubuntu.com>
+---
+ src/lxc/utils.c | 2 +-
+ 1 file changed, 1 insertion(+), 1 deletion(-)
+
+diff --git a/src/lxc/utils.c b/src/lxc/utils.c
+index 04f17982..cd5edd6a 100644
+--- a/src/lxc/utils.c
++++ b/src/lxc/utils.c
+@@ -2239,7 +2239,7 @@ int run_command(char *buf, size_t buf_size, int (*child_fn)(void *), void *args)
+ 	int ret, fret, pipefd[2];
+ 	ssize_t bytes;
+ 
+-	/* Make sure our callers do not receive unitialized memory. */
++	/* Make sure our callers do not receive uninitialized memory. */
+ 	if (buf_size > 0 && buf)
+ 		buf[0] = '\0';
+ 
