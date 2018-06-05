@@ -870,11 +870,11 @@ static int attach_child_main(struct attach_clone_payload *payload)
 		ret = lxc_switch_uid_gid(new_uid, new_gid);
 		if (ret < 0)
 			goto on_error;
-
-		ret = lxc_setgroups(0, NULL);
-		if (ret < 0)
-			goto on_error;
 	}
+
+	ret = lxc_setgroups(0, NULL);
+	if (ret < 0 && errno != EPERM)
+		goto on_error;
 
 	if ((init_ctx->container && init_ctx->container->lxc_conf &&
 	     init_ctx->container->lxc_conf->no_new_privs) ||
@@ -1272,10 +1272,17 @@ int lxc_attach(const char *name, const char *lxcpath,
 
 		/* Attach to cgroup, if requested. */
 		if (options->attach_flags & LXC_ATTACH_MOVE_TO_CGROUP) {
-			if (!cgroup_attach(name, lxcpath, pid))
+			struct cgroup_ops *cgroup_ops;
+
+			cgroup_ops = cgroup_init(NULL);
+			if (!cgroup_ops)
 				goto on_error;
-			TRACE("Moved intermediate process %d into container's "
-			      "cgroups", pid);
+
+			if (!cgroup_ops->attach(cgroup_ops, name, lxcpath, pid))
+				goto on_error;
+
+			cgroup_exit(cgroup_ops);
+			TRACE("Moved intermediate process %d into container's cgroups", pid);
 		}
 
 		/* Setup /proc limits */

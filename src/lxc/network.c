@@ -59,6 +59,10 @@
 #include <../include/ifaddrs.h>
 #endif
 
+#ifndef HAVE_STRLCPY
+#include "include/strlcpy.h"
+#endif
+
 #ifndef IFLA_LINKMODE
 #define IFLA_LINKMODE 17
 #endif
@@ -571,17 +575,12 @@ static char *is_wlan(const char *ifname)
 	size_t len;
 	char *path;
 	FILE *f;
-	struct stat sb;
 	char *physname = NULL;
 
 	len = strlen(ifname) + strlen(PHYSNAME) - 1;
 	path = alloca(len + 1);
 	ret = snprintf(path, len, PHYSNAME, ifname);
 	if (ret < 0 || (size_t)ret >= len)
-		goto bad;
-
-	ret = stat(path, &sb);
-	if (ret)
 		goto bad;
 
 	f = fopen(path, "r");
@@ -592,6 +591,10 @@ static char *is_wlan(const char *ifname)
 	fseek(f, 0, SEEK_END);
 	physlen = ftell(f);
 	fseek(f, 0, SEEK_SET);
+	if (physlen < 0) {
+		fclose(f);
+		goto bad;
+	}
 
 	physname = malloc(physlen + 1);
 	if (!physname) {
@@ -1897,6 +1900,7 @@ static int lxc_ovs_attach_bridge(const char *bridge, const char *nic)
 int lxc_bridge_attach(const char *bridge, const char *ifname)
 {
 	int err, fd, index;
+	size_t retlen;
 	struct ifreq ifr;
 
 	if (strlen(ifname) >= IFNAMSIZ)
@@ -1913,7 +1917,12 @@ int lxc_bridge_attach(const char *bridge, const char *ifname)
 	if (fd < 0)
 		return -errno;
 
-	strncpy(ifr.ifr_name, bridge, IFNAMSIZ - 1);
+	retlen = strlcpy(ifr.ifr_name, bridge, IFNAMSIZ);
+	if (retlen >= IFNAMSIZ) {
+		close(fd);
+		return -E2BIG;
+	}
+
 	ifr.ifr_name[IFNAMSIZ - 1] = '\0';
 	ifr.ifr_ifindex = index;
 	err = ioctl(fd, SIOCBRADDIF, &ifr);
@@ -2018,8 +2027,10 @@ int setup_private_host_hw_addr(char *veth1)
 		return -errno;
 
 	err = snprintf((char *)ifr.ifr_name, IFNAMSIZ, "%s", veth1);
-	if (err < 0 || (size_t)err >= IFNAMSIZ)
+	if (err < 0 || (size_t)err >= IFNAMSIZ) {
+		close(sockfd);
 		return -E2BIG;
+	}
 
 	err = ioctl(sockfd, SIOCGIFHWADDR, &ifr);
 	if (err < 0) {
@@ -2092,7 +2103,7 @@ static int lxc_create_network_unpriv_exec(const char *lxcpath, const char *lxcna
 	pid_t child;
 	int bytes, pipefd[2];
 	char *token, *saveptr = NULL;
-	char netdev_link[IFNAMSIZ + 1];
+	char netdev_link[IFNAMSIZ];
 	char buffer[MAXPATHLEN] = {0};
 
 	if (netdev->type != LXC_NET_VETH) {
@@ -2116,6 +2127,7 @@ static int lxc_create_network_unpriv_exec(const char *lxcpath, const char *lxcna
 
 	if (child == 0) {
 		int ret;
+		size_t retlen;
 		char pidstr[LXC_NUMSTRLEN64];
 
 		close(pipefd[0]);
@@ -2130,9 +2142,13 @@ static int lxc_create_network_unpriv_exec(const char *lxcpath, const char *lxcna
 		}
 
 		if (netdev->link[0] != '\0')
-			strncpy(netdev_link, netdev->link, IFNAMSIZ);
+			retlen = strlcpy(netdev_link, netdev->link, IFNAMSIZ);
 		else
-			strncpy(netdev_link, "none", IFNAMSIZ);
+			retlen = strlcpy(netdev_link, "none", IFNAMSIZ);
+		if (retlen >= IFNAMSIZ) {
+			SYSERROR("Invalid network device name");
+			_exit(EXIT_FAILURE);
+		}
 
 		ret = snprintf(pidstr, LXC_NUMSTRLEN64, "%d", pid);
 		if (ret < 0 || ret >= LXC_NUMSTRLEN64)
@@ -2181,8 +2197,8 @@ static int lxc_create_network_unpriv_exec(const char *lxcpath, const char *lxcna
 		return -1;
 	}
 
-	memset(netdev->name, 0, IFNAMSIZ + 1);
-	strncpy(netdev->name, token, IFNAMSIZ);
+	memset(netdev->name, 0, IFNAMSIZ);
+	memcpy(netdev->name, token, IFNAMSIZ - 1);
 
 	/* netdev->ifindex */
 	token = strtok_r(NULL, ":", &saveptr);
