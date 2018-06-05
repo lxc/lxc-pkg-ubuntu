@@ -132,6 +132,15 @@ struct lxc_handler {
 	 * true.
 	 */
 	int exit_status;
+
+	struct cgroup_ops *cgroup_ops;
+};
+
+struct execute_args {
+	char *init_path;
+	int init_fd;
+	char *const *argv;
+	int quiet;
 };
 
 struct lxc_operations {

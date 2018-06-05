@@ -713,8 +713,8 @@ top_srcdir = @top_srcdir@
 @ENABLE_TESTS_TRUE@	$(top_srcdir)/src -I $(top_srcdir)/src/lxc \
 @ENABLE_TESTS_TRUE@	-I $(top_srcdir)/src/lxc/bdev -I \
 @ENABLE_TESTS_TRUE@	$(top_srcdir)/src/lxc/cgroups -I \
-@ENABLE_TESTS_TRUE@	$(top_srcdir)/src/lxc/tools $(am__append_1) \
-@ENABLE_TESTS_TRUE@	$(am__append_2)
+@ENABLE_TESTS_TRUE@	$(top_srcdir)/src/lxc/tools -pthread \
+@ENABLE_TESTS_TRUE@	$(am__append_1) $(am__append_2)
 @ENABLE_TESTS_TRUE@bin_SCRIPTS = $(am__append_3) $(am__append_4)
 EXTRA_DIST = \
 	cgpath.c \
