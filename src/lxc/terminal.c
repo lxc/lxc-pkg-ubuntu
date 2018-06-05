@@ -24,6 +24,7 @@
 #include <errno.h>
 #include <fcntl.h>
 #include <lxc/lxccontainer.h>
+#include <pthread.h>
 #include <signal.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -172,7 +173,7 @@ struct lxc_terminal_state *lxc_terminal_signal_init(int srcfd, int dstfd)
 		goto on_error;
 	}
 
-	ret = sigprocmask(SIG_BLOCK, &mask, &ts->oldmask);
+	ret = pthread_sigmask(SIG_BLOCK, &mask, &ts->oldmask);
 	if (ret < 0) {
 		WARN("Failed to block signals");
 		goto on_error;
@@ -181,7 +182,7 @@ struct lxc_terminal_state *lxc_terminal_signal_init(int srcfd, int dstfd)
 	ts->sigfd = signalfd(-1, &mask, SFD_CLOEXEC);
 	if (ts->sigfd < 0) {
 		WARN("Failed to create signal fd");
-		sigprocmask(SIG_SETMASK, &ts->oldmask, NULL);
+		(void)pthread_sigmask(SIG_SETMASK, &ts->oldmask, NULL);
 		goto on_error;
 	}
 
@@ -206,7 +207,7 @@ void lxc_terminal_signal_fini(struct lxc_terminal_state *ts)
 	if (ts->sigfd >= 0) {
 		close(ts->sigfd);
 
-		if (sigprocmask(SIG_SETMASK, &ts->oldmask, NULL) < 0)
+		if (pthread_sigmask(SIG_SETMASK, &ts->oldmask, NULL) < 0)
 			WARN("%s - Failed to restore signal mask", strerror(errno));
 	}
 
@@ -617,7 +618,7 @@ int lxc_terminal_allocate(struct lxc_conf *conf, int sockfd, int *ttyreq)
 	}
 
 	if (*ttyreq > 0) {
-		if (*ttyreq > ttys->nbtty)
+		if (*ttyreq > ttys->max)
 			goto out;
 
 		if (ttys->tty[*ttyreq - 1].busy)
@@ -629,12 +630,12 @@ int lxc_terminal_allocate(struct lxc_conf *conf, int sockfd, int *ttyreq)
 	}
 
 	/* Search for next available tty, fixup index tty1 => [0]. */
-	for (ttynum = 1; ttynum <= ttys->nbtty && ttys->tty[ttynum - 1].busy; ttynum++) {
+	for (ttynum = 1; ttynum <= ttys->max && ttys->tty[ttynum - 1].busy; ttynum++) {
 		;
 	}
 
 	/* We didn't find any available slot for tty. */
-	if (ttynum > ttys->nbtty)
+	if (ttynum > ttys->max)
 		goto out;
 
 	*ttyreq = ttynum;
@@ -653,7 +654,7 @@ void lxc_terminal_free(struct lxc_conf *conf, int fd)
 	struct lxc_tty_info *ttys = &conf->ttys;
 	struct lxc_terminal *terminal = &conf->console;
 
-	for (i = 0; i < ttys->nbtty; i++)
+	for (i = 0; i < ttys->max; i++)
 		if (ttys->tty[i].busy == fd)
 			ttys->tty[i].busy = 0;
 
@@ -667,33 +668,23 @@ void lxc_terminal_free(struct lxc_conf *conf, int fd)
 static int lxc_terminal_peer_default(struct lxc_terminal *terminal)
 {
 	struct lxc_terminal_state *ts;
-	const char *path = terminal->path;
-	int fd;
+	const char *path;
 	int ret = 0;
 
-	if (!path) {
-		ret = access("/dev/tty", F_OK);
-		if (ret == 0) {
-			/* If no terminal was given, try current controlling
-			 * terminal, there won't be one if we were started as a
-			 * daemon (-d).
-			 */
-			fd = open("/dev/tty", O_RDWR);
-			if (fd >= 0) {
-				close(fd);
-				path = "/dev/tty";
-			}
-		}
-	}
-
-	if (!path) {
-		errno = ENOTTY;
-		DEBUG("The process does not have a controlling terminal");
-		goto on_succes;
-	}
+	if (terminal->path)
+		path = terminal->path;
+	else
+		path = "/dev/tty";
 
 	terminal->peer = lxc_unpriv(open(path, O_RDWR | O_CLOEXEC));
 	if (terminal->peer < 0) {
+		if (!terminal->path) {
+			errno = ENODEV;
+			DEBUG("%s - The process does not have a controlling "
+			      "terminal", strerror(errno));
+			goto on_succes;
+		}
+
 		ERROR("%s - Failed to open proxy terminal \"%s\"",
 		      strerror(errno), path);
 		return -ENOTTY;

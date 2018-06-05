@@ -4,7 +4,7 @@
 m4_define([lxc_devel], 0)
 m4_define([lxc_version_major], 3)
 m4_define([lxc_version_minor], 0)
-m4_define([lxc_version_micro], 0)
+m4_define([lxc_version_micro], 1)
 m4_define([lxc_version_beta], [])
 
 m4_define([lxc_abi_major], 1)
@@ -263,7 +263,7 @@ AM_CONDITIONAL([ENABLE_GNUTLS], [test "x$enable_gnutls" = "xyes"])
 
 AM_COND_IF([ENABLE_GNUTLS],
 	[AC_CHECK_HEADER([gnutls/gnutls.h],[],[AC_MSG_ERROR([You must install the GnuTLS development package in order to compile lxc])])
-	AC_CHECK_LIB([gnutls], [gnutls_hash_fast],[],[AC_MSG_ERROR([You must install the GnuTLS development package in order to compile lxc])])
+	AC_CHECK_LIB([gnutls], [gnutls_hash_fast],[true],[AC_MSG_ERROR([You must install the GnuTLS development package in order to compile lxc])])
 	AC_SUBST([GNUTLS_LIBS], [-lgnutls])])
 
 # SELinux
@@ -620,6 +620,10 @@ AC_CHECK_FUNCS([prlimit64],
 	AM_CONDITIONAL(HAVE_PRLIMIT64, true)
 	AC_DEFINE(HAVE_PRLIMIT64,1,[Have prlimit64]),
 	AM_CONDITIONAL(HAVE_PRLIMIT64, false))
+AC_CHECK_FUNCS([strlcpy],
+	AM_CONDITIONAL(HAVE_STRLCPY, true)
+	AC_DEFINE(HAVE_STRLCPY,1,[Have strlcpy]),
+	AM_CONDITIONAL(HAVE_STRLCPY, false))
 
 # Check for some libraries
 AX_PTHREAD

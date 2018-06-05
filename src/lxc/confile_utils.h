@@ -41,21 +41,24 @@
 #define MACVLAN_MODE_PASSTHRU 8
 #endif
 
-#define strprint(str, inlen, ...)                                              \
-	do {                                                                   \
-		len = snprintf(str, inlen, ##__VA_ARGS__);                     \
-		if (len < 0) {                                                 \
-			SYSERROR("failed to create string");                   \
-			return -1;                                             \
-		};                                                             \
-		fulllen += len;                                                \
-		if (inlen > 0) {                                               \
-			if (str)                                               \
-				str += len;                                    \
-			inlen -= len;                                          \
-			if (inlen < 0)                                         \
-				inlen = 0;                                     \
-		}                                                              \
+#define strprint(str, inlen, ...)                                       \
+	do {                                                            \
+		if (str)                                                \
+			len = snprintf(str, inlen, ##__VA_ARGS__);      \
+		else                                                    \
+			len = snprintf((char *){""}, 0, ##__VA_ARGS__); \
+		if (len < 0) {                                          \
+			SYSERROR("failed to create string");            \
+			return -1;                                      \
+		};                                                      \
+		fulllen += len;                                         \
+		if (inlen > 0) {                                        \
+			if (str)                                        \
+				str += len;                             \
+			inlen -= len;                                   \
+			if (inlen < 0)                                  \
+				inlen = 0;                              \
+		}                                                       \
 	} while (0);
 
 extern int parse_idmaps(const char *idmap, char *type, unsigned long *nsid,
@@ -84,6 +87,7 @@ extern void update_hwaddr(const char *line);
 extern bool new_hwaddr(char *hwaddr);
 extern int lxc_get_conf_str(char *retv, int inlen, const char *value);
 extern int lxc_get_conf_int(struct lxc_conf *c, char *retv, int inlen, int v);
+extern int lxc_get_conf_size_t(struct lxc_conf *c, char *retv, int inlen, size_t v);
 extern int lxc_get_conf_uint64(struct lxc_conf *c, char *retv, int inlen, uint64_t v);
 extern bool parse_limit_value(const char **value, rlim_t *res);
 extern int lxc_inherit_namespace(const char *lxcname_or_pid,

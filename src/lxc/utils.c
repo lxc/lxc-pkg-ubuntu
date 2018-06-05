@@ -31,6 +31,7 @@
 #include <grp.h>
 #include <inttypes.h>
 #include <libgen.h>
+#include <pthread.h>
 #include <stddef.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -495,7 +496,7 @@ struct lxc_popen_FILE *lxc_popen(const char *command)
 		if (ret < 0)
 			_exit(EXIT_FAILURE);
 
-		ret = sigprocmask(SIG_UNBLOCK, &mask, NULL);
+		ret = pthread_sigmask(SIG_UNBLOCK, &mask, NULL);
 		if (ret < 0)
 			_exit(EXIT_FAILURE);
 
@@ -971,12 +972,13 @@ size_t lxc_array_len(void **array)
 	return result;
 }
 
-int lxc_write_to_file(const char *filename, const void* buf, size_t count, bool add_newline)
+int lxc_write_to_file(const char *filename, const void *buf, size_t count,
+		      bool add_newline, mode_t mode)
 {
 	int fd, saved_errno;
 	ssize_t ret;
 
-	fd = open(filename, O_WRONLY | O_TRUNC | O_CREAT | O_CLOEXEC, 0666);
+	fd = open(filename, O_WRONLY | O_TRUNC | O_CREAT | O_CLOEXEC, mode);
 	if (fd < 0)
 		return -1;
 	ret = lxc_write_nointr(fd, buf, count);
@@ -1812,17 +1814,16 @@ int lxc_count_file_lines(const char *fn)
 
 /* Check whether a signal is blocked by a process. */
 /* /proc/pid-to-str/status\0 = (5 + 21 + 7 + 1) */
-#define __PROC_STATUS_LEN (5 + (LXC_NUMSTRLEN64) + 7 + 1)
-bool task_blocking_signal(pid_t pid, int signal)
+#define __PROC_STATUS_LEN (6 + (LXC_NUMSTRLEN64) + 7 + 1)
+bool task_blocks_signal(pid_t pid, int signal)
 {
+	int ret;
+	char status[__PROC_STATUS_LEN];
+	FILE *f;
+	uint64_t sigblk = 0, one = 1;
+	size_t n = 0;
 	bool bret = false;
 	char *line = NULL;
-	long unsigned int sigblk = 0;
-	size_t n = 0;
-	int ret;
-	FILE *f;
-
-	char status[__PROC_STATUS_LEN];
 
 	ret = snprintf(status, __PROC_STATUS_LEN, "/proc/%d/status", pid);
 	if (ret < 0 || ret >= __PROC_STATUS_LEN)
@@ -1833,14 +1834,20 @@ bool task_blocking_signal(pid_t pid, int signal)
 		return bret;
 
 	while (getline(&line, &n, f) != -1) {
-		if (strncmp(line, "SigBlk:\t", 8))
+		char *numstr;
+
+		if (strncmp(line, "SigBlk:", 7))
 			continue;
 
-		if (sscanf(line + 8, "%lx", &sigblk) != 1)
+		numstr = lxc_trim_whitespace_in_place(line + 7);
+		ret = lxc_safe_uint64(numstr, &sigblk, 16);
+		if (ret < 0)
 			goto out;
+
+		break;
 	}
 
-	if (sigblk & (1LU << (signal - 1)))
+	if (sigblk & (one << (signal - 1)))
 		bret = true;
 
 out:
@@ -1954,6 +1961,29 @@ int lxc_safe_ulong(const char *numstr, unsigned long *converted)
 		return -EINVAL;
 
 	*converted = uli;
+	return 0;
+}
+
+int lxc_safe_uint64(const char *numstr, uint64_t *converted, int base)
+{
+	char *err = NULL;
+	uint64_t u;
+
+	while (isspace(*numstr))
+		numstr++;
+
+	if (*numstr == '-')
+		return -EINVAL;
+
+	errno = 0;
+	u = strtoull(numstr, &err, base);
+	if (errno == ERANGE && u == ULLONG_MAX)
+		return -ERANGE;
+
+	if (err == numstr || *err != '\0')
+		return -EINVAL;
+
+	*converted = u;
 	return 0;
 }
 
@@ -2416,7 +2446,7 @@ int parse_byte_size_string(const char *s, int64_t *converted)
 	if (!s || !strcmp(s, ""))
 		return -EINVAL;
 
-	end = stpncpy(dup, s, sizeof(dup));
+	end = stpncpy(dup, s, sizeof(dup) - 1);
 	if (*end != '\0')
 		return -EINVAL;
 
@@ -2449,11 +2479,11 @@ int parse_byte_size_string(const char *s, int64_t *converted)
 		return 0;
 	}
 
-	if (!strcmp(suffix, "kB"))
+	if (strcasecmp(suffix, "KB") == 0)
 		mltpl = 1024;
-	else if (!strcmp(suffix, "MB"))
+	else if (strcasecmp(suffix, "MB") == 0)
 		mltpl = 1024 * 1024;
-	else if (!strcmp(suffix, "GB"))
+	else if (strcasecmp(suffix, "GB") == 0)
 		mltpl = 1024 * 1024 * 1024;
 	else
 		return -EINVAL;
@@ -2508,4 +2538,15 @@ int lxc_set_death_signal(int signal)
 	}
 
 	return 0;
+}
+
+void remove_trailing_newlines(char *l)
+{
+	char *p = l;
+
+	while (*p)
+		p++;
+
+	while (--p >= l && *p == '\n')
+		*p = '\0';
 }

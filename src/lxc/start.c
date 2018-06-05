@@ -32,6 +32,7 @@
 #include <fcntl.h>
 #include <grp.h>
 #include <poll.h>
+#include <pthread.h>
 #include <signal.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -88,6 +89,10 @@
 #include "sync.h"
 #include "terminal.h"
 #include "utils.h"
+
+#ifndef HAVE_STRLCPY
+#include "include/strlcpy.h"
+#endif
 
 lxc_log_define(lxc_start, lxc);
 
@@ -310,7 +315,7 @@ static int setup_signal_fd(sigset_t *oldmask)
 			return -EBADF;
 	}
 
-	ret = sigprocmask(SIG_BLOCK, &mask, oldmask);
+	ret = pthread_sigmask(SIG_BLOCK, &mask, oldmask);
 	if (ret < 0) {
 		SYSERROR("Failed to set signal mask");
 		return -EBADF;
@@ -338,7 +343,7 @@ static int signal_handler(int fd, uint32_t events, void *data,
 	ret = read(fd, &siginfo, sizeof(siginfo));
 	if (ret < 0) {
 		ERROR("Failed to read signal info from signal file descriptor %d", fd);
-		return -1;
+		return LXC_MAINLOOP_ERROR;
 	}
 
 	if (ret != sizeof(siginfo)) {
@@ -369,7 +374,7 @@ static int signal_handler(int fd, uint32_t events, void *data,
 			hdlr->exit_status = 1;
 			break;
 		default:
-			ERROR("Unknown si_code: %d", hdlr->init_died);
+			ERROR("Unknown si_code: %d", info.si_code);
 			hdlr->exit_status = 1;
 		}
 	}
@@ -377,7 +382,13 @@ static int signal_handler(int fd, uint32_t events, void *data,
 	if (siginfo.ssi_signo == SIGHUP) {
 		kill(hdlr->pid, SIGTERM);
 		INFO("Killing %d since terminal hung up", hdlr->pid);
-		return hdlr->init_died ? LXC_MAINLOOP_CLOSE : 0;
+		return hdlr->init_died ? LXC_MAINLOOP_CLOSE : LXC_MAINLOOP_CONTINUE;
+	}
+
+	if (siginfo.ssi_signo != SIGCHLD) {
+		kill(hdlr->pid, siginfo.ssi_signo);
+		INFO("Forwarded signal %d to pid %d", siginfo.ssi_signo, hdlr->pid);
+		return hdlr->init_died ? LXC_MAINLOOP_CLOSE : LXC_MAINLOOP_CONTINUE;
 	}
 
 	/* More robustness, protect ourself from a SIGCHLD sent
@@ -386,21 +397,15 @@ static int signal_handler(int fd, uint32_t events, void *data,
 	if (siginfo.ssi_pid != hdlr->pid) {
 		NOTICE("Received %d from pid %d instead of container init %d",
 		       siginfo.ssi_signo, siginfo.ssi_pid, hdlr->pid);
-		return hdlr->init_died ? LXC_MAINLOOP_CLOSE : 0;
-	}
-
-	if (siginfo.ssi_signo != SIGCHLD) {
-		kill(hdlr->pid, siginfo.ssi_signo);
-		INFO("Forwarded signal %d to pid %d", siginfo.ssi_signo, hdlr->pid);
-		return hdlr->init_died ? LXC_MAINLOOP_CLOSE : 0;
+		return hdlr->init_died ? LXC_MAINLOOP_CLOSE : LXC_MAINLOOP_CONTINUE;
 	}
 
 	if (siginfo.ssi_code == CLD_STOPPED) {
 		INFO("Container init process was stopped");
-		return hdlr->init_died ? LXC_MAINLOOP_CLOSE : 0;
+		return hdlr->init_died ? LXC_MAINLOOP_CLOSE : LXC_MAINLOOP_CONTINUE;
 	} else if (siginfo.ssi_code == CLD_CONTINUED) {
 		INFO("Container init process was continued");
-		return hdlr->init_died ? LXC_MAINLOOP_CLOSE : 0;
+		return hdlr->init_died ? LXC_MAINLOOP_CLOSE : LXC_MAINLOOP_CONTINUE;
 	}
 
 	DEBUG("Container init process %d exited", hdlr->pid);
@@ -410,6 +415,7 @@ static int signal_handler(int fd, uint32_t events, void *data,
 int lxc_serve_state_clients(const char *name, struct lxc_handler *handler,
 			    lxc_state_t state)
 {
+	size_t retlen;
 	ssize_t ret;
 	struct lxc_list *cur, *next;
 	struct lxc_state_client *client;
@@ -427,8 +433,9 @@ int lxc_serve_state_clients(const char *name, struct lxc_handler *handler,
 		return 0;
 	}
 
-	strncpy(msg.name, name, sizeof(msg.name));
-	msg.name[sizeof(msg.name) - 1] = 0;
+	retlen = strlcpy(msg.name, name, sizeof(msg.name));
+	if (retlen >= sizeof(msg.name))
+		return -E2BIG;
 
 	lxc_list_for_each_safe(cur, &handler->conf->state_clients, next) {
 		client = cur->elem;
@@ -612,8 +619,6 @@ void lxc_zero_handler(struct lxc_handler *handler)
 
 	memset(handler, 0, sizeof(struct lxc_handler));
 
-	handler->ns_clone_flags = -1;
-
 	handler->pinfd = -1;
 
 	handler->sigfd = -1;
@@ -641,7 +646,7 @@ void lxc_free_handler(struct lxc_handler *handler)
 
 	lxc_put_nsfds(handler);
 
-	if (handler->conf && handler->conf->reboot == 0)
+	if (handler->conf && handler->conf->reboot == REBOOT_NONE)
 		if (handler->conf->maincmd_fd >= 0)
 			close(handler->conf->maincmd_fd);
 
@@ -679,7 +684,7 @@ struct lxc_handler *lxc_init_handler(const char *name, struct lxc_conf *conf,
 	handler->sigfd = -EBADF;
 	handler->init_died = false;
 	handler->state_socket_pair[0] = handler->state_socket_pair[1] = -1;
-	if (handler->conf->reboot == 0)
+	if (handler->conf->reboot == REBOOT_NONE)
 		lxc_list_init(&handler->conf->state_clients);
 
 	for (i = 0; i < LXC_NS_MAX; i++)
@@ -687,7 +692,7 @@ struct lxc_handler *lxc_init_handler(const char *name, struct lxc_conf *conf,
 
 	handler->name = name;
 
-	if (daemonize && !handler->conf->reboot) {
+	if (daemonize && handler->conf->reboot == REBOOT_NONE) {
 		/* Create socketpair() to synchronize on daemonized startup.
 		 * When the container reboots we don't need to synchronize
 		 * again currently so don't open another socketpair().
@@ -703,7 +708,7 @@ struct lxc_handler *lxc_init_handler(const char *name, struct lxc_conf *conf,
 		      handler->state_socket_pair[1]);
 	}
 
-	if (handler->conf->reboot == 0) {
+	if (handler->conf->reboot == REBOOT_NONE) {
 		handler->conf->maincmd_fd = lxc_cmd_init(name, lxcpath, "command");
 		if (handler->conf->maincmd_fd < 0) {
 			ERROR("Failed to set up command socket");
@@ -843,15 +848,22 @@ int lxc_init(const char *name, struct lxc_handler *handler)
 	}
 	TRACE("Chowned console");
 
+	handler->cgroup_ops = cgroup_init(handler);
+	if (!handler->cgroup_ops) {
+		ERROR("Failed to initialize cgroup driver");
+		goto out_restore_sigmask;
+	}
+	TRACE("Initialized cgroup driver");
+
 	INFO("Container \"%s\" is initialized", name);
 	return 0;
 
 out_restore_sigmask:
-	sigprocmask(SIG_SETMASK, &handler->oldmask, NULL);
+	(void)pthread_sigmask(SIG_SETMASK, &handler->oldmask, NULL);
 out_delete_tty:
 	lxc_delete_tty(&conf->ttys);
 out_aborting:
-	lxc_set_state(name, handler, ABORTING);
+	(void)lxc_set_state(name, handler, ABORTING);
 out_close_maincmd_fd:
 	close(conf->maincmd_fd);
 	conf->maincmd_fd = -1;
@@ -865,6 +877,7 @@ void lxc_fini(const char *name, struct lxc_handler *handler)
 	struct lxc_list *cur, *next;
 	char *namespaces[LXC_NS_MAX + 1];
 	size_t namespace_count = 0;
+	struct cgroup_ops *cgroup_ops = handler->cgroup_ops;
 
 	/* The STOPPING state is there for future cleanup code which can take
 	 * awhile.
@@ -905,14 +918,14 @@ void lxc_fini(const char *name, struct lxc_handler *handler)
 	}
 	namespaces[namespace_count] = NULL;
 
-	if (handler->conf->reboot) {
+	if (handler->conf->reboot > REBOOT_NONE) {
 		ret = setenv("LXC_TARGET", "reboot", 1);
 		if (ret < 0)
 			SYSERROR("Failed to set environment variable: "
 				 "LXC_TARGET=reboot");
 	}
 
-	if (!handler->conf->reboot) {
+	if (handler->conf->reboot == REBOOT_NONE) {
 		ret = setenv("LXC_TARGET", "stop", 1);
 		if (ret < 0)
 			SYSERROR("Failed to set environment variable: "
@@ -929,9 +942,10 @@ void lxc_fini(const char *name, struct lxc_handler *handler)
 	while (namespace_count--)
 		free(namespaces[namespace_count]);
 
-	cgroup_destroy(handler);
+	cgroup_ops->destroy(cgroup_ops, handler);
+	cgroup_exit(cgroup_ops);
 
-	if (handler->conf->reboot == 0) {
+	if (handler->conf->reboot == REBOOT_NONE) {
 		/* For all new state clients simply close the command socket.
 		 * This will inform all state clients that the container is
 		 * STOPPED and also prevents a race between a open()/close() on
@@ -959,9 +973,9 @@ void lxc_fini(const char *name, struct lxc_handler *handler)
 	ret = run_lxc_hooks(name, "post-stop", handler->conf, NULL);
 	if (ret < 0) {
 		ERROR("Failed to run lxc.hook.post-stop for container \"%s\"", name);
-		if (handler->conf->reboot) {
+		if (handler->conf->reboot > REBOOT_NONE) {
 			WARN("Container will be stopped instead of rebooted");
-			handler->conf->reboot = 0;
+			handler->conf->reboot = REBOOT_NONE;
 
 			ret = setenv("LXC_TARGET", "stop", 1);
 			if (ret < 0)
@@ -971,7 +985,7 @@ void lxc_fini(const char *name, struct lxc_handler *handler)
 	}
 
 	/* Reset mask set by setup_signal_fd. */
-	ret = sigprocmask(SIG_SETMASK, &handler->oldmask, NULL);
+	ret = pthread_sigmask(SIG_SETMASK, &handler->oldmask, NULL);
 	if (ret < 0)
 		WARN("%s - Failed to restore signal mask", strerror(errno));
 
@@ -985,7 +999,8 @@ void lxc_fini(const char *name, struct lxc_handler *handler)
 		struct lxc_state_client *client = cur->elem;
 
 		/* Keep state clients that want to be notified about reboots. */
-		if ((handler->conf->reboot > 0) && (client->states[RUNNING] == 2))
+		if ((handler->conf->reboot > REBOOT_NONE) &&
+		    (client->states[RUNNING] == 2))
 			continue;
 
 		/* close state client socket */
@@ -995,7 +1010,7 @@ void lxc_fini(const char *name, struct lxc_handler *handler)
 		free(cur);
 	}
 
-	if (handler->conf->ephemeral == 1 && handler->conf->reboot != 1)
+	if (handler->conf->ephemeral == 1 && handler->conf->reboot != REBOOT_REQ)
 		lxc_destroy_container_on_signal(handler, name);
 
 	lxc_free_handler(handler);
@@ -1043,7 +1058,13 @@ static int do_start(void *data)
 		goto out_warn_father;
 	}
 
-	ret = sigprocmask(SIG_SETMASK, &handler->oldmask, NULL);
+	ret = lxc_ambient_caps_up();
+	if (ret < 0) {
+		SYSERROR("Failed to raise ambient capabilities");
+		goto out_warn_father;
+	}
+
+	ret = pthread_sigmask(SIG_SETMASK, &handler->oldmask, NULL);
 	if (ret < 0) {
 		SYSERROR("Failed to set signal mask");
 		goto out_warn_father;
@@ -1075,7 +1096,7 @@ static int do_start(void *data)
 	 */
 	ret = lxc_sync_barrier_parent(handler, LXC_SYNC_CONFIGURE);
 	if (ret < 0)
-		return -1;
+		goto out_error;
 
 	ret = lxc_network_recv_veth_names_from_parent(handler);
 	if (ret < 0) {
@@ -1225,7 +1246,7 @@ static int do_start(void *data)
 	 * make sure that that pty is stdin,stdout,stderr.
 	 */
 	 if (handler->conf->console.slave >= 0) {
-		 if (handler->backgrounded || handler->conf->is_execute == 0)
+		 if (handler->backgrounded || !handler->conf->is_execute)
 			 ret = set_stdfds(handler->conf->console.slave);
 		 else
 			 ret = lxc_terminal_set_stdfds(handler->conf->console.slave);
@@ -1309,8 +1330,8 @@ static int do_start(void *data)
 		goto out_warn_father;
 	}
 
-	if (handler->conf->pty_names) {
-		ret = putenv(handler->conf->pty_names);
+	if (handler->conf->ttys.tty_names) {
+		ret = putenv(handler->conf->ttys.tty_names);
 		if (ret < 0) {
 			SYSERROR("Failed to set environment variable for container ptys");
 			goto out_warn_father;
@@ -1342,6 +1363,12 @@ static int do_start(void *data)
 	if (ret < 0)
 		goto out_warn_father;
 
+	ret = lxc_ambient_caps_down();
+	if (ret < 0) {
+		SYSERROR("Failed to clear ambient capabilities");
+		goto out_warn_father;
+	}
+
 	/* After this call, we are in error because this ops should not return
 	 * as it execs.
 	 */
@@ -1369,14 +1396,14 @@ static int lxc_recv_ttys_from_child(struct lxc_handler *handler)
 	struct lxc_conf *conf = handler->conf;
 	struct lxc_tty_info *ttys = &conf->ttys;
 
-	if (!conf->tty)
+	if (!conf->ttys.max)
 		return 0;
 
-	ttys->tty = malloc(sizeof(*ttys->tty) * conf->tty);
+	ttys->tty = malloc(sizeof(*ttys->tty) * ttys->max);
 	if (!ttys->tty)
 		return -1;
 
-	for (i = 0; i < conf->tty; i++) {
+	for (i = 0; i < conf->ttys.max; i++) {
 		int ttyfds[2];
 
 		ret = lxc_abstract_unix_recv_fds(sock, ttyfds, 2, NULL, 0);
@@ -1391,12 +1418,10 @@ static int lxc_recv_ttys_from_child(struct lxc_handler *handler)
 		      "parent", tty->master, tty->slave);
 	}
 	if (ret < 0)
-		ERROR("Failed to receive %d ttys from child: %s", conf->tty,
+		ERROR("Failed to receive %zu ttys from child: %s", ttys->max,
 		      strerror(errno));
 	else
-		TRACE("Received %d ttys from child", conf->tty);
-
-	ttys->nbtty = conf->tty;
+		TRACE("Received %zu ttys from child", ttys->max);
 
 	return ret;
 }
@@ -1458,8 +1483,16 @@ static inline int do_share_ns(void *arg)
 			continue;
 
 		ret = setns(handler->nsfd[i], 0);
-		if (ret < 0)
+		if (ret < 0) {
+			/*
+			 * Note that joining a user and/or mount namespace
+			 * requires the process is not multithreaded otherwise
+			 * setns() will fail here.
+			 */
+			SYSERROR("Failed to inherit %s namespace",
+				 ns_info[i].proc_name);
 			return -1;
+		}
 
 		DEBUG("Inherited %s namespace", ns_info[i].proc_name);
 	}
@@ -1488,8 +1521,9 @@ static int lxc_spawn(struct lxc_handler *handler)
 	struct lxc_list *id_map;
 	const char *name = handler->name;
 	const char *lxcpath = handler->lxcpath;
-	bool cgroups_connected = false, share_ns = false;
+	bool share_ns = false;
 	struct lxc_conf *conf = handler->conf;
+	struct cgroup_ops *cgroup_ops = handler->cgroup_ops;
 
 	id_map = &conf->id_map;
 	wants_to_map_ids = !lxc_list_empty(id_map);
@@ -1549,14 +1583,7 @@ static int lxc_spawn(struct lxc_handler *handler)
 		}
 	}
 
-	if (!cgroup_init(handler)) {
-		ERROR("Failed initializing cgroup support");
-		goto out_delete_net;
-	}
-
-	cgroups_connected = true;
-
-	if (!cgroup_create(handler)) {
+	if (!cgroup_ops->create(cgroup_ops, handler)) {
 		ERROR("Failed creating cgroups");
 		goto out_delete_net;
 	}
@@ -1645,15 +1672,15 @@ static int lxc_spawn(struct lxc_handler *handler)
 	if (ret < 0)
 		goto out_delete_net;
 
-	if (!cgroup_setup_limits(handler, false)) {
+	if (!cgroup_ops->setup_limits(cgroup_ops, handler->conf, false)) {
 		ERROR("Failed to setup cgroup limits for container \"%s\"", name);
 		goto out_delete_net;
 	}
 
-	if (!cgroup_enter(handler))
+	if (!cgroup_ops->enter(cgroup_ops, handler->pid))
 		goto out_delete_net;
 
-	if (!cgroup_chown(handler))
+	if (!cgroup_ops->chown(cgroup_ops, handler->conf))
 		goto out_delete_net;
 
 	/* Now we're ready to preserve the network namespace */
@@ -1718,14 +1745,11 @@ static int lxc_spawn(struct lxc_handler *handler)
 	if (ret < 0)
 		goto out_delete_net;
 
-	if (!cgroup_setup_limits(handler, true)) {
+	if (!cgroup_ops->setup_limits(cgroup_ops, handler->conf, true)) {
 		ERROR("Failed to setup legacy device cgroup controller limits");
 		goto out_delete_net;
 	}
 	TRACE("Set up legacy device cgroup controller limits");
-
-	cgroup_disconnect();
-	cgroups_connected = false;
 
 	if (handler->ns_clone_flags & CLONE_NEWCGROUP) {
 		/* Now we're ready to preserve the cgroup namespace */
@@ -1803,9 +1827,6 @@ static int lxc_spawn(struct lxc_handler *handler)
 	return 0;
 
 out_delete_net:
-	if (cgroups_connected)
-		cgroup_disconnect();
-
 	if (handler->ns_clone_flags & CLONE_NEWNET)
 		lxc_delete_network(handler);
 
@@ -1872,11 +1893,16 @@ int __lxc_start(const char *name, struct lxc_handler *handler,
 	close(handler->data_sock[1]);
 	handler->data_sock[1] = -1;
 
-	handler->conf->reboot = 0;
+	handler->conf->reboot = REBOOT_NONE;
 
 	ret = lxc_poll(name, handler);
 	if (ret) {
 		ERROR("LXC mainloop exited with error: %d", ret);
+		goto out_abort;
+	}
+
+	if (!handler->init_died && handler->pid > 0) {
+		ERROR("Child process is not killed");
 		goto out_abort;
 	}
 
@@ -1895,7 +1921,7 @@ int __lxc_start(const char *name, struct lxc_handler *handler,
 			break;
 		case SIGHUP: /* reboot */
 			DEBUG("Container \"%s\" is rebooting", name);
-			handler->conf->reboot = 1;
+			handler->conf->reboot = REBOOT_REQ;
 			break;
 		case SIGSYS: /* seccomp */
 			DEBUG("Container \"%s\" violated its seccomp policy", name);
@@ -1971,6 +1997,7 @@ int lxc_start(const char *name, char *const argv[], struct lxc_handler *handler,
 		.argv = argv,
 	};
 
+	TRACE("Doing lxc_start");
 	return __lxc_start(name, handler, &start_ops, &start_arg, lxcpath, backgrounded, error_num);
 }
 

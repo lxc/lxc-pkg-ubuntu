@@ -46,6 +46,10 @@
 #include "utils.h"
 #include "lxccontainer.h"
 
+#ifndef HAVE_STRLCPY
+#include "include/strlcpy.h"
+#endif
+
 /* We're logging in seconds and nanoseconds. Assuming that the underlying
  * datatype is currently at maximum a 64bit integer, we have a date string that
  * is of maximum length (2^64 - 1) * 2 = (21 + 21) = 42.
@@ -98,6 +102,12 @@ static int log_append_syslog(const struct lxc_log_appender *appender,
 	char *msg;
 	int rc, len;
 	va_list args;
+	const char *log_container_name = log_vmname;
+
+#ifndef NO_LXC_CONF
+	if (current_config && !log_container_name)
+		log_container_name = current_config->name;
+#endif
 
 	if (!syslog_enable)
 		return 0;
@@ -105,9 +115,11 @@ static int log_append_syslog(const struct lxc_log_appender *appender,
 	va_copy(args, *event->vap);
 	len = vsnprintf(NULL, 0, event->fmt, args) + 1;
 	va_end(args);
+
 	msg = malloc(len * sizeof(char));
 	if (msg == NULL)
 		return 0;
+
 	rc = vsnprintf(msg, len, event->fmt, *event->vap);
 	if (rc == -1 || rc >= len) {
 		free(msg);
@@ -116,13 +128,14 @@ static int log_append_syslog(const struct lxc_log_appender *appender,
 
 	syslog(lxc_log_priority_to_syslog(event->priority),
 		"%s%s %s - %s:%s:%d - %s" ,
-		log_vmname ? log_vmname : "",
-		log_vmname ? ":" : "",
+		log_container_name ? log_container_name : "",
+		log_container_name ? ":" : "",
 		event->category,
 		event->locinfo->file, event->locinfo->func,
 		event->locinfo->line,
 		msg);
 	free(msg);
+
 	return 0;
 }
 
@@ -130,13 +143,26 @@ static int log_append_syslog(const struct lxc_log_appender *appender,
 static int log_append_stderr(const struct lxc_log_appender *appender,
 			     struct lxc_log_event *event)
 {
+	const char *log_container_name;
+
 	if (event->priority < LXC_LOG_LEVEL_ERROR)
 		return 0;
 
-	fprintf(stderr, "%s: %s%s", log_prefix, log_vmname ? log_vmname : "", log_vmname ? ": " : "");
-	fprintf(stderr, "%s: %s: %d ", event->locinfo->file, event->locinfo->func, event->locinfo->line);
+	log_container_name = log_vmname;
+
+#ifndef NO_LXC_CONF
+	if (current_config && !log_container_name)
+		log_container_name = current_config->name;
+#endif
+
+	fprintf(stderr, "%s: %s%s", log_prefix,
+		log_container_name ? log_container_name : "",
+		log_container_name ? ": " : "");
+	fprintf(stderr, "%s: %s: %d ", event->locinfo->file,
+		event->locinfo->func, event->locinfo->line);
 	vfprintf(stderr, event->fmt, *event->vap);
 	fprintf(stderr, "\n");
+
 	return 0;
 }
 
@@ -266,10 +292,16 @@ static int log_append_logfile(const struct lxc_log_appender *appender,
 	char date_time[LXC_LOG_TIME_SIZE];
 	int n, ret;
 	int fd_to_use = -1;
+	const char *log_container_name = log_vmname;
 
 #ifndef NO_LXC_CONF
-	if (!lxc_log_use_global_fd && current_config)
-		fd_to_use = current_config->logfd;
+	if (current_config) {
+		if (!lxc_log_use_global_fd)
+			fd_to_use = current_config->logfd;
+
+		if (!log_container_name)
+			log_container_name = current_config->name;
+	}
 #endif
 
 	if (fd_to_use == -1)
@@ -284,8 +316,8 @@ static int log_append_logfile(const struct lxc_log_appender *appender,
 	n = snprintf(buffer, sizeof(buffer),
 			"%s%s%s %s %-8s %s - %s:%s:%d - ",
 			log_prefix,
-			log_vmname ? " " : "",
-			log_vmname ? log_vmname : "",
+			log_container_name ? " " : "",
+			log_container_name ? log_container_name : "",
 			date_time,
 			lxc_log_priority_to_string(event->priority),
 			event->category,
@@ -690,8 +722,8 @@ extern const char *lxc_log_get_file(void)
 
 extern void lxc_log_set_prefix(const char *prefix)
 {
-	strncpy(log_prefix, prefix, sizeof(log_prefix));
-	log_prefix[sizeof(log_prefix) - 1] = 0;
+	/* We don't care if thte prefix is truncated. */
+	(void)strlcpy(log_prefix, prefix, sizeof(log_prefix));
 }
 
 extern const char *lxc_log_get_prefix(void)
