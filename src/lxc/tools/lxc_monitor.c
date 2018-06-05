@@ -30,6 +30,7 @@
 #include <libgen.h>
 #include <poll.h>
 #include <regex.h>
+#include <stddef.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -318,7 +319,7 @@ static int lxc_abstract_unix_connect(const char *path)
 		return -1;
 	}
 	/* addr.sun_path[0] has already been set to 0 by memset() */
-	strncpy(&addr.sun_path[1], &path[1], strlen(&path[1]));
+	memcpy(&addr.sun_path[1], &path[1], strlen(&path[1]));
 
 	ret = connect(fd, (struct sockaddr *)&addr,
 		      offsetof(struct sockaddr_un, sun_path) + len + 1);
@@ -336,7 +337,6 @@ static int lxc_monitor_open(const char *lxcpath)
 	int fd;
 	size_t retry;
 	size_t len;
-	int ret = -1;
 	int backoff_ms[] = {10, 50, 100};
 
 	if (lxc_monitor_sock_name(lxcpath, &addr) < 0)
@@ -351,9 +351,9 @@ static int lxc_monitor_open(const char *lxcpath)
 	len = strlen(&addr.sun_path[1]);
 	if (len >= sizeof(addr.sun_path) - 1) {
 		errno = ENAMETOOLONG;
-		ret = -errno;
+		close(fd);
 		fprintf(stderr, "name of monitor socket too long (%zu bytes): %s\n", len, strerror(errno));
-		goto on_error;
+		return -errno;
 	}
 
 	for (retry = 0; retry < sizeof(backoff_ms) / sizeof(backoff_ms[0]); retry++) {
@@ -365,16 +365,11 @@ static int lxc_monitor_open(const char *lxcpath)
 	}
 
 	if (fd < 0) {
-		ret = -errno;
 		fprintf(stderr, "Failed to connect to monitor socket: %s\n", strerror(errno));
-		goto on_error;
+		return -errno;
 	}
 
 	return fd;
-
-on_error:
-	close(fd);
-	return ret;
 }
 
 static int lxc_monitor_read_fdset(struct pollfd *fds, nfds_t nfds,
@@ -508,18 +503,18 @@ int main(int argc, char *argv[])
 	if (lxc_arguments_parse(&my_args, argc, argv))
 		exit(rc_main);
 
-	if (!my_args.log_file)
-		my_args.log_file = "none";
+	/* Only create log if explicitly instructed */
+	if (my_args.log_file || my_args.log_priority) {
+		log.name = my_args.name;
+		log.file = my_args.log_file;
+		log.level = my_args.log_priority;
+		log.prefix = my_args.progname;
+		log.quiet = my_args.quiet;
+		log.lxcpath = my_args.lxcpath[0];
 
-	log.name = my_args.name;
-	log.file = my_args.log_file;
-	log.level = my_args.log_priority;
-	log.prefix = my_args.progname;
-	log.quiet = my_args.quiet;
-	log.lxcpath = my_args.lxcpath[0];
-
-	if (lxc_log_init(&log))
-		exit(rc_main);
+		if (lxc_log_init(&log))
+			exit(rc_main);
+	}
 
 	if (quit_monitord) {
 		int ret = EXIT_SUCCESS;

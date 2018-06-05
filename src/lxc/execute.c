@@ -21,11 +21,13 @@
  * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA
  */
 
+#define _GNU_SOURCE
 #include <sys/types.h>
 #include <sys/stat.h>
 #include <errno.h>
 #include <unistd.h>
 #include <stdlib.h>
+#include <stdio.h>
 
 #include "conf.h"
 #include "log.h"
@@ -34,18 +36,13 @@
 
 lxc_log_define(lxc_execute, lxc_start);
 
-struct execute_args {
-	char *const *argv;
-	int quiet;
-};
-
 static int execute_start(struct lxc_handler *handler, void* data)
 {
-	int j, i = 0;
-	struct execute_args *my_args = data;
+	int argc_add, j;
 	char **argv;
-	int argc = 0, argc_add;
-	char *initpath;
+	int argc = 0, i = 0, logfd = -1;
+	struct execute_args *my_args = data;
+	char logfile[LXC_PROC_PID_FD_LEN];
 
 	while (my_args->argv[argc++]);
 
@@ -53,21 +50,26 @@ static int execute_start(struct lxc_handler *handler, void* data)
 	argc_add = 5;
 	if (my_args->quiet)
 		argc_add++;
+
 	if (!handler->conf->rootfs.path)
 		argc_add += 2;
+
 	if (lxc_log_has_valid_level())
 		argc_add += 2;
 
-	argv = malloc((argc + argc_add) * sizeof(*argv));
-	if (!argv)
-		goto out1;
+	if (current_config->logfd != -1 || lxc_log_fd != -1)
+		argc_add += 2;
 
-	initpath = choose_init(NULL);
-	if (!initpath) {
-		ERROR("Failed to find an init.lxc or init.lxc.static");
-		goto out2;
+	argv = malloc((argc + argc_add) * sizeof(*argv));
+	if (!argv) {
+		SYSERROR("Allocating init args failed");
+		goto out1;
 	}
-	argv[i++] = initpath;
+
+	if (my_args->init_path)
+		argv[i++] = my_args->init_path;
+	else
+		argv[i++] = "lxc-init";
 
 	argv[i++] = "-n";
 	argv[i++] = (char *)handler->name;
@@ -77,9 +79,25 @@ static int execute_start(struct lxc_handler *handler, void* data)
 		argv[i++] = (char *)lxc_log_priority_to_string(lxc_log_get_level());
 	}
 
-	if (handler->conf->logfile) {
+	if (current_config->logfd != -1 || lxc_log_fd != -1) {
+		int ret;
+		int to_dup = current_config->logfd;
+
+		if (current_config->logfd == -1)
+			to_dup = lxc_log_fd;
+
+		logfd = dup(to_dup);
+		if (logfd < 0) {
+			SYSERROR("Failed to duplicate log file descriptor");
+			goto out2;
+		}
+
+		ret = snprintf(logfile, sizeof(logfile), "/proc/1/fd/%d", logfd);
+		if (ret < 0 || (size_t)ret >= sizeof(logfile))
+			goto out3;
+
 		argv[i++] = "-o";
-		argv[i++] = (char *)handler->conf->logfile;
+		argv[i++] = logfile;
 	}
 
 	if (my_args->quiet)
@@ -97,9 +115,18 @@ static int execute_start(struct lxc_handler *handler, void* data)
 
 	NOTICE("Exec'ing \"%s\"", my_args->argv[0]);
 
-	execvp(argv[0], argv);
+	if (my_args->init_fd >= 0)
+#ifdef __NR_execveat
+		syscall(__NR_execveat, my_args->init_fd, "", argv, environ, AT_EMPTY_PATH);
+#else
+		ERROR("System seems to be missing execveat syscall number");
+#endif
+	else
+		execvp(argv[0], argv);
 	SYSERROR("Failed to exec %s", argv[0]);
-	free(initpath);
+
+out3:
+	close(logfd);
 out2:
 	free(argv);
 out1:
@@ -124,10 +151,8 @@ int lxc_execute(const char *name, char *const argv[], int quiet,
 {
 	struct execute_args args = {.argv = argv, .quiet = quiet};
 
-	if (lxc_check_inherited(handler->conf, false, &handler->conf->maincmd_fd, 1))
-		return -1;
-
-	handler->conf->is_execute = 1;
+	TRACE("Doing lxc_execute");
+	handler->conf->is_execute = true;
 	return __lxc_start(name, handler, &execute_start_ops, &args, lxcpath,
 			   backgrounded, error_num);
 }

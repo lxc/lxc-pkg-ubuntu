@@ -109,7 +109,7 @@ static void create_helpfn(const struct lxc_arguments *args)
 
 	pid = fork();
 	if (pid) {
-		wait_for_pid(pid);
+		(void)wait_for_pid(pid);
 		return;
 	}
 
@@ -227,18 +227,18 @@ int main(int argc, char *argv[])
 	if (lxc_arguments_parse(&my_args, argc, argv))
 		exit(EXIT_FAILURE);
 
-	if (!my_args.log_file)
-		my_args.log_file = "none";
+	/* Only create log if explicitly instructed */
+	if (my_args.log_file || my_args.log_priority) {
+		log.name = my_args.name;
+		log.file = my_args.log_file;
+		log.level = my_args.log_priority;
+		log.prefix = my_args.progname;
+		log.quiet = my_args.quiet;
+		log.lxcpath = my_args.lxcpath[0];
 
-	log.name = my_args.name;
-	log.file = my_args.log_file;
-	log.level = my_args.log_priority;
-	log.prefix = my_args.progname;
-	log.quiet = my_args.quiet;
-	log.lxcpath = my_args.lxcpath[0];
-
-	if (lxc_log_init(&log))
-		exit(EXIT_FAILURE);
+		if (lxc_log_init(&log))
+			exit(EXIT_FAILURE);
+	}
 
 	if (!my_args.template) {
 		fprintf(stderr, "A template must be specified.\n");
@@ -267,21 +267,19 @@ int main(int argc, char *argv[])
 		exit(EXIT_FAILURE);
 	}
 
-	if (geteuid()) {
-		if (mkdir_p(my_args.lxcpath[0], 0755)) {
-			exit(EXIT_FAILURE);
-		}
-		if (access(my_args.lxcpath[0], O_RDONLY) < 0) {
-			fprintf(stderr, "You lack access to %s\n", my_args.lxcpath[0]);
-			exit(EXIT_FAILURE);
-		}
-		if (strcmp(my_args.bdevtype, "dir") && strcmp(my_args.bdevtype, "_unset") &&
-				strcmp(my_args.bdevtype, "btrfs")) {
-			fprintf(stderr, "Unprivileged users cannot create %s containers.\n", my_args.bdevtype);
-			exit(EXIT_FAILURE);
-		}
-	}
 
+	if (!my_args.lxcpath[0])
+		my_args.lxcpath[0] = lxc_get_global_config_item("lxc.lxcpath");
+
+	if (mkdir_p(my_args.lxcpath[0], 0755))
+		exit(EXIT_FAILURE);
+
+	if (geteuid())
+		if (access(my_args.lxcpath[0], O_RDONLY) < 0) {
+			fprintf(stderr, "You lack access to %s\n",
+				my_args.lxcpath[0]);
+			exit(EXIT_FAILURE);
+		}
 
 	c = lxc_container_new(my_args.name, my_args.lxcpath[0]);
 	if (!c) {

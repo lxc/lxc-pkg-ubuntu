@@ -794,8 +794,11 @@ int lxc_config_define_add(struct lxc_list *defines, char *arg)
 		return -1;
 
 	dent->elem = parse_line(arg);
-	if (!dent->elem)
+	if (!dent->elem) {
+		free(dent);
 		return -1;
+	}
+
 	lxc_list_add_tail(defines, dent);
 	return 0;
 }
@@ -1089,9 +1092,6 @@ int rm_r(char *dirname)
 	while ((direntp = readdir(dir))) {
 		char *pathname;
 		struct stat mystat;
-
-		if (!direntp)
-			break;
 
 		if (!strcmp(direntp->d_name, ".") ||
 		    !strcmp(direntp->d_name, ".."))

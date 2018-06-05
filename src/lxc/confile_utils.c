@@ -621,32 +621,61 @@ bool new_hwaddr(char *hwaddr)
 
 int lxc_get_conf_str(char *retv, int inlen, const char *value)
 {
+	size_t value_len;
+
 	if (!value)
 		return 0;
-	if (retv && inlen >= strlen(value) + 1)
-		strncpy(retv, value, strlen(value) + 1);
+
+	value_len = strlen(value);
+	if (retv && inlen >= value_len + 1)
+		memcpy(retv, value, value_len + 1);
 
 	return strlen(value);
 }
 
 int lxc_get_conf_int(struct lxc_conf *c, char *retv, int inlen, int v)
 {
+	int len;
+	int fulllen = 0;
+
 	if (!retv)
 		inlen = 0;
 	else
 		memset(retv, 0, inlen);
 
-	return snprintf(retv, inlen, "%d", v);
+	strprint(retv, inlen, "%d", v);
+
+	return fulllen;
+}
+
+int lxc_get_conf_size_t(struct lxc_conf *c, char *retv, int inlen, size_t v)
+{
+	int len;
+	int fulllen = 0;
+
+	if (!retv)
+		inlen = 0;
+	else
+		memset(retv, 0, inlen);
+
+	strprint(retv, inlen, "%zu", v);
+
+	return fulllen;
 }
 
 int lxc_get_conf_uint64(struct lxc_conf *c, char *retv, int inlen, uint64_t v)
 {
+	int len;
+	int fulllen = 0;
+
 	if (!retv)
 		inlen = 0;
 	else
 		memset(retv, 0, inlen);
 
-	return snprintf(retv, inlen, "%"PRIu64, v);
+	strprint(retv, inlen, "%"PRIu64, v);
+
+	return fulllen;
 }
 
 bool parse_limit_value(const char **value, rlim_t *res)

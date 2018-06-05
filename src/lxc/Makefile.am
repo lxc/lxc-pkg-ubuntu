@@ -120,7 +120,6 @@ liblxc_la_SOURCES = \
 	network.c network.h \
 	nl.c nl.h \
 	rtnl.c rtnl.h \
-	genl.c genl.h \
 	\
 	caps.c caps.h \
 	lxcseccomp.h \
@@ -152,6 +151,10 @@ liblxc_la_SOURCES += ../include/getline.c ../include/getline.h
 endif
 endif
 
+if !HAVE_STRLCPY
+liblxc_la_SOURCES += ../include/strlcpy.c ../include/strlcpy.h
+endif
+
 AM_CFLAGS=-DLXCROOTFSMOUNT=\"$(LXCROOTFSMOUNT)\" \
 	-DLXCPATH=\"$(LXCPATH)\" \
 	-DLXC_GLOBAL_CONF=\"$(LXC_GLOBAL_CONF)\" \
@@ -175,6 +178,10 @@ if ENABLE_APPARMOR
 AM_CFLAGS += -DHAVE_APPARMOR
 endif
 
+if ENABLE_GNUTLS
+AM_CFLAGS += -DHAVE_LIBGNUTLS
+endif
+
 if ENABLE_SELINUX
 AM_CFLAGS += -DHAVE_SELINUX
 endif
@@ -196,7 +203,7 @@ liblxc_la_LDFLAGS = \
 	-Wl,-soname,liblxc.so.$(firstword $(subst ., ,@LXC_ABI@)) \
 	-version-info @LXC_ABI_MAJOR@
 
-liblxc_la_LIBADD = $(CAP_LIBS) $(SELINUX_LIBS) $(SECCOMP_LIBS)
+liblxc_la_LIBADD = $(CAP_LIBS) $(GNUTLS_LIBS) $(SELINUX_LIBS) $(SECCOMP_LIBS)
 
 bin_SCRIPTS=
 
@@ -243,7 +250,7 @@ AM_LDFLAGS = -Wl,-E
 if ENABLE_RPATH
 AM_LDFLAGS += -Wl,-rpath -Wl,$(libdir)
 endif
-LDADD=liblxc.la @CAP_LIBS@ @SELINUX_LIBS@ @SECCOMP_LIBS@
+LDADD=liblxc.la @CAP_LIBS@ @GNUTLS_LIBS@ @SELINUX_LIBS@ @SECCOMP_LIBS@
 
 if ENABLE_TOOLS
 lxc_attach_SOURCES = tools/lxc_attach.c tools/arguments.c tools/tool_utils.c
@@ -295,6 +302,10 @@ if !HAVE_GETLINE
 if HAVE_FGETLN
 init_lxc_static_SOURCES += ../include/getline.c
 endif
+endif
+
+if !HAVE_STRLCPY
+init_lxc_static_SOURCES += ../include/strlcpy.c ../include/strlcpy.h
 endif
 
 init_lxc_static_LDFLAGS = -all-static
