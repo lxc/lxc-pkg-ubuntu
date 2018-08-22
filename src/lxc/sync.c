@@ -21,6 +21,7 @@
  * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA
  */
 
+#define _GNU_SOURCE
 #include <sys/types.h>
 #include <sys/socket.h>
 #include <unistd.h>
@@ -30,17 +31,18 @@
 #include "sync.h"
 #include "log.h"
 #include "start.h"
+#include "utils.h"
 
-lxc_log_define(lxc_sync, lxc);
+lxc_log_define(sync, lxc);
 
 static int __sync_wait(int fd, int sequence)
 {
 	int sync = -1;
 	ssize_t ret;
 
-	ret = read(fd, &sync, sizeof(sync));
+	ret = lxc_read_nointr(fd, &sync, sizeof(sync));
 	if (ret < 0) {
-		ERROR("sync wait failure : %s", strerror(errno));
+		SYSERROR("Sync wait failure");
 		return -1;
 	}
 
@@ -48,7 +50,7 @@ static int __sync_wait(int fd, int sequence)
 		return 0;
 
 	if ((size_t)ret != sizeof(sync)) {
-		ERROR("unexpected sync size: %zu expected %zu", (size_t)ret, sizeof(sync));
+		ERROR("Unexpected sync size: %zu expected %zu", (size_t)ret, sizeof(sync));
 		return -1;
 	}
 
@@ -59,7 +61,7 @@ static int __sync_wait(int fd, int sequence)
 	}
 
 	if (sync != sequence) {
-		ERROR("invalid sequence number %d. expected %d",
+		ERROR("Invalid sequence number %d. Expected sequence number %d",
 		      sync, sequence);
 		return -1;
 	}
@@ -70,8 +72,8 @@ static int __sync_wake(int fd, int sequence)
 {
 	int sync = sequence;
 
-	if (write(fd, &sync, sizeof(sync)) < 0) {
-		ERROR("sync wake failure : %s", strerror(errno));
+	if (lxc_write_nointr(fd, &sync, sizeof(sync)) < 0) {
+		SYSERROR("Sync wake failure");
 		return -1;
 	}
 	return 0;

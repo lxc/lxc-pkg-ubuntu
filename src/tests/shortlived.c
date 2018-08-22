@@ -31,6 +31,10 @@
 #include "lxctest.h"
 #include "utils.h"
 
+#ifndef HAVE_STRLCPY
+#include "include/strlcpy.h"
+#endif
+
 #define MYNAME "shortlived"
 
 static int destroy_container(void)
@@ -42,10 +46,12 @@ static int destroy_container(void)
 		perror("fork");
 		return -1;
 	}
+
 	if (pid == 0) {
 		execlp("lxc-destroy", "lxc-destroy", "-f", "-n", MYNAME, NULL);
 		exit(EXIT_FAILURE);
 	}
+
 again:
 	ret = waitpid(pid, &status, 0);
 	if (ret == -1) {
@@ -54,12 +60,15 @@ again:
 		perror("waitpid");
 		return -1;
 	}
+
 	if (ret != pid)
 		goto again;
+
 	if (!WIFEXITED(status))  { // did not exit normally
 		fprintf(stderr, "%d: lxc-create exited abnormally\n", __LINE__);
 		return -1;
 	}
+
 	return WEXITSTATUS(status);
 }
 
@@ -72,24 +81,30 @@ static int create_container(void)
 		perror("fork");
 		return -1;
 	}
+
 	if (pid == 0) {
 		execlp("lxc-create", "lxc-create", "-t", "busybox", "-n", MYNAME, NULL);
 		exit(EXIT_FAILURE);
 	}
+
 again:
 	ret = waitpid(pid, &status, 0);
 	if (ret == -1) {
 		if (errno == EINTR)
 			goto again;
+
 		perror("waitpid");
 		return -1;
 	}
+
 	if (ret != pid)
 		goto again;
+
 	if (!WIFEXITED(status))  { // did not exit normally
 		fprintf(stderr, "%d: lxc-create exited abnormally\n", __LINE__);
 		return -1;
 	}
+
 	return WEXITSTATUS(status);
 }
 
@@ -103,7 +118,8 @@ int main(int argc, char *argv[])
 	char template[sizeof(P_tmpdir"/shortlived_XXXXXX")];
 	int ret = EXIT_FAILURE;
 
-	strcpy(template, P_tmpdir"/shortlived_XXXXXX");
+	(void)strlcpy(template, P_tmpdir"/shortlived_XXXXXX", sizeof(template));
+
 	i = lxc_make_tmpfile(template, false);
 	if (i < 0) {
 		lxc_error("Failed to create temporary log file for container %s\n", MYNAME);
@@ -119,6 +135,7 @@ int main(int argc, char *argv[])
 	log.prefix = "shortlived";
 	log.quiet = false;
 	log.lxcpath = NULL;
+
 	if (lxc_log_init(&log))
 		exit(EXIT_FAILURE);
 
@@ -251,11 +268,13 @@ out:
 		if (fd >= 0) {
 			char buf[4096];
 			ssize_t buflen;
+
 			while ((buflen = read(fd, buf, 1024)) > 0) {
 				buflen = write(STDERR_FILENO, buf, buflen);
 				if (buflen <= 0)
 					break;
 			}
+
 			close(fd);
 		}
 	}

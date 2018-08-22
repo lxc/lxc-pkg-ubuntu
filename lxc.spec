@@ -29,9 +29,9 @@
 # BuildRequires systemd-units on fedora and rhel
 %if 0%{?fedora} >= 14 || 0%{?rhel} >= 7
 BuildRequires: systemd-units
+%endif
 #
 # BuildRequires systemd on openSUSE and SUSE
-%endif
 %if 0%{?suse_version} >= 1210
 BuildRequires: systemd
 %endif
@@ -57,7 +57,7 @@ BuildRequires: systemd
 %endif
 
 Name: lxc
-Version: 3.0.1
+Version: 3.0.2
 Release: %{?beta_rel:0.1.%{beta_rel}}%{?!beta_rel:%{norm_rel}}%{?dist}
 URL: http://linuxcontainers.org
 Source: http://linuxcontainers.org/downloads/%{name}-%{version}%{?beta_dot}.tar.gz

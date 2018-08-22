@@ -21,6 +21,7 @@
  * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA
  */
 
+#define _GNU_SOURCE
 #include <alloca.h>
 #include <errno.h>
 #include <fcntl.h>
@@ -36,7 +37,7 @@
 #include "namespace.h"
 #include "utils.h"
 
-lxc_log_define(lxc_namespace, lxc);
+lxc_log_define(namespace, lxc);
 
 struct clone_arg {
 	int (*fn)(void *);
@@ -66,7 +67,7 @@ pid_t lxc_clone(int (*fn)(void *), void *arg, int flags)
 	ret = clone(do_clone, stack  + stack_size, flags | SIGCHLD, &clone_arg);
 #endif
 	if (ret < 0)
-		ERROR("Failed to clone (%#x): %s.", flags, strerror(errno));
+		SYSERROR("Failed to clone (%#x)", flags);
 
 	return ret;
 }
@@ -114,6 +115,7 @@ pid_t lxc_raw_clone(unsigned long flags)
 			     : "=r"(in_child), "=r"(child_pid)
 			     : "i"(__NR_clone), "r"(flags | SIGCHLD)
 			     : "%o1", "%o0", "%g1");
+
 		if (in_child)
 			return 0;
 		else
@@ -173,6 +175,7 @@ const struct ns_info ns_info[LXC_NS_MAX] = {
 int lxc_namespace_2_cloneflag(const char *namespace)
 {
 	int i;
+
 	for (i = 0; i < LXC_NS_MAX; i++)
 		if (!strcasecmp(ns_info[i].proc_name, namespace))
 			return ns_info[i].clone_flag;
@@ -184,6 +187,7 @@ int lxc_namespace_2_cloneflag(const char *namespace)
 int lxc_namespace_2_ns_idx(const char *namespace)
 {
 	int i;
+
 	for (i = 0; i < LXC_NS_MAX; i++)
 		if (!strcmp(ns_info[i].proc_name, namespace))
 			return i;
@@ -192,9 +196,43 @@ int lxc_namespace_2_ns_idx(const char *namespace)
 	return -EINVAL;
 }
 
+extern int lxc_namespace_2_std_identifiers(char *namespaces)
+{
+	char **it;
+	char *del;
+
+	/* The identifiers for namespaces used with lxc-attach and lxc-unshare
+	 * as given on the manpage do not align with the standard identifiers.
+	 * This affects network, mount, and uts namespaces. The standard identifiers
+	 * are: "mnt", "uts", and "net" whereas lxc-attach and lxc-unshare uses
+	 * "MOUNT", "UTSNAME", and "NETWORK". So let's use some cheap memmove()s
+	 * to replace them by their standard identifiers.
+	 * Let's illustrate this with an example:
+	 * Assume the string:
+	 *
+	 *	"IPC|MOUNT|PID"
+	 *
+	 * then we memmove()
+	 *
+	 *	dest: del + 1 == OUNT|PID
+	 *	src:  del + 3 == NT|PID
+	 */
+	if (!namespaces)
+		return -1;
+
+	while ((del = strstr(namespaces, "MOUNT")))
+		memmove(del + 1, del + 3, strlen(del) - 2);
+
+	for (it = (char *[]){"NETWORK", "UTSNAME", NULL}; it && *it; it++)
+		while ((del = strstr(namespaces, *it)))
+			memmove(del + 3, del + 7, strlen(del) - 6);
+
+	return 0;
+}
+
 int lxc_fill_namespace_flags(char *flaglist, int *flags)
 {
-	char *token, *saveptr = NULL;
+	char *token;
 	int aflag;
 
 	if (!flaglist) {
@@ -202,16 +240,13 @@ int lxc_fill_namespace_flags(char *flaglist, int *flags)
 		return -1;
 	}
 
-	token = strtok_r(flaglist, "|", &saveptr);
-	while (token) {
-
+	lxc_iterate_parts(token, flaglist, "|") {
 		aflag = lxc_namespace_2_cloneflag(token);
 		if (aflag < 0)
 			return -1;
 
 		*flags |= aflag;
-
-		token = strtok_r(NULL, "|", &saveptr);
 	}
+
 	return 0;
 }

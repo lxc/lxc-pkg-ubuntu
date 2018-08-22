@@ -37,7 +37,13 @@
 #include <lxc/lxccontainer.h>
 
 #include "arguments.h"
-#include "tool_utils.h"
+#include "attach.h"
+#include "caps.h"
+#include "confile.h"
+#include "log.h"
+#include "utils.h"
+
+lxc_log_define(lxc_attach, lxc);
 
 static const struct option my_longopts[] = {
 	{"elevated-privileges", optional_argument, 0, 'e'},
@@ -92,10 +98,8 @@ static int add_to_simple_array(char ***array, ssize_t *capacity, char *value)
 	return 0;
 }
 
-static int my_parser(struct lxc_arguments* args, int c, char* arg)
+static int my_parser(struct lxc_arguments *args, int c, char *arg)
 {
-	char **it;
-	char *del;
 	int ret;
 
 	switch (c) {
@@ -108,39 +112,20 @@ static int my_parser(struct lxc_arguments* args, int c, char* arg)
 	case 'a':
 		new_personality = lxc_config_parse_arch(arg);
 		if (new_personality < 0) {
-			lxc_error(args, "invalid architecture specified: %s", arg);
+			ERROR("Invalid architecture specified: %s", arg);
 			return -1;
 		}
 		break;
 	case 's':
 		namespace_flags = 0;
 
-		/* The identifiers for namespaces used with lxc-attach as given
-		 * on the manpage do not align with the standard identifiers.
-		 * This affects network, mount, and uts namespaces. The standard
-		 * identifiers are: "mnt", "uts", and "net" whereas lxc-attach
-		 * uses "MOUNT", "UTSNAME", and "NETWORK". So let's use some
-		 * cheap memmove()s to replace them by their standard
-		 * identifiers. Let's illustrate this with an example:
-		 * Assume the string:
-		 *
-		 *	"IPC|MOUNT|PID"
-		 *
-		 * then we memmove()
-		 *
-		 *	dest: del + 1 == OUNT|PID
-		 *	src:  del + 3 == NT|PID
-		 */
-		while ((del = strstr(arg, "MOUNT")))
-			memmove(del + 1, del + 3, strlen(del) - 2);
-
-		for (it = (char *[]){"NETWORK", "UTSNAME", NULL}; it && *it; it++)
-			while ((del = strstr(arg, *it)))
-				memmove(del + 3, del + 7, strlen(del) - 6);
+		if (lxc_namespace_2_std_identifiers(arg) < 0)
+			return -1;
 
 		ret = lxc_fill_namespace_flags(arg, &namespace_flags);
 		if (ret)
 			return -1;
+
 		/* -s implies -e */
 		lxc_fill_elevated_privileges(NULL, &elevated_privileges);
 		break;
@@ -153,14 +138,14 @@ static int my_parser(struct lxc_arguments* args, int c, char* arg)
 	case 502: /* keep-var */
 		ret = add_to_simple_array(&extra_keep, &extra_keep_size, arg);
 		if (ret < 0) {
-			lxc_error(args, "memory allocation error");
+			ERROR("Failed to alloc memory");
 			return -1;
 		}
 		break;
 	case 'v':
 		ret = add_to_simple_array(&extra_env, &extra_env_size, arg);
 		if (ret < 0) {
-			lxc_error(args, "memory allocation error");
+			ERROR("Failed to alloc memory");
 			return -1;
 		}
 		break;
@@ -240,13 +225,13 @@ static bool stdfd_is_pty(void)
 	return false;
 }
 
-int lxc_attach_create_log_file(const char *log_file)
+static int lxc_attach_create_log_file(const char *log_file)
 {
 	int fd;
 
 	fd = open(log_file, O_CLOEXEC | O_RDWR | O_CREAT | O_APPEND, 0600);
 	if (fd < 0) {
-		fprintf(stderr, "Failed to open log file \"%s\"\n", log_file);
+		ERROR("Failed to open log file \"%s\"", log_file);
 		return -1;
 	}
 
@@ -285,8 +270,7 @@ int main(int argc, char *argv[])
 
 	if (geteuid()) {
 		if (access(my_args.lxcpath[0], O_RDONLY) < 0) {
-			if (!my_args.quiet)
-				fprintf(stderr, "You lack access to %s\n", my_args.lxcpath[0]);
+			ERROR("You lack access to %s", my_args.lxcpath[0]);
 			exit(EXIT_FAILURE);
 		}
 	}
@@ -298,30 +282,34 @@ int main(int argc, char *argv[])
 	if (my_args.rcfile) {
 		c->clear_config(c);
 		if (!c->load_config(c, my_args.rcfile)) {
-			fprintf(stderr, "Failed to load rcfile\n");
+			ERROR("Failed to load rcfile");
 			lxc_container_put(c);
 			exit(EXIT_FAILURE);
 		}
+
 		c->configfile = strdup(my_args.rcfile);
 		if (!c->configfile) {
-			fprintf(stderr, "Out of memory setting new config filename\n");
+			ERROR("Out of memory setting new config filename");
 			lxc_container_put(c);
 			exit(EXIT_FAILURE);
 		}
 	}
 
 	if (!c->may_control(c)) {
-		fprintf(stderr, "Insufficent privileges to control %s\n", c->name);
+		ERROR("Insufficent privileges to control %s", c->name);
 		lxc_container_put(c);
 		exit(EXIT_FAILURE);
 	}
 
 	if (remount_sys_proc)
 		attach_options.attach_flags |= LXC_ATTACH_REMOUNT_PROC_SYS;
+
 	if (elevated_privileges)
 		attach_options.attach_flags &= ~(elevated_privileges);
+
 	if (stdfd_is_pty())
 		attach_options.attach_flags |= LXC_ATTACH_TERMINAL;
+
 	attach_options.namespaces = namespace_flags;
 	attach_options.personality = new_personality;
 	attach_options.env_policy = env_policy;
@@ -343,7 +331,6 @@ int main(int argc, char *argv[])
 		ret = c->attach(c, lxc_attach_run_command, &command, &attach_options, &pid);
 	else
 		ret = c->attach(c, lxc_attach_run_shell, NULL, &attach_options, &pid);
-
 	if (ret < 0)
 		goto out;
 
@@ -353,9 +340,11 @@ int main(int argc, char *argv[])
 
 	if (WIFEXITED(ret))
 		wexit = WEXITSTATUS(ret);
+
 out:
 	lxc_container_put(c);
 	if (ret >= 0)
 		exit(wexit);
+
 	exit(EXIT_FAILURE);
 }

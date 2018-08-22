@@ -37,7 +37,8 @@
 #include <lxc/version.h>
 
 #include "arguments.h"
-#include "tool_utils.h"
+#include "namespace.h"
+#include "initutils.h"
 
 static int build_shortopts(const struct option *a_options, char *a_shortopts,
 			   size_t a_size)
@@ -49,7 +50,6 @@ static int build_shortopts(const struct option *a_options, char *a_shortopts,
 		return -1;
 
 	for (opt = a_options; opt->name; opt++) {
-
 		if (!isascii(opt->val))
 			continue;
 
@@ -87,8 +87,8 @@ is2big:
 	return -1;
 }
 
-static void print_usage(const struct option longopts[],
-			const struct lxc_arguments *a_args)
+static void print_usage_exit(const struct option longopts[],
+			     const struct lxc_arguments *a_args)
 
 {
 	int i;
@@ -97,16 +97,6 @@ static void print_usage(const struct option longopts[],
 	fprintf(stderr, "Usage: %s ", a_args->progname);
 
 	for (opt = longopts, i = 1; opt->name; opt++, i++) {
-		int j;
-		char *uppername;
-
-		uppername = strdup(opt->name);
-		if (!uppername)
-			exit(-ENOMEM);
-
-		for (j = 0; uppername[j]; j++)
-			uppername[j] = toupper(uppername[j]);
-
 		fprintf(stderr, "[");
 
 		if (isprint(opt->val))
@@ -114,31 +104,43 @@ static void print_usage(const struct option longopts[],
 
 		fprintf(stderr, "--%s", opt->name);
 
-		if (opt->has_arg == required_argument)
-			fprintf(stderr, "=%s", uppername);
+		if ((opt->has_arg == required_argument) ||
+		    (opt->has_arg == optional_argument)) {
+			int j;
+			char *uppername;
 
-		if (opt->has_arg == optional_argument)
-			fprintf(stderr, "[=%s]", uppername);
+			uppername = strdup(opt->name);
+			if (!uppername)
+				exit(-ENOMEM);
+
+			for (j = 0; uppername[j]; j++)
+				uppername[j] = toupper(uppername[j]);
+
+			if (opt->has_arg == required_argument)
+				fprintf(stderr, "=%s", uppername);
+			else	// optional_argument
+				fprintf(stderr, "[=%s]", uppername);
+
+			free(uppername);
+		}
 
 		fprintf(stderr, "] ");
 
 		if (!(i % 4))
 			fprintf(stderr, "\n\t");
-
-		free(uppername);
 	}
 
 	fprintf(stderr, "\n");
 	exit(0);
 }
 
-static void print_version()
+static void print_version_exit()
 {
 	printf("%s\n", lxc_get_version());
 	exit(0);
 }
 
-static void print_help(const struct lxc_arguments *args, int code)
+static void print_help_exit(const struct lxc_arguments *args, int code)
 {
 	fprintf(stderr, "\
 Usage: %s %s\
@@ -160,6 +162,7 @@ See the %s man page for further information.\n\n",
 
 	if (args->helpfn)
 		args->helpfn(args);
+
 	exit(code);
 }
 
@@ -180,21 +183,16 @@ static int lxc_arguments_lxcpath_add(struct lxc_arguments *args,
 		lxc_error(args, "no memory");
 		return -ENOMEM;
 	}
+
 	args->lxcpath[args->lxcpath_cnt++] = lxcpath;
 	return 0;
-}
-
-void remove_trailing_slashes(char *p)
-{
-	int l = strlen(p);
-	while (--l >= 0 && (p[l] == '/' || p[l] == '\n'))
-		p[l] = '\0';
 }
 
 extern int lxc_arguments_parse(struct lxc_arguments *args, int argc,
 			       char *const argv[])
 {
 	int ret = 0;
+	bool logfile = false;
 	char shortopts[256];
 
 	ret = build_shortopts(args->options, shortopts, sizeof(shortopts));
@@ -211,15 +209,21 @@ extern int lxc_arguments_parse(struct lxc_arguments *args, int argc,
 		c = getopt_long(argc, argv, shortopts, args->options, &index);
 		if (c == -1)
 			break;
+
 		switch (c) {
 		case 'n':
 			args->name = optarg;
 			break;
 		case 'o':
 			args->log_file = optarg;
+			logfile = true;
 			break;
 		case 'l':
 			args->log_priority = optarg;
+			if (!logfile &&
+			    args->log_file &&
+			    strcmp(args->log_file, "none") == 0)
+			    args->log_file = NULL;
 			break;
 		case 'q':
 			args->quiet = 1;
@@ -234,13 +238,13 @@ extern int lxc_arguments_parse(struct lxc_arguments *args, int argc,
 				return ret;
 			break;
 		case OPT_USAGE:
-			print_usage(args->options, args);
+			print_usage_exit(args->options, args);
 		case OPT_VERSION:
-			print_version();
+			print_version_exit();
 		case '?':
-			print_help(args, 1);
+			print_help_exit(args, 1);
 		case 'h':
-			print_help(args, 0);
+			print_help_exit(args, 0);
 		default:
 			if (args->parser) {
 				ret = args->parser(args, c, optarg);
@@ -265,7 +269,8 @@ extern int lxc_arguments_parse(struct lxc_arguments *args, int argc,
 	}
 
 	/* Check the command options */
-	if (!args->name && strcmp(args->progname, "lxc-autostart") != 0) {
+	if (!args->name && strncmp(args->progname, "lxc-autostart", strlen(args->progname)) != 0
+	                && strncmp(args->progname, "lxc-unshare", strlen(args->progname)) != 0) {
 		if (args->argv) {
 			args->name = argv[optind];
 			optind++;
@@ -281,9 +286,11 @@ extern int lxc_arguments_parse(struct lxc_arguments *args, int argc,
 
 	if (args->checker)
 		ret = args->checker(args);
+
 error:
 	if (ret)
 		lxc_error(args, "could not parse command line");
+
 	return ret;
 }
 

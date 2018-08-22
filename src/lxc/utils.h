@@ -45,73 +45,7 @@
 #endif
 
 #include "initutils.h"
-
-/* Define __S_ISTYPE if missing from the C library. */
-#ifndef __S_ISTYPE
-#define __S_ISTYPE(mode, mask) (((mode)&S_IFMT) == (mask))
-#endif
-
-#if HAVE_LIBCAP
-#ifndef CAP_SETFCAP
-#define CAP_SETFCAP 31
-#endif
-
-#ifndef CAP_MAC_OVERRIDE
-#define CAP_MAC_OVERRIDE 32
-#endif
-
-#ifndef CAP_MAC_ADMIN
-#define CAP_MAC_ADMIN 33
-#endif
-#endif
-
-#ifndef PR_CAPBSET_DROP
-#define PR_CAPBSET_DROP 24
-#endif
-
-#ifndef LO_FLAGS_AUTOCLEAR
-#define LO_FLAGS_AUTOCLEAR 4
-#endif
-
-#ifndef CAP_SETUID
-#define CAP_SETUID 7
-#endif
-
-#ifndef CAP_SETGID
-#define CAP_SETGID 6
-#endif
-
-/* needed for cgroup automount checks, regardless of whether we
- * have included linux/capability.h or not */
-#ifndef CAP_SYS_ADMIN
-#define CAP_SYS_ADMIN 21
-#endif
-
-#ifndef CGROUP_SUPER_MAGIC
-#define CGROUP_SUPER_MAGIC 0x27e0eb
-#endif
-
-#ifndef CGROUP2_SUPER_MAGIC
-#define CGROUP2_SUPER_MAGIC 0x63677270
-#endif
-
-/* Useful macros */
-/* Maximum number for 64 bit integer is a string with 21 digits: 2^64 - 1 = 21 */
-#define LXC_NUMSTRLEN64 21
-#define LXC_LINELEN 4096
-#define LXC_IDMAPLEN 4096
-#define LXC_MAX_BUFFER 4096
-/* /proc/       =    6
- *                +
- * <pid-as-str> =   LXC_NUMSTRLEN64
- *                +
- * /fd/         =    4
- *                +
- * <fd-as-str>  =   LXC_NUMSTRLEN64
- *                +
- * \0           =    1
- */
-#define LXC_PROC_PID_FD_LEN (6 + LXC_NUMSTRLEN64 + 4 + LXC_NUMSTRLEN64 + 1)
+#include "macro.h"
 
 /* returns 1 on success, 0 if there were any failures */
 extern int lxc_rmdir_onedev(const char *path, const char *exclude);
@@ -159,7 +93,7 @@ static inline int setns(int fd, int nstype)
 
 /* Define sethostname() if missing from the C library */
 #ifndef HAVE_SETHOSTNAME
-static inline int sethostname(const char * name, size_t len)
+static inline int sethostname(const char *name, size_t len)
 {
 #ifdef __NR_sethostname
 return syscall(__NR_sethostname, name, len);
@@ -265,24 +199,6 @@ static inline int signalfd(int fd, const sigset_t *mask, int flags)
 }
 #endif
 
-/* loop devices */
-#ifndef LO_FLAGS_AUTOCLEAR
-#define LO_FLAGS_AUTOCLEAR 4
-#endif
-
-#ifndef LOOP_CTL_GET_FREE
-#define LOOP_CTL_GET_FREE 0x4C82
-#endif
-
-/* memfd_create() */
-#ifndef MFD_CLOEXEC
-#define MFD_CLOEXEC 0x0001U
-#endif
-
-#ifndef MFD_ALLOW_SEALING
-#define MFD_ALLOW_SEALING 0x0002U
-#endif
-
 #ifndef HAVE_MEMFD_CREATE
 static inline int memfd_create(const char *name, unsigned int flags) {
 	#ifndef __NR_memfd_create
@@ -359,32 +275,6 @@ extern struct lxc_popen_FILE *lxc_popen(const char *command);
  */
 extern int lxc_pclose(struct lxc_popen_FILE *fp);
 
-/**
- * BUILD_BUG_ON - break compile if a condition is true.
- * @condition: the condition which the compiler should know is false.
- *
- * If you have some code which relies on certain constants being equal, or
- * other compile-time-evaluated condition, you should use BUILD_BUG_ON to
- * detect if someone changes it.
- *
- * The implementation uses gcc's reluctance to create a negative array, but
- * gcc (as of 4.4) only emits that error for obvious cases (eg. not arguments
- * to inline functions).  So as a fallback we use the optimizer; if it can't
- * prove the condition is false, it will cause a link error on the undefined
- * "__build_bug_on_failed".  This error message can be harder to track down
- * though, hence the two different methods.
- */
-#ifndef __OPTIMIZE__
-#define BUILD_BUG_ON(condition) ((void)sizeof(char[1 - 2*!!(condition)]))
-#else
-extern int __build_bug_on_failed;
-#define BUILD_BUG_ON(condition)					\
-	do {							\
-		((void)sizeof(char[1 - 2*!!(condition)]));	\
-		if (condition) __build_bug_on_failed = 1;	\
-	} while(0)
-#endif
-
 /*
  * wait on a child we forked
  */
@@ -392,8 +282,8 @@ extern int wait_for_pid(pid_t pid);
 extern int lxc_wait_for_pid_status(pid_t pid);
 
 /* send and receive buffers completely */
-extern ssize_t lxc_write_nointr(int fd, const void* buf, size_t count);
-extern ssize_t lxc_read_nointr(int fd, void* buf, size_t count);
+extern ssize_t lxc_write_nointr(int fd, const void *buf, size_t count);
+extern ssize_t lxc_read_nointr(int fd, void *buf, size_t count);
 extern ssize_t lxc_read_nointr_expect(int fd, void *buf, size_t count,
 				      const void *expected_buf);
 #if HAVE_LIBGNUTLS
@@ -404,7 +294,7 @@ extern int sha1sum_file(char *fnam, unsigned char *md_value);
 /* read and write whole files */
 extern int lxc_write_to_file(const char *filename, const void *buf,
 			     size_t count, bool add_newline, mode_t mode);
-extern int lxc_read_from_file(const char *filename, void* buf, size_t count);
+extern int lxc_read_from_file(const char *filename, void *buf, size_t count);
 
 /* convert variadic argument lists to arrays (for execl type argument lists) */
 extern char** lxc_va_arg_list_to_argv(va_list ap, size_t skip, int do_strdup);
@@ -567,6 +457,7 @@ extern int run_command(char *buf, size_t buf_size, int (*child_fn)(void *),
 /* Concatenate all passed-in strings into one path. Do not fail. If any piece
  * is not prefixed with '/', add a '/'.
  */
+__attribute__((sentinel)) extern char *must_concat(const char *first, ...);
 __attribute__((sentinel)) extern char *must_make_path(const char *first, ...);
 __attribute__((sentinel)) extern char *must_append_path(char *first, ...);
 
@@ -579,6 +470,7 @@ extern void *must_realloc(void *orig, size_t sz);
 /* __typeof__ should be safe to use with all compilers. */
 typedef __typeof__(((struct statfs *)NULL)->f_type) fs_type_magic;
 extern bool has_fs_type(const char *path, fs_type_magic magic_val);
+extern bool fhas_fs_type(int fd, fs_type_magic magic_val);
 extern bool is_fs_type(const struct statfs *fs, fs_type_magic magic_val);
 extern bool lxc_nic_exists(char *nic);
 extern int lxc_make_tmpfile(char *template, bool rm);
@@ -615,5 +507,7 @@ static inline pid_t lxc_raw_gettid(void)
 
 /* Set a signal the child process will receive after the parent has died. */
 extern int lxc_set_death_signal(int signal);
+extern int fd_cloexec(int fd, bool cloexec);
+extern int recursive_destroy(char *dirname);
 
 #endif /* __LXC_UTILS_H */
