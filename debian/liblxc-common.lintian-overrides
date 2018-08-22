@@ -1,3 +1,4 @@
 setuid-binary usr/lib/*/lxc/lxc-user-nic 4755 root/root
 binary-without-manpage usr/sbin/init.lxc
 binary-without-manpage usr/sbin/init.lxc.static
+package-contains-documentation-outside-usr-share-doc usr/share/lxc/config/common.conf.d/README

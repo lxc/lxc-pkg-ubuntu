@@ -6,3 +6,4 @@ lxc source: intra-source-package-circular-dependency liblxc-common liblxc1
 
 # Required for backports
 lxc source: package-uses-old-debhelper-compat-version 10
+lxc source: unknown-runtime-tests-restriction allow-stderr paragraph starting at line 1
