@@ -42,7 +42,7 @@
 #define MIPS_ARCH_N64 lxc_seccomp_arch_mips64
 #endif
 
-lxc_log_define(lxc_seccomp, lxc);
+lxc_log_define(seccomp, lxc);
 
 static int parse_config_v1(FILE *f, char *line, size_t *line_bufsz, struct lxc_conf *conf)
 {
@@ -184,14 +184,14 @@ static enum scmp_compare parse_v2_rule_op(char *s)
 
 /*
  * This function is used to parse the args string into the structure.
- * args string format:[index,value,op,valueTwo] or [index,value,op]
+ * args string format:[index,value,op,mask] or [index,value,op]
  * index: the index for syscall arguments (type uint)
  * value: the value for syscall arguments (type uint64)
  * op: the operator for syscall arguments(string),
 	 a valid list of constants as of libseccomp v2.3.2 is
 	 SCMP_CMP_NE,SCMP_CMP_LE,SCMP_CMP_LE, SCMP_CMP_EQ, SCMP_CMP_GE,
 	 SCMP_CMP_GT, SCMP_CMP_MASKED_EQ, or !=,<=,==,>=,>,&=
- * valueTwo: the value for syscall arguments only used for mask eq (type uint64, optional)
+ * mask: the mask to apply on "value" for SCMP_CMP_MASKED_EQ (type uint64, optional)
  * Returns 0 on success, < 0 otherwise.
  */
 static int get_seccomp_arg_value(char *key, struct seccomp_v2_rule_args *rule_args)
@@ -201,7 +201,7 @@ static int get_seccomp_arg_value(char *key, struct seccomp_v2_rule_args *rule_ar
 	uint64_t mask = 0, value = 0;
 	enum scmp_compare op = 0;
 	char *tmp = NULL;
-	char s[31] = {0}, v[24] = {0}, m[24] = {0};
+	char s[31] = {0}, v[24] = {0}, m[24] = {'0'};
 
 	tmp = strchr(key, '[');
 	if (!tmp) {
@@ -420,31 +420,36 @@ scmp_filter_ctx get_new_ctx(enum lxc_hostarch_t n_arch,
 
 	ret = seccomp_attr_set(ctx, SCMP_FLTATR_CTL_NNP, 0);
 	if (ret < 0) {
-		ERROR("%s - Failed to turn off no-new-privs", strerror(-ret));
+		errno = -ret;
+		SYSERROR("Failed to turn off no-new-privs");
 		seccomp_release(ctx);
 		return NULL;
 	}
 
 #ifdef SCMP_FLTATR_ATL_TSKIP
 	ret = seccomp_attr_set(ctx, SCMP_FLTATR_ATL_TSKIP, 1);
-	if (ret < 0)
-		WARN("%s - Failed to turn on seccomp nop-skip, continuing", strerror(-ret));
+	if (ret < 0) {
+		errno = -ret;
+		SYSWARN("Failed to turn on seccomp nop-skip, continuing");
+	}
 #endif
 
 	ret = seccomp_arch_exist(ctx, arch);
 	if (ret < 0) {
 		if (ret != -EEXIST) {
-			ERROR("%s - Failed to determine whether arch %d is "
-			      "already present in the main seccomp context",
-			      strerror(-ret), (int)n_arch);
+			errno = -ret;
+			SYSERROR("Failed to determine whether arch %d is "
+			         "already present in the main seccomp context",
+			         (int)n_arch);
 			seccomp_release(ctx);
 			return NULL;
 		}
 
 		ret = seccomp_arch_add(ctx, arch);
 		if (ret != 0) {
-			ERROR("%s - Failed to add arch %d to main seccomp context",
-			      strerror(-ret), (int)n_arch);
+			errno = -ret;
+			SYSERROR("Failed to add arch %d to main seccomp context",
+			         (int)n_arch);
 			seccomp_release(ctx);
 			return NULL;
 		}
@@ -475,7 +480,8 @@ bool do_resolve_add_rule(uint32_t arch, char *line, scmp_filter_ctx ctx,
 
 	ret = seccomp_arch_exist(ctx, arch);
 	if (arch && ret != 0) {
-		ERROR("%s - Seccomp: rule and context arch do not match (arch %d)", strerror(-ret), arch);
+		errno = -ret;
+		SYSERROR("Seccomp: rule and context arch do not match (arch %d)", arch);
 		return false;
 	}
 
@@ -489,7 +495,8 @@ bool do_resolve_add_rule(uint32_t arch, char *line, scmp_filter_ctx ctx,
 					     SCMP_SYS(umount2), 1,
 					     SCMP_A1(SCMP_CMP_MASKED_EQ, MNT_FORCE, MNT_FORCE));
 		if (ret < 0) {
-			ERROR("%s - Failed loading rule to reject force umount", strerror(-ret));
+			errno = -ret;
+			SYSERROR("Failed loading rule to reject force umount");
 			return false;
 		}
 
@@ -500,12 +507,14 @@ bool do_resolve_add_rule(uint32_t arch, char *line, scmp_filter_ctx ctx,
 	nr = seccomp_syscall_resolve_name(line);
 	if (nr == __NR_SCMP_ERROR) {
 		WARN("Failed to resolve syscall \"%s\"", line);
-		return false;
+		WARN("This syscall will NOT be handled by seccomp");
+		return true;
 	}
 
 	if (nr < 0) {
 		WARN("Got negative return value %d for syscall \"%s\"", nr, line);
-		return false;
+		WARN("This syscall will NOT be handled by seccomp");
+		return true;
 	}
 
 	memset(&arg_cmp, 0, sizeof(arg_cmp));
@@ -530,9 +539,9 @@ bool do_resolve_add_rule(uint32_t arch, char *line, scmp_filter_ctx ctx,
 	ret = seccomp_rule_add_exact_array(ctx, rule->action, nr,
 					   rule->args_num, arg_cmp);
 	if (ret < 0) {
-		ERROR("%s - Failed loading rule for %s (nr %d action %d (%s))",
-		      strerror(-ret), line, nr, rule->action,
-		      get_action_name(rule->action));
+		errno = -ret;
+		SYSERROR("Failed loading rule for %s (nr %d action %d (%s))",
+		         line, nr, rule->action, get_action_name(rule->action));
 		return false;
 	}
 
@@ -722,14 +731,17 @@ static int parse_config_v2(FILE *f, char *line, size_t *line_bufsz, struct lxc_c
 
 		ret = seccomp_attr_set(conf->seccomp_ctx, SCMP_FLTATR_CTL_NNP, 0);
 		if (ret < 0) {
-			ERROR("%s - Failed to turn off no-new-privs", strerror(-ret));
+			errno = -ret;
+			SYSERROR("Failed to turn off no-new-privs");
 			return -1;
 		}
 
 #ifdef SCMP_FLTATR_ATL_TSKIP
 		ret = seccomp_attr_set(conf->seccomp_ctx, SCMP_FLTATR_ATL_TSKIP, 1);
-		if (ret < 0)
-			WARN("%s - Failed to turn on seccomp nop-skip, continuing", strerror(-ret));
+		if (ret < 0) {
+			errno = -ret;
+			SYSWARN("Failed to turn on seccomp nop-skip, continuing");
+		}
 #endif
 	}
 
@@ -1151,14 +1163,17 @@ int lxc_read_seccomp_config(struct lxc_conf *conf)
 	ret = seccomp_attr_set(SCMP_FLTATR_CTL_NNP, 0);
 #endif
 	if (ret < 0) {
-		ERROR("%s - Failed to turn off no-new-privs", strerror(-ret));
+		errno = -ret;
+		SYSERROR("Failed to turn off no-new-privs");
 		return -1;
 	}
+
 #ifdef SCMP_FLTATR_ATL_TSKIP
 	ret = seccomp_attr_set(conf->seccomp_ctx, SCMP_FLTATR_ATL_TSKIP, 1);
-	if (ret < 0)
-		WARN("%s - Failed to turn on seccomp nop-skip, continuing",
-		     strerror(-ret));
+	if (ret < 0) {
+		errno = -ret;
+		SYSWARN("Failed to turn on seccomp nop-skip, continuing");
+	}
 #endif
 
 	f = fopen(conf->seccomp, "r");
@@ -1189,7 +1204,8 @@ int lxc_seccomp_load(struct lxc_conf *conf)
 	ret = seccomp_load();
 #endif
 	if (ret < 0) {
-		ERROR("%s- Error loading the seccomp policy", strerror(-ret));
+		errno = -ret;
+		SYSERROR("Error loading the seccomp policy");
 		return -1;
 	}
 
@@ -1201,8 +1217,10 @@ int lxc_seccomp_load(struct lxc_conf *conf)
 	    lxc_log_fd >= 0) {
 		ret = seccomp_export_pfc(conf->seccomp_ctx, lxc_log_fd);
 		/* Just give an warning when export error */
-		if (ret < 0)
-			WARN("%s - Failed to export seccomp filter to log file", strerror(-ret));
+		if (ret < 0) {
+			errno = -ret;
+			SYSWARN("Failed to export seccomp filter to log file");
+		}
 	}
 #endif
 

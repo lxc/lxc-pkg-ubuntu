@@ -38,7 +38,7 @@
 #include "state.h"
 #include "utils.h"
 
-lxc_log_define(lxc_commands_utils, lxc);
+lxc_log_define(commands_utils, lxc);
 
 int lxc_cmd_sock_rcv_state(int state_client_fd, int timeout)
 {
@@ -69,12 +69,9 @@ again:
 			goto again;
 		}
 
-		ERROR("Failed to receive message: %s", strerror(errno));
+		SYSERROR("Failed to receive message");
 		return -1;
 	}
-
-	if (ret < 0)
-		return -1;
 
 	TRACE("Received state %s from state client %d",
 	      lxc_state2str(msg.value), state_client_fd);

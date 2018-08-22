@@ -32,6 +32,9 @@
 #include <lxc/lxccontainer.h>
 
 #include "arguments.h"
+#include "log.h"
+
+lxc_log_define(lxc_freeze, lxc);
 
 static const struct option my_longopts[] = {
 	LXC_COMMON_OPTIONS
@@ -75,33 +78,35 @@ int main(int argc, char *argv[])
 
 	c = lxc_container_new(my_args.name, my_args.lxcpath[0]);
 	if (!c) {
-		fprintf(stderr, "No such container: %s:%s\n", my_args.lxcpath[0], my_args.name);
+		ERROR("No such container: %s:%s", my_args.lxcpath[0], my_args.name);
 		exit(EXIT_FAILURE);
 	}
 
 	if (my_args.rcfile) {
 		c->clear_config(c);
+
 		if (!c->load_config(c, my_args.rcfile)) {
-			fprintf(stderr, "Failed to load rcfile\n");
+			ERROR("Failed to load rcfile");
 			lxc_container_put(c);
 			exit(EXIT_FAILURE);
 		}
+
 		c->configfile = strdup(my_args.rcfile);
 		if (!c->configfile) {
-			fprintf(stderr, "Out of memory setting new config filename\n");
+			ERROR("Out of memory setting new config filename");
 			lxc_container_put(c);
 			exit(EXIT_FAILURE);
 		}
 	}
 
 	if (!c->may_control(c)) {
-		fprintf(stderr, "Insufficent privileges to control %s:%s\n", my_args.lxcpath[0], my_args.name);
+		ERROR("Insufficent privileges to control %s:%s", my_args.lxcpath[0], my_args.name);
 		lxc_container_put(c);
 		exit(EXIT_FAILURE);
 	}
 
 	if (!c->freeze(c)) {
-		fprintf(stderr, "Failed to freeze %s:%s\n", my_args.lxcpath[0], my_args.name);
+		ERROR("Failed to freeze %s:%s", my_args.lxcpath[0], my_args.name);
 		lxc_container_put(c);
 		exit(EXIT_FAILURE);
 	}

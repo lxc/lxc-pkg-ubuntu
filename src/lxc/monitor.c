@@ -22,6 +22,7 @@
  * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA
  */
 
+#define _GNU_SOURCE
 #include <errno.h>
 #include <fcntl.h>
 #include <inttypes.h>
@@ -53,7 +54,7 @@
 #include "include/strlcpy.h"
 #endif
 
-lxc_log_define(lxc_monitor, lxc);
+lxc_log_define(monitor, lxc);
 
 /* routines used by monitor publishers (containers) */
 int lxc_monitor_fifo_name(const char *lxcpath, char *fifo_path, size_t fifo_path_sz,
@@ -112,7 +113,7 @@ static void lxc_monitor_fifo_send(struct lxc_msg *msg, const char *lxcpath)
 		if (errno == ENXIO || errno == ENOENT)
 			return;
 
-		WARN("%s - Failed to open fifo to send message", strerror(errno));
+		SYSWARN("Failed to open fifo to send message");
 		return;
 	}
 
@@ -121,7 +122,7 @@ static void lxc_monitor_fifo_send(struct lxc_msg *msg, const char *lxcpath)
 		return;
 	}
 
-	ret = write(fd, msg, sizeof(*msg));
+	ret = lxc_write_nointr(fd, msg, sizeof(*msg));
 	if (ret != sizeof(*msg)) {
 		close(fd);
 		SYSERROR("Failed to write to monitor fifo \"%s\".", fifo_path);
@@ -216,18 +217,11 @@ int lxc_monitor_open(const char *lxcpath)
 	if (lxc_monitor_sock_name(lxcpath, &addr) < 0)
 		return -1;
 
-	fd = socket(PF_UNIX, SOCK_STREAM, 0);
-	if (fd < 0) {
-		ERROR("Failed to create socket: %s.", strerror(errno));
-		return -1;
-	}
-
 	len = strlen(&addr.sun_path[1]);
 	DEBUG("opening monitor socket %s with len %zu", &addr.sun_path[1], len);
 	if (len >= sizeof(addr.sun_path) - 1) {
 		errno = ENAMETOOLONG;
-		ERROR("name of monitor socket too long (%zu bytes): %s", len, strerror(errno));
-		close(fd);
+		SYSERROR("The name of monitor socket too long (%zu bytes)", len);
 		return -1;
 	}
 
@@ -235,12 +229,13 @@ int lxc_monitor_open(const char *lxcpath)
 		fd = lxc_abstract_unix_connect(addr.sun_path);
 		if (fd != -1 || errno != ECONNREFUSED)
 			break;
-		ERROR("Failed to connect to monitor socket. Retrying in %d ms: %s", backoff_ms[retry], strerror(errno));
+
+		SYSERROR("Failed to connect to monitor socket. Retrying in %d ms", backoff_ms[retry]);
 		usleep(backoff_ms[retry] * 1000);
 	}
 
 	if (fd < 0) {
-		ERROR("Failed to connect to monitor socket: %s.", strerror(errno));
+		SYSERROR("Failed to connect to monitor socket");
 		return -1;
 	}
 
@@ -267,7 +262,7 @@ int lxc_monitor_read_fdset(struct pollfd *fds, nfds_t nfds, struct lxc_msg *msg,
 			fds[i].revents = 0;
 			ret = recv(fds[i].fd, msg, sizeof(*msg), 0);
 			if (ret <= 0) {
-				SYSERROR("Failed to receive message. Did monitord die?: %s.", strerror(errno));
+				SYSERROR("Failed to receive message. Did monitord die?");
 				return -1;
 			}
 			return ret;
@@ -308,10 +303,10 @@ int lxc_monitord_spawn(const char *lxcpath)
 	pid_t pid1, pid2;
 
 	char *const args[] = {
-	    LXC_MONITORD_PATH,
-	    (char *)lxcpath,
-	    pipefd_str,
-	    NULL,
+		LXC_MONITORD_PATH,
+		(char *)lxcpath,
+		pipefd_str,
+		NULL,
 	};
 
 	/* double fork to avoid zombies when monitord exits */
@@ -323,21 +318,23 @@ int lxc_monitord_spawn(const char *lxcpath)
 
 	if (pid1) {
 		DEBUG("Going to wait for pid %d.", pid1);
+
 		if (waitpid(pid1, NULL, 0) != pid1)
 			return -1;
+
 		DEBUG("Finished waiting on pid %d.", pid1);
 		return 0;
 	}
 
 	if (pipe(pipefd) < 0) {
 		SYSERROR("Failed to create pipe.");
-		exit(EXIT_FAILURE);
+		_exit(EXIT_FAILURE);
 	}
 
 	pid2 = fork();
 	if (pid2 < 0) {
 		SYSERROR("Failed to fork().");
-		exit(EXIT_FAILURE);
+		_exit(EXIT_FAILURE);
 	}
 
 	if (pid2) {
@@ -351,24 +348,24 @@ int lxc_monitord_spawn(const char *lxcpath)
 		 * synced with the child process. the if-empty-statement
 		 * construct is to quiet the warn-unused-result warning.
 		 */
-		if (read(pipefd[0], &c, 1))
+		if (lxc_read_nointr(pipefd[0], &c, 1))
 			;
 
 		close(pipefd[0]);
 
 		DEBUG("Successfully synced with child process.");
-		exit(EXIT_SUCCESS);
+		_exit(EXIT_SUCCESS);
 	}
 
 	if (setsid() < 0) {
 		SYSERROR("Failed to setsid().");
-		exit(EXIT_FAILURE);
+		_exit(EXIT_FAILURE);
 	}
 
 	lxc_check_inherited(NULL, true, &pipefd[1], 1);
 	if (null_stdfds() < 0) {
 		SYSERROR("Failed to dup2() standard file descriptors to /dev/null.");
-		exit(EXIT_FAILURE);
+		_exit(EXIT_FAILURE);
 	}
 
 	close(pipefd[0]);
@@ -376,7 +373,7 @@ int lxc_monitord_spawn(const char *lxcpath)
 	ret = snprintf(pipefd_str, LXC_NUMSTRLEN64, "%d", pipefd[1]);
 	if (ret < 0 || ret >= LXC_NUMSTRLEN64) {
 		ERROR("Failed to create pid argument to pass to monitord.");
-		exit(EXIT_FAILURE);
+		_exit(EXIT_FAILURE);
 	}
 
 	DEBUG("Using pipe file descriptor %d for monitord.", pipefd[1]);
@@ -384,5 +381,5 @@ int lxc_monitord_spawn(const char *lxcpath)
 	execvp(args[0], args);
 	SYSERROR("failed to exec lxc-monitord");
 
-	exit(EXIT_FAILURE);
+	_exit(EXIT_FAILURE);
 }

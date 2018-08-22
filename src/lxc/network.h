@@ -263,7 +263,7 @@ extern int lxc_network_move_created_netdev_priv(const char *lxcpath,
 extern void lxc_delete_network(struct lxc_handler *handler);
 extern int lxc_find_gateway_addresses(struct lxc_handler *handler);
 extern int lxc_create_network_unpriv(const char *lxcpath, const char *lxcname,
-				     struct lxc_list *network, pid_t pid);
+				     struct lxc_list *network, pid_t pid, unsigned int hook_version);
 extern int lxc_requests_empty_network(struct lxc_handler *handler);
 extern int lxc_restore_phys_nics_to_netns(struct lxc_handler *handler);
 extern int lxc_setup_network_in_child_namespaces(const struct lxc_conf *conf,
@@ -272,5 +272,6 @@ extern int lxc_network_send_veth_names_to_child(struct lxc_handler *handler);
 extern int lxc_network_recv_veth_names_from_parent(struct lxc_handler *handler);
 extern int lxc_network_send_name_and_ifindex_to_parent(struct lxc_handler *handler);
 extern int lxc_network_recv_name_and_ifindex_from_child(struct lxc_handler *handler);
+extern int lxc_netns_set_nsid(int netns_fd);
 
 #endif /* __LXC_NETWORK_H */

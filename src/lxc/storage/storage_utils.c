@@ -93,8 +93,10 @@ char *dir_new_path(char *src, const char *oldname, const char *name,
 
 		/* copy text up to oldname */
 		retlen = strlcpy(p, src, p2 - src);
-		if (retlen >= p2 - src)
+		if (retlen >= p2 - src) {
+			free(ret);
 			return NULL;
+		}
 
 		/* move target pointer (p) */
 		p += p2 - src;
@@ -383,7 +385,7 @@ int find_fstype_cb(char *buffer, void *data)
 	}
 
 	if (mount(cbarg->rootfs, cbarg->target, fstype, mntflags, mntdata)) {
-		DEBUG("mount failed with error: %s", strerror(errno));
+		SYSDEBUG("mount failed with error");
 		free(mntdata);
 		return 0;
 	}
