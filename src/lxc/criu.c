@@ -63,7 +63,7 @@
 #define CRIU_IN_FLIGHT_SUPPORT	"2.4"
 #define CRIU_EXTERNAL_NOT_VETH	"2.8"
 
-lxc_log_define(lxc_criu, lxc);
+lxc_log_define(criu, lxc);
 
 struct criu_opts {
 	/* the thing to hook to stdout and stderr for logging */
@@ -677,7 +677,7 @@ bool __criu_check_feature(uint64_t *features_to_check)
 	pid_t pid;
 	uint64_t current_bit = 0;
 	int ret;
-	int features = *features_to_check;
+	uint64_t features = *features_to_check;
 	/* Feature checking is currently always like
 	 * criu check --feature <feature-name>
 	 */
@@ -868,13 +868,13 @@ static bool criu_ok(struct lxc_container *c, char **criu_version)
 {
 	struct lxc_list *it;
 
-	if (!criu_version_ok(criu_version))
-		return false;
-
 	if (geteuid()) {
 		ERROR("Must be root to checkpoint");
 		return false;
 	}
+
+	if (!criu_version_ok(criu_version))
+		return false;
 
 	/* We only know how to restore containers with veth networks. */
 	lxc_list_for_each(it, &c->lxc_conf->network) {
@@ -887,6 +887,10 @@ static bool criu_ok(struct lxc_container *c, char **criu_version)
 			break;
 		default:
 			ERROR("Found un-dumpable network: %s (%s)", lxc_net_type_to_str(n->type), n->name);
+			if (criu_version) {
+				free(*criu_version);
+				*criu_version = NULL;
+			}
 			return false;
 		}
 	}
@@ -896,6 +900,7 @@ static bool criu_ok(struct lxc_container *c, char **criu_version)
 
 static bool restore_net_info(struct lxc_container *c)
 {
+	int ret;
 	struct lxc_list *it;
 	bool has_error = true;
 
@@ -909,14 +914,16 @@ static bool restore_net_info(struct lxc_container *c)
 		if (netdev->type != LXC_NET_VETH)
 			continue;
 
-		snprintf(template, sizeof(template), "vethXXXXXX");
+		ret = snprintf(template, sizeof(template), "vethXXXXXX");
+		if (ret < 0 || ret >= sizeof(template))
+			goto out_unlock;
 
 		if (netdev->priv.veth_attr.pair[0] == '\0' &&
 		    netdev->priv.veth_attr.veth1[0] == '\0') {
 			if (!lxc_mkifname(template))
 				goto out_unlock;
 
-			strcpy(netdev->priv.veth_attr.veth1, template);
+			(void)strlcpy(netdev->priv.veth_attr.veth1, template, IFNAMSIZ);
 		}
 	}
 
@@ -976,11 +983,11 @@ static void do_restore(struct lxc_container *c, int status_pipe, struct migrate_
 
 	ret = resolve_clone_flags(handler);
 	if (ret < 0) {
-		ERROR("%s - Unsupported clone flag specified", strerror(errno));
+		SYSERROR("Unsupported clone flag specified");
 		goto out_fini_handler;
 	}
 
-	if (pipe(pipes) < 0) {
+	if (pipe2(pipes, O_CLOEXEC) < 0) {
 		SYSERROR("pipe() failed");
 		goto out_fini_handler;
 	}
@@ -1008,7 +1015,8 @@ static void do_restore(struct lxc_container *c, int status_pipe, struct migrate_
 		rootfs = &c->lxc_conf->rootfs;
 
 		if (rootfs_is_blockdev(c->lxc_conf)) {
-			if (do_rootfs_setup(c->lxc_conf, c->name, c->config_path) < 0)
+			if (lxc_setup_rootfs_prepare_root(c->lxc_conf, c->name,
+							  c->config_path) < 0)
 				goto out_fini_handler;
 		} else {
 			if (mkdir(rootfs->mount, 0755) < 0 && errno != EEXIST)
@@ -1076,7 +1084,7 @@ static void do_restore(struct lxc_container *c, int status_pipe, struct migrate_
 			if (WEXITSTATUS(status)) {
 				int n;
 
-				n = read(pipes[0], buf, sizeof(buf));
+				n = lxc_read_nointr(pipes[0], buf, sizeof(buf));
 				if (n < 0) {
 					SYSERROR("failed reading from criu stderr");
 					goto out_fini_handler;
@@ -1120,7 +1128,7 @@ static void do_restore(struct lxc_container *c, int status_pipe, struct migrate_
 
 		close(pipes[0]);
 
-		ret = write(status_pipe, &status, sizeof(status));
+		ret = lxc_write_nointr(status_pipe, &status, sizeof(status));
 		close(status_pipe);
 		status_pipe = -1;
 
@@ -1166,7 +1174,7 @@ out:
 		if (!status)
 			status = 1;
 
-		if (write(status_pipe, &status, sizeof(status)) != sizeof(status))
+		if (lxc_write_nointr(status_pipe, &status, sizeof(status)) != sizeof(status))
 			SYSERROR("writing status failed");
 		close(status_pipe);
 	}
@@ -1239,6 +1247,7 @@ static bool do_dump(struct lxc_container *c, char *mode, struct migrate_opts *op
 	ret = pipe(criuout);
 	if (ret < 0) {
 		SYSERROR("pipe() failed");
+		free(criu_version);
 		return false;
 	}
 
@@ -1299,16 +1308,21 @@ static bool do_dump(struct lxc_container *c, char *mode, struct migrate_opts *op
 		if (w == -1) {
 			SYSERROR("waitpid");
 			close(criuout[0]);
+			free(criu_version);
 			return false;
 		}
 
-		n = read(criuout[0], buf, sizeof(buf));
+		n = lxc_read_nointr(criuout[0], buf, sizeof(buf));
 		close(criuout[0]);
 		if (n < 0) {
 			SYSERROR("read");
 			n = 0;
 		}
-		buf[n] = 0;
+
+		if (n == sizeof(buf))
+			buf[n-1] = 0;
+		else
+			buf[n] = 0;
 
 		if (WIFEXITED(status)) {
 			if (WEXITSTATUS(status)) {
@@ -1327,6 +1341,8 @@ static bool do_dump(struct lxc_container *c, char *mode, struct migrate_opts *op
 
 		if (!ret)
 			ERROR("criu output: %s", buf);
+
+		free(criu_version);
 		return ret;
 	}
 fail:
@@ -1366,9 +1382,6 @@ bool __criu_restore(struct lxc_container *c, struct migrate_opts *opts)
 	int pipefd[2];
 	char *criu_version = NULL;
 
-	if (!criu_ok(c, &criu_version))
-		return false;
-
 	if (geteuid()) {
 		ERROR("Must be root to restore");
 		return false;
@@ -1379,10 +1392,17 @@ bool __criu_restore(struct lxc_container *c, struct migrate_opts *opts)
 		return false;
 	}
 
+	if (!criu_ok(c, &criu_version)) {
+		close(pipefd[0]);
+		close(pipefd[1]);
+		return false;
+	}
+
 	pid = fork();
 	if (pid < 0) {
 		close(pipefd[0]);
 		close(pipefd[1]);
+		free(criu_version);
 		return false;
 	}
 
@@ -1393,8 +1413,9 @@ bool __criu_restore(struct lxc_container *c, struct migrate_opts *opts)
 	}
 
 	close(pipefd[1]);
+	free(criu_version);
 
-	nread = read(pipefd[0], &status, sizeof(status));
+	nread = lxc_read_nointr(pipefd[0], &status, sizeof(status));
 	close(pipefd[0]);
 	if (sizeof(status) != nread) {
 		ERROR("reading status from pipe failed");

@@ -4,7 +4,7 @@
 m4_define([lxc_devel], 0)
 m4_define([lxc_version_major], 3)
 m4_define([lxc_version_minor], 0)
-m4_define([lxc_version_micro], 1)
+m4_define([lxc_version_micro], 2)
 m4_define([lxc_version_beta], [])
 
 m4_define([lxc_abi_major], 1)
@@ -44,6 +44,22 @@ AM_INIT_AUTOMAKE([-Wall -Werror -Wno-portability subdir-objects])
 AC_CANONICAL_HOST
 AM_PROG_CC_C_O
 AC_GNU_SOURCE
+
+# Test if we have a new enough compiler.
+AC_COMPILE_IFELSE([AC_LANG_PROGRAM([[
+#define GCC_VERSION \
+	(__GNUC__ * 10000 + __GNUC_MINOR__ * 100 + __GNUC_PATCHLEVEL__)
+
+#define CLANG_VERSION \
+	(__clang_major__ * 10000 + __clang_minor__ * 100 + __clang_patchlevel__)
+
+#if GCC_VERSION < 40600 && CLANG_VERSION < 10000
+#error Sorry, your compiler is too old - please upgrade it
+#endif
+	]])], [valid_compiler=yes], [valid_compiler=no])
+if test "x$valid_compiler" = "xno"; then
+	AC_MSG_ERROR([Sorry, your compiler is too old - please upgrade it])
+fi
 
 # libtool
 LT_INIT
@@ -595,11 +611,21 @@ AC_HEADER_MAJOR
 # Check for some syscalls functions
 AC_CHECK_FUNCS([setns pivot_root sethostname unshare rand_r confstr faccessat gettid memfd_create])
 
+# Check for strerror_r() support. Defines:
+# - HAVE_STRERROR_R if available
+# - HAVE_DECL_STRERROR_R if defined
+# - STRERROR_R_CHAR_P if it returns char *
+AC_FUNC_STRERROR_R
+
 # Check for some functions
 AC_CHECK_LIB(pthread, main)
 AC_CHECK_FUNCS(statvfs)
 AC_CHECK_LIB(util, openpty)
 AC_CHECK_FUNCS([openpty hasmntopt setmntent endmntent utmpxname])
+AC_CHECK_FUNCS([getgrgid_r],
+	AM_CONDITIONAL(HAVE_GETGRGID_R, true)
+	AC_DEFINE(HAVE_GETGRGID_R,1,[Have getgrgid_r]),
+	AM_CONDITIONAL(HAVE_GETGRGID_R, false))
 AC_CHECK_FUNCS([getline],
 	AM_CONDITIONAL(HAVE_GETLINE, true)
 	AC_DEFINE(HAVE_GETLINE,1,[Have getline]),
@@ -620,10 +646,18 @@ AC_CHECK_FUNCS([prlimit64],
 	AM_CONDITIONAL(HAVE_PRLIMIT64, true)
 	AC_DEFINE(HAVE_PRLIMIT64,1,[Have prlimit64]),
 	AM_CONDITIONAL(HAVE_PRLIMIT64, false))
+AC_CHECK_FUNCS([pthread_setcancelstate],
+	AM_CONDITIONAL(HAVE_PTHREAD_SETCANCELSTATE, true)
+	AC_DEFINE(HAVE_PTHREAD_SETCANCELSTATE,1,[Have pthread_setcancelstate]),
+	AM_CONDITIONAL(HAVE_PTHREAD_SETCANCELSTATE, false))
 AC_CHECK_FUNCS([strlcpy],
 	AM_CONDITIONAL(HAVE_STRLCPY, true)
 	AC_DEFINE(HAVE_STRLCPY,1,[Have strlcpy]),
 	AM_CONDITIONAL(HAVE_STRLCPY, false))
+AC_CHECK_FUNCS([strlcat],
+	AM_CONDITIONAL(HAVE_STRLCAT, true)
+	AC_DEFINE(HAVE_STRLCAT,1,[Have strlcat]),
+	AM_CONDITIONAL(HAVE_STRLCAT, false))
 
 # Check for some libraries
 AX_PTHREAD
@@ -636,12 +670,14 @@ AC_PROG_SED
 # See if we support thread-local storage.
 LXC_CHECK_TLS
 
-if test "x$GCC" = "xyes"; then
-	CFLAGS="$CFLAGS -Wall"
-	if test "x$enable_werror" = "xyes"; then
-		CFLAGS="$CFLAGS -Werror"
-	fi
+if test "x$enable_werror" = "xyes"; then
+	CFLAGS="$CFLAGS -Werror -Wvla -std=gnu11"
 fi
+
+AC_ARG_ENABLE([thread-safety],
+	[AC_HELP_STRING([--enable-thread-safety], [enforce thread-safety otherwise fail the build [default=yes]])],
+	[], [enable_thread_safety=yes])
+AM_CONDITIONAL([ENFORCE_THREAD_SAFETY], [test "x$enable_thread_safety" = "xyes"])
 
 # Files requiring some variable expansion
 AC_CONFIG_FILES([
@@ -886,4 +922,7 @@ Debugging:
 
 Paths:
  - Logs in configpath: $enable_configpath_log
+
+Thread-safety:
+ - enforce: $enable_thread_safety
 EOF

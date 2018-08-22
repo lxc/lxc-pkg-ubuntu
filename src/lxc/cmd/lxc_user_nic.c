@@ -51,6 +51,10 @@
 #include "parse.h"
 #include "utils.h"
 
+#ifndef HAVE_STRLCPY
+#include "include/strlcpy.h"
+#endif
+
 #define usernic_debug_stream(stream, format, ...)                              \
 	do {                                                                   \
 		fprintf(stream, "%s: %d: %s: " format, __FILE__, __LINE__,     \
@@ -103,15 +107,35 @@ static int open_and_lock(char *path)
 
 static char *get_username(void)
 {
-	struct passwd *pwd;
+	struct passwd pwent;
+	struct passwd *pwentp = NULL;
+	char *buf;
+	char *username;
+	size_t bufsize;
+	int ret;
 
-	pwd = getpwuid(getuid());
-	if (!pwd) {
-		usernic_error("Failed to get username: %s\n", strerror(errno));
+	bufsize = sysconf(_SC_GETPW_R_SIZE_MAX);
+	if (bufsize == -1)
+		bufsize = 1024;
+
+	buf = malloc(bufsize);
+	if (!buf)
+		return NULL;
+
+	ret = getpwuid_r(getuid(), &pwent, buf, bufsize, &pwentp);
+	if (!pwentp) {
+		if (ret == 0)
+			usernic_error("%s", "Could not find matched password record\n");
+
+		usernic_error("Failed to get username: %s(%u)\n", strerror(errno), getuid());
+		free(buf);
 		return NULL;
 	}
 
-	return pwd->pw_name;
+	username = strdup(pwent.pw_name);
+	free(buf);
+
+	return username;
 }
 
 static void free_groupnames(char **groupnames)
@@ -133,7 +157,10 @@ static char **get_groupnames(void)
 	gid_t *group_ids;
 	int ret, i;
 	char **groupnames;
-	struct group *gr;
+	struct group grent;
+	struct group *grentp = NULL;
+	char *buf;
+	size_t bufsize;
 
 	ngroups = getgroups(0, NULL);
 	if (ngroups < 0) {
@@ -171,26 +198,46 @@ static char **get_groupnames(void)
 
 	memset(groupnames, 0, sizeof(char *) * (ngroups + 1));
 
+	bufsize = sysconf(_SC_GETGR_R_SIZE_MAX);
+	if (bufsize == -1)
+		bufsize = 1024;
+
+	buf = malloc(bufsize);
+	if (!buf) {
+		free(group_ids);
+		free_groupnames(groupnames);
+		usernic_error("Failed to allocate memory while getting group "
+			      "names: %s\n",
+			      strerror(errno));
+		return NULL;
+	}
+
 	for (i = 0; i < ngroups; i++) {
-		gr = getgrgid(group_ids[i]);
-		if (!gr) {
-			usernic_error("Failed to get group name: %s\n",
-				      strerror(errno));
+		ret = getgrgid_r(group_ids[i], &grent, buf, bufsize, &grentp);
+		if (!grentp) {
+			if (ret == 0)
+				usernic_error("%s", "Could not find matched group record\n");
+
+			usernic_error("Failed to get group name: %s(%u)\n",
+			      strerror(errno), group_ids[i]);
+			free(buf);
 			free(group_ids);
 			free_groupnames(groupnames);
 			return NULL;
 		}
 
-		groupnames[i] = strdup(gr->gr_name);
+		groupnames[i] = strdup(grent.gr_name);
 		if (!groupnames[i]) {
 			usernic_error("Failed to copy group name \"%s\"",
-				      gr->gr_name);
+				      grent.gr_name);
+			free(buf);
 			free(group_ids);
 			free_groupnames(groupnames);
 			return NULL;
 		}
 	}
 
+	free(buf);
 	free(group_ids);
 
 	return groupnames;
@@ -786,9 +833,11 @@ static bool create_db_dir(char *fnam)
 {
 	int ret;
 	char *p;
+	size_t len;
 
-	p = alloca(strlen(fnam) + 1);
-	strcpy(p, fnam);
+	len = strlen(fnam);
+	p = alloca(len + 1);
+	(void)strlcpy(p, fnam, len + 1);
 	fnam = p;
 	p = p + 1;
 
@@ -1130,12 +1179,41 @@ int main(int argc, char *argv[])
 			exit(EXIT_FAILURE);
 		}
 	} else if (request == LXC_USERNIC_DELETE) {
-		netns_fd = open(args.pid, O_RDONLY);
+		char opath[LXC_PROC_PID_FD_LEN];
+
+		/* Open the path with O_PATH which will not trigger an actual
+		 * open(). Don't report an errno to the caller to not leak
+		 * information whether the path exists or not.
+		 * When stracing setuid is stripped so this is not a concern
+		 * either.
+		 */
+		netns_fd = open(args.pid, O_PATH | O_CLOEXEC);
 		if (netns_fd < 0) {
-			usernic_error("Could not open \"%s\": %s\n", args.pid,
-				      strerror(errno));
+			usernic_error("Failed to open \"%s\"\n", args.pid);
 			exit(EXIT_FAILURE);
 		}
+
+		if (!fhas_fs_type(netns_fd, NSFS_MAGIC)) {
+			usernic_error("Path \"%s\" does not refer to a network namespace path\n", args.pid);
+			close(netns_fd);
+			exit(EXIT_FAILURE);
+		}
+
+		ret = snprintf(opath, sizeof(opath), "/proc/self/fd/%d", netns_fd);
+		if (ret < 0 || (size_t)ret >= sizeof(opath)) {
+			close(netns_fd);
+			exit(EXIT_FAILURE);
+		}
+
+		/* Now get an fd that we can use in setns() calls. */
+		ret = open(opath, O_RDONLY | O_CLOEXEC);
+		if (ret < 0) {
+			usernic_error("Failed to open \"%s\": %s\n", args.pid, strerror(errno));
+			close(netns_fd);
+			exit(EXIT_FAILURE);
+		}
+		close(netns_fd);
+		netns_fd = ret;
 	}
 
 	if (!create_db_dir(LXC_USERNIC_DB)) {
@@ -1170,6 +1248,7 @@ int main(int argc, char *argv[])
 	}
 
 	n = get_alloted(me, args.type, args.link, &alloted);
+	free(me);
 
 	if (request == LXC_USERNIC_DELETE) {
 		int ret;

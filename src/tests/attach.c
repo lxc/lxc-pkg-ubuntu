@@ -32,6 +32,10 @@
 
 #include <lxc/lxccontainer.h>
 
+#ifndef HAVE_STRLCPY
+#include "include/strlcpy.h"
+#endif
+
 #define TSTNAME    "lxc-attach-test"
 #define TSTOUT(fmt, ...) do { \
 	fprintf(stdout, fmt, ##__VA_ARGS__); fflush(NULL); \
@@ -42,13 +46,6 @@
 
 static const char *lsm_config_key = NULL;
 static const char *lsm_label = NULL;
-
-bool file_exists(const char *f)
-{
-	struct stat statbuf;
-
-	return stat(f, &statbuf) == 0;
-}
 
 static void test_lsm_detect(void)
 {
@@ -399,7 +396,8 @@ int main(int argc, char *argv[])
 	char template[sizeof(P_tmpdir"/attach_XXXXXX")];
 	int fret = EXIT_FAILURE;
 
-	strcpy(template, P_tmpdir"/attach_XXXXXX");
+	(void)strlcpy(template, P_tmpdir"/attach_XXXXXX", sizeof(template));
+
 	i = lxc_make_tmpfile(template, false);
 	if (i < 0) {
 		lxc_error("Failed to create temporary log file for container %s\n", TSTNAME);

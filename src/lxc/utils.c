@@ -51,6 +51,14 @@
 #include "parse.h"
 #include "utils.h"
 
+#ifndef HAVE_STRLCPY
+#include "include/strlcpy.h"
+#endif
+
+#ifndef HAVE_STRLCAT
+#include "include/strlcat.h"
+#endif
+
 #ifndef O_PATH
 #define O_PATH      010000000
 #endif
@@ -59,7 +67,7 @@
 #define O_NOFOLLOW  00400000
 #endif
 
-lxc_log_define(lxc_utils, lxc);
+lxc_log_define(utils, lxc);
 
 /*
  * if path is btrfs, tries to remove it and any subvolumes beneath it
@@ -84,9 +92,6 @@ static int _recursive_rmdir(const char *dirname, dev_t pdev,
 	while ((direntp = readdir(dir))) {
 		struct stat mystat;
 		int rc;
-
-		if (!direntp)
-			break;
 
 		if (!strcmp(direntp->d_name, ".") ||
 		    !strcmp(direntp->d_name, ".."))
@@ -127,6 +132,7 @@ static int _recursive_rmdir(const char *dirname, dev_t pdev,
 			failed = 1;
 			continue;
 		}
+
 		if (onedev && mystat.st_dev != pdev) {
 			/* TODO should we be checking /proc/self/mountinfo for
 			 * pathname and not doing this if found? */
@@ -134,6 +140,7 @@ static int _recursive_rmdir(const char *dirname, dev_t pdev,
 				INFO("Removed btrfs subvolume at %s\n", pathname);
 			continue;
 		}
+
 		if (S_ISDIR(mystat.st_mode)) {
 			if (_recursive_rmdir(pathname, pdev, exclude, level+1, onedev) < 0)
 				failed=1;
@@ -158,15 +165,6 @@ static int _recursive_rmdir(const char *dirname, dev_t pdev,
 
 	return failed ? -1 : 0;
 }
-
-/* We have two different magic values for overlayfs, yay. */
-#ifndef OVERLAYFS_SUPER_MAGIC
-#define OVERLAYFS_SUPER_MAGIC 0x794c764f
-#endif
-
-#ifndef OVERLAY_SUPER_MAGIC
-#define OVERLAY_SUPER_MAGIC 0x794c7630
-#endif
 
 /* In overlayfs, st_dev is unreliable. So on overlayfs we don't do the
  * lxc_rmdir_onedev()
@@ -228,6 +226,7 @@ extern int mkdir_p(const char *dir, mode_t mode)
 	do {
 		dir = tmp + strspn(tmp, "/");
 		tmp = dir + strcspn(dir, "/");
+
 		makeme = strndup(orig, dir - orig);
 		if (*makeme) {
 			if (mkdir(makeme, mode) && errno != EEXIST) {
@@ -248,9 +247,8 @@ char *get_rundir()
 	const char *homedir;
 	struct stat sb;
 
-	if (stat(RUNTIME_PATH, &sb) < 0) {
+	if (stat(RUNTIME_PATH, &sb) < 0)
 		return NULL;
-	}
 
 	if (geteuid() == sb.st_uid || getegid() == sb.st_gid) {
 		rundir = strdup(RUNTIME_PATH);
@@ -271,6 +269,9 @@ char *get_rundir()
 	}
 
 	rundir = malloc(sizeof(char) * (17 + strlen(homedir)));
+	if (!rundir)
+		return NULL;
+
 	sprintf(rundir, "%s/.cache/lxc/run/", homedir);
 
 	return rundir;
@@ -285,12 +286,16 @@ again:
 	if (ret == -1) {
 		if (errno == EINTR)
 			goto again;
+
 		return -1;
 	}
+
 	if (ret != pid)
 		goto again;
+
 	if (!WIFEXITED(status) || WEXITSTATUS(status) != 0)
 		return -1;
+
 	return 0;
 }
 
@@ -303,46 +308,14 @@ again:
 	if (ret == -1) {
 		if (errno == EINTR)
 			goto again;
+
 		return -1;
 	}
+
 	if (ret != pid)
 		goto again;
+
 	return status;
-}
-
-ssize_t lxc_write_nointr(int fd, const void* buf, size_t count)
-{
-	ssize_t ret;
-again:
-	ret = write(fd, buf, count);
-	if (ret < 0 && errno == EINTR)
-		goto again;
-	return ret;
-}
-
-ssize_t lxc_read_nointr(int fd, void* buf, size_t count)
-{
-	ssize_t ret;
-again:
-	ret = read(fd, buf, count);
-	if (ret < 0 && errno == EINTR)
-		goto again;
-	return ret;
-}
-
-ssize_t lxc_read_nointr_expect(int fd, void* buf, size_t count, const void* expected_buf)
-{
-	ssize_t ret;
-	ret = lxc_read_nointr(fd, buf, count);
-	if (ret <= 0)
-		return ret;
-	if ((size_t)ret != count)
-		return -1;
-	if (expected_buf && memcmp(buf, expected_buf, count) != 0) {
-		errno = EINVAL;
-		return -1;
-	}
-	return ret;
 }
 
 #if HAVE_LIBGNUTLS
@@ -364,93 +337,56 @@ int sha1sum_file(char *fnam, unsigned char *digest)
 
 	if (!fnam)
 		return -1;
+
 	f = fopen_cloexec(fnam, "r");
 	if (!f) {
 		SYSERROR("Error opening template");
 		return -1;
 	}
+
 	if (fseek(f, 0, SEEK_END) < 0) {
 		SYSERROR("Error seeking to end of template");
 		fclose(f);
 		return -1;
 	}
+
 	if ((flen = ftell(f)) < 0) {
 		SYSERROR("Error telling size of template");
 		fclose(f);
 		return -1;
 	}
+
 	if (fseek(f, 0, SEEK_SET) < 0) {
 		SYSERROR("Error seeking to start of template");
 		fclose(f);
 		return -1;
 	}
+
 	if ((buf = malloc(flen+1)) == NULL) {
 		SYSERROR("Out of memory");
 		fclose(f);
 		return -1;
 	}
+
 	if (fread(buf, 1, flen, f) != flen) {
 		SYSERROR("Failure reading template");
 		free(buf);
 		fclose(f);
 		return -1;
 	}
+
 	if (fclose(f) < 0) {
 		SYSERROR("Failre closing template");
 		free(buf);
 		return -1;
 	}
+
 	buf[flen] = '\0';
 	ret = gnutls_hash_fast(GNUTLS_DIG_SHA1, buf, flen, (void *)digest);
 	free(buf);
 	return ret;
 }
 #endif
-
-char** lxc_va_arg_list_to_argv(va_list ap, size_t skip, int do_strdup)
-{
-	va_list ap2;
-	size_t count = 1 + skip;
-	char **result;
-
-	/* first determine size of argument list, we don't want to reallocate
-	 * constantly...
-	 */
-	va_copy(ap2, ap);
-	while (1) {
-		char* arg = va_arg(ap2, char*);
-		if (!arg)
-			break;
-		count++;
-	}
-	va_end(ap2);
-
-	result = calloc(count, sizeof(char*));
-	if (!result)
-		return NULL;
-	count = skip;
-	while (1) {
-		char* arg = va_arg(ap, char*);
-		if (!arg)
-			break;
-		arg = do_strdup ? strdup(arg) : arg;
-		if (!arg)
-			goto oom;
-		result[count++] = arg;
-	}
-
-	/* calloc has already set last element to NULL*/
-	return result;
-
-oom:
-	free(result);
-	return NULL;
-}
-
-const char** lxc_va_arg_list_to_argv_const(va_list ap, size_t skip)
-{
-	return (const char**)lxc_va_arg_list_to_argv(ap, skip, 0);
-}
 
 struct lxc_popen_FILE *lxc_popen(const char *command)
 {
@@ -510,6 +446,7 @@ struct lxc_popen_FILE *lxc_popen(const char *command)
 	fp = malloc(sizeof(*fp));
 	if (!fp)
 		goto on_error;
+
 	memset(fp, 0, sizeof(*fp));
 
 	fp->child_pid = child_pid;
@@ -565,492 +502,6 @@ int lxc_pclose(struct lxc_popen_FILE *fp)
 	return wstatus;
 }
 
-char *lxc_string_replace(const char *needle, const char *replacement, const char *haystack)
-{
-	ssize_t len = -1, saved_len = -1;
-	char *result = NULL;
-	size_t replacement_len = strlen(replacement);
-	size_t needle_len = strlen(needle);
-
-	/* should be executed exactly twice */
-	while (len == -1 || result == NULL) {
-		char *p;
-		char *last_p;
-		ssize_t part_len;
-
-		if (len != -1) {
-			result = calloc(1, len + 1);
-			if (!result)
-				return NULL;
-			saved_len = len;
-		}
-
-		len = 0;
-
-		for (last_p = (char *)haystack, p = strstr(last_p, needle); p; last_p = p, p = strstr(last_p, needle)) {
-			part_len = (ssize_t)(p - last_p);
-			if (result && part_len > 0)
-				memcpy(&result[len], last_p, part_len);
-			len += part_len;
-			if (result && replacement_len > 0)
-				memcpy(&result[len], replacement, replacement_len);
-			len += replacement_len;
-			p += needle_len;
-		}
-		part_len = strlen(last_p);
-		if (result && part_len > 0)
-			memcpy(&result[len], last_p, part_len);
-		len += part_len;
-	}
-
-	/* make sure we did the same thing twice,
-	 * once for calculating length, the other
-	 * time for copying data */
-	if (saved_len != len) {
-		free(result);
-		return NULL;
-	}
-	/* make sure we didn't overwrite any buffer,
-	 * due to calloc the string should be 0-terminated */
-	if (result[len] != '\0') {
-		free(result);
-		return NULL;
-	}
-
-	return result;
-}
-
-bool lxc_string_in_array(const char *needle, const char **haystack)
-{
-	for (; haystack && *haystack; haystack++)
-		if (!strcmp(needle, *haystack))
-			return true;
-	return false;
-}
-
-char *lxc_string_join(const char *sep, const char **parts, bool use_as_prefix)
-{
-	char *result;
-	char **p;
-	size_t sep_len = strlen(sep);
-	size_t result_len = use_as_prefix * sep_len;
-
-	/* calculate new string length */
-	for (p = (char **)parts; *p; p++)
-		result_len += (p > (char **)parts) * sep_len + strlen(*p);
-
-	result = calloc(result_len + 1, 1);
-	if (!result)
-		return NULL;
-
-	if (use_as_prefix)
-		strcpy(result, sep);
-	for (p = (char **)parts; *p; p++) {
-		if (p > (char **)parts)
-			strcat(result, sep);
-		strcat(result, *p);
-	}
-
-	return result;
-}
-
-char **lxc_normalize_path(const char *path)
-{
-	char **components;
-	char **p;
-	size_t components_len = 0;
-	size_t pos = 0;
-
-	components = lxc_string_split(path, '/');
-	if (!components)
-		return NULL;
-	for (p = components; *p; p++)
-		components_len++;
-
-	/* resolve '.' and '..' */
-	for (pos = 0; pos < components_len; ) {
-		if (!strcmp(components[pos], ".") || (!strcmp(components[pos], "..") && pos == 0)) {
-			/* eat this element */
-			free(components[pos]);
-			memmove(&components[pos], &components[pos+1], sizeof(char *) * (components_len - pos));
-			components_len--;
-		} else if (!strcmp(components[pos], "..")) {
-			/* eat this and the previous element */
-			free(components[pos - 1]);
-			free(components[pos]);
-			memmove(&components[pos-1], &components[pos+1], sizeof(char *) * (components_len - pos));
-			components_len -= 2;
-			pos--;
-		} else {
-			pos++;
-		}
-	}
-
-	return components;
-}
-
-char *lxc_deslashify(const char *path)
-{
-	char *dup, *p;
-	char **parts = NULL;
-	size_t n, len;
-
-	dup = strdup(path);
-	if (!dup)
-		return NULL;
-
-	parts = lxc_normalize_path(dup);
-	if (!parts) {
-		free(dup);
-		return NULL;
-	}
-
-	/* We'll end up here if path == "///" or path == "". */
-	if (!*parts) {
-		len = strlen(dup);
-		if (!len) {
-			lxc_free_array((void **)parts, free);
-			return dup;
-		}
-		n = strcspn(dup, "/");
-		if (n == len) {
-			free(dup);
-			lxc_free_array((void **)parts, free);
-
-			p = strdup("/");
-			if (!p)
-				return NULL;
-
-			return p;
-		}
-	}
-
-	p = lxc_string_join("/", (const char **)parts, *dup == '/');
-	free(dup);
-	lxc_free_array((void **)parts, free);
-	return p;
-}
-
-char *lxc_append_paths(const char *first, const char *second)
-{
-	int ret;
-	size_t len;
-	char *result = NULL;
-	const char *pattern = "%s%s";
-
-	len = strlen(first) + strlen(second) + 1;
-	if (second[0] != '/') {
-		len += 1;
-		pattern = "%s/%s";
-	}
-
-	result = calloc(1, len);
-	if (!result)
-		return NULL;
-
-	ret = snprintf(result, len, pattern, first, second);
-	if (ret < 0 || (size_t)ret >= len) {
-		free(result);
-		return NULL;
-	}
-
-	return result;
-}
-
-bool lxc_string_in_list(const char *needle, const char *haystack, char _sep)
-{
-	char *token, *str, *saveptr = NULL;
-	char sep[2] = { _sep, '\0' };
-
-	if (!haystack || !needle)
-		return 0;
-
-	str = alloca(strlen(haystack)+1);
-	strcpy(str, haystack);
-	for (; (token = strtok_r(str, sep, &saveptr)); str = NULL) {
-		if (strcmp(needle, token) == 0)
-			return 1;
-	}
-
-	return 0;
-}
-
-char **lxc_string_split(const char *string, char _sep)
-{
-	char *token, *str, *saveptr = NULL;
-	char sep[2] = {_sep, '\0'};
-	char **tmp = NULL, **result = NULL;
-	size_t result_capacity = 0;
-	size_t result_count = 0;
-	int r, saved_errno;
-
-	if (!string)
-		return calloc(1, sizeof(char *));
-
-	str = alloca(strlen(string) + 1);
-	strcpy(str, string);
-	for (; (token = strtok_r(str, sep, &saveptr)); str = NULL) {
-		r = lxc_grow_array((void ***)&result, &result_capacity, result_count + 1, 16);
-		if (r < 0)
-			goto error_out;
-		result[result_count] = strdup(token);
-		if (!result[result_count])
-			goto error_out;
-		result_count++;
-	}
-
-	/* if we allocated too much, reduce it */
-	tmp = realloc(result, (result_count + 1) * sizeof(char *));
-	if (!tmp)
-		goto error_out;
-	result = tmp;
-	/* Make sure we don't return uninitialized memory. */
-	if (result_count == 0)
-		*result = NULL;
-	return result;
-error_out:
-	saved_errno = errno;
-	lxc_free_array((void **)result, free);
-	errno = saved_errno;
-	return NULL;
-}
-
-static bool complete_word(char ***result, char *start, char *end, size_t *cap, size_t *cnt)
-{
-	int r;
-
-	r = lxc_grow_array((void ***)result, cap, 2 + *cnt, 16);
-	if (r < 0)
-		return false;
-	(*result)[*cnt] = strndup(start, end - start);
-	if (!(*result)[*cnt])
-		return false;
-	(*cnt)++;
-
-	return true;
-}
-
-/*
- * Given a a string 'one two "three four"', split into three words,
- * one, two, and "three four"
- */
-char **lxc_string_split_quoted(char *string)
-{
-	char *nextword = string, *p, state;
-	char **result = NULL;
-	size_t result_capacity = 0;
-	size_t result_count = 0;
-
-	if (!string || !*string)
-		return calloc(1, sizeof(char *));
-
-	// TODO I'm *not* handling escaped quote
-	state = ' ';
-	for (p = string; *p; p++) {
-		switch(state) {
-		case ' ':
-			if (isspace(*p))
-				continue;
-			else if (*p == '"' || *p == '\'') {
-				nextword = p;
-				state = *p;
-				continue;
-			}
-			nextword = p;
-			state = 'a';
-			continue;
-		case 'a':
-			if (isspace(*p)) {
-				complete_word(&result, nextword, p, &result_capacity, &result_count);
-				state = ' ';
-				continue;
-			}
-			continue;
-		case '"':
-		case '\'':
-			if (*p == state) {
-				complete_word(&result, nextword+1, p, &result_capacity, &result_count);
-				state = ' ';
-				continue;
-			}
-			continue;
-		}
-	}
-
-	if (state == 'a')
-		complete_word(&result, nextword, p, &result_capacity, &result_count);
-
-	return realloc(result, (result_count + 1) * sizeof(char *));
-}
-
-char **lxc_string_split_and_trim(const char *string, char _sep)
-{
-	char *token, *str, *saveptr = NULL;
-	char sep[2] = { _sep, '\0' };
-	char **result = NULL;
-	size_t result_capacity = 0;
-	size_t result_count = 0;
-	int r, saved_errno;
-	size_t i = 0;
-
-	if (!string)
-		return calloc(1, sizeof(char *));
-
-	str = alloca(strlen(string)+1);
-	strcpy(str, string);
-	for (; (token = strtok_r(str, sep, &saveptr)); str = NULL) {
-		while (token[0] == ' ' || token[0] == '\t')
-			token++;
-		i = strlen(token);
-		while (i > 0 && (token[i - 1] == ' ' || token[i - 1] == '\t')) {
-			token[i - 1] = '\0';
-			i--;
-		}
-		r = lxc_grow_array((void ***)&result, &result_capacity, result_count + 1, 16);
-		if (r < 0)
-			goto error_out;
-		result[result_count] = strdup(token);
-		if (!result[result_count])
-			goto error_out;
-		result_count++;
-	}
-
-	/* if we allocated too much, reduce it */
-	return realloc(result, (result_count + 1) * sizeof(char *));
-error_out:
-	saved_errno = errno;
-	lxc_free_array((void **)result, free);
-	errno = saved_errno;
-	return NULL;
-}
-
-void lxc_free_array(void **array, lxc_free_fn element_free_fn)
-{
-	void **p;
-	for (p = array; p && *p; p++)
-		element_free_fn(*p);
-	free((void*)array);
-}
-
-int lxc_grow_array(void ***array, size_t* capacity, size_t new_size, size_t capacity_increment)
-{
-	size_t new_capacity;
-	void **new_array;
-
-	/* first time around, catch some trivial mistakes of the user
-	 * only initializing one of these */
-	if (!*array || !*capacity) {
-		*array = NULL;
-		*capacity = 0;
-	}
-
-	new_capacity = *capacity;
-	while (new_size + 1 > new_capacity)
-		new_capacity += capacity_increment;
-	if (new_capacity != *capacity) {
-		/* we have to reallocate */
-		new_array = realloc(*array, new_capacity * sizeof(void *));
-		if (!new_array)
-			return -1;
-		memset(&new_array[*capacity], 0, (new_capacity - (*capacity)) * sizeof(void *));
-		*array = new_array;
-		*capacity = new_capacity;
-	}
-
-	/* array has sufficient elements */
-	return 0;
-}
-
-size_t lxc_array_len(void **array)
-{
-	void **p;
-	size_t result = 0;
-
-	for (p = array; p && *p; p++)
-		result++;
-
-	return result;
-}
-
-int lxc_write_to_file(const char *filename, const void *buf, size_t count,
-		      bool add_newline, mode_t mode)
-{
-	int fd, saved_errno;
-	ssize_t ret;
-
-	fd = open(filename, O_WRONLY | O_TRUNC | O_CREAT | O_CLOEXEC, mode);
-	if (fd < 0)
-		return -1;
-	ret = lxc_write_nointr(fd, buf, count);
-	if (ret < 0)
-		goto out_error;
-	if ((size_t)ret != count)
-		goto out_error;
-	if (add_newline) {
-		ret = lxc_write_nointr(fd, "\n", 1);
-		if (ret != 1)
-			goto out_error;
-	}
-	close(fd);
-	return 0;
-
-out_error:
-	saved_errno = errno;
-	close(fd);
-	errno = saved_errno;
-	return -1;
-}
-
-int lxc_read_from_file(const char *filename, void* buf, size_t count)
-{
-	int fd = -1, saved_errno;
-	ssize_t ret;
-
-	fd = open(filename, O_RDONLY | O_CLOEXEC);
-	if (fd < 0)
-		return -1;
-
-	if (!buf || !count) {
-		char buf2[100];
-		size_t count2 = 0;
-		while ((ret = read(fd, buf2, 100)) > 0)
-			count2 += ret;
-		if (ret >= 0)
-			ret = count2;
-	} else {
-		memset(buf, 0, count);
-		ret = read(fd, buf, count);
-	}
-
-	if (ret < 0)
-		ERROR("read %s: %s", filename, strerror(errno));
-
-	saved_errno = errno;
-	close(fd);
-	errno = saved_errno;
-	return ret;
-}
-
-void **lxc_append_null_to_array(void **array, size_t count)
-{
-	void **temp;
-
-	/* Append NULL to the array */
-	if (count) {
-		temp = realloc(array, (count + 1) * sizeof(*array));
-		if (!temp) {
-			size_t i;
-			for (i = 0; i < count; i++)
-				free(array[i]);
-			free(array);
-			return NULL;
-		}
-		array = temp;
-		array[count] = NULL;
-	}
-	return array;
-}
-
 int randseed(bool srand_it)
 {
 	/*
@@ -1063,7 +514,8 @@ int randseed(bool srand_it)
 	if (f) {
 		int ret = fread(&seed, sizeof(seed), 1, f);
 		if (ret != 1)
-			DEBUG("unable to fread /dev/urandom, %s, fallback to time+pid rand seed", strerror(errno));
+			SYSDEBUG("unable to fread /dev/urandom, fallback to time+pid rand seed");
+
 		fclose(f);
 	}
 
@@ -1085,6 +537,7 @@ uid_t get_ns_uid(uid_t orig)
 	while (getline(&line, &sz, f) != -1) {
 		if (sscanf(line, "%u %u %u", &nsid, &hostid, &range) != 3)
 			continue;
+
 		if (hostid <= orig && hostid + range > orig) {
 			nsid += orig - hostid;
 			goto found;
@@ -1092,6 +545,7 @@ uid_t get_ns_uid(uid_t orig)
 	}
 
 	nsid = 0;
+
 found:
 	fclose(f);
 	free(line);
@@ -1107,6 +561,7 @@ bool dir_exists(const char *path)
 	if (ret < 0)
 		/* Could be something other than eexist, just say "no". */
 		return false;
+
 	return S_ISDIR(sb.st_mode);
 }
 
@@ -1151,14 +606,17 @@ int detect_shared_rootfs(void)
 	f = fopen("/proc/self/mountinfo", "r");
 	if (!f)
 		return 0;
+
 	while (fgets(buf, LXC_LINELEN, f)) {
 		for (p = buf, i = 0; p && i < 4; i++)
 			p = strchr(p + 1, ' ');
 		if (!p)
 			continue;
+
 		p2 = strchr(p + 1, ' ');
 		if (!p2)
 			continue;
+
 		*p2 = '\0';
 		if (strcmp(p + 1, "/") == 0) {
 			/* This is '/'. Is it shared? */
@@ -1169,11 +627,13 @@ int detect_shared_rootfs(void)
 			}
 		}
 	}
+
 	fclose(f);
 	return 0;
 }
 
-bool switch_to_ns(pid_t pid, const char *ns) {
+bool switch_to_ns(pid_t pid, const char *ns)
+{
 	int fd, ret;
 	char nspath[MAXPATHLEN];
 
@@ -1184,16 +644,17 @@ bool switch_to_ns(pid_t pid, const char *ns) {
 
 	fd = open(nspath, O_RDONLY);
 	if (fd < 0) {
-		SYSERROR("failed to open %s", nspath);
+		SYSERROR("Failed to open %s", nspath);
 		return false;
 	}
 
 	ret = setns(fd, 0);
 	if (ret) {
-		SYSERROR("failed to set process %d to %s of %d.", pid, ns, fd);
+		SYSERROR("Failed to set process %d to %s of %d.", pid, ns, fd);
 		close(fd);
 		return false;
 	}
+
 	close(fd);
 	return true;
 }
@@ -1222,9 +683,11 @@ bool detect_ramfs_rootfs(void)
 			p = strchr(p + 1, ' ');
 		if (!p)
 			continue;
+
 		p2 = strchr(p + 1, ' ');
 		if (!p2)
 			continue;
+
 		*p2 = '\0';
 		if (strcmp(p + 1, "/") == 0) {
 			/* This is '/'. Is it the ramfs? */
@@ -1232,19 +695,20 @@ bool detect_ramfs_rootfs(void)
 			if (p && strncmp(p, "- rootfs rootfs ", 16) == 0) {
 				free(line);
 				fclose(f);
+				INFO("Rootfs is located on ramfs");
 				return true;
 			}
 		}
 	}
+
 	free(line);
 	fclose(f);
 	return false;
 }
 
-char *on_path(const char *cmd, const char *rootfs) {
-	char *path = NULL;
-	char *entry = NULL;
-	char *saveptr = NULL;
+char *on_path(const char *cmd, const char *rootfs)
+{
+	char *entry = NULL, *path = NULL;
 	char cmdpath[MAXPATHLEN];
 	int ret;
 
@@ -1256,34 +720,23 @@ char *on_path(const char *cmd, const char *rootfs) {
 	if (!path)
 		return NULL;
 
-	entry = strtok_r(path, ":", &saveptr);
-	while (entry) {
+	lxc_iterate_parts (entry, path, ":") {
 		if (rootfs)
-			ret = snprintf(cmdpath, MAXPATHLEN, "%s/%s/%s", rootfs, entry, cmd);
+			ret = snprintf(cmdpath, MAXPATHLEN, "%s/%s/%s", rootfs,
+				       entry, cmd);
 		else
 			ret = snprintf(cmdpath, MAXPATHLEN, "%s/%s", entry, cmd);
-
 		if (ret < 0 || ret >= MAXPATHLEN)
-			goto next_loop;
+			continue;
 
 		if (access(cmdpath, X_OK) == 0) {
 			free(path);
 			return strdup(cmdpath);
 		}
-
-next_loop:
-		entry = strtok_r(NULL, ":", &saveptr);
 	}
 
 	free(path);
 	return NULL;
-}
-
-bool file_exists(const char *f)
-{
-	struct stat statbuf;
-
-	return stat(f, &statbuf) == 0;
 }
 
 bool cgns_supported(void)
@@ -1304,6 +757,7 @@ char *choose_init(const char *rootfs)
 	if (!getenv("PATH")) {
 		if (setenv("PATH", "/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin", 0))
 			SYSERROR("Failed to setenv");
+
 		env_set = 1;
 	}
 
@@ -1331,6 +785,7 @@ char *choose_init(const char *rootfs)
 		ERROR("pathname too long");
 		goto out1;
 	}
+
 	if (access(retv, X_OK) == 0)
 		return retv;
 
@@ -1339,6 +794,7 @@ char *choose_init(const char *rootfs)
 		ERROR("pathname too long");
 		goto out1;
 	}
+
 	if (access(retv, X_OK) == 0)
 		return retv;
 
@@ -1347,6 +803,7 @@ char *choose_init(const char *rootfs)
 		ERROR("pathname too long");
 		goto out1;
 	}
+
 	if (access(retv, X_OK) == 0)
 		return retv;
 
@@ -1355,6 +812,7 @@ char *choose_init(const char *rootfs)
 		ERROR("pathname too long");
 		goto out1;
 	}
+
 	if (access(retv, X_OK) == 0)
 		return retv;
 
@@ -1373,35 +831,13 @@ char *choose_init(const char *rootfs)
 		WARN("Nonsense - name /lxc.init.static too long");
 		goto out1;
 	}
+
 	if (access(retv, X_OK) == 0)
 		return retv;
 
 out1:
 	free(retv);
 	return NULL;
-}
-
-int print_to_file(const char *file, const char *content)
-{
-	FILE *f;
-	int ret = 0;
-
-	f = fopen(file, "w");
-	if (!f)
-		return -1;
-	if (fprintf(f, "%s", content) != strlen(content))
-		ret = -1;
-	fclose(f);
-	return ret;
-}
-
-int is_dir(const char *path)
-{
-	struct stat statbuf;
-	int ret = stat(path, &statbuf);
-	if (ret == 0 && S_ISDIR(statbuf.st_mode))
-		return 1;
-	return 0;
 }
 
 /*
@@ -1421,14 +857,17 @@ char *get_template_path(const char *t)
 	}
 
 	len = strlen(LXCTEMPLATEDIR) + strlen(t) + strlen("/lxc-") + 1;
+
 	tpath = malloc(len);
 	if (!tpath)
 		return NULL;
+
 	ret = snprintf(tpath, len, "%s/lxc-%s", LXCTEMPLATEDIR, t);
 	if (ret < 0 || ret >= len) {
 		free(tpath);
 		return NULL;
 	}
+
 	if (access(tpath, X_OK) < 0) {
 		SYSERROR("bad template: %s", t);
 		free(tpath);
@@ -1454,6 +893,7 @@ static char *get_nextpath(char *path, int *offsetp, int fulllen)
 
 	while (path[offset] != '\0' && offset < fulllen)
 		offset++;
+
 	while (path[offset] == '\0' && offset < fulllen)
 		offset++;
 
@@ -1471,12 +911,16 @@ static bool is_subdir(const char *subdir, const char *dir, size_t len)
 
 	if (subdirlen < len)
 		return false;
+
 	if (strncmp(subdir, dir, len) != 0)
 		return false;
+
 	if (dir[len-1] == '/')
 		return true;
+
 	if (subdir[len] == '/' || subdirlen == len)
 		return true;
+
 	return false;
 }
 
@@ -1487,11 +931,15 @@ static bool is_subdir(const char *subdir, const char *dir, size_t len)
 static int check_symlink(int fd)
 {
 	struct stat sb;
-	int ret = fstat(fd, &sb);
+	int ret;
+
+	ret = fstat(fd, &sb);
 	if (ret < 0)
 		return -ENOENT;
+
 	if (S_ISLNK(sb.st_mode))
 		return -ELOOP;
+
 	return 0;
 }
 
@@ -1559,6 +1007,7 @@ static int open_without_symlink(const char *target, const char *prefix_skip)
 				target, prefix_skip);
 			return -EINVAL;
 		}
+
 		/*
 		 * get_nextpath() expects the curlen argument to be
 		 * on a  (turned into \0) / or before it, so decrement
@@ -1576,6 +1025,7 @@ static int open_without_symlink(const char *target, const char *prefix_skip)
 		SYSERROR("Out of memory checking for symbolic link");
 		return -ENOMEM;
 	}
+
 	for (i = 0; i < fulllen; i++) {
 		if (dup[i] == '/')
 			dup[i] = '\0';
@@ -1584,20 +1034,24 @@ static int open_without_symlink(const char *target, const char *prefix_skip)
 	dirfd = open(prefix_skip, O_RDONLY);
 	if (dirfd < 0)
 		goto out;
+
 	while (1) {
 		int newfd, saved_errno;
 		char *nextpath;
 
 		if ((nextpath = get_nextpath(dup, &curlen, fulllen)) == NULL)
 			goto out;
+
 		newfd = open_if_safe(dirfd, nextpath);
 		saved_errno = errno;
 		close(dirfd);
+
 		dirfd = newfd;
 		if (newfd < 0) {
 			errno = saved_errno;
 			if (errno == ELOOP)
 				SYSERROR("%s in %s was a symbolic link!", nextpath, target);
+
 			goto out;
 		}
 	}
@@ -1630,9 +1084,11 @@ int safe_mount(const char *src, const char *dest, const char *fstype,
 	/* todo - allow symlinks for relative paths if 'allowsymlinks' option is passed */
 	if (flags & MS_BIND && src && src[0] != '/') {
 		INFO("this is a relative bind mount");
+
 		srcfd = open_without_symlink(src, NULL);
 		if (srcfd < 0)
 			return srcfd;
+
 		ret = snprintf(srcbuf, 50, "/proc/self/fd/%d", srcfd);
 		if (ret < 0 || ret > 50) {
 			close(srcfd);
@@ -1649,6 +1105,7 @@ int safe_mount(const char *src, const char *dest, const char *fstype,
 			close(srcfd);
 			errno = saved_errno;
 		}
+
 		return destfd;
 	}
 
@@ -1656,6 +1113,7 @@ int safe_mount(const char *src, const char *dest, const char *fstype,
 	if (ret < 0 || ret > 50) {
 		if (srcfd != -1)
 			close(srcfd);
+
 		close(destfd);
 		ERROR("Out of memory");
 		return -EINVAL;
@@ -1665,6 +1123,7 @@ int safe_mount(const char *src, const char *dest, const char *fstype,
 	saved_errno = errno;
 	if (srcfd != -1)
 		close(srcfd);
+
 	close(destfd);
 	if (ret < 0) {
 		errno = saved_errno;
@@ -1711,6 +1170,7 @@ int lxc_mount_proc_if_needed(const char *rootfs)
 	if (linklen < 0) {
 		if (mkdir(path, 0755) && errno != EEXIST)
 			return -1;
+
 		goto domount;
 	} else if (linklen >= LXC_NUMSTRLEN64) {
 		link[linklen - 1] = '\0';
@@ -1780,36 +1240,15 @@ int set_stdfds(int fd)
 int null_stdfds(void)
 {
 	int ret = -1;
-	int fd = open_devnull();
+	int fd;
 
+	fd = open_devnull();
 	if (fd >= 0) {
 		ret = set_stdfds(fd);
 		close(fd);
 	}
 
 	return ret;
-}
-
-/*
- * Return the number of lines in file @fn, or -1 on error
- */
-int lxc_count_file_lines(const char *fn)
-{
-	FILE *f;
-	char *line = NULL;
-	size_t sz = 0;
-	int n = 0;
-
-	f = fopen_cloexec(fn, "r");
-	if (!f)
-		return -1;
-
-	while (getline(&line, &sz, f) != -1) {
-		n++;
-	}
-	free(line);
-	fclose(f);
-	return n;
 }
 
 /* Check whether a signal is blocked by a process. */
@@ -1856,44 +1295,6 @@ out:
 	return bret;
 }
 
-static int lxc_append_null_to_list(void ***list)
-{
-	int newentry = 0;
-	void **tmp;
-
-	if (*list)
-		for (; (*list)[newentry]; newentry++) {
-			;
-		}
-
-	tmp = realloc(*list, (newentry + 2) * sizeof(void **));
-	if (!tmp)
-		return -1;
-
-	*list = tmp;
-	(*list)[newentry + 1] = NULL;
-
-	return newentry;
-}
-
-int lxc_append_string(char ***list, char *entry)
-{
-	char *copy;
-	int newentry;
-
-	newentry = lxc_append_null_to_list((void ***)list);
-	if (newentry < 0)
-		return -1;
-
-	copy = strdup(entry);
-	if (!copy)
-		return -1;
-
-	(*list)[newentry] = copy;
-
-	return 0;
-}
-
 int lxc_preserve_ns(const int pid, const char *ns)
 {
 	int ret;
@@ -1908,146 +1309,12 @@ int lxc_preserve_ns(const int pid, const char *ns)
 	ret = snprintf(path, __NS_PATH_LEN, "/proc/%d/ns%s%s", pid,
 		       !ns || strcmp(ns, "") == 0 ? "" : "/",
 		       !ns || strcmp(ns, "") == 0 ? "" : ns);
-	errno = EFBIG;
-	if (ret < 0 || (size_t)ret >= __NS_PATH_LEN)
-		return -EFBIG;
+	if (ret < 0 || (size_t)ret >= __NS_PATH_LEN) {
+		errno = EFBIG;
+		return -1;
+	}
 
 	return open(path, O_RDONLY | O_CLOEXEC);
-}
-
-int lxc_safe_uint(const char *numstr, unsigned int *converted)
-{
-	char *err = NULL;
-	unsigned long int uli;
-
-	while (isspace(*numstr))
-		numstr++;
-
-	if (*numstr == '-')
-		return -EINVAL;
-
-	errno = 0;
-	uli = strtoul(numstr, &err, 0);
-	if (errno == ERANGE && uli == ULONG_MAX)
-		return -ERANGE;
-
-	if (err == numstr || *err != '\0')
-		return -EINVAL;
-
-	if (uli > UINT_MAX)
-		return -ERANGE;
-
-	*converted = (unsigned int)uli;
-	return 0;
-}
-
-int lxc_safe_ulong(const char *numstr, unsigned long *converted)
-{
-	char *err = NULL;
-	unsigned long int uli;
-
-	while (isspace(*numstr))
-		numstr++;
-
-	if (*numstr == '-')
-		return -EINVAL;
-
-	errno = 0;
-	uli = strtoul(numstr, &err, 0);
-	if (errno == ERANGE && uli == ULONG_MAX)
-		return -ERANGE;
-
-	if (err == numstr || *err != '\0')
-		return -EINVAL;
-
-	*converted = uli;
-	return 0;
-}
-
-int lxc_safe_uint64(const char *numstr, uint64_t *converted, int base)
-{
-	char *err = NULL;
-	uint64_t u;
-
-	while (isspace(*numstr))
-		numstr++;
-
-	if (*numstr == '-')
-		return -EINVAL;
-
-	errno = 0;
-	u = strtoull(numstr, &err, base);
-	if (errno == ERANGE && u == ULLONG_MAX)
-		return -ERANGE;
-
-	if (err == numstr || *err != '\0')
-		return -EINVAL;
-
-	*converted = u;
-	return 0;
-}
-
-int lxc_safe_int(const char *numstr, int *converted)
-{
-	char *err = NULL;
-	signed long int sli;
-
-	errno = 0;
-	sli = strtol(numstr, &err, 0);
-	if (errno == ERANGE && (sli == LONG_MAX || sli == LONG_MIN))
-		return -ERANGE;
-
-	if (errno != 0 && sli == 0)
-		return -EINVAL;
-
-	if (err == numstr || *err != '\0')
-		return -EINVAL;
-
-	if (sli > INT_MAX || sli < INT_MIN)
-		return -ERANGE;
-
-	*converted = (int)sli;
-	return 0;
-}
-
-int lxc_safe_long(const char *numstr, long int *converted)
-{
-	char *err = NULL;
-	signed long int sli;
-
-	errno = 0;
-	sli = strtol(numstr, &err, 0);
-	if (errno == ERANGE && (sli == LONG_MAX || sli == LONG_MIN))
-		return -ERANGE;
-
-	if (errno != 0 && sli == 0)
-		return -EINVAL;
-
-	if (err == numstr || *err != '\0')
-		return -EINVAL;
-
-	*converted = sli;
-	return 0;
-}
-
-int lxc_safe_long_long(const char *numstr, long long int *converted)
-{
-	char *err = NULL;
-	signed long long int sli;
-
-	errno = 0;
-	sli = strtoll(numstr, &err, 0);
-	if (errno == ERANGE && (sli == LLONG_MAX || sli == LLONG_MIN))
-		return -ERANGE;
-
-	if (errno != 0 && sli == 0)
-		return -EINVAL;
-
-	if (err == numstr || *err != '\0')
-		return -EINVAL;
-
-	*converted = sli;
-	return 0;
 }
 
 int lxc_switch_uid_gid(uid_t uid, gid_t gid)
@@ -2091,9 +1358,6 @@ static int lxc_get_unused_loop_dev_legacy(char *loop_name)
 		return -1;
 
 	while ((dp = readdir(dir))) {
-		if (!dp)
-			break;
-
 		if (strncmp(dp->d_name, "loop", 4) != 0)
 			continue;
 
@@ -2224,6 +1488,7 @@ pop_stack:
 		 */
 		if (umounts != INT_MAX)
 			umounts++;
+
 		/* We succeeded in umounting. Make sure that there's no other
 		 * mountpoint stacked underneath.
 		 */
@@ -2239,7 +1504,7 @@ int run_command(char *buf, size_t buf_size, int (*child_fn)(void *), void *args)
 	int ret, fret, pipefd[2];
 	ssize_t bytes;
 
-	/* Make sure our callers do not receive unitialized memory. */
+	/* Make sure our callers do not receive uninitialized memory. */
 	if (buf_size > 0 && buf)
 		buf[0] = '\0';
 
@@ -2285,7 +1550,7 @@ int run_command(char *buf, size_t buf_size, int (*child_fn)(void *), void *args)
 	close(pipefd[1]);
 
 	if (buf && buf_size > 0) {
-		bytes = read(pipefd[0], buf, buf_size - 1);
+		bytes = lxc_read_nointr(pipefd[0], buf, buf_size - 1);
 		if (bytes > 0)
 			buf[bytes - 1] = '\0';
 	}
@@ -2295,102 +1560,6 @@ int run_command(char *buf, size_t buf_size, int (*child_fn)(void *), void *args)
 	close(pipefd[0]);
 
 	return fret;
-}
-
-char *must_make_path(const char *first, ...)
-{
-	va_list args;
-	char *cur, *dest;
-	size_t full_len = strlen(first);
-
-	dest = must_copy_string(first);
-
-	va_start(args, first);
-	while ((cur = va_arg(args, char *)) != NULL) {
-		full_len += strlen(cur);
-		if (cur[0] != '/')
-			full_len++;
-		dest = must_realloc(dest, full_len + 1);
-		if (cur[0] != '/')
-			strcat(dest, "/");
-		strcat(dest, cur);
-	}
-	va_end(args);
-
-	return dest;
-}
-
-char *must_append_path(char *first, ...)
-{
-	char *cur;
-	size_t full_len;
-	va_list args;
-	char *dest = first;
-
-	full_len = strlen(first);
-	va_start(args, first);
-	while ((cur = va_arg(args, char *)) != NULL) {
-		full_len += strlen(cur);
-
-		if (cur[0] != '/')
-			full_len++;
-
-		dest = must_realloc(dest, full_len + 1);
-
-		if (cur[0] != '/')
-			strcat(dest, "/");
-
-		strcat(dest, cur);
-	}
-	va_end(args);
-
-	return dest;
-}
-
-char *must_copy_string(const char *entry)
-{
-	char *ret;
-
-	if (!entry)
-		return NULL;
-	do {
-		ret = strdup(entry);
-	} while (!ret);
-
-	return ret;
-}
-
-void *must_realloc(void *orig, size_t sz)
-{
-	void *ret;
-
-	do {
-		ret = realloc(orig, sz);
-	} while (!ret);
-
-	return ret;
-}
-
-bool is_fs_type(const struct statfs *fs, fs_type_magic magic_val)
-{
-	return (fs->f_type == (fs_type_magic)magic_val);
-}
-
-bool has_fs_type(const char *path, fs_type_magic magic_val)
-{
-	bool has_type;
-	int ret;
-	struct statfs sb;
-
-	ret = statfs(path, &sb);
-	if (ret < 0)
-		return false;
-
-	has_type = is_fs_type(&sb, magic_val);
-	if (!has_type && magic_val == RAMFS_MAGIC)
-		WARN("When the ramfs it a tmpfs statfs() might report tmpfs");
-
-	return has_type;
 }
 
 bool lxc_nic_exists(char *nic)
@@ -2412,88 +1581,6 @@ bool lxc_nic_exists(char *nic)
 		return false;
 
 	return true;
-}
-
-int lxc_make_tmpfile(char *template, bool rm)
-{
-	int fd, ret;
-
-	fd = mkstemp(template);
-	if (fd < 0)
-		return -1;
-
-	if (!rm)
-		return fd;
-
-	ret = unlink(template);
-	if (ret < 0) {
-		close(fd);
-		return -1;
-	}
-
-	return fd;
-}
-
-int parse_byte_size_string(const char *s, int64_t *converted)
-{
-	int ret, suffix_len;
-	long long int conv;
-	int64_t mltpl, overflow;
-	char *end;
-	char dup[LXC_NUMSTRLEN64 + 2];
-	char suffix[3] = {0};
-
-	if (!s || !strcmp(s, ""))
-		return -EINVAL;
-
-	end = stpncpy(dup, s, sizeof(dup) - 1);
-	if (*end != '\0')
-		return -EINVAL;
-
-	if (isdigit(*(end - 1)))
-		suffix_len = 0;
-	else if (isalpha(*(end - 1)))
-		suffix_len = 1;
-	else
-		return -EINVAL;
-
-	if (suffix_len > 0 && (end - 2) == dup && !isdigit(*(end - 2)))
-		return -EINVAL;
-
-	if (suffix_len > 0 && isalpha(*(end - 2)))
-		suffix_len++;
-
-	if (suffix_len > 0) {
-		memcpy(suffix, end - suffix_len, suffix_len);
-		*(suffix + suffix_len) = '\0';
-		*(end - suffix_len) = '\0';
-	}
-	dup[lxc_char_right_gc(dup, strlen(dup))] = '\0';
-
-	ret = lxc_safe_long_long(dup, &conv);
-	if (ret < 0)
-		return -ret;
-
-	if (suffix_len != 2) {
-		*converted = conv;
-		return 0;
-	}
-
-	if (strcasecmp(suffix, "KB") == 0)
-		mltpl = 1024;
-	else if (strcasecmp(suffix, "MB") == 0)
-		mltpl = 1024 * 1024;
-	else if (strcasecmp(suffix, "GB") == 0)
-		mltpl = 1024 * 1024 * 1024;
-	else
-		return -EINVAL;
-
-	overflow = conv * mltpl;
-	if (conv != 0 && (overflow / conv) != mltpl)
-		return -ERANGE;
-
-	*converted = overflow;
-	return 0;
 }
 
 uint64_t lxc_find_next_power2(uint64_t n)
@@ -2519,7 +1606,8 @@ int lxc_set_death_signal(int signal)
 	int ret;
 	pid_t ppid;
 
-	ret = prctl(PR_SET_PDEATHSIG, signal, 0, 0, 0);
+	ret = prctl(PR_SET_PDEATHSIG, prctl_arg(signal), prctl_arg(0),
+		    prctl_arg(0), prctl_arg(0));
 
 	/* Check whether we have been orphaned. */
 	ppid = (pid_t)syscall(SYS_getppid);
@@ -2540,13 +1628,84 @@ int lxc_set_death_signal(int signal)
 	return 0;
 }
 
-void remove_trailing_newlines(char *l)
+int fd_cloexec(int fd, bool cloexec)
 {
-	char *p = l;
+	int oflags, nflags;
 
-	while (*p)
-		p++;
+	oflags = fcntl(fd, F_GETFD, 0);
+	if (oflags < 0)
+		return -errno;
 
-	while (--p >= l && *p == '\n')
-		*p = '\0';
+	if (cloexec)
+		nflags = oflags | FD_CLOEXEC;
+	else
+		nflags = oflags & ~FD_CLOEXEC;
+
+	if (nflags == oflags)
+		return 0;
+
+	if (fcntl(fd, F_SETFD, nflags) < 0)
+		return -errno;
+
+	return 0;
+}
+
+int recursive_destroy(char *dirname)
+{
+	int ret;
+	struct dirent *direntp;
+	DIR *dir;
+	int r = 0;
+
+	dir = opendir(dirname);
+	if (!dir)
+		return -1;
+
+	while ((direntp = readdir(dir))) {
+		char *pathname;
+		struct stat mystat;
+
+		if (!strcmp(direntp->d_name, ".") ||
+		    !strcmp(direntp->d_name, ".."))
+			continue;
+
+		pathname = must_make_path(dirname, direntp->d_name, NULL);
+
+		ret = lstat(pathname, &mystat);
+		if (ret < 0) {
+			if (!r)
+				WARN("Failed to stat \"%s\"", pathname);
+
+			r = -1;
+			goto next;
+		}
+
+		if (!S_ISDIR(mystat.st_mode))
+			goto next;
+
+		ret = recursive_destroy(pathname);
+		if (ret < 0)
+			r = -1;
+
+	next:
+		free(pathname);
+	}
+
+	ret = rmdir(dirname);
+	if (ret < 0) {
+		if (!r)
+			SYSWARN("Failed to delete \"%s\"", dirname);
+
+		r = -1;
+	}
+
+	ret = closedir(dir);
+	if (ret < 0) {
+		if (!r)
+			SYSWARN("Failed to delete \"%s\"", dirname);
+
+		r = -1;
+	}
+
+	return r;
 }

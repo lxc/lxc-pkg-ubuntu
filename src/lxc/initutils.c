@@ -21,12 +21,19 @@
  * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA
  */
 
+#define _GNU_SOURCE
 #include <sys/prctl.h>
 
+#include "file_utils.h"
 #include "initutils.h"
 #include "log.h"
+#include "macro.h"
 
-lxc_log_define(lxc_initutils, lxc);
+#ifndef HAVE_STRLCPY
+#include "include/strlcpy.h"
+#endif
+
+lxc_log_define(initutils, lxc);
 
 static char *copy_global_config_value(char *p)
 {
@@ -35,14 +42,17 @@ static char *copy_global_config_value(char *p)
 
 	if (len < 1)
 		return NULL;
+
 	if (p[len-1] == '\n') {
 		p[len-1] = '\0';
 		len--;
 	}
-	retbuf = malloc(len+1);
+
+	retbuf = malloc(len + 1);
 	if (!retbuf)
 		return NULL;
-	strcpy(retbuf, p);
+
+	(void)strlcpy(retbuf, p, len + 1);
 	return retbuf;
 }
 
@@ -214,50 +224,6 @@ extern void remove_trailing_slashes(char *p)
 		p[l] = '\0';
 }
 
-FILE *fopen_cloexec(const char *path, const char *mode)
-{
-	int open_mode = 0;
-	int step = 0;
-	int fd;
-	int saved_errno = 0;
-	FILE *ret;
-
-	if (!strncmp(mode, "r+", 2)) {
-		open_mode = O_RDWR;
-		step = 2;
-	} else if (!strncmp(mode, "r", 1)) {
-		open_mode = O_RDONLY;
-		step = 1;
-	} else if (!strncmp(mode, "w+", 2)) {
-		open_mode = O_RDWR | O_TRUNC | O_CREAT;
-		step = 2;
-	} else if (!strncmp(mode, "w", 1)) {
-		open_mode = O_WRONLY | O_TRUNC | O_CREAT;
-		step = 1;
-	} else if (!strncmp(mode, "a+", 2)) {
-		open_mode = O_RDWR | O_CREAT | O_APPEND;
-		step = 2;
-	} else if (!strncmp(mode, "a", 1)) {
-		open_mode = O_WRONLY | O_CREAT | O_APPEND;
-		step = 1;
-	}
-	for (; mode[step]; step++)
-		if (mode[step] == 'x')
-			open_mode |= O_EXCL;
-	open_mode |= O_CLOEXEC;
-
-	fd = open(path, open_mode, 0666);
-	if (fd < 0)
-		return NULL;
-
-	ret = fdopen(fd, mode);
-	saved_errno = errno;
-	if (!ret)
-		close(fd);
-	errno = saved_errno;
-	return ret;
-}
-
 /*
  * Sets the process title to the specified title. Note that this may fail if
  * the kernel doesn't support PR_SET_MM_MAP (kernels <3.18).
@@ -353,11 +319,12 @@ int setproctitle(char *title)
 		.exe_fd = -1,
 	};
 
-	ret = prctl(PR_SET_MM, PR_SET_MM_MAP, (long) &prctl_map, sizeof(prctl_map), 0);
+	ret = prctl(PR_SET_MM, prctl_arg(PR_SET_MM_MAP), prctl_arg(&prctl_map),
+		    prctl_arg(sizeof(prctl_map)), prctl_arg(0));
 	if (ret == 0)
-		strcpy((char*)arg_start, title);
+		(void)strlcpy((char*)arg_start, title, len);
 	else
-		INFO("setting cmdline failed - %s", strerror(errno));
+		SYSINFO("setting cmdline failed");
 
 	return ret;
 }

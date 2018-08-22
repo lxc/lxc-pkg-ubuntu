@@ -35,7 +35,7 @@
 #include "utils.h"
 #include "log.h"
 
-lxc_log_define(lxc_parse, lxc);
+lxc_log_define(parse, lxc);
 
 void *lxc_strmmap(void *addr, size_t length, int prot, int flags, int fd,
 		  off_t offset)
@@ -71,7 +71,6 @@ int lxc_file_for_each_line_mmap(const char *file, lxc_file_cb callback,
 	char *buf, *line;
 	struct stat st;
 	int ret = 0;
-	char *saveptr = NULL;
 
 	fd = open(file, O_RDONLY | O_CLOEXEC);
 	if (fd < 0)
@@ -94,7 +93,7 @@ int lxc_file_for_each_line_mmap(const char *file, lxc_file_cb callback,
 		return -1;
 	}
 
-	for (; (line = strtok_r(buf, "\n\0", &saveptr)); buf = NULL) {
+	lxc_iterate_parts(line, buf, "\n\0") {
 		ret = callback(line, data);
 		if (ret) {
 			/* Callback rv > 0 means stop here callback rv < 0 means
@@ -139,56 +138,4 @@ int lxc_file_for_each_line(const char *file, lxc_file_cb callback, void *data)
 	free(line);
 	fclose(f);
 	return err;
-}
-
-int lxc_char_left_gc(const char *buffer, size_t len)
-{
-	size_t i;
-
-	for (i = 0; i < len; i++) {
-		if (buffer[i] == ' ' ||
-		    buffer[i] == '\t')
-			continue;
-
-		return i;
-	}
-
-	return 0;
-}
-
-int lxc_char_right_gc(const char *buffer, size_t len)
-{
-	int i;
-
-	for (i = len - 1; i >= 0; i--) {
-		if (buffer[i] == ' '  ||
-		    buffer[i] == '\t' ||
-		    buffer[i] == '\n' ||
-		    buffer[i] == '\0')
-			continue;
-
-		return i + 1;
-	}
-
-	return 0;
-}
-
-char *lxc_trim_whitespace_in_place(char *buffer)
-{
-	buffer += lxc_char_left_gc(buffer, strlen(buffer));
-	buffer[lxc_char_right_gc(buffer, strlen(buffer))] = '\0';
-	return buffer;
-}
-
-int lxc_is_line_empty(const char *line)
-{
-	int i;
-	size_t len = strlen(line);
-
-	for (i = 0; i < len; i++)
-		if (line[i] != ' ' && line[i] != '\t' &&
-		    line[i] != '\n' && line[i] != '\r' &&
-		    line[i] != '\f' && line[i] != '\0')
-			return 0;
-	return 1;
 }

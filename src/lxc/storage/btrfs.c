@@ -46,6 +46,10 @@
 #include "include/strlcpy.h"
 #endif
 
+#ifndef HAVE_STRLCAT
+#include "include/strlcat.h"
+#endif
+
 lxc_log_define(btrfs, lxc);
 
 /*
@@ -55,11 +59,11 @@ lxc_log_define(btrfs, lxc);
  * simply return a.
  */
 char *get_btrfs_subvol_path(int fd, u64 dir_id, u64 objid, char *name,
-			    int name_len)
+			    u16 name_len)
 {
 	struct btrfs_ioctl_ino_lookup_args args;
-	int ret, e;
-	size_t len;
+	int ret;
+	size_t len, retlen;
 	char *retpath;
 
 	memset(&args, 0, sizeof(args));
@@ -67,17 +71,16 @@ char *get_btrfs_subvol_path(int fd, u64 dir_id, u64 objid, char *name,
 	args.objectid = objid;
 
 	ret = ioctl(fd, BTRFS_IOC_INO_LOOKUP, &args);
-	e = errno;
 	if (ret) {
-		ERROR("Failed to lookup path for %llu %llu %s - %s\n",
-				 (unsigned long long) dir_id,
-				 (unsigned long long) objid,
-				 name, strerror(e));
+		SYSERROR("Failed to lookup path for %llu %llu %s",
+		         (unsigned long long) dir_id,
+		         (unsigned long long) objid,
+		         name);
 		return NULL;
 	} else
-		INFO("Got path for %llu %llu - %s\n",
-			(unsigned long long) objid, (unsigned long long) dir_id,
-			name);
+		INFO("Got path for %llu %llu - %s",
+		     (unsigned long long) objid, (unsigned long long) dir_id,
+		     name);
 
 	if (args.name[0]) {
 		/*
@@ -88,18 +91,33 @@ char *get_btrfs_subvol_path(int fd, u64 dir_id, u64 objid, char *name,
 		retpath = malloc(len);
 		if (!retpath)
 			return NULL;
-		strcpy(retpath, args.name);
-		strcat(retpath, "/");
-		strncat(retpath, name, name_len);
+
+		(void)strlcpy(retpath, args.name, len);
+		(void)strlcat(retpath, "/", len);
+
+		retlen = strlcat(retpath, name, len);
+		if (retlen >= len) {
+			ERROR("Failed to append name - %s", name);
+			free(retpath);
+			return NULL;
+		}
 	} else {
 		/* we're at the root of ref_tree */
 		len = name_len + 1;
 		retpath = malloc(len);
 		if (!retpath)
 			return NULL;
+
 		*retpath = '\0';
-		strncat(retpath, name, name_len);
+
+		retlen = strlcat(retpath, name, len);
+		if (retlen >= len) {
+			ERROR("Failed to append name - %s", name);
+			free(retpath);
+			return NULL;
+		}
 	}
+
 	return retpath;
 }
 
@@ -113,10 +131,10 @@ int btrfs_list_get_path_rootid(int fd, u64 *treeid)
 
 	ret = ioctl(fd, BTRFS_IOC_INO_LOOKUP, &args);
 	if (ret < 0) {
-		WARN("Warning: can't perform the search -%s\n",
-				strerror(errno));
+		SYSWARN("Can't perform the search");
 		return ret;
 	}
+
 	*treeid = args.treeid;
 	return 0;
 }
@@ -130,6 +148,7 @@ bool is_btrfs_fs(const char *path)
 	fd = open(path, O_RDONLY);
 	if (fd < 0)
 		return false;
+
 	sargs.space_slots = 0;
 	sargs.total_spaces = 0;
 	ret = ioctl(fd, BTRFS_IOC_SPACE_INFO, &sargs);
@@ -276,9 +295,10 @@ int btrfs_same_fs(const char *orig, const char *new)
 
 	fd_orig = open(orig, O_RDONLY);
 	if (fd_orig < 0) {
-		SYSERROR("Error opening original rootfs %s", orig);
+		SYSERROR("Failed to open original rootfs %s", orig);
 		goto out;
 	}
+
 	ret = ioctl(fd_orig, BTRFS_IOC_FS_INFO, &orig_args);
 	if (ret < 0) {
 		SYSERROR("BTRFS_IOC_FS_INFO %s", orig);
@@ -287,10 +307,11 @@ int btrfs_same_fs(const char *orig, const char *new)
 
 	fd_new = open(new, O_RDONLY);
 	if (fd_new < 0) {
-		SYSERROR("Error opening new container dir %s", new);
+		SYSERROR("Failed to open new container dir %s", new);
 		ret = -1;
 		goto out;
 	}
+
 	ret = ioctl(fd_new, BTRFS_IOC_FS_INFO, &new_args);
 	if (ret < 0) {
 		SYSERROR("BTRFS_IOC_FS_INFO %s", new);
@@ -301,12 +322,16 @@ int btrfs_same_fs(const char *orig, const char *new)
 		ret = -1;
 		goto out;
 	}
+
 	ret = 0;
+
 out:
 	if (fd_new != -1)
 		close(fd_new);
+
 	if (fd_orig != -1)
 		close(fd_orig);
+
 	return ret;
 }
 
@@ -348,12 +373,15 @@ int btrfs_snapshot(const char *orig, const char *new)
 out:
 	if (fddst != -1)
 		close(fddst);
+
 	if (fd != -1)
 		close(fd);
+
 	free(newfull);
 
 	if (saved_errno >= 0)
 		errno = saved_errno;
+
 	return ret;
 }
 
@@ -366,6 +394,7 @@ int btrfs_snapshot_wrapper(void *data)
 		ERROR("Failed to setgid to 0");
 		return -1;
 	}
+
 	if (setgroups(0, NULL) < 0)
 		WARN("Failed to clear groups");
 
@@ -444,6 +473,7 @@ bool btrfs_create_clone(struct lxc_conf *conf, struct lxc_storage *orig,
 	/* rsync the contents from source to target */
 	data.orig = orig;
 	data.new = new;
+
 	if (am_guest_unpriv()) {
 		ret = userns_exec_full(conf, lxc_storage_rsync_exec_wrapper,
 				       &data, "lxc_storage_rsync_exec_wrapper");
@@ -497,7 +527,7 @@ bool btrfs_create_snapshot(struct lxc_conf *conf, struct lxc_storage *orig,
 	ret = btrfs_snapshot(orig->src, new->dest);
 	if (ret < 0) {
 		SYSERROR("Failed to create btrfs snapshot \"%s\" from \"%s\"",
-			 new->dest, orig->dest);
+		         new->dest, orig->dest);
 		return false;
 	}
 
@@ -513,13 +543,13 @@ static int btrfs_do_destroy_subvol(const char *path)
 	char *p, *newfull = strdup(path);
 
 	if (!newfull) {
-		ERROR("Error: out of memory");
+		ERROR("Out of memory");
 		return -1;
 	}
 
 	p = strrchr(newfull, '/');
 	if (!p) {
-		ERROR("bad path: %s", path);
+		ERROR("Invalid path: %s", path);
 		free(newfull);
 		return -1;
 	}
@@ -527,7 +557,7 @@ static int btrfs_do_destroy_subvol(const char *path)
 
 	fd = open(newfull, O_RDONLY);
 	if (fd < 0) {
-		SYSERROR("Error opening %s", newfull);
+		SYSERROR("Failed to open %s", newfull);
 		free(newfull);
 		return -1;
 	}
@@ -541,7 +571,7 @@ static int btrfs_do_destroy_subvol(const char *path)
 	}
 
 	ret = ioctl(fd, BTRFS_IOC_SNAP_DESTROY, &args);
-	INFO("btrfs: snapshot destroy ioctl returned %d for %s", ret, path);
+	INFO("IOCTL for destroying snapshot returned %d for %s", ret, path);
 	if (ret < 0 && errno == EPERM)
 		ERROR("Is the rootfs mounted with -o user_subvol_rm_allowed?");
 
@@ -553,12 +583,14 @@ static int btrfs_do_destroy_subvol(const char *path)
 static int get_btrfs_tree_idx(struct my_btrfs_tree *tree, u64 id)
 {
 	int i;
+
 	if (!tree)
 		return -1;
-	for (i = 0; i < tree->num; i++) {
+
+	for (i = 0; i < tree->num; i++)
 		if (tree->nodes[i].objid == id)
 			return i;
-	}
+
 	return -1;
 }
 
@@ -570,11 +602,13 @@ static struct my_btrfs_tree *create_my_btrfs_tree(u64 id, const char *path,
 	tree = malloc(sizeof(struct my_btrfs_tree));
 	if (!tree)
 		return NULL;
+
 	tree->nodes = malloc(sizeof(struct mytree_node));
 	if (!tree->nodes) {
 		free(tree);
 		return NULL;
 	}
+
 	tree->num = 1;
 	tree->nodes[0].dirname = NULL;
 	tree->nodes[0].name = strdup(path);
@@ -583,13 +617,14 @@ static struct my_btrfs_tree *create_my_btrfs_tree(u64 id, const char *path,
 		free(tree);
 		return NULL;
 	}
+
 	tree->nodes[0].parentid = 0;
 	tree->nodes[0].objid = id;
 	return tree;
 }
 
 static bool update_tree_node(struct mytree_node *n, u64 id, u64 parent,
-			     char *name, int name_len, char *dirname)
+			     char *name, u16 name_len, char *dirname)
 {
 	if (id)
 		n->objid = id;
@@ -602,23 +637,27 @@ static bool update_tree_node(struct mytree_node *n, u64 id, u64 parent,
 		if (!n->name)
 			return false;
 
-		strcpy(n->name, name);
+		(void)strlcpy(n->name, name, name_len + 1);
 	}
 
 	if (dirname) {
-		n->dirname = malloc(strlen(dirname) + 1);
+		size_t len;
+
+		len = strlen(dirname);
+		n->dirname = malloc(len + 1);
 		if (!n->dirname) {
 			free(n->name);
 			return false;
 		}
 
-		strcpy(n->dirname, dirname);
+		(void)strlcpy(n->dirname, dirname, len + 1);
 	}
+
 	return true;
 }
 
 static bool add_btrfs_tree_node(struct my_btrfs_tree *tree, u64 id, u64 parent,
-				char *name, int name_len, char *dirname)
+				char *name, u16 name_len, char *dirname)
 {
 	struct mytree_node *tmp;
 
@@ -630,11 +669,14 @@ static bool add_btrfs_tree_node(struct my_btrfs_tree *tree, u64 id, u64 parent,
 	tmp = realloc(tree->nodes, (tree->num+1) * sizeof(struct mytree_node));
 	if (!tmp)
 		return false;
+
 	tree->nodes = tmp;
 	memset(&tree->nodes[tree->num], 0, sizeof(struct mytree_node));
+
 	if (!update_tree_node(&tree->nodes[tree->num], id, parent, name,
 				name_len, dirname))
 		return false;
+
 	tree->num++;
 	return true;
 }
@@ -642,12 +684,15 @@ static bool add_btrfs_tree_node(struct my_btrfs_tree *tree, u64 id, u64 parent,
 static void free_btrfs_tree(struct my_btrfs_tree *tree)
 {
 	int i;
+
 	if (!tree)
 		return;
+
 	for (i = 0; i < tree->num;  i++) {
 		free(tree->nodes[i].name);
 		free(tree->nodes[i].dirname);
 	}
+
 	free(tree->nodes);
 	free(tree);
 }
@@ -659,36 +704,46 @@ static void free_btrfs_tree(struct my_btrfs_tree *tree)
 static bool do_remove_btrfs_children(struct my_btrfs_tree *tree, u64 root_id,
 				     const char *path)
 {
-	int i;
+	int i, ret;
 	char *newpath;
 	size_t len;
 
 	for (i = 0; i < tree->num; i++) {
 		if (tree->nodes[i].parentid == root_id) {
 			if (!tree->nodes[i].dirname) {
-				WARN("Odd condition: child objid with no name under %s\n", path);
+				WARN("Odd condition: child objid with no name under %s", path);
 				continue;
 			}
+
 			len = strlen(path) + strlen(tree->nodes[i].dirname) + 2;
 			newpath = malloc(len);
 			if (!newpath) {
 				ERROR("Out of memory");
 				return false;
 			}
-			snprintf(newpath, len, "%s/%s", path, tree->nodes[i].dirname);
+
+			ret = snprintf(newpath, len, "%s/%s", path, tree->nodes[i].dirname);
+			if (ret < 0 || ret >= len) {
+				free(newpath);
+				return false;
+			}
+
 			if (!do_remove_btrfs_children(tree, tree->nodes[i].objid, newpath)) {
-				ERROR("Failed to prune %s\n", tree->nodes[i].name);
+				ERROR("Failed to prune %s", tree->nodes[i].name);
 				free(newpath);
 				return false;
 			}
+
 			if (btrfs_do_destroy_subvol(newpath) != 0) {
-				ERROR("Failed to remove %s\n", newpath);
+				ERROR("Failed to remove %s", newpath);
 				free(newpath);
 				return false;
 			}
+
 			free(newpath);
 		}
 	}
+
 	return true;
 }
 
@@ -703,14 +758,14 @@ static int btrfs_recursive_destroy(const char *path)
 	struct my_btrfs_tree *tree;
 	int ret, e, i;
 	unsigned long off = 0;
-	int name_len;
+	u16 name_len;
 	char *name;
 	char *tmppath;
 	u64 dir_id;
 
 	fd = open(path, O_RDONLY);
 	if (fd < 0) {
-		ERROR("Failed to open %s\n", path);
+		ERROR("Failed to open %s", path);
 		return -1;
 	}
 
@@ -727,16 +782,16 @@ static int btrfs_recursive_destroy(const char *path)
 
 	tree = create_my_btrfs_tree(root_id, path, strlen(path));
 	if (!tree) {
-		ERROR("Out of memory\n");
+		ERROR("Out of memory");
 		close(fd);
 		return -1;
 	}
+
 	/* Walk all subvols looking for any under this id */
 	memset(&args, 0, sizeof(args));
 
 	/* search in the tree of tree roots */
 	sk->tree_id = 1;
-
 	sk->max_type = BTRFS_ROOT_REF_KEY;
 	sk->min_type = BTRFS_ROOT_ITEM_KEY;
 	sk->min_objectid = 0;
@@ -753,13 +808,15 @@ static int btrfs_recursive_destroy(const char *path)
 			close(fd);
 			free_btrfs_tree(tree);
 			if (e == EPERM || e == EACCES) {
-				WARN("Warn: can't perform the search under %s. Will simply try removing", path);
+				WARN("Can't perform the search under %s. "
+				     "Will simply try removing", path);
 				goto ignore_search;
 			}
 
-			ERROR("Error: can't perform the search under %s\n", path);
+			ERROR("Can't perform the search under %s", path);
 			return -1;
 		}
+
 		if (sk->nr_items == 0)
 			break;
 
@@ -767,6 +824,7 @@ static int btrfs_recursive_destroy(const char *path)
 		for (i = 0; i < sk->nr_items; i++) {
 			memcpy(&sh, args.buf + off, sizeof(sh));
 			off += sizeof(sh);
+
 			/*
 			 * A backref key with the name and dirid of the parent
 			 * comes followed by the reoot ref key which has the
@@ -779,6 +837,7 @@ static int btrfs_recursive_destroy(const char *path)
 				dir_id = btrfs_stack_root_ref_dirid(ref);
 				tmppath = get_btrfs_subvol_path(fd, sh.offset,
 						dir_id, name, name_len);
+
 				if (!add_btrfs_tree_node(tree, sh.objectid,
 							sh.offset, name,
 							name_len, tmppath)) {
@@ -788,8 +847,10 @@ static int btrfs_recursive_destroy(const char *path)
 					close(fd);
 					return -1;
 				}
+
 				free(tmppath);
 			}
+
 			off += sh.len;
 
 			/*
@@ -800,8 +861,10 @@ static int btrfs_recursive_destroy(const char *path)
 			sk->min_type = sh.type;
 			sk->min_offset = sh.offset;
 		}
+
 		sk->nr_items = 4096;
 		sk->min_offset++;
+
 		if (!sk->min_offset)
 			sk->min_type++;
 		else
@@ -810,23 +873,25 @@ static int btrfs_recursive_destroy(const char *path)
 		if (sk->min_type > BTRFS_ROOT_BACKREF_KEY) {
 			sk->min_type = BTRFS_ROOT_ITEM_KEY;
 			sk->min_objectid++;
-		} else
+		} else {
 			continue;
+		}
 
 		if (sk->min_objectid >= sk->max_objectid)
 			break;
 	}
+
 	close(fd);
 
 	/* now actually remove them */
-
 	if (!do_remove_btrfs_children(tree, root_id, path)) {
 		free_btrfs_tree(tree);
-		ERROR("failed pruning\n");
+		ERROR("Failed to prune");
 		return -1;
 	}
 
 	free_btrfs_tree(tree);
+
 	/* All child subvols have been removed, now remove this one */
 ignore_search:
 	return btrfs_do_destroy_subvol(path);
@@ -855,9 +920,11 @@ int btrfs_create(struct lxc_storage *bdev, const char *dest, const char *n,
 	int ret;
 	size_t len;
 
+
 	len = strlen(dest) + 1;
 	/* strlen("btrfs:") */
 	len += 6;
+
 	bdev->src = malloc(len);
 	if (!bdev->src) {
 		ERROR("Failed to allocate memory");
@@ -877,9 +944,8 @@ int btrfs_create(struct lxc_storage *bdev, const char *dest, const char *n,
 	}
 
 	ret = btrfs_subvolume_create(bdev->dest);
-	if (ret < 0) {
+	if (ret < 0)
 		SYSERROR("Failed to create btrfs subvolume \"%s\"", bdev->dest);
-	}
 
 	return ret;
 }
