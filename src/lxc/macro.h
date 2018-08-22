@@ -20,6 +20,10 @@
 #ifndef __LXC_MACRO_H
 #define __LXC_MACRO_H
 
+#include "config.h"
+
+#include <linux/loop.h>
+
 /* Define __S_ISTYPE if missing from the C library. */
 #ifndef __S_ISTYPE
 #define __S_ISTYPE(mode, mask) (((mode)&S_IFMT) == (mask))
