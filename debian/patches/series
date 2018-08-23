@@ -19,3 +19,5 @@
 0019-autotools-add-disable-enable-thread-safety.patch
 0020-log-fail-build-on-ENFORCE_THREAD_SAFETY-error.patch
 0021-macro-add-missing-headers.patch
+0022-execute-skip-lxc-init-logging-when-unprivileged.patch
+0023-execute-pass-proc-self-fd-nr.patch
