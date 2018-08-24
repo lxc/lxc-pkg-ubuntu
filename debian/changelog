@@ -1,3 +1,9 @@
+lxc (3.0.2-0ubuntu3) cosmic; urgency=medium
+
+  * Run autoreconf during autopkgtest.
+
+ -- Stéphane Graber <stgraber@ubuntu.com>  Fri, 24 Aug 2018 15:24:19 -0400
+
 lxc (3.0.2-0ubuntu2) cosmic; urgency=medium
 
   * Cherry-pick upstream fixes:
