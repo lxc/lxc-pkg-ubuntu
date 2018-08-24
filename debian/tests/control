@@ -1,5 +1,6 @@
 Tests: exercise
-Depends: busybox-static,
+Depends: autoconf,
+         busybox-static,
          cloud-image-utils,
          debootstrap,
          dirmngr,
