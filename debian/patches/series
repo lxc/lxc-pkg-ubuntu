@@ -21,3 +21,4 @@
 0021-macro-add-missing-headers.patch
 0022-execute-skip-lxc-init-logging-when-unprivileged.patch
 0023-execute-pass-proc-self-fd-nr.patch
+0024-commands-return-1-on-lxc_cmd_get_init_pid-err.patch
