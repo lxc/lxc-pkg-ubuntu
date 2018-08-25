@@ -1,3 +1,10 @@
+lxc (3.0.2-0ubuntu4) cosmic; urgency=medium
+
+  * Cherry-pick upstream fixes:
+    - 0024-commands-return-1-on-lxc_cmd_get_init_pid-err.patch
+
+ -- Stéphane Graber <stgraber@ubuntu.com>  Sat, 25 Aug 2018 00:49:17 -0400
+
 lxc (3.0.2-0ubuntu3) cosmic; urgency=medium
 
   * Run autoreconf during autopkgtest.
