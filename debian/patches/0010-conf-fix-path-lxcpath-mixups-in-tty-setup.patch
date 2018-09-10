@@ -1,0 +1,40 @@
+From afb812ee5e9b99acf1cd56d8340f25dbd755543f Mon Sep 17 00:00:00 2001
+From: Wolfgang Bumiller <w.bumiller@proxmox.com>
+Date: Mon, 20 Aug 2018 10:02:35 +0200
+Subject: conf: fix path/lxcpath mixups in tty setup
+
+Signed-off-by: Wolfgang Bumiller <w.bumiller@proxmox.com>
+Fixes: 6947153da ("conf: use mknod() to create dummy mount target")
+---
+ src/lxc/conf.c | 8 ++++----
+ 1 file changed, 4 insertions(+), 4 deletions(-)
+
+diff --git a/src/lxc/conf.c b/src/lxc/conf.c
+index 85ae6cd2..e1820d4a 100644
+--- a/src/lxc/conf.c
++++ b/src/lxc/conf.c
+@@ -902,7 +902,7 @@ static int lxc_setup_ttys(struct lxc_conf *conf)
+ 			if (ret < 0 || (size_t)ret >= sizeof(lxcpath))
+ 				return -1;
+ 
+-			ret = mknod(path, S_IFREG | 0000, 0);
++			ret = mknod(lxcpath, S_IFREG | 0000, 0);
+ 			if (ret < 0 && errno != EEXIST) {
+ 				SYSERROR("Failed to create \"%s\"", lxcpath);
+ 				return -1;
+@@ -916,12 +916,12 @@ static int lxc_setup_ttys(struct lxc_conf *conf)
+ 
+ 			ret = mount(tty->name, lxcpath, "none", MS_BIND, 0);
+ 			if (ret < 0) {
+-				WARN("Failed to bind mount \"%s\" onto \"%s\"",
+-				     tty->name, path);
++				SYSWARN("Failed to bind mount \"%s\" onto \"%s\"",
++				     tty->name, lxcpath);
+ 				continue;
+ 			}
+ 			DEBUG("Bind mounted \"%s\" onto \"%s\"", tty->name,
+-			      path);
++			      lxcpath);
+ 
+ 			ret = snprintf(lxcpath, sizeof(lxcpath), "%s/tty%d",
+ 				       ttydir, i + 1);

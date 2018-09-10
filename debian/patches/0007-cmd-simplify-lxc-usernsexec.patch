@@ -1,0 +1,40 @@
+From 51aa1507eaa8738adeacfa71e0540c5caf80421b Mon Sep 17 00:00:00 2001
+From: Christian Brauner <christian.brauner@ubuntu.com>
+Date: Sun, 19 Aug 2018 19:37:49 +0200
+Subject: cmd: simplify lxc-usernsexec
+
+Calculate length only once.
+
+Signed-off-by: Christian Brauner <christian.brauner@ubuntu.com>
+---
+ src/lxc/cmd/lxc_usernsexec.c | 8 ++++----
+ 1 file changed, 4 insertions(+), 4 deletions(-)
+
+diff --git a/src/lxc/cmd/lxc_usernsexec.c b/src/lxc/cmd/lxc_usernsexec.c
+index fa1b6a23..a2c51800 100644
+--- a/src/lxc/cmd/lxc_usernsexec.c
++++ b/src/lxc/cmd/lxc_usernsexec.c
+@@ -194,8 +194,9 @@ static int parse_map(char *map)
+  * only use the first one for each of uid and gid, because otherwise we're not
+  * sure which entries the user wanted.
+  */
+-static int read_default_map(char *fnam, int which, char *username)
++static int read_default_map(char *fnam, int which, char *user)
+ {
++	size_t len;
+ 	char *p1, *p2;
+ 	FILE *fin;
+ 	struct id_map *newmap;
+@@ -207,10 +208,9 @@ static int read_default_map(char *fnam, int which, char *username)
+ 	if (!fin)
+ 		return -1;
+ 
++	len = strlen(user);
+ 	while (getline(&line, &sz, fin) != -1) {
+-		if (sz <= strlen(username) ||
+-		    strncmp(line, username, strlen(username)) != 0 ||
+-		    line[strlen(username)] != ':')
++		if (sz <= len || strncmp(line, user, len) != 0 || line[len] != ':')
+ 			continue;
+ 
+ 		p1 = strchr(line, ':');

@@ -1,0 +1,31 @@
+From f726e6aebc1be9baa7c03a3a2055969b2378ecea Mon Sep 17 00:00:00 2001
+From: Christian Brauner <christian.brauner@ubuntu.com>
+Date: Sat, 25 Aug 2018 06:17:49 +0200
+Subject: commands: return -1 on lxc_cmd_get_init_pid() err
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+A while back the whole lxc_cmd() infrastructure was changed to return
+meaningful negative error codes. But lxc_cmd_get_init_pid() should always
+return -1. Make it so!
+
+Signed-off-by: Christian Brauner <christian.brauner@ubuntu.com>
+Reported-by: Stéphane Graber <stgraber@ubuntu.com>
+---
+ src/lxc/commands.c | 2 +-
+ 1 file changed, 1 insertion(+), 1 deletion(-)
+
+diff --git a/src/lxc/commands.c b/src/lxc/commands.c
+index 30d6b604..63a8949a 100644
+--- a/src/lxc/commands.c
++++ b/src/lxc/commands.c
+@@ -381,7 +381,7 @@ pid_t lxc_cmd_get_init_pid(const char *name, const char *lxcpath)
+ 
+ 	ret = lxc_cmd(name, &cmd, &stopped, lxcpath, NULL);
+ 	if (ret < 0)
+-		return ret;
++		return -1;
+ 
+ 	return PTR_TO_INT(cmd.rsp.data);
+ }

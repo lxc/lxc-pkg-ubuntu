@@ -1,0 +1,40 @@
+From c125189179c7e2acae379d58bcfdf8b08b81cb1f Mon Sep 17 00:00:00 2001
+From: Christian Brauner <christian.brauner@ubuntu.com>
+Date: Wed, 22 Aug 2018 00:04:19 +0200
+Subject: autotools: check if compiler is new enough
+
+We line up with the Linux kernel and won't support any compiler under 4.6.
+Additionally, we also require at least gnu99 so this is due anyway.
+
+Signed-off-by: Christian Brauner <christian.brauner@ubuntu.com>
+---
+ configure.ac | 16 ++++++++++++++++
+ 1 file changed, 16 insertions(+)
+
+diff --git a/configure.ac b/configure.ac
+index 1acc4615..f5f16a97 100644
+--- a/configure.ac
++++ b/configure.ac
+@@ -45,6 +45,22 @@ AC_CANONICAL_HOST
+ AM_PROG_CC_C_O
+ AC_GNU_SOURCE
+ 
++# Test if we have a new enough compiler.
++AC_COMPILE_IFELSE([AC_LANG_PROGRAM([[
++#define GCC_VERSION \
++	(__GNUC__ * 10000 + __GNUC_MINOR__ * 100 + __GNUC_PATCHLEVEL__)
++
++#define CLANG_VERSION \
++	(__clang_major__ * 10000 + __clang_minor__ * 100 + __clang_patchlevel__)
++
++#if GCC_VERSION < 40600 && CLANG_VERSION < 10000
++#error Sorry, your compiler is too old - please upgrade it
++#endif
++	]])], [valid_compiler=yes], [valid_compiler=no])
++if test "x$valid_compiler" = "xno"; then
++	AC_MSG_ERROR([Sorry, your compiler is too old - please upgrade it])
++fi
++
+ # libtool
+ LT_INIT
+ AC_SUBST([LIBTOOL_DEPS])

@@ -902,7 +902,7 @@ static int lxc_setup_ttys(struct lxc_conf *conf)
 			if (ret < 0 || (size_t)ret >= sizeof(lxcpath))
 				return -1;
 
-			ret = mknod(path, S_IFREG | 0000, 0);
+			ret = mknod(lxcpath, S_IFREG | 0000, 0);
 			if (ret < 0 && errno != EEXIST) {
 				SYSERROR("Failed to create \"%s\"", lxcpath);
 				return -1;
@@ -916,12 +916,12 @@ static int lxc_setup_ttys(struct lxc_conf *conf)
 
 			ret = mount(tty->name, lxcpath, "none", MS_BIND, 0);
 			if (ret < 0) {
-				WARN("Failed to bind mount \"%s\" onto \"%s\"",
-				     tty->name, path);
+				SYSWARN("Failed to bind mount \"%s\" onto \"%s\"",
+				     tty->name, lxcpath);
 				continue;
 			}
 			DEBUG("Bind mounted \"%s\" onto \"%s\"", tty->name,
-			      path);
+			      lxcpath);
 
 			ret = snprintf(lxcpath, sizeof(lxcpath), "%s/tty%d",
 				       ttydir, i + 1);
@@ -1599,8 +1599,10 @@ static const struct id_map *find_mapped_nsid_entry(struct lxc_conf *conf,
 static int lxc_setup_devpts(struct lxc_conf *conf)
 {
 	int ret;
-	char default_devpts_mntopts[] = "gid=5,newinstance,ptmxmode=0666,mode=0620";
+	char **opts;
 	char devpts_mntopts[256];
+	char *mntopt_sets[5];
+	char default_devpts_mntopts[256] = "gid=5,newinstance,ptmxmode=0666,mode=0620";
 
 	if (conf->pty_max <= 0) {
 		DEBUG("No new devpts instance will be mounted since no pts "
@@ -1626,29 +1628,33 @@ static int lxc_setup_devpts(struct lxc_conf *conf)
 		return -1;
 	}
 
-	/* mount new devpts instance */
-	ret = mount("devpts", "/dev/pts", "devpts", MS_NOSUID | MS_NOEXEC, devpts_mntopts);
-	if (ret < 0) {
-		/* try mounting without "max" */
-		if (errno == EINVAL) {
-			devpts_mntopts[sizeof(default_devpts_mntopts) - 1] = '\0';
-			ret = mount("devpts", "/dev/pts", "devpts",
-				    MS_NOSUID | MS_NOEXEC, devpts_mntopts);
-			if (ret < 0) {
-				SYSERROR("Failed to mount new devpts instance");
-				return -1;
-			}
-		}
+	/* gid=5 && max= */
+	mntopt_sets[0] = devpts_mntopts;
 
-		/* try mounting without gid=5 */
-		ret = mount("devpts", "/dev/pts", "devpts", MS_NOSUID | MS_NOEXEC,
-			    devpts_mntopts + sizeof("gid=5"));
-		if (ret < 0) {
-			SYSERROR("Failed to mount new devpts instance");
-			return -1;
-		}
+	/* !gid=5 && max= */
+	mntopt_sets[1] = devpts_mntopts + sizeof("gid=5");
+
+	/* gid=5 && !max= */
+	mntopt_sets[2] = default_devpts_mntopts;
+
+	/* !gid=5 && !max= */
+	mntopt_sets[3] = default_devpts_mntopts + sizeof("gid=5");
+
+	/* end */
+	mntopt_sets[4] = NULL;
+
+	for (ret = -1, opts = mntopt_sets; opts && *opts; opts++) {
+		/* mount new devpts instance */
+		ret = mount("devpts", "/dev/pts", "devpts", MS_NOSUID | MS_NOEXEC, *opts);
+		if (ret == 0)
+			break;
 	}
-	DEBUG("Mount new devpts instance with options \"%s\"", devpts_mntopts);
+
+	if (ret < 0) {
+		SYSERROR("Failed to mount new devpts instance");
+		return -1;
+	}
+	DEBUG("Mount new devpts instance with options \"%s\"", *opts);
 
 	/* Remove any pre-existing /dev/ptmx file. */
 	ret = remove("/dev/ptmx");

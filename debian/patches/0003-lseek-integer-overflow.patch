@@ -1,0 +1,69 @@
+From 2779a9759df941a862a7bafc7e0d04d540441a6e Mon Sep 17 00:00:00 2001
+From: Lukasz Jagiello <lukasz@wikia-inc.com>
+Date: Sat, 18 Aug 2018 08:32:21 -0700
+Subject: lseek - integer overflow
+
+The issue was introduced in PR (https://github.com/lxc/lxc/pull/1705):
+
+Previous code:
+```
+  if (lseek(fd, size, SEEK_SET) < 0) {
+    SYSERROR("Error seeking to set new loop file size");
+    close(fd);
+    return -1;
+  }
+```
+New code:
+```
+  int fd, ret;
+
+  [...]
+
+  ret = lseek(fd, size, SEEK_SET);
+  if (ret < 0) {
+    SYSERROR("Failed to seek to set new loop file size for loop "
+       "file \"%s\"", path);
+    close(fd);
+    return -1;
+  }
+```
+
+Based on http://man7.org/linux/man-pages/man2/lseek.2.html:
+> Upon successful completion, lseek() returns the resulting offset
+> location as measured in bytes from the beginning of the file.
+
+So in this case value of `size` and `size` is `uint64_t`.
+
+This fix change declaration of `ret`, but it can be fixed in other ways.
+Let me know what works for you.
+
+This PR fix issues (https://github.com/lxc/lxc/issues/1872).
+
+Signed-off-by: Lukasz Jagiello <lukasz@wikia-inc.com>
+---
+ src/lxc/storage/loop.c | 5 +++--
+ 1 file changed, 3 insertions(+), 2 deletions(-)
+
+diff --git a/src/lxc/storage/loop.c b/src/lxc/storage/loop.c
+index c4d39345..fa538654 100644
+--- a/src/lxc/storage/loop.c
++++ b/src/lxc/storage/loop.c
+@@ -297,6 +297,7 @@ int loop_umount(struct lxc_storage *bdev)
+ static int do_loop_create(const char *path, uint64_t size, const char *fstype)
+ {
+ 	int fd, ret;
++	off_t ret_size;
+ 	char cmd_output[MAXPATHLEN];
+ 	const char *cmd_args[2] = {fstype, path};
+ 
+@@ -307,8 +308,8 @@ static int do_loop_create(const char *path, uint64_t size, const char *fstype)
+ 		return -1;
+ 	}
+ 
+-	ret = lseek(fd, size, SEEK_SET);
+-	if (ret < 0) {
++	ret_size = lseek(fd, size, SEEK_SET);
++	if (ret_size < 0) {
+ 		SYSERROR("Failed to seek to set new loop file size for loop "
+ 			 "file \"%s\"", path);
+ 		close(fd);

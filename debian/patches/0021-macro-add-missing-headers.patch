@@ -1,0 +1,25 @@
+From 69982b26714f399316f5bcdbd4e0bcc142ea73bb Mon Sep 17 00:00:00 2001
+From: Christian Brauner <christian.brauner@ubuntu.com>
+Date: Wed, 22 Aug 2018 19:46:43 +0200
+Subject: macro: add missing headers
+
+Signed-off-by: Christian Brauner <christian.brauner@ubuntu.com>
+---
+ src/lxc/macro.h | 4 ++++
+ 1 file changed, 4 insertions(+)
+
+diff --git a/src/lxc/macro.h b/src/lxc/macro.h
+index f6383166..ff40b62a 100644
+--- a/src/lxc/macro.h
++++ b/src/lxc/macro.h
+@@ -20,6 +20,10 @@
+ #ifndef __LXC_MACRO_H
+ #define __LXC_MACRO_H
+ 
++#include "config.h"
++
++#include <linux/loop.h>
++
+ /* Define __S_ISTYPE if missing from the C library. */
+ #ifndef __S_ISTYPE
+ #define __S_ISTYPE(mode, mask) (((mode)&S_IFMT) == (mask))

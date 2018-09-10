@@ -1,0 +1,32 @@
+From e2b06a74844baaba33082b36d00a605c4b117426 Mon Sep 17 00:00:00 2001
+From: Christian Brauner <christian.brauner@ubuntu.com>
+Date: Tue, 21 Aug 2018 17:13:39 +0200
+Subject: Makefile: don't allow undefined symbols
+
+Signed-off-by: Christian Brauner <christian.brauner@ubuntu.com>
+---
+ src/lxc/Makefile.am | 4 +++-
+ 1 file changed, 3 insertions(+), 1 deletion(-)
+
+diff --git a/src/lxc/Makefile.am b/src/lxc/Makefile.am
+index bbb494c5..574d5875 100644
+--- a/src/lxc/Makefile.am
++++ b/src/lxc/Makefile.am
+@@ -213,6 +213,7 @@ liblxc_la_CFLAGS = -fPIC \
+ 		   -pthread
+ 
+ liblxc_la_LDFLAGS = -pthread \
++		    -Wl,-no-undefined \
+ 		    -Wl,-soname,liblxc.so.$(firstword $(subst ., ,@LXC_ABI@)) \
+ 		    -version-info @LXC_ABI_MAJOR@
+ 
+@@ -408,7 +409,8 @@ pam_cgfs_la_LIBADD = $(AM_LIBS) \
+ pam_cgfs_la_LDFLAGS = $(AM_LDFLAGS) \
+ 		      -avoid-version \
+ 		      -module \
+-		      -shared
++		      -shared \
++		      -Wl,-no-undefined
+ endif
+ endif
+ 

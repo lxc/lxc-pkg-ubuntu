@@ -1,0 +1,88 @@
+From 3a44d96bbb5d384fb17164f4e8e8274dda778cae Mon Sep 17 00:00:00 2001
+From: Christian Brauner <christian.brauner@ubuntu.com>
+Date: Wed, 22 Aug 2018 12:25:16 +0200
+Subject: log: handle strerror_r() versions
+
+Closes #2563.
+
+Signed-off-by: Christian Brauner <christian.brauner@ubuntu.com>
+---
+ configure.ac  |  6 ++++++
+ src/lxc/log.h | 46 +++++++++++++++++++++++++++++++---------------
+ 2 files changed, 37 insertions(+), 15 deletions(-)
+
+diff --git a/configure.ac b/configure.ac
+index f5f16a97..5b27bf2d 100644
+--- a/configure.ac
++++ b/configure.ac
+@@ -611,6 +611,12 @@ AC_HEADER_MAJOR
+ # Check for some syscalls functions
+ AC_CHECK_FUNCS([setns pivot_root sethostname unshare rand_r confstr faccessat gettid memfd_create])
+ 
++# Check for strerror_r() support. Defines:
++# - HAVE_STRERROR_R if available
++# - HAVE_DECL_STRERROR_R if defined
++# - STRERROR_R_CHAR_P if it returns char *
++AC_FUNC_STRERROR_R
++
+ # Check for some functions
+ AC_CHECK_LIB(pthread, main)
+ AC_CHECK_FUNCS(statvfs)
+diff --git a/src/lxc/log.h b/src/lxc/log.h
+index 4654fd91..b14ab1ce 100644
+--- a/src/lxc/log.h
++++ b/src/lxc/log.h
+@@ -327,22 +327,38 @@ ATTR_UNUSED static inline void LXC_##LEVEL(struct lxc_log_locinfo* locinfo,	\
+ /*
+  * Helper macro to define errno string.
+  */
+-#if (_POSIX_C_SOURCE >= 200112L || _XOPEN_SOURCE >= 600) && !defined(_GNU_SOURCE) || IS_BIONIC
+-#define lxc_log_strerror_r                                               \
+-	char errno_buf[MAXPATHLEN / 2] = {"Failed to get errno string"}; \
+-	char *ptr = errno_buf;                                           \
+-	{                                                                \
+-		(void)strerror_r(errno, errno_buf, sizeof(errno_buf));   \
+-	}
++#if HAVE_STRERROR_R
++	#ifndef HAVE_DECL_STRERROR_R
++		#ifdef STRERROR_R_CHAR_P
++			char *strerror_r(int errnum, char *buf, size_t buflen);
++		#else
++			int strerror_r(int errnum, char *buf, size_t buflen);
++		#endif
++	#endif
++
++	#ifdef STRERROR_R_CHAR_P
++		#define lxc_log_strerror_r                                               \
++			char errno_buf[MAXPATHLEN / 2] = {"Failed to get errno string"}; \
++			char *ptr = NULL;                                                \
++			{                                                                \
++				ptr = strerror_r(errno, errno_buf, sizeof(errno_buf));   \
++				if (!ptr)                                                \
++					ptr = errno_buf;                                 \
++			}
++	#else
++		#define lxc_log_strerror_r                                               \
++			char errno_buf[MAXPATHLEN / 2] = {"Failed to get errno string"}; \
++			char *ptr = errno_buf;                                           \
++			{                                                                \
++				(void)strerror_r(errno, errno_buf, sizeof(errno_buf));   \
++			}
++	#endif
+ #else
+-#define lxc_log_strerror_r                                               \
+-	char errno_buf[MAXPATHLEN / 2] = {"Failed to get errno string"}; \
+-	char *ptr;                                                       \
+-	{                                                                \
+-		ptr = strerror_r(errno, errno_buf, sizeof(errno_buf));   \
+-		if (!ptr)                                                \
+-			ptr = errno_buf;                                 \
+-	}
++	#define lxc_log_strerror_r             \
++		char *ptr = NULL;              \
++		{                              \
++			ptr = strerror(errno); \
++		}
+ #endif
+ 
+ /*

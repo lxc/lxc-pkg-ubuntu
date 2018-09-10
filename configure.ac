@@ -45,6 +45,22 @@ AC_CANONICAL_HOST
 AM_PROG_CC_C_O
 AC_GNU_SOURCE
 
+# Test if we have a new enough compiler.
+AC_COMPILE_IFELSE([AC_LANG_PROGRAM([[
+#define GCC_VERSION \
+	(__GNUC__ * 10000 + __GNUC_MINOR__ * 100 + __GNUC_PATCHLEVEL__)
+
+#define CLANG_VERSION \
+	(__clang_major__ * 10000 + __clang_minor__ * 100 + __clang_patchlevel__)
+
+#if GCC_VERSION < 40600 && CLANG_VERSION < 10000
+#error Sorry, your compiler is too old - please upgrade it
+#endif
+	]])], [valid_compiler=yes], [valid_compiler=no])
+if test "x$valid_compiler" = "xno"; then
+	AC_MSG_ERROR([Sorry, your compiler is too old - please upgrade it])
+fi
+
 # libtool
 LT_INIT
 AC_SUBST([LIBTOOL_DEPS])
@@ -595,6 +611,12 @@ AC_HEADER_MAJOR
 # Check for some syscalls functions
 AC_CHECK_FUNCS([setns pivot_root sethostname unshare rand_r confstr faccessat gettid memfd_create])
 
+# Check for strerror_r() support. Defines:
+# - HAVE_STRERROR_R if available
+# - HAVE_DECL_STRERROR_R if defined
+# - STRERROR_R_CHAR_P if it returns char *
+AC_FUNC_STRERROR_R
+
 # Check for some functions
 AC_CHECK_LIB(pthread, main)
 AC_CHECK_FUNCS(statvfs)
@@ -651,6 +673,11 @@ LXC_CHECK_TLS
 if test "x$enable_werror" = "xyes"; then
 	CFLAGS="$CFLAGS -Werror -Wvla -std=gnu11"
 fi
+
+AC_ARG_ENABLE([thread-safety],
+	[AC_HELP_STRING([--enable-thread-safety], [enforce thread-safety otherwise fail the build [default=yes]])],
+	[], [enable_thread_safety=yes])
+AM_CONDITIONAL([ENFORCE_THREAD_SAFETY], [test "x$enable_thread_safety" = "xyes"])
 
 # Files requiring some variable expansion
 AC_CONFIG_FILES([
@@ -895,4 +922,7 @@ Debugging:
 
 Paths:
  - Logs in configpath: $enable_configpath_log
+
+Thread-safety:
+ - enforce: $enable_thread_safety
 EOF

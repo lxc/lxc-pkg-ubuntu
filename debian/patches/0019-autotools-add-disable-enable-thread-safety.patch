@@ -1,0 +1,37 @@
+From 97b85da0d1f15c5fcf79e4e1fbdb1ca63f5b5eb1 Mon Sep 17 00:00:00 2001
+From: Christian Brauner <christian.brauner@ubuntu.com>
+Date: Wed, 22 Aug 2018 13:13:29 +0200
+Subject: autotools: add --{disable,enable}-thread-safety
+
+Fail the build if --enable-thread-safety is passed and the environment cannot
+guarantee thread-safety.
+
+Signed-off-by: Christian Brauner <christian.brauner@ubuntu.com>
+---
+ configure.ac | 8 ++++++++
+ 1 file changed, 8 insertions(+)
+
+diff --git a/configure.ac b/configure.ac
+index 5b27bf2d..cd79ddf0 100644
+--- a/configure.ac
++++ b/configure.ac
+@@ -674,6 +674,11 @@ if test "x$enable_werror" = "xyes"; then
+ 	CFLAGS="$CFLAGS -Werror -Wvla -std=gnu11"
+ fi
+ 
++AC_ARG_ENABLE([thread-safety],
++	[AC_HELP_STRING([--enable-thread-safety], [enforce thread-safety otherwise fail the build [default=yes]])],
++	[], [enable_thread_safety=yes])
++AM_CONDITIONAL([ENFORCE_THREAD_SAFETY], [test "x$enable_thread_safety" = "xyes"])
++
+ # Files requiring some variable expansion
+ AC_CONFIG_FILES([
+ 	Makefile
+@@ -917,4 +922,7 @@ Debugging:
+ 
+ Paths:
+  - Logs in configpath: $enable_configpath_log
++
++Thread-safety:
++ - enforce: $enable_thread_safety
+ EOF

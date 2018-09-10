@@ -20,6 +20,10 @@
 #ifndef __LXC_MACRO_H
 #define __LXC_MACRO_H
 
+#include "config.h"
+
+#include <linux/loop.h>
+
 /* Define __S_ISTYPE if missing from the C library. */
 #ifndef __S_ISTYPE
 #define __S_ISTYPE(mode, mask) (((mode)&S_IFMT) == (mask))
@@ -67,6 +71,15 @@
 
 #ifndef NSFS_MAGIC
 #define NSFS_MAGIC 0x6e736673
+#endif
+
+/* We have two different magic values for overlayfs, yay. */
+#ifndef OVERLAYFS_SUPER_MAGIC
+#define OVERLAYFS_SUPER_MAGIC 0x794c764f
+#endif
+
+#ifndef OVERLAY_SUPER_MAGIC
+#define OVERLAY_SUPER_MAGIC 0x794c7630
 #endif
 
 /* Useful macros */
@@ -185,6 +198,24 @@ extern int __build_bug_on_failed;
 
 #ifndef NLMSG_ERROR
 #define NLMSG_ERROR 0x2
+#endif
+
+/* mount */
+#ifndef MS_REC
+#define MS_REC 16384
+#endif
+
+#ifndef MS_SLAVE
+#define MS_SLAVE (1 << 19)
+#endif
+
+/* open */
+#ifndef O_PATH
+#define O_PATH      010000000
+#endif
+
+#ifndef O_NOFOLLOW
+#define O_NOFOLLOW  00400000
 #endif
 
 #endif /* __LXC_MACRO_H */
