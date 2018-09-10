@@ -1,3 +1,88 @@
+lxc (3.0.2-0ubuntu1~18.04.1) bionic; urgency=medium
+
+  * New upstream bugfix release (LP: #1788457):
+    - CVE 2018-6556: verify netns fd in lxc-user-nic
+    - fixed a range of bugs found by Coverity
+    - lxc-usernsexec: cleanup and bugfixes
+    - log: add CMD_SYSINFO()
+    - log: add CMD_SYSERROR()
+    - state: s/sleep()/nanosleep()/
+    - lxclock: improve file locking
+    - lxccontainer: improve file locking
+    - lxccontainer: fix F_OFD_GETLK checks
+    - netlink: add __netlink_{send,recv,transaction}
+    - netns: allocate network namespace id
+    - MAINTAINERS: add Wolfgang Bumiller
+    - pam_cgfs: cleanups
+    - log: add default log priority
+    - tree-wide: pass unsigned long to prctl()
+    - macro: add new macro header
+    - conf: mount devpts without “max” on EINVAL
+    - tree-wide: handle EINTR in read() and write()
+    - tree-wide: replace pipe() with pipe2()
+    - confile: split mount options into flags and data
+    - conf: improve rootfs setup
+    - autotools: default to -Wvla -std=gnu11
+    - tree-wide: remove VLAs
+    - tree-wide: replace strtok_r() with lxc_iterate_parts()
+    - utils: add lxc_iterate_parts()
+    - apparmor: allow start-container to change to lxc-**
+    - apparmor: update current profiles
+    - apparmor: Allow /usr/lib* paths for mount and pivot_root
+    - conf: the atime flags are locked in userns
+    - conf: handle partially functional device nodes
+    - conf: create /dev directory
+    - autotools: build both a shared and static liblxc
+    - namespace: add api to convert namespaces to standard identifiers
+    - tree-wide: set MSG_NOSIGNAL
+    - tree-wide: use mknod() to create dummy files
+    - cgfsng: respect lxc.cgroup.use
+    - cgroups: remove is_crucial_cgroup_subsystem()
+    - tree-wide: remove unneeded log prefixes
+    - tests: cleanup all tests
+    - terminal: set FD_CLOEXEC on pty file descriptors
+    - conf: simplify lxc_setup_dev_console()
+    - tools: rework tools
+    - autodev: adapt to changes in Linux 4.18
+    - log: change DEBUG, INFO, TRACE, NOTICE macro using strerror to SYS* macro
+    - log: add lxc_log_strerror_r macro
+    - network: unpriv lxc will run lxc.net.[i].script.up now
+    - conf: only use newuidmap and newgidmap when necessary
+    - autotools: support tls in cross-compile
+
+  * Cherry-pick upstream fixes:
+    - 0002-tools-fix-lxc-execute-command-parsing.patch
+    - 0003-lseek-integer-overflow.patch
+    - 0004-cmd-lxc-usernsexec-reorder-includes.patch
+    - 0005-cmd-move-declarations-to-macro.h.patch
+    - 0006-cmd-use-utils.-c-h-helpers-in-lxc-usernsexec.patch
+    - 0007-cmd-simplify-lxc-usernsexec.patch
+    - 0008-cmd-use-safe-number-parsers-in-lxc-usernsexec.patch
+    - 0009-tools-Indicate-container-startup-failure.patch
+    - 0010-conf-fix-path-lxcpath-mixups-in-tty-setup.patch
+    - 0011-cmd-use-goto-for-cleanup-in-lxc-usernsexec.patch
+    - 0012-utils-split-into-file-string-_utils.-c-h.patch
+    - 0013-pam_cgfs-build-from-the-same-sources-as-liblxc.patch
+    - 0014-conf-fix-devpts-mounting-when-fully-unprivileged.patch
+    - 0015-macro-s-rexit-_exit-g.patch
+    - 0016-Makefile-don-t-allow-undefined-symbols.patch
+    - 0017-autotools-check-if-compiler-is-new-enough.patch
+    - 0018-log-handle-strerror_r-versions.patch
+    - 0019-autotools-add-disable-enable-thread-safety.patch
+    - 0020-log-fail-build-on-ENFORCE_THREAD_SAFETY-error.patch
+    - 0021-macro-add-missing-headers.patch
+    - 0022-execute-skip-lxc-init-logging-when-unprivileged.patch
+    - 0023-execute-pass-proc-self-fd-nr.patch
+    - 0024-commands-return-1-on-lxc_cmd_get_init_pid-err.patch
+
+  * Bump standards to 4.2.0
+    - Update lintian overrides
+  * Include new .a file into liblxc-dev
+  * Override GPG keyserver in autopkgtest
+  * Run autoreconf during autopkgtest
+
+ -- Stéphane Graber <stgraber@ubuntu.com>  Mon, 10 Sep 2018 14:43:52 -0400
+
 lxc (3.0.1-0ubuntu1~18.04.1) bionic; urgency=medium
 
   * New upstream bugfix release (LP: #1775283):
