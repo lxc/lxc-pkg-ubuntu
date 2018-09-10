@@ -18,6 +18,7 @@
  *  Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301  USA
  */
 
+#define _GNU_SOURCE
 #include <stdio.h>
 #include <stdlib.h>
 #include <unistd.h>
@@ -31,8 +32,9 @@
 #include "lsm.h"
 #include "conf.h"
 #include "utils.h"
+#include "initutils.h"
 
-lxc_log_define(lxc_apparmor, lxc);
+lxc_log_define(apparmor, lsm);
 
 /* set by lsm_apparmor_drv_init if true */
 static int aa_enabled = 0;
@@ -67,7 +69,7 @@ static int apparmor_enabled(void)
 	char e;
 	int ret;
 
-	fin = fopen(AA_ENABLED_FILE, "r");
+	fin = fopen_cloexec(AA_ENABLED_FILE, "r");
 	if (!fin)
 		return 0;
 	ret = fscanf(fin, "%c", &e);
@@ -94,7 +96,7 @@ static char *apparmor_process_label_get(pid_t pid)
 		return NULL;
 	}
 again:
-	f = fopen(path, "r");
+	f = fopen_cloexec(path, "r");
 	if (!f) {
 		SYSERROR("opening %s", path);
 		free(buf);
@@ -240,7 +242,7 @@ static int apparmor_process_label_set(const char *inlabel, struct lxc_conf *conf
 	ret = lsm_process_label_set_at(label_fd, label, on_exec);
 	close(label_fd);
 	if (ret < 0) {
-		SYSERROR("Failed to change apparmor profile to %s", label);
+		ERROR("Failed to change apparmor profile to %s", label);
 		return -1;
 	}
 

@@ -17,6 +17,7 @@
  */
 
 #define _GNU_SOURCE
+#include <dirent.h>
 #include <getopt.h>
 #include <limits.h>
 #include <regex.h>
@@ -35,7 +36,10 @@
 #include <lxc/lxccontainer.h>
 
 #include "arguments.h"
-#include "tool_utils.h"
+#include "log.h"
+#include "utils.h"
+
+lxc_log_define(lxc_ls, lxc);
 
 /* Per default we only allow five levels of recursion to protect the stack at
  * least a little bit. */
@@ -203,6 +207,7 @@ int main(int argc, char *argv[])
 {
 	int ret = EXIT_FAILURE;
 	struct lxc_log log;
+
 	/*
 	 * The lxc parser requires that my_args.name is set. So let's satisfy
 	 * that condition by setting a dummy name which is never used.
@@ -248,6 +253,7 @@ int main(int argc, char *argv[])
 
 	struct ls *ls_arr = NULL;
 	size_t ls_size = 0;
+
 	/* &(char *){NULL} is no magic. It's just a compound literal which
 	 * avoids having a pointless variable in main() that serves no purpose
 	 * here. */
@@ -259,6 +265,7 @@ int main(int argc, char *argv[])
 		goto out;
 
 	ls_field_width(ls_arr, ls_size, &max_len);
+
 	if (my_args.ls_fancy && !my_args.ls_fancy_format) {
 		ls_print_table(ls_arr, &max_len, ls_size);
 	} else if (my_args.ls_fancy && my_args.ls_fancy_format) {
@@ -283,6 +290,7 @@ static void ls_free(struct ls *l, size_t size)
 {
 	size_t i;
 	struct ls *m = NULL;
+
 	for (i = 0, m = l; i < size; i++, m++) {
 		free(m->groups);
 		free(m->interface);
@@ -300,7 +308,7 @@ static char *ls_get_config_item(struct lxc_container *c, const char *item,
 	if (running)
 		return c->get_running_config_item(c, item);
 
-	size_t len = c->get_config_item(c, item, NULL, 0);
+	int len = c->get_config_item(c, item, NULL, 0);
 	if (len <= 0)
 		return NULL;
 
@@ -308,7 +316,7 @@ static char *ls_get_config_item(struct lxc_container *c, const char *item,
 	if (!val)
 		return NULL;
 
-	if ((size_t)c->get_config_item(c, item, val, len + 1) != len) {
+	if (c->get_config_item(c, item, val, len + 1) != len) {
 		free(val);
 		val = NULL;
 	}
@@ -319,8 +327,10 @@ static char *ls_get_config_item(struct lxc_container *c, const char *item,
 static void ls_free_arr(char **arr, size_t size)
 {
 	size_t i;
+
 	for (i = 0; i < size; i++)
 		free(arr[i]);
+
 	free(arr);
 }
 
@@ -372,18 +382,21 @@ static int ls_get(struct ls **m, size_t *size, const struct lxc_arguments *args,
 	struct ls *l = NULL;
 	struct lxc_container *c = NULL;
 	size_t i;
+
 	for (i = 0; i < (size_t)num; i++) {
 		char *name = containers[i];
 
 		/* Filter container names by regex the user gave us. */
 		if (args->ls_filter || args->argc == 1) {
 			regex_t preg;
+
 			tmp = args->ls_filter ? args->ls_filter : args->argv[0];
 			check = regcomp(&preg, tmp, REG_NOSUB | REG_EXTENDED);
 			if (check == REG_ESPACE) /* we're out of memory */
 				goto out;
 			else if (check != 0)
 				continue;
+
 			check = regexec(&preg, name, 0, NULL, 0);
 			regfree(&preg);
 			if (check != 0)
@@ -397,9 +410,8 @@ static int ls_get(struct ls **m, size_t *size, const struct lxc_arguments *args,
  		else if (!c)
  			continue;
 
-		if (args->ls_defined && !c->is_defined(c)){
+		if (args->ls_defined && !c->is_defined(c))
 			goto put_and_next;
-		}
 
 		/* This does not allocate memory so no worries about freeing it
 		 * when we goto next or out. */
@@ -508,6 +520,7 @@ static int ls_get(struct ls **m, size_t *size, const struct lxc_arguments *args,
 		 * all other information we need. */
 		if (args->ls_nesting && running) {
 			struct wrapargs wargs = (struct wrapargs){.args = NULL};
+
 			/* Open a socket so that the child can communicate with us. */
 			check = socketpair(AF_UNIX, SOCK_STREAM | SOCK_CLOEXEC, 0, wargs.pipefd);
 			if (check == -1)
@@ -568,8 +581,10 @@ static int ls_get(struct ls **m, size_t *size, const struct lxc_arguments *args,
 			/* We want to remove all locks we create under
 			 * /run/lxc/lock so we create a string pointing us to
 			 * the lock path for the current container. */
-			if (ls_remove_lock(path, name, lockpath, &len_lockpath, true) == -1)
+			if (ls_remove_lock(path, name, lockpath, &len_lockpath, true) == -1) {
+				free(newpath);
 				goto put_and_next;
+			}
 
 			ls_get(m, size, args, newpath, l->name, lvl + 1, lockpath, len_lockpath, grps_must, grps_must_len);
 			free(newpath);
@@ -586,6 +601,7 @@ put_and_next:
 out:
 	ls_free_arr(containers, num);
 	free(path);
+
 	/* lockpath is shared amongst all non-fork()ing recursive calls to
 	 * ls_get() so only free it on the uppermost level. */
 	if (lvl == 0)
@@ -596,7 +612,7 @@ out:
 
 static char *ls_get_cgroup_item(struct lxc_container *c, const char *item)
 {
-	size_t len = c->get_cgroup_item(c, item, NULL, 0);
+	int len = c->get_cgroup_item(c, item, NULL, 0);
 	if (len <= 0)
 		return NULL;
 
@@ -604,7 +620,7 @@ static char *ls_get_cgroup_item(struct lxc_container *c, const char *item)
 	if (!val)
 		return NULL;
 
-	if ((size_t)c->get_cgroup_item(c, item, val, len + 1) != len) {
+	if (c->get_cgroup_item(c, item, val, len + 1) != len) {
 		free(val);
 		val = NULL;
 	}
@@ -614,7 +630,7 @@ static char *ls_get_cgroup_item(struct lxc_container *c, const char *item)
 
 static char *ls_get_groups(struct lxc_container *c, bool running)
 {
-	size_t len = 0;
+	int len = 0;
 	char *val = NULL;
 
 	if (running)
@@ -624,7 +640,7 @@ static char *ls_get_groups(struct lxc_container *c, bool running)
 
 	if (!val && (len > 0)) {
 		val = malloc((len + 1) * sizeof(*val));
-		if ((size_t)c->get_config_item(c, "lxc.group", val, len + 1) != len) {
+		if (c->get_config_item(c, "lxc.group", val, len + 1) != len) {
 			free(val);
 			return NULL;
 		}
@@ -632,6 +648,7 @@ static char *ls_get_groups(struct lxc_container *c, bool running)
 
 	if (val) {
 		char *tmp;
+
 		if ((tmp = strrchr(val, '\n')))
 			*tmp = '\0';
 
@@ -646,7 +663,9 @@ static char *ls_get_groups(struct lxc_container *c, bool running)
 static char *ls_get_ips(struct lxc_container *c, const char *inet)
 {
 	char *ips = NULL;
-	char **iptmp = c->get_ips(c, NULL, inet, 0);
+	char **iptmp;
+
+	iptmp = c->get_ips(c, NULL, inet, 0);
 	if (iptmp)
 		ips = lxc_string_join(", ", (const char **)iptmp, false);
 
@@ -710,6 +729,7 @@ out:
 static unsigned int ls_get_term_width(void)
 {
 	struct winsize ws;
+
 	if (((ioctl(STDOUT_FILENO, TIOCGWINSZ, &ws) == -1) &&
 	     (ioctl(STDERR_FILENO, TIOCGWINSZ, &ws) == -1) &&
 	     (ioctl(STDIN_FILENO, TIOCGWINSZ, &ws) == -1)) ||
@@ -743,6 +763,7 @@ static bool ls_has_all_grps(const char *has, char **must, size_t must_len)
 		if (j == tmp_has_len)
 			break;
 	}
+
 	if (i == must_len)
 		bret = true;
 
@@ -778,11 +799,13 @@ static void ls_print_names(struct ls *l, struct lengths *lht,
 
 	size_t i, len = 0;
 	struct ls *m = NULL;
+
 	for (i = 0, m = l; i < size; i++, m++) {
 		if (list) {
 			printf("%s\n", m->name ? m->name : "-");
 		} else {
 			printf("%-*s", lht->name_length, m->name ? m->name : "-");
+
 			len += lht->name_length;
 			if ((len + lht->name_length) >= termwidth) {
 				printf("\n");
@@ -793,6 +816,7 @@ static void ls_print_names(struct ls *l, struct lengths *lht,
 			}
 		}
 	}
+
 	if (len > 0)
 		printf("\n");
 }
@@ -818,6 +842,7 @@ static void ls_print_fancy_format(struct ls *l, struct lengths *lht,
 		    strcasecmp(*s, "IPV4") && strcasecmp(*s, "IPV6") &&
 		    strcasecmp(*s, "UNPRIVILEGED")) {
 			fprintf(stderr, "Invalid key: %s\n", *s);
+			lxc_free_array((void **)tmp, free);
 			return;
 		}
 	}
@@ -851,6 +876,7 @@ static void ls_print_fancy_format(struct ls *l, struct lengths *lht,
 
 	struct ls *m = NULL;
 	size_t i;
+
 	for (i = 0, m = l; i < size; i++, m++) {
 		for (s = tmp; s && *s; s++) {
 			if (strcasecmp(*s, "NAME") == 0) {
@@ -893,11 +919,15 @@ static void ls_print_fancy_format(struct ls *l, struct lengths *lht,
 		}
 		printf("\n");
 	}
+
+	lxc_free_array((void **)tmp, free);
 }
 
 static void ls_print_table(struct ls *l, struct lengths *lht,
 		size_t size)
 {
+	size_t i;
+
 	/* If list is empty do nothing. */
 	if (size == 0)
 		return;
@@ -914,7 +944,6 @@ static void ls_print_table(struct ls *l, struct lengths *lht,
 	printf("%-*s ", lht->unprivileged_length, "UNPRIVILEGED");
 	printf("\n");
 
-	size_t i;
 	for (i = 0, m = l; i < size; i++, m++) {
 		if (m->nestlvl > 0) {
 			printf("%*s", m->nestlvl, "\\");
@@ -922,6 +951,7 @@ static void ls_print_table(struct ls *l, struct lengths *lht,
 		} else {
 		     printf("%-*s ", lht->name_length, m->name ? m->name : "-");
 		}
+
 		printf("%-*s ", lht->state_length, m->state ? m->state : "-");
 		printf("%-*d ", lht->autostart_length, m->autostart);
 		printf("%-*s ", lht->groups_length, m->groups ? m->groups : "-");
@@ -936,6 +966,7 @@ static int my_parser(struct lxc_arguments *args, int c, char *arg)
 {
 	char *invalid;
 	unsigned long int m, n = MAX_NESTLVL;
+
 	switch (c) {
 	case '1':
 		args->ls_line = true;
@@ -995,6 +1026,7 @@ static int ls_get_wrapper(void *wrap)
 	size_t len = 0;
 	struct wrapargs *wargs = (struct wrapargs *)wrap;
 	struct ls *m = NULL, *n = NULL;
+	size_t i;
 
 	/* close pipe */
 	close(wargs->pipefd[0]);
@@ -1009,7 +1041,6 @@ static int ls_get_wrapper(void *wrap)
 	if (lxc_write_nointr(wargs->pipefd[1], &len, sizeof(len)) <= 0)
 		goto out;
 
-	size_t i;
 	for (i = 0, n = m; i < len; i++, n++) {
 		if (ls_serialize(wargs->pipefd[1], n) == -1)
 			goto out;
@@ -1055,7 +1086,10 @@ static int ls_remove_lock(const char *path, const char *name,
 	if (check < 0 || (size_t)check >= *len_lockpath)
 		goto out;
 
-	(void)rm_r(*lockpath);
+	ret = recursive_destroy(*lockpath);
+	if (ret < 0)
+		WARN("Failed to destroy \"%s\"", *lockpath);
+
 	ret = 0;
 
 out:
@@ -1066,14 +1100,18 @@ out:
 static int ls_send_str(int fd, const char *buf)
 {
 	size_t slen = 0;
+
 	if (buf)
 		slen = strlen(buf);
+
 	if (lxc_write_nointr(fd, &slen, sizeof(slen)) != sizeof(slen))
 		return -1;
+
 	if (slen > 0) {
 		if (lxc_write_nointr(fd, buf, slen) != (ssize_t)slen)
 			return -1;
 	}
+
 	return 0;
 }
 
@@ -1136,17 +1174,27 @@ static int ls_serialize(int wpipefd, struct ls *n)
 
 static int ls_recv_str(int fd, char **buf)
 {
+	ssize_t ret;
 	size_t slen = 0;
-	if (lxc_read_nointr(fd, &slen, sizeof(slen)) != sizeof(slen))
+
+	ret = lxc_read_nointr(fd, &slen, sizeof(slen));
+	if (ret != sizeof(slen))
 		return -1;
+
 	if (slen > 0) {
 		*buf = malloc(sizeof(char) * (slen + 1));
 		if (!*buf)
 			return -1;
-		if (lxc_read_nointr(fd, *buf, slen) != (ssize_t)slen)
+
+		ret = lxc_read_nointr(fd, *buf, slen);
+		if (ret != (ssize_t)slen) {
+			free(*buf);
 			return -1;
+		}
+
 		(*buf)[slen] = '\0';
 	}
+
 	return 0;
 }
 
@@ -1227,6 +1275,7 @@ static void ls_field_width(const struct ls *l, const size_t size,
 {
 	const struct ls *m;
 	size_t i, len = 0;
+
 	for (i = 0, m = l; i < size; i++, m++) {
 		if (m->name) {
 			len = strlen(m->name) + m->nestlvl;

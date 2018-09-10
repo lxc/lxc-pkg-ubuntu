@@ -35,7 +35,7 @@
 #include "utils.h"
 #include "log.h"
 
-lxc_log_define(lxc_parse, lxc);
+lxc_log_define(parse, lxc);
 
 void *lxc_strmmap(void *addr, size_t length, int prot, int flags, int fd,
 		  off_t offset)
@@ -71,7 +71,6 @@ int lxc_file_for_each_line_mmap(const char *file, lxc_file_cb callback,
 	char *buf, *line;
 	struct stat st;
 	int ret = 0;
-	char *saveptr = NULL;
 
 	fd = open(file, O_RDONLY | O_CLOEXEC);
 	if (fd < 0)
@@ -94,7 +93,7 @@ int lxc_file_for_each_line_mmap(const char *file, lxc_file_cb callback,
 		return -1;
 	}
 
-	for (; (line = strtok_r(buf, "\n\0", &saveptr)); buf = NULL) {
+	lxc_iterate_parts(line, buf, "\n\0") {
 		ret = callback(line, data);
 		if (ret) {
 			/* Callback rv > 0 means stop here callback rv < 0 means

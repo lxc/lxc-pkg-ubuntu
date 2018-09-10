@@ -21,6 +21,7 @@
  * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA
  */
 
+#define _GNU_SOURCE
 #include <errno.h>
 #include <stdlib.h>
 #include <unistd.h>
@@ -31,7 +32,7 @@
 #include "log.h"
 #include "lsm.h"
 
-lxc_log_define(lxc_lsm, lxc);
+lxc_log_define(lsm, lxc);
 
 static struct lsm_drv *drv = NULL;
 
@@ -111,8 +112,7 @@ int lsm_process_label_fd_get(pid_t pid, bool on_exec)
 
 	labelfd = open(path, O_RDWR);
 	if (labelfd < 0) {
-		SYSERROR("%s - Unable to %s LSM label file descriptor",
-			 name, strerror(errno));
+		SYSERROR("Unable to %s LSM label file descriptor", name);
 		return -1;
 	}
 
@@ -142,18 +142,20 @@ int lsm_process_label_set_at(int label_fd, const char *label, bool on_exec)
 
 		if (on_exec) {
 			ERROR("Changing AppArmor profile on exec not supported");
-			return -EINVAL;
+			return -1;
 		}
 
 		len = strlen(label) + strlen("changeprofile ") + 1;
 		command = malloc(len);
 		if (!command)
-			return -1;
+			goto on_error;
 
 		ret = snprintf(command, len, "changeprofile %s", label);
 		if (ret < 0 || (size_t)ret >= len) {
+			int saved_errno = errno;
 			free(command);
-			return -1;
+			errno = saved_errno;
+			goto on_error;
 		}
 
 		ret = lxc_write_nointr(label_fd, command, len - 1);
@@ -161,9 +163,11 @@ int lsm_process_label_set_at(int label_fd, const char *label, bool on_exec)
 	} else if (strcmp(name, "SELinux") == 0) {
 		ret = lxc_write_nointr(label_fd, label, strlen(label));
 	} else {
-		ret = -EINVAL;
+		errno = EINVAL;
+		ret = -1;
 	}
 	if (ret < 0) {
+on_error:
 		SYSERROR("Failed to set %s label \"%s\"", name, label);
 		return -1;
 	}

@@ -91,31 +91,34 @@ PRE_UNINSTALL = :
 POST_UNINSTALL = :
 build_triplet = @build@
 host_triplet = @host@
-@IS_BIONIC_TRUE@am__append_1 = \
-@IS_BIONIC_TRUE@	../include/ifaddrs.h \
-@IS_BIONIC_TRUE@	../include/openpty.h \
-@IS_BIONIC_TRUE@	../include/lxcmntent.h
+@IS_BIONIC_TRUE@am__append_1 = ../include/ifaddrs.h \
+@IS_BIONIC_TRUE@		  ../include/lxcmntent.h \
+@IS_BIONIC_TRUE@		  ../include/openpty.h
 
 @HAVE_PRLIMIT64_TRUE@@HAVE_PRLIMIT_FALSE@am__append_2 = ../include/prlimit.h
 @HAVE_FGETLN_TRUE@@HAVE_GETLINE_FALSE@am__append_3 = ../include/getline.h
 @HAVE_GETSUBOPT_FALSE@am__append_4 = tools/include/getsubopt.h
-@ENABLE_APPARMOR_TRUE@am__append_5 = lsm/apparmor.c
-@ENABLE_SELINUX_TRUE@am__append_6 = lsm/selinux.c
-@IS_BIONIC_TRUE@am__append_7 = \
-@IS_BIONIC_TRUE@	../include/ifaddrs.c ../include/ifaddrs.h \
-@IS_BIONIC_TRUE@	../include/openpty.c ../include/openpty.h \
-@IS_BIONIC_TRUE@	../include/lxcmntent.c ../include/lxcmntent.h
+@HAVE_GETGRGID_R_FALSE@am__append_5 = ../include/getgrgid_r.h
+@ENABLE_APPARMOR_TRUE@am__append_6 = lsm/apparmor.c
+@ENABLE_SELINUX_TRUE@am__append_7 = lsm/selinux.c
+@IS_BIONIC_TRUE@am__append_8 = ../include/ifaddrs.c ../include/ifaddrs.h \
+@IS_BIONIC_TRUE@		     ../include/lxcmntent.c ../include/lxcmntent.h \
+@IS_BIONIC_TRUE@		     ../include/openpty.c ../include/openpty.h
 
-@HAVE_PRLIMIT64_TRUE@@HAVE_PRLIMIT_FALSE@am__append_8 = ../include/prlimit.c ../include/prlimit.h
-@HAVE_FGETLN_TRUE@@HAVE_GETLINE_FALSE@am__append_9 = ../include/getline.c ../include/getline.h
-@HAVE_STRLCPY_FALSE@am__append_10 = ../include/strlcpy.c ../include/strlcpy.h
-@ENABLE_APPARMOR_TRUE@am__append_11 = -DHAVE_APPARMOR
-@ENABLE_GNUTLS_TRUE@am__append_12 = -DHAVE_LIBGNUTLS
-@ENABLE_SELINUX_TRUE@am__append_13 = -DHAVE_SELINUX
-@USE_CONFIGPATH_LOGS_TRUE@am__append_14 = -DUSE_CONFIGPATH_LOGS
-@ENABLE_SECCOMP_TRUE@am__append_15 = -DHAVE_SECCOMP $(SECCOMP_CFLAGS)
-@ENABLE_SECCOMP_TRUE@am__append_16 = seccomp.c
-@ENABLE_COMMANDS_TRUE@am__append_17 = cmd/lxc-checkconfig \
+@HAVE_GETGRGID_R_FALSE@am__append_9 = ../include/getgrgid_r.c ../include/getgrgid_r.h
+@HAVE_FGETLN_TRUE@@HAVE_GETLINE_FALSE@am__append_10 = ../include/getline.c ../include/getline.h
+@HAVE_PRLIMIT64_TRUE@@HAVE_PRLIMIT_FALSE@am__append_11 = ../include/prlimit.c ../include/prlimit.h
+@ENABLE_SECCOMP_TRUE@am__append_12 = seccomp.c
+@HAVE_STRLCPY_FALSE@am__append_13 = ../include/strlcpy.c ../include/strlcpy.h
+@HAVE_STRLCAT_FALSE@am__append_14 = ../include/strlcat.c ../include/strlcat.h
+@ENABLE_APPARMOR_TRUE@am__append_15 = -DHAVE_APPARMOR
+@ENABLE_GNUTLS_TRUE@am__append_16 = -DHAVE_LIBGNUTLS
+@ENABLE_SECCOMP_TRUE@am__append_17 = -DHAVE_SECCOMP \
+@ENABLE_SECCOMP_TRUE@	     $(SECCOMP_CFLAGS)
+
+@ENABLE_SELINUX_TRUE@am__append_18 = -DHAVE_SELINUX
+@USE_CONFIGPATH_LOGS_TRUE@am__append_19 = -DUSE_CONFIGPATH_LOGS
+@ENABLE_COMMANDS_TRUE@am__append_20 = cmd/lxc-checkconfig \
 @ENABLE_COMMANDS_TRUE@	       cmd/lxc-update-config
 
 @ENABLE_TOOLS_TRUE@bin_PROGRAMS = lxc-attach$(EXEEXT) \
@@ -134,11 +137,12 @@ host_triplet = @host@
 @ENABLE_COMMANDS_TRUE@	$(am__EXEEXT_1)
 @ENABLE_COMMANDS_TRUE@pkglibexec_PROGRAMS = lxc-monitord$(EXEEXT) \
 @ENABLE_COMMANDS_TRUE@	lxc-user-nic$(EXEEXT)
-@ENABLE_RPATH_TRUE@am__append_18 = -Wl,-rpath -Wl,$(libdir)
-@ENABLE_TOOLS_TRUE@@HAVE_GETSUBOPT_FALSE@am__append_19 = tools/include/getsubopt.c tools/include/getsubopt.h
-@ENABLE_COMMANDS_TRUE@@HAVE_STATIC_LIBCAP_TRUE@am__append_20 = init.lxc.static
-@ENABLE_COMMANDS_TRUE@@HAVE_FGETLN_TRUE@@HAVE_GETLINE_FALSE@@HAVE_STATIC_LIBCAP_TRUE@am__append_21 = ../include/getline.c
-@ENABLE_COMMANDS_TRUE@@HAVE_STATIC_LIBCAP_TRUE@@HAVE_STRLCPY_FALSE@am__append_22 = ../include/strlcpy.c ../include/strlcpy.h
+@ENABLE_RPATH_TRUE@am__append_21 = -Wl,-rpath -Wl,$(libdir)
+@ENABLE_TOOLS_TRUE@@HAVE_GETSUBOPT_FALSE@am__append_22 = tools/include/getsubopt.c tools/include/getsubopt.h
+@ENABLE_COMMANDS_TRUE@@HAVE_STATIC_LIBCAP_TRUE@am__append_23 = init.lxc.static
+@ENABLE_COMMANDS_TRUE@@HAVE_FGETLN_TRUE@@HAVE_GETLINE_FALSE@@HAVE_STATIC_LIBCAP_TRUE@am__append_24 = ../include/getline.c ../include/getline.h
+@ENABLE_COMMANDS_TRUE@@HAVE_STATIC_LIBCAP_TRUE@@HAVE_STRLCPY_FALSE@am__append_25 = ../include/strlcpy.c ../include/strlcpy.h
+@ENABLE_COMMANDS_TRUE@@HAVE_STATIC_LIBCAP_TRUE@@HAVE_STRLCAT_FALSE@am__append_26 = ../include/strlcat.c ../include/strlcat.h
 subdir = src/lxc
 ACLOCAL_M4 = $(top_srcdir)/aclocal.m4
 am__aclocal_m4_deps = $(top_srcdir)/config/acinclude.m4 \
@@ -192,63 +196,69 @@ LTLIBRARIES = $(lib_LTLIBRARIES) $(pam_LTLIBRARIES)
 am__DEPENDENCIES_1 =
 liblxc_la_DEPENDENCIES = $(am__DEPENDENCIES_1) $(am__DEPENDENCIES_1) \
 	$(am__DEPENDENCIES_1) $(am__DEPENDENCIES_1)
-am__liblxc_la_SOURCES_DIST = storage/storage.c storage/storage.h \
-	storage/btrfs.c storage/btrfs.h storage/dir.c storage/dir.h \
-	storage/loop.c storage/loop.h storage/lvm.c storage/lvm.h \
-	storage/nbd.c storage/nbd.h storage/overlay.c \
+am__liblxc_la_SOURCES_DIST = af_unix.c af_unix.h attach.c attach.h \
+	caps.c caps.h cgroups/cgfsng.c cgroups/cgroup.c \
+	cgroups/cgroup.h cgroups/cgroup_utils.c cgroups/cgroup_utils.h \
+	commands.c commands.h commands_utils.c commands_utils.h conf.c \
+	conf.h confile.c confile.h confile_utils.c confile_utils.h \
+	criu.c criu.h error.c error.h execute.c freezer.c initutils.c \
+	initutils.h list.h log.c log.h lxc.h lxccontainer.c \
+	lxccontainer.h lxclock.c lxclock.h lxcseccomp.h macro.h \
+	mainloop.c mainloop.h namespace.c namespace.h nl.c nl.h \
+	network.c network.h monitor.c monitor.h parse.c parse.h \
+	ringbuf.c ringbuf.h rtnl.c rtnl.h state.c state.h start.c \
+	start.h storage/btrfs.c storage/btrfs.h storage/dir.c \
+	storage/dir.h storage/loop.c storage/loop.h storage/lvm.c \
+	storage/lvm.h storage/nbd.c storage/nbd.h storage/overlay.c \
 	storage/overlay.h storage/rbd.c storage/rbd.h storage/rsync.c \
-	storage/rsync.h storage/zfs.c storage/zfs.h \
-	storage/storage_utils.c storage/storage_utils.h \
-	cgroups/cgfsng.c cgroups/cgroup_utils.c cgroups/cgroup_utils.h \
-	cgroups/cgroup.c cgroups/cgroup.h commands.c commands.h \
-	commands_utils.c commands_utils.h start.c start.h execute.c \
-	monitor.c monitor.h terminal.c freezer.c error.h error.c \
-	parse.c parse.h lxc.h initutils.c initutils.h utils.c utils.h \
-	sync.c sync.h namespace.h namespace.c conf.c conf.h confile.c \
-	confile.h confile_utils.c confile_utils.h list.h state.c \
-	state.h log.c log.h attach.c attach.h criu.c criu.h ringbuf.c \
-	ringbuf.h network.c network.h nl.c nl.h rtnl.c rtnl.h caps.c \
-	caps.h lxcseccomp.h mainloop.c mainloop.h af_unix.c af_unix.h \
-	lxclock.h lxclock.c lxccontainer.c lxccontainer.h version.h \
-	lsm/nop.c lsm/lsm.h lsm/lsm.c lsm/apparmor.c lsm/selinux.c \
-	../include/ifaddrs.c ../include/ifaddrs.h ../include/openpty.c \
-	../include/openpty.h ../include/lxcmntent.c \
-	../include/lxcmntent.h ../include/prlimit.c \
-	../include/prlimit.h ../include/getline.c ../include/getline.h \
-	../include/strlcpy.c ../include/strlcpy.h seccomp.c
+	storage/rsync.h storage/storage.c storage/storage.h \
+	storage/storage_utils.c storage/storage_utils.h storage/zfs.c \
+	storage/zfs.h sync.c sync.h terminal.c utils.c utils.h \
+	version.h lsm/lsm.c lsm/lsm.h lsm/nop.c lsm/apparmor.c \
+	lsm/selinux.c ../include/ifaddrs.c ../include/ifaddrs.h \
+	../include/lxcmntent.c ../include/lxcmntent.h \
+	../include/openpty.c ../include/openpty.h \
+	../include/getgrgid_r.c ../include/getgrgid_r.h \
+	../include/getline.c ../include/getline.h ../include/prlimit.c \
+	../include/prlimit.h seccomp.c ../include/strlcpy.c \
+	../include/strlcpy.h ../include/strlcat.c ../include/strlcat.h
 am__dirstamp = $(am__leading_dot)dirstamp
 @ENABLE_APPARMOR_TRUE@am__objects_1 = lsm/liblxc_la-apparmor.lo
 @ENABLE_SELINUX_TRUE@am__objects_2 = lsm/liblxc_la-selinux.lo
-am__objects_3 = lsm/liblxc_la-nop.lo lsm/liblxc_la-lsm.lo \
+am__objects_3 = lsm/liblxc_la-lsm.lo lsm/liblxc_la-nop.lo \
 	$(am__objects_1) $(am__objects_2)
 @IS_BIONIC_TRUE@am__objects_4 = ../include/liblxc_la-ifaddrs.lo \
-@IS_BIONIC_TRUE@	../include/liblxc_la-openpty.lo \
-@IS_BIONIC_TRUE@	../include/liblxc_la-lxcmntent.lo
-@HAVE_PRLIMIT64_TRUE@@HAVE_PRLIMIT_FALSE@am__objects_5 = ../include/liblxc_la-prlimit.lo
+@IS_BIONIC_TRUE@	../include/liblxc_la-lxcmntent.lo \
+@IS_BIONIC_TRUE@	../include/liblxc_la-openpty.lo
+@HAVE_GETGRGID_R_FALSE@am__objects_5 =  \
+@HAVE_GETGRGID_R_FALSE@	../include/liblxc_la-getgrgid_r.lo
 @HAVE_FGETLN_TRUE@@HAVE_GETLINE_FALSE@am__objects_6 = ../include/liblxc_la-getline.lo
-@HAVE_STRLCPY_FALSE@am__objects_7 = ../include/liblxc_la-strlcpy.lo
+@HAVE_PRLIMIT64_TRUE@@HAVE_PRLIMIT_FALSE@am__objects_7 = ../include/liblxc_la-prlimit.lo
 @ENABLE_SECCOMP_TRUE@am__objects_8 = liblxc_la-seccomp.lo
-am_liblxc_la_OBJECTS = storage/liblxc_la-storage.lo \
-	storage/liblxc_la-btrfs.lo storage/liblxc_la-dir.lo \
-	storage/liblxc_la-loop.lo storage/liblxc_la-lvm.lo \
-	storage/liblxc_la-nbd.lo storage/liblxc_la-overlay.lo \
-	storage/liblxc_la-rbd.lo storage/liblxc_la-rsync.lo \
-	storage/liblxc_la-zfs.lo storage/liblxc_la-storage_utils.lo \
-	cgroups/liblxc_la-cgfsng.lo cgroups/liblxc_la-cgroup_utils.lo \
-	cgroups/liblxc_la-cgroup.lo liblxc_la-commands.lo \
-	liblxc_la-commands_utils.lo liblxc_la-start.lo \
-	liblxc_la-execute.lo liblxc_la-monitor.lo \
-	liblxc_la-terminal.lo liblxc_la-freezer.lo liblxc_la-error.lo \
-	liblxc_la-parse.lo liblxc_la-initutils.lo liblxc_la-utils.lo \
-	liblxc_la-sync.lo liblxc_la-namespace.lo liblxc_la-conf.lo \
-	liblxc_la-confile.lo liblxc_la-confile_utils.lo \
-	liblxc_la-state.lo liblxc_la-log.lo liblxc_la-attach.lo \
-	liblxc_la-criu.lo liblxc_la-ringbuf.lo liblxc_la-network.lo \
-	liblxc_la-nl.lo liblxc_la-rtnl.lo liblxc_la-caps.lo \
-	liblxc_la-mainloop.lo liblxc_la-af_unix.lo \
-	liblxc_la-lxclock.lo liblxc_la-lxccontainer.lo \
+@HAVE_STRLCPY_FALSE@am__objects_9 = ../include/liblxc_la-strlcpy.lo
+@HAVE_STRLCAT_FALSE@am__objects_10 = ../include/liblxc_la-strlcat.lo
+am_liblxc_la_OBJECTS = liblxc_la-af_unix.lo liblxc_la-attach.lo \
+	liblxc_la-caps.lo cgroups/liblxc_la-cgfsng.lo \
+	cgroups/liblxc_la-cgroup.lo cgroups/liblxc_la-cgroup_utils.lo \
+	liblxc_la-commands.lo liblxc_la-commands_utils.lo \
+	liblxc_la-conf.lo liblxc_la-confile.lo \
+	liblxc_la-confile_utils.lo liblxc_la-criu.lo \
+	liblxc_la-error.lo liblxc_la-execute.lo liblxc_la-freezer.lo \
+	liblxc_la-initutils.lo liblxc_la-log.lo \
+	liblxc_la-lxccontainer.lo liblxc_la-lxclock.lo \
+	liblxc_la-mainloop.lo liblxc_la-namespace.lo liblxc_la-nl.lo \
+	liblxc_la-network.lo liblxc_la-monitor.lo liblxc_la-parse.lo \
+	liblxc_la-ringbuf.lo liblxc_la-rtnl.lo liblxc_la-state.lo \
+	liblxc_la-start.lo storage/liblxc_la-btrfs.lo \
+	storage/liblxc_la-dir.lo storage/liblxc_la-loop.lo \
+	storage/liblxc_la-lvm.lo storage/liblxc_la-nbd.lo \
+	storage/liblxc_la-overlay.lo storage/liblxc_la-rbd.lo \
+	storage/liblxc_la-rsync.lo storage/liblxc_la-storage.lo \
+	storage/liblxc_la-storage_utils.lo storage/liblxc_la-zfs.lo \
+	liblxc_la-sync.lo liblxc_la-terminal.lo liblxc_la-utils.lo \
 	$(am__objects_3) $(am__objects_4) $(am__objects_5) \
-	$(am__objects_6) $(am__objects_7) $(am__objects_8)
+	$(am__objects_6) $(am__objects_7) $(am__objects_8) \
+	$(am__objects_9) $(am__objects_10)
 liblxc_la_OBJECTS = $(am_liblxc_la_OBJECTS)
 AM_V_lt = $(am__v_lt_@AM_V@)
 am__v_lt_ = $(am__v_lt_@AM_DEFAULT_V@)
@@ -276,20 +286,24 @@ am__init_lxc_SOURCES_DIST = cmd/lxc_init.c
 init_lxc_OBJECTS = $(am_init_lxc_OBJECTS)
 init_lxc_LDADD = $(LDADD)
 init_lxc_DEPENDENCIES = liblxc.la
-am__init_lxc_static_SOURCES_DIST = cmd/lxc_init.c error.c log.c \
-	initutils.c caps.c parse.c namespace.c ../include/getline.c \
-	../include/strlcpy.c ../include/strlcpy.h
-@ENABLE_COMMANDS_TRUE@@HAVE_FGETLN_TRUE@@HAVE_GETLINE_FALSE@@HAVE_STATIC_LIBCAP_TRUE@am__objects_9 = ../include/init_lxc_static-getline.$(OBJEXT)
-@ENABLE_COMMANDS_TRUE@@HAVE_STATIC_LIBCAP_TRUE@@HAVE_STRLCPY_FALSE@am__objects_10 = ../include/init_lxc_static-strlcpy.$(OBJEXT)
+am__init_lxc_static_SOURCES_DIST = cmd/lxc_init.c caps.c caps.h \
+	error.c error.h initutils.c initutils.h log.c log.h macro.h \
+	namespace.c namespace.h parse.c parse.h ../include/getline.c \
+	../include/getline.h ../include/strlcpy.c ../include/strlcpy.h \
+	../include/strlcat.c ../include/strlcat.h
+@ENABLE_COMMANDS_TRUE@@HAVE_FGETLN_TRUE@@HAVE_GETLINE_FALSE@@HAVE_STATIC_LIBCAP_TRUE@am__objects_11 = ../include/init_lxc_static-getline.$(OBJEXT)
+@ENABLE_COMMANDS_TRUE@@HAVE_STATIC_LIBCAP_TRUE@@HAVE_STRLCPY_FALSE@am__objects_12 = ../include/init_lxc_static-strlcpy.$(OBJEXT)
+@ENABLE_COMMANDS_TRUE@@HAVE_STATIC_LIBCAP_TRUE@@HAVE_STRLCAT_FALSE@am__objects_13 = ../include/init_lxc_static-strlcat.$(OBJEXT)
 @ENABLE_COMMANDS_TRUE@@HAVE_STATIC_LIBCAP_TRUE@am_init_lxc_static_OBJECTS = cmd/init_lxc_static-lxc_init.$(OBJEXT) \
-@ENABLE_COMMANDS_TRUE@@HAVE_STATIC_LIBCAP_TRUE@	init_lxc_static-error.$(OBJEXT) \
-@ENABLE_COMMANDS_TRUE@@HAVE_STATIC_LIBCAP_TRUE@	init_lxc_static-log.$(OBJEXT) \
-@ENABLE_COMMANDS_TRUE@@HAVE_STATIC_LIBCAP_TRUE@	init_lxc_static-initutils.$(OBJEXT) \
 @ENABLE_COMMANDS_TRUE@@HAVE_STATIC_LIBCAP_TRUE@	init_lxc_static-caps.$(OBJEXT) \
-@ENABLE_COMMANDS_TRUE@@HAVE_STATIC_LIBCAP_TRUE@	init_lxc_static-parse.$(OBJEXT) \
+@ENABLE_COMMANDS_TRUE@@HAVE_STATIC_LIBCAP_TRUE@	init_lxc_static-error.$(OBJEXT) \
+@ENABLE_COMMANDS_TRUE@@HAVE_STATIC_LIBCAP_TRUE@	init_lxc_static-initutils.$(OBJEXT) \
+@ENABLE_COMMANDS_TRUE@@HAVE_STATIC_LIBCAP_TRUE@	init_lxc_static-log.$(OBJEXT) \
 @ENABLE_COMMANDS_TRUE@@HAVE_STATIC_LIBCAP_TRUE@	init_lxc_static-namespace.$(OBJEXT) \
-@ENABLE_COMMANDS_TRUE@@HAVE_STATIC_LIBCAP_TRUE@	$(am__objects_9) \
-@ENABLE_COMMANDS_TRUE@@HAVE_STATIC_LIBCAP_TRUE@	$(am__objects_10)
+@ENABLE_COMMANDS_TRUE@@HAVE_STATIC_LIBCAP_TRUE@	init_lxc_static-parse.$(OBJEXT) \
+@ENABLE_COMMANDS_TRUE@@HAVE_STATIC_LIBCAP_TRUE@	$(am__objects_11) \
+@ENABLE_COMMANDS_TRUE@@HAVE_STATIC_LIBCAP_TRUE@	$(am__objects_12) \
+@ENABLE_COMMANDS_TRUE@@HAVE_STATIC_LIBCAP_TRUE@	$(am__objects_13)
 init_lxc_static_OBJECTS = $(am_init_lxc_static_OBJECTS)
 init_lxc_static_DEPENDENCIES =
 init_lxc_static_LINK = $(LIBTOOL) $(AM_V_lt) --tag=CC \
@@ -297,131 +311,115 @@ init_lxc_static_LINK = $(LIBTOOL) $(AM_V_lt) --tag=CC \
 	$(init_lxc_static_CFLAGS) $(CFLAGS) $(init_lxc_static_LDFLAGS) \
 	$(LDFLAGS) -o $@
 am__lxc_attach_SOURCES_DIST = tools/lxc_attach.c tools/arguments.c \
-	tools/tool_utils.c
+	tools/arguments.h
 @ENABLE_TOOLS_TRUE@am_lxc_attach_OBJECTS = tools/lxc_attach.$(OBJEXT) \
-@ENABLE_TOOLS_TRUE@	tools/arguments.$(OBJEXT) \
-@ENABLE_TOOLS_TRUE@	tools/tool_utils.$(OBJEXT)
+@ENABLE_TOOLS_TRUE@	tools/arguments.$(OBJEXT)
 lxc_attach_OBJECTS = $(am_lxc_attach_OBJECTS)
 lxc_attach_LDADD = $(LDADD)
 lxc_attach_DEPENDENCIES = liblxc.la
 am__lxc_autostart_SOURCES_DIST = tools/lxc_autostart.c \
-	tools/arguments.c tools/tool_utils.c
+	tools/arguments.c tools/arguments.h
 @ENABLE_TOOLS_TRUE@am_lxc_autostart_OBJECTS =  \
 @ENABLE_TOOLS_TRUE@	tools/lxc_autostart.$(OBJEXT) \
-@ENABLE_TOOLS_TRUE@	tools/arguments.$(OBJEXT) \
-@ENABLE_TOOLS_TRUE@	tools/tool_utils.$(OBJEXT)
+@ENABLE_TOOLS_TRUE@	tools/arguments.$(OBJEXT)
 lxc_autostart_OBJECTS = $(am_lxc_autostart_OBJECTS)
 lxc_autostart_LDADD = $(LDADD)
 lxc_autostart_DEPENDENCIES = liblxc.la
 am__lxc_cgroup_SOURCES_DIST = tools/lxc_cgroup.c tools/arguments.c \
-	tools/tool_utils.c
+	tools/arguments.h
 @ENABLE_TOOLS_TRUE@am_lxc_cgroup_OBJECTS = tools/lxc_cgroup.$(OBJEXT) \
-@ENABLE_TOOLS_TRUE@	tools/arguments.$(OBJEXT) \
-@ENABLE_TOOLS_TRUE@	tools/tool_utils.$(OBJEXT)
+@ENABLE_TOOLS_TRUE@	tools/arguments.$(OBJEXT)
 lxc_cgroup_OBJECTS = $(am_lxc_cgroup_OBJECTS)
 lxc_cgroup_LDADD = $(LDADD)
 lxc_cgroup_DEPENDENCIES = liblxc.la
 am__lxc_checkpoint_SOURCES_DIST = tools/lxc_checkpoint.c \
-	tools/arguments.c tools/tool_utils.c
+	tools/arguments.c tools/arguments.h
 @ENABLE_TOOLS_TRUE@am_lxc_checkpoint_OBJECTS =  \
 @ENABLE_TOOLS_TRUE@	tools/lxc_checkpoint.$(OBJEXT) \
-@ENABLE_TOOLS_TRUE@	tools/arguments.$(OBJEXT) \
-@ENABLE_TOOLS_TRUE@	tools/tool_utils.$(OBJEXT)
+@ENABLE_TOOLS_TRUE@	tools/arguments.$(OBJEXT)
 lxc_checkpoint_OBJECTS = $(am_lxc_checkpoint_OBJECTS)
 lxc_checkpoint_LDADD = $(LDADD)
 lxc_checkpoint_DEPENDENCIES = liblxc.la
 am__lxc_config_SOURCES_DIST = tools/lxc_config.c tools/arguments.c \
-	tools/tool_utils.c
+	tools/arguments.h
 @ENABLE_TOOLS_TRUE@am_lxc_config_OBJECTS = tools/lxc_config.$(OBJEXT) \
-@ENABLE_TOOLS_TRUE@	tools/arguments.$(OBJEXT) \
-@ENABLE_TOOLS_TRUE@	tools/tool_utils.$(OBJEXT)
+@ENABLE_TOOLS_TRUE@	tools/arguments.$(OBJEXT)
 lxc_config_OBJECTS = $(am_lxc_config_OBJECTS)
 lxc_config_LDADD = $(LDADD)
 lxc_config_DEPENDENCIES = liblxc.la
 am__lxc_console_SOURCES_DIST = tools/lxc_console.c tools/arguments.c \
-	tools/tool_utils.c
+	tools/arguments.h
 @ENABLE_TOOLS_TRUE@am_lxc_console_OBJECTS =  \
 @ENABLE_TOOLS_TRUE@	tools/lxc_console.$(OBJEXT) \
-@ENABLE_TOOLS_TRUE@	tools/arguments.$(OBJEXT) \
-@ENABLE_TOOLS_TRUE@	tools/tool_utils.$(OBJEXT)
+@ENABLE_TOOLS_TRUE@	tools/arguments.$(OBJEXT)
 lxc_console_OBJECTS = $(am_lxc_console_OBJECTS)
 lxc_console_LDADD = $(LDADD)
 lxc_console_DEPENDENCIES = liblxc.la
 am__lxc_copy_SOURCES_DIST = tools/lxc_copy.c tools/arguments.c \
-	tools/tool_utils.c tools/include/getsubopt.c \
+	tools/arguments.h tools/include/getsubopt.c \
 	tools/include/getsubopt.h
-@ENABLE_TOOLS_TRUE@@HAVE_GETSUBOPT_FALSE@am__objects_11 = tools/include/getsubopt.$(OBJEXT)
+@ENABLE_TOOLS_TRUE@@HAVE_GETSUBOPT_FALSE@am__objects_14 = tools/include/getsubopt.$(OBJEXT)
 @ENABLE_TOOLS_TRUE@am_lxc_copy_OBJECTS = tools/lxc_copy.$(OBJEXT) \
-@ENABLE_TOOLS_TRUE@	tools/arguments.$(OBJEXT) \
-@ENABLE_TOOLS_TRUE@	tools/tool_utils.$(OBJEXT) \
-@ENABLE_TOOLS_TRUE@	$(am__objects_11)
+@ENABLE_TOOLS_TRUE@	tools/arguments.$(OBJEXT) $(am__objects_14)
 lxc_copy_OBJECTS = $(am_lxc_copy_OBJECTS)
 lxc_copy_LDADD = $(LDADD)
 lxc_copy_DEPENDENCIES = liblxc.la
 am__lxc_create_SOURCES_DIST = tools/lxc_create.c tools/arguments.c \
-	tools/tool_utils.c
+	tools/arguments.h
 @ENABLE_TOOLS_TRUE@am_lxc_create_OBJECTS = tools/lxc_create.$(OBJEXT) \
-@ENABLE_TOOLS_TRUE@	tools/arguments.$(OBJEXT) \
-@ENABLE_TOOLS_TRUE@	tools/tool_utils.$(OBJEXT)
+@ENABLE_TOOLS_TRUE@	tools/arguments.$(OBJEXT)
 lxc_create_OBJECTS = $(am_lxc_create_OBJECTS)
 lxc_create_LDADD = $(LDADD)
 lxc_create_DEPENDENCIES = liblxc.la
 am__lxc_destroy_SOURCES_DIST = tools/lxc_destroy.c tools/arguments.c \
-	tools/tool_utils.c
+	tools/arguments.h
 @ENABLE_TOOLS_TRUE@am_lxc_destroy_OBJECTS =  \
 @ENABLE_TOOLS_TRUE@	tools/lxc_destroy.$(OBJEXT) \
-@ENABLE_TOOLS_TRUE@	tools/arguments.$(OBJEXT) \
-@ENABLE_TOOLS_TRUE@	tools/tool_utils.$(OBJEXT)
+@ENABLE_TOOLS_TRUE@	tools/arguments.$(OBJEXT)
 lxc_destroy_OBJECTS = $(am_lxc_destroy_OBJECTS)
 lxc_destroy_LDADD = $(LDADD)
 lxc_destroy_DEPENDENCIES = liblxc.la
 am__lxc_device_SOURCES_DIST = tools/lxc_device.c tools/arguments.c \
-	tools/tool_utils.c
+	tools/arguments.h
 @ENABLE_TOOLS_TRUE@am_lxc_device_OBJECTS = tools/lxc_device.$(OBJEXT) \
-@ENABLE_TOOLS_TRUE@	tools/arguments.$(OBJEXT) \
-@ENABLE_TOOLS_TRUE@	tools/tool_utils.$(OBJEXT)
+@ENABLE_TOOLS_TRUE@	tools/arguments.$(OBJEXT)
 lxc_device_OBJECTS = $(am_lxc_device_OBJECTS)
 lxc_device_LDADD = $(LDADD)
 lxc_device_DEPENDENCIES = liblxc.la
 am__lxc_execute_SOURCES_DIST = tools/lxc_execute.c tools/arguments.c \
-	tools/tool_utils.c
+	tools/arguments.h
 @ENABLE_TOOLS_TRUE@am_lxc_execute_OBJECTS =  \
 @ENABLE_TOOLS_TRUE@	tools/lxc_execute.$(OBJEXT) \
-@ENABLE_TOOLS_TRUE@	tools/arguments.$(OBJEXT) \
-@ENABLE_TOOLS_TRUE@	tools/tool_utils.$(OBJEXT)
+@ENABLE_TOOLS_TRUE@	tools/arguments.$(OBJEXT)
 lxc_execute_OBJECTS = $(am_lxc_execute_OBJECTS)
 lxc_execute_LDADD = $(LDADD)
 lxc_execute_DEPENDENCIES = liblxc.la
 am__lxc_freeze_SOURCES_DIST = tools/lxc_freeze.c tools/arguments.c \
-	tools/tool_utils.c
+	tools/arguments.h
 @ENABLE_TOOLS_TRUE@am_lxc_freeze_OBJECTS = tools/lxc_freeze.$(OBJEXT) \
-@ENABLE_TOOLS_TRUE@	tools/arguments.$(OBJEXT) \
-@ENABLE_TOOLS_TRUE@	tools/tool_utils.$(OBJEXT)
+@ENABLE_TOOLS_TRUE@	tools/arguments.$(OBJEXT)
 lxc_freeze_OBJECTS = $(am_lxc_freeze_OBJECTS)
 lxc_freeze_LDADD = $(LDADD)
 lxc_freeze_DEPENDENCIES = liblxc.la
 am__lxc_info_SOURCES_DIST = tools/lxc_info.c tools/arguments.c \
-	tools/tool_utils.c
+	tools/arguments.h
 @ENABLE_TOOLS_TRUE@am_lxc_info_OBJECTS = tools/lxc_info.$(OBJEXT) \
-@ENABLE_TOOLS_TRUE@	tools/arguments.$(OBJEXT) \
-@ENABLE_TOOLS_TRUE@	tools/tool_utils.$(OBJEXT)
+@ENABLE_TOOLS_TRUE@	tools/arguments.$(OBJEXT)
 lxc_info_OBJECTS = $(am_lxc_info_OBJECTS)
 lxc_info_LDADD = $(LDADD)
 lxc_info_DEPENDENCIES = liblxc.la
 am__lxc_ls_SOURCES_DIST = tools/lxc_ls.c tools/arguments.c \
-	tools/tool_utils.c
+	tools/arguments.h
 @ENABLE_TOOLS_TRUE@am_lxc_ls_OBJECTS = tools/lxc_ls.$(OBJEXT) \
-@ENABLE_TOOLS_TRUE@	tools/arguments.$(OBJEXT) \
-@ENABLE_TOOLS_TRUE@	tools/tool_utils.$(OBJEXT)
+@ENABLE_TOOLS_TRUE@	tools/arguments.$(OBJEXT)
 lxc_ls_OBJECTS = $(am_lxc_ls_OBJECTS)
 lxc_ls_LDADD = $(LDADD)
 lxc_ls_DEPENDENCIES = liblxc.la
 am__lxc_monitor_SOURCES_DIST = tools/lxc_monitor.c tools/arguments.c \
-	tools/tool_utils.c
+	tools/arguments.h
 @ENABLE_TOOLS_TRUE@am_lxc_monitor_OBJECTS =  \
 @ENABLE_TOOLS_TRUE@	tools/lxc_monitor.$(OBJEXT) \
-@ENABLE_TOOLS_TRUE@	tools/arguments.$(OBJEXT) \
-@ENABLE_TOOLS_TRUE@	tools/tool_utils.$(OBJEXT)
+@ENABLE_TOOLS_TRUE@	tools/arguments.$(OBJEXT)
 lxc_monitor_OBJECTS = $(am_lxc_monitor_OBJECTS)
 lxc_monitor_LDADD = $(LDADD)
 lxc_monitor_DEPENDENCIES = liblxc.la
@@ -432,58 +430,52 @@ lxc_monitord_OBJECTS = $(am_lxc_monitord_OBJECTS)
 lxc_monitord_LDADD = $(LDADD)
 lxc_monitord_DEPENDENCIES = liblxc.la
 am__lxc_snapshot_SOURCES_DIST = tools/lxc_snapshot.c tools/arguments.c \
-	tools/tool_utils.c
+	tools/arguments.h
 @ENABLE_TOOLS_TRUE@am_lxc_snapshot_OBJECTS =  \
 @ENABLE_TOOLS_TRUE@	tools/lxc_snapshot.$(OBJEXT) \
-@ENABLE_TOOLS_TRUE@	tools/arguments.$(OBJEXT) \
-@ENABLE_TOOLS_TRUE@	tools/tool_utils.$(OBJEXT)
+@ENABLE_TOOLS_TRUE@	tools/arguments.$(OBJEXT)
 lxc_snapshot_OBJECTS = $(am_lxc_snapshot_OBJECTS)
 lxc_snapshot_LDADD = $(LDADD)
 lxc_snapshot_DEPENDENCIES = liblxc.la
 am__lxc_start_SOURCES_DIST = tools/lxc_start.c tools/arguments.c \
-	tools/tool_utils.c
+	tools/arguments.h
 @ENABLE_TOOLS_TRUE@am_lxc_start_OBJECTS = tools/lxc_start.$(OBJEXT) \
-@ENABLE_TOOLS_TRUE@	tools/arguments.$(OBJEXT) \
-@ENABLE_TOOLS_TRUE@	tools/tool_utils.$(OBJEXT)
+@ENABLE_TOOLS_TRUE@	tools/arguments.$(OBJEXT)
 lxc_start_OBJECTS = $(am_lxc_start_OBJECTS)
 lxc_start_LDADD = $(LDADD)
 lxc_start_DEPENDENCIES = liblxc.la
 am__lxc_stop_SOURCES_DIST = tools/lxc_stop.c tools/arguments.c \
-	tools/tool_utils.c
+	tools/arguments.h
 @ENABLE_TOOLS_TRUE@am_lxc_stop_OBJECTS = tools/lxc_stop.$(OBJEXT) \
-@ENABLE_TOOLS_TRUE@	tools/arguments.$(OBJEXT) \
-@ENABLE_TOOLS_TRUE@	tools/tool_utils.$(OBJEXT)
+@ENABLE_TOOLS_TRUE@	tools/arguments.$(OBJEXT)
 lxc_stop_OBJECTS = $(am_lxc_stop_OBJECTS)
 lxc_stop_LDADD = $(LDADD)
 lxc_stop_DEPENDENCIES = liblxc.la
 am__lxc_top_SOURCES_DIST = tools/lxc_top.c tools/arguments.c \
-	tools/tool_utils.c
+	tools/arguments.h
 @ENABLE_TOOLS_TRUE@am_lxc_top_OBJECTS = tools/lxc_top.$(OBJEXT) \
-@ENABLE_TOOLS_TRUE@	tools/arguments.$(OBJEXT) \
-@ENABLE_TOOLS_TRUE@	tools/tool_utils.$(OBJEXT)
+@ENABLE_TOOLS_TRUE@	tools/arguments.$(OBJEXT)
 lxc_top_OBJECTS = $(am_lxc_top_OBJECTS)
 lxc_top_LDADD = $(LDADD)
 lxc_top_DEPENDENCIES = liblxc.la
 am__lxc_unfreeze_SOURCES_DIST = tools/lxc_unfreeze.c tools/arguments.c \
-	tools/tool_utils.c
+	tools/arguments.h
 @ENABLE_TOOLS_TRUE@am_lxc_unfreeze_OBJECTS =  \
 @ENABLE_TOOLS_TRUE@	tools/lxc_unfreeze.$(OBJEXT) \
-@ENABLE_TOOLS_TRUE@	tools/arguments.$(OBJEXT) \
-@ENABLE_TOOLS_TRUE@	tools/tool_utils.$(OBJEXT)
+@ENABLE_TOOLS_TRUE@	tools/arguments.$(OBJEXT)
 lxc_unfreeze_OBJECTS = $(am_lxc_unfreeze_OBJECTS)
 lxc_unfreeze_LDADD = $(LDADD)
 lxc_unfreeze_DEPENDENCIES = liblxc.la
 am__lxc_unshare_SOURCES_DIST = tools/lxc_unshare.c tools/arguments.c \
-	tools/tool_utils.c
+	tools/arguments.h
 @ENABLE_TOOLS_TRUE@am_lxc_unshare_OBJECTS =  \
 @ENABLE_TOOLS_TRUE@	tools/lxc_unshare.$(OBJEXT) \
-@ENABLE_TOOLS_TRUE@	tools/arguments.$(OBJEXT) \
-@ENABLE_TOOLS_TRUE@	tools/tool_utils.$(OBJEXT)
+@ENABLE_TOOLS_TRUE@	tools/arguments.$(OBJEXT)
 lxc_unshare_OBJECTS = $(am_lxc_unshare_OBJECTS)
 lxc_unshare_LDADD = $(LDADD)
 lxc_unshare_DEPENDENCIES = liblxc.la
 am__lxc_user_nic_SOURCES_DIST = cmd/lxc_user_nic.c namespace.c \
-	network.c parse.c
+	namespace.h network.c network.h parse.c parse.h
 @ENABLE_COMMANDS_TRUE@am_lxc_user_nic_OBJECTS =  \
 @ENABLE_COMMANDS_TRUE@	cmd/lxc_user_nic.$(OBJEXT) \
 @ENABLE_COMMANDS_TRUE@	namespace.$(OBJEXT) network.$(OBJEXT) \
@@ -491,17 +483,19 @@ am__lxc_user_nic_SOURCES_DIST = cmd/lxc_user_nic.c namespace.c \
 lxc_user_nic_OBJECTS = $(am_lxc_user_nic_OBJECTS)
 lxc_user_nic_LDADD = $(LDADD)
 lxc_user_nic_DEPENDENCIES = liblxc.la
-am__lxc_usernsexec_SOURCES_DIST = cmd/lxc_usernsexec.c
+am__lxc_usernsexec_SOURCES_DIST = cmd/lxc_usernsexec.c conf.c conf.h \
+	list.h log.c log.h namespace.c namespace.h utils.c utils.h
 @ENABLE_COMMANDS_TRUE@am_lxc_usernsexec_OBJECTS =  \
-@ENABLE_COMMANDS_TRUE@	cmd/lxc_usernsexec.$(OBJEXT)
+@ENABLE_COMMANDS_TRUE@	cmd/lxc_usernsexec.$(OBJEXT) \
+@ENABLE_COMMANDS_TRUE@	conf.$(OBJEXT) log.$(OBJEXT) \
+@ENABLE_COMMANDS_TRUE@	namespace.$(OBJEXT) utils.$(OBJEXT)
 lxc_usernsexec_OBJECTS = $(am_lxc_usernsexec_OBJECTS)
 lxc_usernsexec_LDADD = $(LDADD)
 lxc_usernsexec_DEPENDENCIES = liblxc.la
 am__lxc_wait_SOURCES_DIST = tools/lxc_wait.c tools/arguments.c \
-	tools/tool_utils.c
+	tools/arguments.h
 @ENABLE_TOOLS_TRUE@am_lxc_wait_OBJECTS = tools/lxc_wait.$(OBJEXT) \
-@ENABLE_TOOLS_TRUE@	tools/arguments.$(OBJEXT) \
-@ENABLE_TOOLS_TRUE@	tools/tool_utils.$(OBJEXT)
+@ENABLE_TOOLS_TRUE@	tools/arguments.$(OBJEXT)
 lxc_wait_OBJECTS = $(am_lxc_wait_OBJECTS)
 lxc_wait_LDADD = $(LDADD)
 lxc_wait_DEPENDENCIES = liblxc.la
@@ -580,17 +574,17 @@ am__can_run_installinfo = \
     n|no|NO) false;; \
     *) (install-info --version) >/dev/null 2>&1;; \
   esac
-am__noinst_HEADERS_DIST = attach.h storage/storage.h storage/btrfs.h \
+am__noinst_HEADERS_DIST = attach.h caps.h cgroups/cgroup.h \
+	cgroups/cgroup_utils.h conf.h confile.h confile_utils.h criu.h \
+	error.h initutils.h list.h log.h lxc.h lxclock.h macro.h \
+	monitor.h namespace.h start.h state.h storage/btrfs.h \
 	storage/dir.h storage/loop.h storage/lvm.h storage/nbd.h \
-	storage/overlay.h storage/rbd.h storage/rsync.h storage/zfs.h \
-	storage/storage_utils.h tools/arguments.h tools/tool_utils.h \
-	tools/tool_list.h cgroups/cgroup.h cgroups/cgroup_utils.h \
-	caps.h conf.h confile.h confile_utils.h error.h initutils.h \
-	list.h log.h lxc.h lxclock.h monitor.h namespace.h start.h \
-	state.h terminal.h utils.h criu.h ../tests/lxctest.h \
-	../include/ifaddrs.h ../include/openpty.h \
-	../include/lxcmntent.h ../include/prlimit.h \
-	../include/getline.h tools/include/getsubopt.h
+	storage/overlay.h storage/rbd.h storage/rsync.h \
+	storage/storage.h storage/storage_utils.h storage/zfs.h \
+	terminal.h ../tests/lxctest.h tools/arguments.h utils.h \
+	../include/ifaddrs.h ../include/lxcmntent.h \
+	../include/openpty.h ../include/prlimit.h ../include/getline.h \
+	tools/include/getsubopt.h ../include/getgrgid_r.h
 HEADERS = $(noinst_HEADERS) $(pkginclude_HEADERS)
 am__tagged_files = $(HEADERS) $(SOURCES) $(TAGS_FILES) $(LISP)
 # Read a list of newline-separated strings from the standard input,
@@ -788,45 +782,45 @@ target_alias = @target_alias@
 top_build_prefix = @top_build_prefix@
 top_builddir = @top_builddir@
 top_srcdir = @top_srcdir@
-pkginclude_HEADERS = \
-	attach_options.h \
-	lxccontainer.h \
-	version.h
+pkginclude_HEADERS = attach_options.h \
+		     lxccontainer.h \
+		     version.h
 
-noinst_HEADERS = attach.h storage/storage.h storage/btrfs.h \
+noinst_HEADERS = attach.h caps.h cgroups/cgroup.h \
+	cgroups/cgroup_utils.h conf.h confile.h confile_utils.h criu.h \
+	error.h initutils.h list.h log.h lxc.h lxclock.h macro.h \
+	monitor.h namespace.h start.h state.h storage/btrfs.h \
 	storage/dir.h storage/loop.h storage/lvm.h storage/nbd.h \
-	storage/overlay.h storage/rbd.h storage/rsync.h storage/zfs.h \
-	storage/storage_utils.h tools/arguments.h tools/tool_utils.h \
-	tools/tool_list.h cgroups/cgroup.h cgroups/cgroup_utils.h \
-	caps.h conf.h confile.h confile_utils.h error.h initutils.h \
-	list.h log.h lxc.h lxclock.h monitor.h namespace.h start.h \
-	state.h terminal.h utils.h criu.h ../tests/lxctest.h \
+	storage/overlay.h storage/rbd.h storage/rsync.h \
+	storage/storage.h storage/storage_utils.h storage/zfs.h \
+	terminal.h ../tests/lxctest.h tools/arguments.h utils.h \
 	$(am__append_1) $(am__append_2) $(am__append_3) \
-	$(am__append_4)
+	$(am__append_4) $(am__append_5)
 sodir = $(libdir)
-LSM_SOURCES = lsm/nop.c lsm/lsm.h lsm/lsm.c $(am__append_5) \
-	$(am__append_6)
+LSM_SOURCES = lsm/lsm.c lsm/lsm.h lsm/nop.c $(am__append_6) \
+	$(am__append_7)
 lib_LTLIBRARIES = liblxc.la
-liblxc_la_SOURCES = storage/storage.c storage/storage.h \
-	storage/btrfs.c storage/btrfs.h storage/dir.c storage/dir.h \
-	storage/loop.c storage/loop.h storage/lvm.c storage/lvm.h \
-	storage/nbd.c storage/nbd.h storage/overlay.c \
+liblxc_la_SOURCES = af_unix.c af_unix.h attach.c attach.h caps.c \
+	caps.h cgroups/cgfsng.c cgroups/cgroup.c cgroups/cgroup.h \
+	cgroups/cgroup_utils.c cgroups/cgroup_utils.h commands.c \
+	commands.h commands_utils.c commands_utils.h conf.c conf.h \
+	confile.c confile.h confile_utils.c confile_utils.h criu.c \
+	criu.h error.c error.h execute.c freezer.c initutils.c \
+	initutils.h list.h log.c log.h lxc.h lxccontainer.c \
+	lxccontainer.h lxclock.c lxclock.h lxcseccomp.h macro.h \
+	mainloop.c mainloop.h namespace.c namespace.h nl.c nl.h \
+	network.c network.h monitor.c monitor.h parse.c parse.h \
+	ringbuf.c ringbuf.h rtnl.c rtnl.h state.c state.h start.c \
+	start.h storage/btrfs.c storage/btrfs.h storage/dir.c \
+	storage/dir.h storage/loop.c storage/loop.h storage/lvm.c \
+	storage/lvm.h storage/nbd.c storage/nbd.h storage/overlay.c \
 	storage/overlay.h storage/rbd.c storage/rbd.h storage/rsync.c \
-	storage/rsync.h storage/zfs.c storage/zfs.h \
-	storage/storage_utils.c storage/storage_utils.h \
-	cgroups/cgfsng.c cgroups/cgroup_utils.c cgroups/cgroup_utils.h \
-	cgroups/cgroup.c cgroups/cgroup.h commands.c commands.h \
-	commands_utils.c commands_utils.h start.c start.h execute.c \
-	monitor.c monitor.h terminal.c freezer.c error.h error.c \
-	parse.c parse.h lxc.h initutils.c initutils.h utils.c utils.h \
-	sync.c sync.h namespace.h namespace.c conf.c conf.h confile.c \
-	confile.h confile_utils.c confile_utils.h list.h state.c \
-	state.h log.c log.h attach.c attach.h criu.c criu.h ringbuf.c \
-	ringbuf.h network.c network.h nl.c nl.h rtnl.c rtnl.h caps.c \
-	caps.h lxcseccomp.h mainloop.c mainloop.h af_unix.c af_unix.h \
-	lxclock.h lxclock.c lxccontainer.c lxccontainer.h version.h \
-	$(LSM_SOURCES) $(am__append_7) $(am__append_8) $(am__append_9) \
-	$(am__append_10) $(am__append_16)
+	storage/rsync.h storage/storage.c storage/storage.h \
+	storage/storage_utils.c storage/storage_utils.h storage/zfs.c \
+	storage/zfs.h sync.c sync.h terminal.c utils.c utils.h \
+	version.h $(LSM_SOURCES) $(am__append_8) $(am__append_9) \
+	$(am__append_10) $(am__append_11) $(am__append_12) \
+	$(am__append_13) $(am__append_14)
 AM_CFLAGS = -DLXCROOTFSMOUNT=\"$(LXCROOTFSMOUNT)\" \
 	-DLXCPATH=\"$(LXCPATH)\" \
 	-DLXC_GLOBAL_CONF=\"$(LXC_GLOBAL_CONF)\" \
@@ -841,65 +835,145 @@ AM_CFLAGS = -DLXCROOTFSMOUNT=\"$(LXCROOTFSMOUNT)\" \
 	-DRUNTIME_PATH=\"$(RUNTIME_PATH)\" -DSBINDIR=\"$(SBINDIR)\" -I \
 	$(top_srcdir)/src -I $(top_srcdir)/src/lxc -I \
 	$(top_srcdir)/src/lxc/storage -I $(top_srcdir)/src/lxc/cgroups \
-	$(am__append_11) $(am__append_12) $(am__append_13) \
-	$(am__append_14) $(am__append_15)
-liblxc_la_CFLAGS = -fPIC -DPIC $(AM_CFLAGS) -pthread
-liblxc_la_LDFLAGS = \
-	-pthread \
-	-shared \
-	-Wl,-soname,liblxc.so.$(firstword $(subst ., ,@LXC_ABI@)) \
-	-version-info @LXC_ABI_MAJOR@
+	$(am__append_15) $(am__append_16) $(am__append_17) \
+	$(am__append_18) $(am__append_19)
 
-liblxc_la_LIBADD = $(CAP_LIBS) $(GNUTLS_LIBS) $(SELINUX_LIBS) $(SECCOMP_LIBS)
-bin_SCRIPTS = $(am__append_17)
-AM_LDFLAGS = -Wl,-E $(am__append_18)
-LDADD = liblxc.la @CAP_LIBS@ @GNUTLS_LIBS@ @SELINUX_LIBS@ @SECCOMP_LIBS@
-@ENABLE_TOOLS_TRUE@lxc_attach_SOURCES = tools/lxc_attach.c tools/arguments.c tools/tool_utils.c
-@ENABLE_TOOLS_TRUE@lxc_autostart_SOURCES = tools/lxc_autostart.c tools/arguments.c tools/tool_utils.c
-@ENABLE_TOOLS_TRUE@lxc_cgroup_SOURCES = tools/lxc_cgroup.c tools/arguments.c tools/tool_utils.c
-@ENABLE_TOOLS_TRUE@lxc_config_SOURCES = tools/lxc_config.c tools/arguments.c tools/tool_utils.c
-@ENABLE_TOOLS_TRUE@lxc_console_SOURCES = tools/lxc_console.c tools/arguments.c tools/tool_utils.c
-@ENABLE_TOOLS_TRUE@lxc_destroy_SOURCES = tools/lxc_destroy.c tools/arguments.c tools/tool_utils.c
-@ENABLE_TOOLS_TRUE@lxc_device_SOURCES = tools/lxc_device.c tools/arguments.c tools/tool_utils.c
-@ENABLE_TOOLS_TRUE@lxc_execute_SOURCES = tools/lxc_execute.c tools/arguments.c tools/tool_utils.c
-@ENABLE_TOOLS_TRUE@lxc_freeze_SOURCES = tools/lxc_freeze.c tools/arguments.c tools/tool_utils.c
-@ENABLE_TOOLS_TRUE@lxc_info_SOURCES = tools/lxc_info.c tools/arguments.c tools/tool_utils.c
-@ENABLE_TOOLS_TRUE@lxc_monitor_SOURCES = tools/lxc_monitor.c tools/arguments.c tools/tool_utils.c
-@ENABLE_TOOLS_TRUE@lxc_ls_SOURCES = tools/lxc_ls.c tools/arguments.c tools/tool_utils.c
+# build the shared library
+liblxc_la_CFLAGS = -fPIC \
+		   -DPIC \
+		   $(AM_CFLAGS) \
+		   -pthread
+
+liblxc_la_LDFLAGS = -pthread \
+		    -Wl,-soname,liblxc.so.$(firstword $(subst ., ,@LXC_ABI@)) \
+		    -version-info @LXC_ABI_MAJOR@
+
+liblxc_la_LIBADD = $(CAP_LIBS) \
+		   $(GNUTLS_LIBS) \
+		   $(SELINUX_LIBS) \
+		   $(SECCOMP_LIBS)
+
+bin_SCRIPTS = $(am__append_20)
+AM_LDFLAGS = -Wl,-E $(am__append_21)
+LDADD = liblxc.la \
+	@CAP_LIBS@ \
+	@GNUTLS_LIBS@ \
+	@SECCOMP_LIBS@ \
+	@SELINUX_LIBS@
+
+@ENABLE_TOOLS_TRUE@lxc_attach_SOURCES = tools/lxc_attach.c \
+@ENABLE_TOOLS_TRUE@		     tools/arguments.c tools/arguments.h
+
+@ENABLE_TOOLS_TRUE@lxc_autostart_SOURCES = tools/lxc_autostart.c \
+@ENABLE_TOOLS_TRUE@			tools/arguments.c tools/arguments.h
+
+@ENABLE_TOOLS_TRUE@lxc_cgroup_SOURCES = tools/lxc_cgroup.c \
+@ENABLE_TOOLS_TRUE@		     tools/arguments.c tools/arguments.h
+
+@ENABLE_TOOLS_TRUE@lxc_config_SOURCES = tools/lxc_config.c \
+@ENABLE_TOOLS_TRUE@		     tools/arguments.c tools/arguments.h
+
+@ENABLE_TOOLS_TRUE@lxc_console_SOURCES = tools/lxc_console.c \
+@ENABLE_TOOLS_TRUE@		      tools/arguments.c tools/arguments.h
+
+@ENABLE_TOOLS_TRUE@lxc_destroy_SOURCES = tools/lxc_destroy.c \
+@ENABLE_TOOLS_TRUE@		      tools/arguments.c tools/arguments.h
+
+@ENABLE_TOOLS_TRUE@lxc_device_SOURCES = tools/lxc_device.c \
+@ENABLE_TOOLS_TRUE@		     tools/arguments.c tools/arguments.h
+
+@ENABLE_TOOLS_TRUE@lxc_execute_SOURCES = tools/lxc_execute.c \
+@ENABLE_TOOLS_TRUE@		      tools/arguments.c tools/arguments.h
+
+@ENABLE_TOOLS_TRUE@lxc_freeze_SOURCES = tools/lxc_freeze.c \
+@ENABLE_TOOLS_TRUE@		     tools/arguments.c tools/arguments.h
+
+@ENABLE_TOOLS_TRUE@lxc_info_SOURCES = tools/lxc_info.c \
+@ENABLE_TOOLS_TRUE@		   tools/arguments.c tools/arguments.h
+
+@ENABLE_TOOLS_TRUE@lxc_monitor_SOURCES = tools/lxc_monitor.c \
+@ENABLE_TOOLS_TRUE@		      tools/arguments.c tools/arguments.h
+
+@ENABLE_TOOLS_TRUE@lxc_ls_SOURCES = tools/lxc_ls.c \
+@ENABLE_TOOLS_TRUE@		 tools/arguments.c tools/arguments.h
+
 @ENABLE_TOOLS_TRUE@lxc_copy_SOURCES = tools/lxc_copy.c \
-@ENABLE_TOOLS_TRUE@	tools/arguments.c tools/tool_utils.c \
-@ENABLE_TOOLS_TRUE@	$(am__append_19)
-@ENABLE_TOOLS_TRUE@lxc_start_SOURCES = tools/lxc_start.c tools/arguments.c tools/tool_utils.c
-@ENABLE_TOOLS_TRUE@lxc_stop_SOURCES = tools/lxc_stop.c tools/arguments.c tools/tool_utils.c
-@ENABLE_TOOLS_TRUE@lxc_top_SOURCES = tools/lxc_top.c tools/arguments.c tools/tool_utils.c
-@ENABLE_TOOLS_TRUE@lxc_unfreeze_SOURCES = tools/lxc_unfreeze.c tools/arguments.c tools/tool_utils.c
-@ENABLE_TOOLS_TRUE@lxc_unshare_SOURCES = tools/lxc_unshare.c tools/arguments.c tools/tool_utils.c
-@ENABLE_TOOLS_TRUE@lxc_wait_SOURCES = tools/lxc_wait.c tools/arguments.c tools/tool_utils.c
-@ENABLE_TOOLS_TRUE@lxc_create_SOURCES = tools/lxc_create.c tools/arguments.c tools/tool_utils.c
-@ENABLE_TOOLS_TRUE@lxc_snapshot_SOURCES = tools/lxc_snapshot.c tools/arguments.c tools/tool_utils.c
-@ENABLE_TOOLS_TRUE@lxc_checkpoint_SOURCES = tools/lxc_checkpoint.c tools/arguments.c tools/tool_utils.c
+@ENABLE_TOOLS_TRUE@	tools/arguments.c tools/arguments.h \
+@ENABLE_TOOLS_TRUE@	$(am__append_22)
+@ENABLE_TOOLS_TRUE@lxc_start_SOURCES = tools/lxc_start.c \
+@ENABLE_TOOLS_TRUE@		    tools/arguments.c tools/arguments.h
+
+@ENABLE_TOOLS_TRUE@lxc_stop_SOURCES = tools/lxc_stop.c \
+@ENABLE_TOOLS_TRUE@		   tools/arguments.c tools/arguments.h
+
+@ENABLE_TOOLS_TRUE@lxc_top_SOURCES = tools/lxc_top.c \
+@ENABLE_TOOLS_TRUE@		  tools/arguments.c tools/arguments.h
+
+@ENABLE_TOOLS_TRUE@lxc_unfreeze_SOURCES = tools/lxc_unfreeze.c \
+@ENABLE_TOOLS_TRUE@		       tools/arguments.c tools/arguments.h
+
+@ENABLE_TOOLS_TRUE@lxc_unshare_SOURCES = tools/lxc_unshare.c \
+@ENABLE_TOOLS_TRUE@		      tools/arguments.c tools/arguments.h
+
+@ENABLE_TOOLS_TRUE@lxc_wait_SOURCES = tools/lxc_wait.c \
+@ENABLE_TOOLS_TRUE@		   tools/arguments.c tools/arguments.h
+
+@ENABLE_TOOLS_TRUE@lxc_create_SOURCES = tools/lxc_create.c \
+@ENABLE_TOOLS_TRUE@		     tools/arguments.c tools/arguments.h
+
+@ENABLE_TOOLS_TRUE@lxc_snapshot_SOURCES = tools/lxc_snapshot.c \
+@ENABLE_TOOLS_TRUE@		       tools/arguments.c tools/arguments.h
+
+@ENABLE_TOOLS_TRUE@lxc_checkpoint_SOURCES = tools/lxc_checkpoint.c \
+@ENABLE_TOOLS_TRUE@			 tools/arguments.c tools/arguments.h
+
 
 # Binaries shipping with liblxc
 @ENABLE_COMMANDS_TRUE@init_lxc_SOURCES = cmd/lxc_init.c
 @ENABLE_COMMANDS_TRUE@lxc_monitord_SOURCES = cmd/lxc_monitord.c
-@ENABLE_COMMANDS_TRUE@lxc_user_nic_SOURCES = cmd/lxc_user_nic.c namespace.c network.c parse.c
-@ENABLE_COMMANDS_TRUE@lxc_usernsexec_SOURCES = cmd/lxc_usernsexec.c
+@ENABLE_COMMANDS_TRUE@lxc_user_nic_SOURCES = cmd/lxc_user_nic.c \
+@ENABLE_COMMANDS_TRUE@		       namespace.c namespace.h \
+@ENABLE_COMMANDS_TRUE@		       network.c network.h \
+@ENABLE_COMMANDS_TRUE@		       parse.c parse.h
+
+@ENABLE_COMMANDS_TRUE@lxc_usernsexec_SOURCES = cmd/lxc_usernsexec.c \
+@ENABLE_COMMANDS_TRUE@			 conf.c conf.h \
+@ENABLE_COMMANDS_TRUE@			 list.h \
+@ENABLE_COMMANDS_TRUE@			 log.c log.h \
+@ENABLE_COMMANDS_TRUE@			 namespace.c namespace.h \
+@ENABLE_COMMANDS_TRUE@			 utils.c utils.h
+
 @ENABLE_COMMANDS_TRUE@@HAVE_STATIC_LIBCAP_TRUE@init_lxc_static_SOURCES =  \
 @ENABLE_COMMANDS_TRUE@@HAVE_STATIC_LIBCAP_TRUE@	cmd/lxc_init.c \
-@ENABLE_COMMANDS_TRUE@@HAVE_STATIC_LIBCAP_TRUE@	error.c log.c \
+@ENABLE_COMMANDS_TRUE@@HAVE_STATIC_LIBCAP_TRUE@	caps.c caps.h \
+@ENABLE_COMMANDS_TRUE@@HAVE_STATIC_LIBCAP_TRUE@	error.c error.h \
 @ENABLE_COMMANDS_TRUE@@HAVE_STATIC_LIBCAP_TRUE@	initutils.c \
-@ENABLE_COMMANDS_TRUE@@HAVE_STATIC_LIBCAP_TRUE@	caps.c parse.c \
+@ENABLE_COMMANDS_TRUE@@HAVE_STATIC_LIBCAP_TRUE@	initutils.h \
+@ENABLE_COMMANDS_TRUE@@HAVE_STATIC_LIBCAP_TRUE@	log.c log.h \
+@ENABLE_COMMANDS_TRUE@@HAVE_STATIC_LIBCAP_TRUE@	macro.h \
 @ENABLE_COMMANDS_TRUE@@HAVE_STATIC_LIBCAP_TRUE@	namespace.c \
-@ENABLE_COMMANDS_TRUE@@HAVE_STATIC_LIBCAP_TRUE@	$(am__append_21) \
-@ENABLE_COMMANDS_TRUE@@HAVE_STATIC_LIBCAP_TRUE@	$(am__append_22)
+@ENABLE_COMMANDS_TRUE@@HAVE_STATIC_LIBCAP_TRUE@	namespace.h \
+@ENABLE_COMMANDS_TRUE@@HAVE_STATIC_LIBCAP_TRUE@	parse.c parse.h \
+@ENABLE_COMMANDS_TRUE@@HAVE_STATIC_LIBCAP_TRUE@	$(am__append_24) \
+@ENABLE_COMMANDS_TRUE@@HAVE_STATIC_LIBCAP_TRUE@	$(am__append_25) \
+@ENABLE_COMMANDS_TRUE@@HAVE_STATIC_LIBCAP_TRUE@	$(am__append_26)
 @ENABLE_COMMANDS_TRUE@@HAVE_STATIC_LIBCAP_TRUE@init_lxc_static_LDFLAGS = -all-static
 @ENABLE_COMMANDS_TRUE@@HAVE_STATIC_LIBCAP_TRUE@init_lxc_static_LDADD = @CAP_LIBS@
 @ENABLE_COMMANDS_TRUE@@HAVE_STATIC_LIBCAP_TRUE@init_lxc_static_CFLAGS = $(AM_CFLAGS) -DNO_LXC_CONF
 @ENABLE_PAM_TRUE@@HAVE_PAM_TRUE@pam_LTLIBRARIES = pam_cgfs.la
-@ENABLE_PAM_TRUE@@HAVE_PAM_TRUE@pam_cgfs_la_SOURCES = pam/pam_cgfs.c pam/utils.c pam/utils.h
+@ENABLE_PAM_TRUE@@HAVE_PAM_TRUE@pam_cgfs_la_SOURCES = pam/pam_cgfs.c \
+@ENABLE_PAM_TRUE@@HAVE_PAM_TRUE@		      pam/utils.c pam/utils.h
+
 @ENABLE_PAM_TRUE@@HAVE_PAM_TRUE@pam_cgfs_la_CFLAGS = $(AM_CFLAGS)
-@ENABLE_PAM_TRUE@@HAVE_PAM_TRUE@pam_cgfs_la_LIBADD = $(AM_LIBS) $(PAM_LIBS) -L$(top_srcdir)
-@ENABLE_PAM_TRUE@@HAVE_PAM_TRUE@pam_cgfs_la_LDFLAGS = $(AM_LDFLAGS) -module -avoid-version -shared
+@ENABLE_PAM_TRUE@@HAVE_PAM_TRUE@pam_cgfs_la_LIBADD = $(AM_LIBS) \
+@ENABLE_PAM_TRUE@@HAVE_PAM_TRUE@		     $(PAM_LIBS) \
+@ENABLE_PAM_TRUE@@HAVE_PAM_TRUE@		     -L$(top_srcdir)
+
+@ENABLE_PAM_TRUE@@HAVE_PAM_TRUE@pam_cgfs_la_LDFLAGS = $(AM_LDFLAGS) \
+@ENABLE_PAM_TRUE@@HAVE_PAM_TRUE@		      -avoid-version \
+@ENABLE_PAM_TRUE@@HAVE_PAM_TRUE@		      -module \
+@ENABLE_PAM_TRUE@@HAVE_PAM_TRUE@		      -shared
+
 all: all-am
 
 .SUFFIXES:
@@ -1007,14 +1081,24 @@ clean-pamLTLIBRARIES:
 	  echo rm -f $${locs}; \
 	  rm -f $${locs}; \
 	}
+cgroups/$(am__dirstamp):
+	@$(MKDIR_P) cgroups
+	@: > cgroups/$(am__dirstamp)
+cgroups/$(DEPDIR)/$(am__dirstamp):
+	@$(MKDIR_P) cgroups/$(DEPDIR)
+	@: > cgroups/$(DEPDIR)/$(am__dirstamp)
+cgroups/liblxc_la-cgfsng.lo: cgroups/$(am__dirstamp) \
+	cgroups/$(DEPDIR)/$(am__dirstamp)
+cgroups/liblxc_la-cgroup.lo: cgroups/$(am__dirstamp) \
+	cgroups/$(DEPDIR)/$(am__dirstamp)
+cgroups/liblxc_la-cgroup_utils.lo: cgroups/$(am__dirstamp) \
+	cgroups/$(DEPDIR)/$(am__dirstamp)
 storage/$(am__dirstamp):
 	@$(MKDIR_P) storage
 	@: > storage/$(am__dirstamp)
 storage/$(DEPDIR)/$(am__dirstamp):
 	@$(MKDIR_P) storage/$(DEPDIR)
 	@: > storage/$(DEPDIR)/$(am__dirstamp)
-storage/liblxc_la-storage.lo: storage/$(am__dirstamp) \
-	storage/$(DEPDIR)/$(am__dirstamp)
 storage/liblxc_la-btrfs.lo: storage/$(am__dirstamp) \
 	storage/$(DEPDIR)/$(am__dirstamp)
 storage/liblxc_la-dir.lo: storage/$(am__dirstamp) \
@@ -1031,31 +1115,21 @@ storage/liblxc_la-rbd.lo: storage/$(am__dirstamp) \
 	storage/$(DEPDIR)/$(am__dirstamp)
 storage/liblxc_la-rsync.lo: storage/$(am__dirstamp) \
 	storage/$(DEPDIR)/$(am__dirstamp)
-storage/liblxc_la-zfs.lo: storage/$(am__dirstamp) \
+storage/liblxc_la-storage.lo: storage/$(am__dirstamp) \
 	storage/$(DEPDIR)/$(am__dirstamp)
 storage/liblxc_la-storage_utils.lo: storage/$(am__dirstamp) \
 	storage/$(DEPDIR)/$(am__dirstamp)
-cgroups/$(am__dirstamp):
-	@$(MKDIR_P) cgroups
-	@: > cgroups/$(am__dirstamp)
-cgroups/$(DEPDIR)/$(am__dirstamp):
-	@$(MKDIR_P) cgroups/$(DEPDIR)
-	@: > cgroups/$(DEPDIR)/$(am__dirstamp)
-cgroups/liblxc_la-cgfsng.lo: cgroups/$(am__dirstamp) \
-	cgroups/$(DEPDIR)/$(am__dirstamp)
-cgroups/liblxc_la-cgroup_utils.lo: cgroups/$(am__dirstamp) \
-	cgroups/$(DEPDIR)/$(am__dirstamp)
-cgroups/liblxc_la-cgroup.lo: cgroups/$(am__dirstamp) \
-	cgroups/$(DEPDIR)/$(am__dirstamp)
+storage/liblxc_la-zfs.lo: storage/$(am__dirstamp) \
+	storage/$(DEPDIR)/$(am__dirstamp)
 lsm/$(am__dirstamp):
 	@$(MKDIR_P) lsm
 	@: > lsm/$(am__dirstamp)
 lsm/$(DEPDIR)/$(am__dirstamp):
 	@$(MKDIR_P) lsm/$(DEPDIR)
 	@: > lsm/$(DEPDIR)/$(am__dirstamp)
-lsm/liblxc_la-nop.lo: lsm/$(am__dirstamp) \
-	lsm/$(DEPDIR)/$(am__dirstamp)
 lsm/liblxc_la-lsm.lo: lsm/$(am__dirstamp) \
+	lsm/$(DEPDIR)/$(am__dirstamp)
+lsm/liblxc_la-nop.lo: lsm/$(am__dirstamp) \
 	lsm/$(DEPDIR)/$(am__dirstamp)
 lsm/liblxc_la-apparmor.lo: lsm/$(am__dirstamp) \
 	lsm/$(DEPDIR)/$(am__dirstamp)
@@ -1069,15 +1143,19 @@ lsm/liblxc_la-selinux.lo: lsm/$(am__dirstamp) \
 	@: > ../include/$(DEPDIR)/$(am__dirstamp)
 ../include/liblxc_la-ifaddrs.lo: ../include/$(am__dirstamp) \
 	../include/$(DEPDIR)/$(am__dirstamp)
-../include/liblxc_la-openpty.lo: ../include/$(am__dirstamp) \
-	../include/$(DEPDIR)/$(am__dirstamp)
 ../include/liblxc_la-lxcmntent.lo: ../include/$(am__dirstamp) \
 	../include/$(DEPDIR)/$(am__dirstamp)
-../include/liblxc_la-prlimit.lo: ../include/$(am__dirstamp) \
+../include/liblxc_la-openpty.lo: ../include/$(am__dirstamp) \
+	../include/$(DEPDIR)/$(am__dirstamp)
+../include/liblxc_la-getgrgid_r.lo: ../include/$(am__dirstamp) \
 	../include/$(DEPDIR)/$(am__dirstamp)
 ../include/liblxc_la-getline.lo: ../include/$(am__dirstamp) \
 	../include/$(DEPDIR)/$(am__dirstamp)
+../include/liblxc_la-prlimit.lo: ../include/$(am__dirstamp) \
+	../include/$(DEPDIR)/$(am__dirstamp)
 ../include/liblxc_la-strlcpy.lo: ../include/$(am__dirstamp) \
+	../include/$(DEPDIR)/$(am__dirstamp)
+../include/liblxc_la-strlcat.lo: ../include/$(am__dirstamp) \
 	../include/$(DEPDIR)/$(am__dirstamp)
 
 liblxc.la: $(liblxc_la_OBJECTS) $(liblxc_la_DEPENDENCIES) $(EXTRA_liblxc_la_DEPENDENCIES) 
@@ -1262,6 +1340,9 @@ cmd/init_lxc_static-lxc_init.$(OBJEXT): cmd/$(am__dirstamp) \
 ../include/init_lxc_static-strlcpy.$(OBJEXT):  \
 	../include/$(am__dirstamp) \
 	../include/$(DEPDIR)/$(am__dirstamp)
+../include/init_lxc_static-strlcat.$(OBJEXT):  \
+	../include/$(am__dirstamp) \
+	../include/$(DEPDIR)/$(am__dirstamp)
 
 init.lxc.static$(EXEEXT): $(init_lxc_static_OBJECTS) $(init_lxc_static_DEPENDENCIES) $(EXTRA_init_lxc_static_DEPENDENCIES) 
 	@rm -f init.lxc.static$(EXEEXT)
@@ -1275,8 +1356,6 @@ tools/$(DEPDIR)/$(am__dirstamp):
 tools/lxc_attach.$(OBJEXT): tools/$(am__dirstamp) \
 	tools/$(DEPDIR)/$(am__dirstamp)
 tools/arguments.$(OBJEXT): tools/$(am__dirstamp) \
-	tools/$(DEPDIR)/$(am__dirstamp)
-tools/tool_utils.$(OBJEXT): tools/$(am__dirstamp) \
 	tools/$(DEPDIR)/$(am__dirstamp)
 
 lxc-attach$(EXEEXT): $(lxc_attach_OBJECTS) $(lxc_attach_DEPENDENCIES) $(EXTRA_lxc_attach_DEPENDENCIES) 
@@ -1490,13 +1569,17 @@ distclean-compile:
 	-rm -f *.tab.c
 
 @AMDEP_TRUE@@am__include@ @am__quote@../include/$(DEPDIR)/init_lxc_static-getline.Po@am__quote@
+@AMDEP_TRUE@@am__include@ @am__quote@../include/$(DEPDIR)/init_lxc_static-strlcat.Po@am__quote@
 @AMDEP_TRUE@@am__include@ @am__quote@../include/$(DEPDIR)/init_lxc_static-strlcpy.Po@am__quote@
+@AMDEP_TRUE@@am__include@ @am__quote@../include/$(DEPDIR)/liblxc_la-getgrgid_r.Plo@am__quote@
 @AMDEP_TRUE@@am__include@ @am__quote@../include/$(DEPDIR)/liblxc_la-getline.Plo@am__quote@
 @AMDEP_TRUE@@am__include@ @am__quote@../include/$(DEPDIR)/liblxc_la-ifaddrs.Plo@am__quote@
 @AMDEP_TRUE@@am__include@ @am__quote@../include/$(DEPDIR)/liblxc_la-lxcmntent.Plo@am__quote@
 @AMDEP_TRUE@@am__include@ @am__quote@../include/$(DEPDIR)/liblxc_la-openpty.Plo@am__quote@
 @AMDEP_TRUE@@am__include@ @am__quote@../include/$(DEPDIR)/liblxc_la-prlimit.Plo@am__quote@
+@AMDEP_TRUE@@am__include@ @am__quote@../include/$(DEPDIR)/liblxc_la-strlcat.Plo@am__quote@
 @AMDEP_TRUE@@am__include@ @am__quote@../include/$(DEPDIR)/liblxc_la-strlcpy.Plo@am__quote@
+@AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/conf.Po@am__quote@
 @AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/init_lxc_static-caps.Po@am__quote@
 @AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/init_lxc_static-error.Po@am__quote@
 @AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/init_lxc_static-initutils.Po@am__quote@
@@ -1533,9 +1616,11 @@ distclean-compile:
 @AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/liblxc_la-sync.Plo@am__quote@
 @AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/liblxc_la-terminal.Plo@am__quote@
 @AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/liblxc_la-utils.Plo@am__quote@
+@AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/log.Po@am__quote@
 @AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/namespace.Po@am__quote@
 @AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/network.Po@am__quote@
 @AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/parse.Po@am__quote@
+@AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/utils.Po@am__quote@
 @AMDEP_TRUE@@am__include@ @am__quote@cgroups/$(DEPDIR)/liblxc_la-cgfsng.Plo@am__quote@
 @AMDEP_TRUE@@am__include@ @am__quote@cgroups/$(DEPDIR)/liblxc_la-cgroup.Plo@am__quote@
 @AMDEP_TRUE@@am__include@ @am__quote@cgroups/$(DEPDIR)/liblxc_la-cgroup_utils.Plo@am__quote@
@@ -1584,7 +1669,6 @@ distclean-compile:
 @AMDEP_TRUE@@am__include@ @am__quote@tools/$(DEPDIR)/lxc_unfreeze.Po@am__quote@
 @AMDEP_TRUE@@am__include@ @am__quote@tools/$(DEPDIR)/lxc_unshare.Po@am__quote@
 @AMDEP_TRUE@@am__include@ @am__quote@tools/$(DEPDIR)/lxc_wait.Po@am__quote@
-@AMDEP_TRUE@@am__include@ @am__quote@tools/$(DEPDIR)/tool_utils.Po@am__quote@
 @AMDEP_TRUE@@am__include@ @am__quote@tools/include/$(DEPDIR)/getsubopt.Po@am__quote@
 
 .c.o:
@@ -1611,12 +1695,208 @@ distclean-compile:
 @AMDEP_TRUE@@am__fastdepCC_FALSE@	DEPDIR=$(DEPDIR) $(CCDEPMODE) $(depcomp) @AMDEPBACKSLASH@
 @am__fastdepCC_FALSE@	$(AM_V_CC@am__nodep@)$(LTCOMPILE) -c -o $@ $<
 
-storage/liblxc_la-storage.lo: storage/storage.c
-@am__fastdepCC_TRUE@	$(AM_V_CC)$(LIBTOOL) $(AM_V_lt) --tag=CC $(AM_LIBTOOLFLAGS) $(LIBTOOLFLAGS) --mode=compile $(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(liblxc_la_CFLAGS) $(CFLAGS) -MT storage/liblxc_la-storage.lo -MD -MP -MF storage/$(DEPDIR)/liblxc_la-storage.Tpo -c -o storage/liblxc_la-storage.lo `test -f 'storage/storage.c' || echo '$(srcdir)/'`storage/storage.c
-@am__fastdepCC_TRUE@	$(AM_V_at)$(am__mv) storage/$(DEPDIR)/liblxc_la-storage.Tpo storage/$(DEPDIR)/liblxc_la-storage.Plo
-@AMDEP_TRUE@@am__fastdepCC_FALSE@	$(AM_V_CC)source='storage/storage.c' object='storage/liblxc_la-storage.lo' libtool=yes @AMDEPBACKSLASH@
+liblxc_la-af_unix.lo: af_unix.c
+@am__fastdepCC_TRUE@	$(AM_V_CC)$(LIBTOOL) $(AM_V_lt) --tag=CC $(AM_LIBTOOLFLAGS) $(LIBTOOLFLAGS) --mode=compile $(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(liblxc_la_CFLAGS) $(CFLAGS) -MT liblxc_la-af_unix.lo -MD -MP -MF $(DEPDIR)/liblxc_la-af_unix.Tpo -c -o liblxc_la-af_unix.lo `test -f 'af_unix.c' || echo '$(srcdir)/'`af_unix.c
+@am__fastdepCC_TRUE@	$(AM_V_at)$(am__mv) $(DEPDIR)/liblxc_la-af_unix.Tpo $(DEPDIR)/liblxc_la-af_unix.Plo
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	$(AM_V_CC)source='af_unix.c' object='liblxc_la-af_unix.lo' libtool=yes @AMDEPBACKSLASH@
 @AMDEP_TRUE@@am__fastdepCC_FALSE@	DEPDIR=$(DEPDIR) $(CCDEPMODE) $(depcomp) @AMDEPBACKSLASH@
-@am__fastdepCC_FALSE@	$(AM_V_CC@am__nodep@)$(LIBTOOL) $(AM_V_lt) --tag=CC $(AM_LIBTOOLFLAGS) $(LIBTOOLFLAGS) --mode=compile $(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(liblxc_la_CFLAGS) $(CFLAGS) -c -o storage/liblxc_la-storage.lo `test -f 'storage/storage.c' || echo '$(srcdir)/'`storage/storage.c
+@am__fastdepCC_FALSE@	$(AM_V_CC@am__nodep@)$(LIBTOOL) $(AM_V_lt) --tag=CC $(AM_LIBTOOLFLAGS) $(LIBTOOLFLAGS) --mode=compile $(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(liblxc_la_CFLAGS) $(CFLAGS) -c -o liblxc_la-af_unix.lo `test -f 'af_unix.c' || echo '$(srcdir)/'`af_unix.c
+
+liblxc_la-attach.lo: attach.c
+@am__fastdepCC_TRUE@	$(AM_V_CC)$(LIBTOOL) $(AM_V_lt) --tag=CC $(AM_LIBTOOLFLAGS) $(LIBTOOLFLAGS) --mode=compile $(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(liblxc_la_CFLAGS) $(CFLAGS) -MT liblxc_la-attach.lo -MD -MP -MF $(DEPDIR)/liblxc_la-attach.Tpo -c -o liblxc_la-attach.lo `test -f 'attach.c' || echo '$(srcdir)/'`attach.c
+@am__fastdepCC_TRUE@	$(AM_V_at)$(am__mv) $(DEPDIR)/liblxc_la-attach.Tpo $(DEPDIR)/liblxc_la-attach.Plo
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	$(AM_V_CC)source='attach.c' object='liblxc_la-attach.lo' libtool=yes @AMDEPBACKSLASH@
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	DEPDIR=$(DEPDIR) $(CCDEPMODE) $(depcomp) @AMDEPBACKSLASH@
+@am__fastdepCC_FALSE@	$(AM_V_CC@am__nodep@)$(LIBTOOL) $(AM_V_lt) --tag=CC $(AM_LIBTOOLFLAGS) $(LIBTOOLFLAGS) --mode=compile $(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(liblxc_la_CFLAGS) $(CFLAGS) -c -o liblxc_la-attach.lo `test -f 'attach.c' || echo '$(srcdir)/'`attach.c
+
+liblxc_la-caps.lo: caps.c
+@am__fastdepCC_TRUE@	$(AM_V_CC)$(LIBTOOL) $(AM_V_lt) --tag=CC $(AM_LIBTOOLFLAGS) $(LIBTOOLFLAGS) --mode=compile $(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(liblxc_la_CFLAGS) $(CFLAGS) -MT liblxc_la-caps.lo -MD -MP -MF $(DEPDIR)/liblxc_la-caps.Tpo -c -o liblxc_la-caps.lo `test -f 'caps.c' || echo '$(srcdir)/'`caps.c
+@am__fastdepCC_TRUE@	$(AM_V_at)$(am__mv) $(DEPDIR)/liblxc_la-caps.Tpo $(DEPDIR)/liblxc_la-caps.Plo
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	$(AM_V_CC)source='caps.c' object='liblxc_la-caps.lo' libtool=yes @AMDEPBACKSLASH@
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	DEPDIR=$(DEPDIR) $(CCDEPMODE) $(depcomp) @AMDEPBACKSLASH@
+@am__fastdepCC_FALSE@	$(AM_V_CC@am__nodep@)$(LIBTOOL) $(AM_V_lt) --tag=CC $(AM_LIBTOOLFLAGS) $(LIBTOOLFLAGS) --mode=compile $(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(liblxc_la_CFLAGS) $(CFLAGS) -c -o liblxc_la-caps.lo `test -f 'caps.c' || echo '$(srcdir)/'`caps.c
+
+cgroups/liblxc_la-cgfsng.lo: cgroups/cgfsng.c
+@am__fastdepCC_TRUE@	$(AM_V_CC)$(LIBTOOL) $(AM_V_lt) --tag=CC $(AM_LIBTOOLFLAGS) $(LIBTOOLFLAGS) --mode=compile $(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(liblxc_la_CFLAGS) $(CFLAGS) -MT cgroups/liblxc_la-cgfsng.lo -MD -MP -MF cgroups/$(DEPDIR)/liblxc_la-cgfsng.Tpo -c -o cgroups/liblxc_la-cgfsng.lo `test -f 'cgroups/cgfsng.c' || echo '$(srcdir)/'`cgroups/cgfsng.c
+@am__fastdepCC_TRUE@	$(AM_V_at)$(am__mv) cgroups/$(DEPDIR)/liblxc_la-cgfsng.Tpo cgroups/$(DEPDIR)/liblxc_la-cgfsng.Plo
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	$(AM_V_CC)source='cgroups/cgfsng.c' object='cgroups/liblxc_la-cgfsng.lo' libtool=yes @AMDEPBACKSLASH@
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	DEPDIR=$(DEPDIR) $(CCDEPMODE) $(depcomp) @AMDEPBACKSLASH@
+@am__fastdepCC_FALSE@	$(AM_V_CC@am__nodep@)$(LIBTOOL) $(AM_V_lt) --tag=CC $(AM_LIBTOOLFLAGS) $(LIBTOOLFLAGS) --mode=compile $(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(liblxc_la_CFLAGS) $(CFLAGS) -c -o cgroups/liblxc_la-cgfsng.lo `test -f 'cgroups/cgfsng.c' || echo '$(srcdir)/'`cgroups/cgfsng.c
+
+cgroups/liblxc_la-cgroup.lo: cgroups/cgroup.c
+@am__fastdepCC_TRUE@	$(AM_V_CC)$(LIBTOOL) $(AM_V_lt) --tag=CC $(AM_LIBTOOLFLAGS) $(LIBTOOLFLAGS) --mode=compile $(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(liblxc_la_CFLAGS) $(CFLAGS) -MT cgroups/liblxc_la-cgroup.lo -MD -MP -MF cgroups/$(DEPDIR)/liblxc_la-cgroup.Tpo -c -o cgroups/liblxc_la-cgroup.lo `test -f 'cgroups/cgroup.c' || echo '$(srcdir)/'`cgroups/cgroup.c
+@am__fastdepCC_TRUE@	$(AM_V_at)$(am__mv) cgroups/$(DEPDIR)/liblxc_la-cgroup.Tpo cgroups/$(DEPDIR)/liblxc_la-cgroup.Plo
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	$(AM_V_CC)source='cgroups/cgroup.c' object='cgroups/liblxc_la-cgroup.lo' libtool=yes @AMDEPBACKSLASH@
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	DEPDIR=$(DEPDIR) $(CCDEPMODE) $(depcomp) @AMDEPBACKSLASH@
+@am__fastdepCC_FALSE@	$(AM_V_CC@am__nodep@)$(LIBTOOL) $(AM_V_lt) --tag=CC $(AM_LIBTOOLFLAGS) $(LIBTOOLFLAGS) --mode=compile $(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(liblxc_la_CFLAGS) $(CFLAGS) -c -o cgroups/liblxc_la-cgroup.lo `test -f 'cgroups/cgroup.c' || echo '$(srcdir)/'`cgroups/cgroup.c
+
+cgroups/liblxc_la-cgroup_utils.lo: cgroups/cgroup_utils.c
+@am__fastdepCC_TRUE@	$(AM_V_CC)$(LIBTOOL) $(AM_V_lt) --tag=CC $(AM_LIBTOOLFLAGS) $(LIBTOOLFLAGS) --mode=compile $(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(liblxc_la_CFLAGS) $(CFLAGS) -MT cgroups/liblxc_la-cgroup_utils.lo -MD -MP -MF cgroups/$(DEPDIR)/liblxc_la-cgroup_utils.Tpo -c -o cgroups/liblxc_la-cgroup_utils.lo `test -f 'cgroups/cgroup_utils.c' || echo '$(srcdir)/'`cgroups/cgroup_utils.c
+@am__fastdepCC_TRUE@	$(AM_V_at)$(am__mv) cgroups/$(DEPDIR)/liblxc_la-cgroup_utils.Tpo cgroups/$(DEPDIR)/liblxc_la-cgroup_utils.Plo
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	$(AM_V_CC)source='cgroups/cgroup_utils.c' object='cgroups/liblxc_la-cgroup_utils.lo' libtool=yes @AMDEPBACKSLASH@
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	DEPDIR=$(DEPDIR) $(CCDEPMODE) $(depcomp) @AMDEPBACKSLASH@
+@am__fastdepCC_FALSE@	$(AM_V_CC@am__nodep@)$(LIBTOOL) $(AM_V_lt) --tag=CC $(AM_LIBTOOLFLAGS) $(LIBTOOLFLAGS) --mode=compile $(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(liblxc_la_CFLAGS) $(CFLAGS) -c -o cgroups/liblxc_la-cgroup_utils.lo `test -f 'cgroups/cgroup_utils.c' || echo '$(srcdir)/'`cgroups/cgroup_utils.c
+
+liblxc_la-commands.lo: commands.c
+@am__fastdepCC_TRUE@	$(AM_V_CC)$(LIBTOOL) $(AM_V_lt) --tag=CC $(AM_LIBTOOLFLAGS) $(LIBTOOLFLAGS) --mode=compile $(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(liblxc_la_CFLAGS) $(CFLAGS) -MT liblxc_la-commands.lo -MD -MP -MF $(DEPDIR)/liblxc_la-commands.Tpo -c -o liblxc_la-commands.lo `test -f 'commands.c' || echo '$(srcdir)/'`commands.c
+@am__fastdepCC_TRUE@	$(AM_V_at)$(am__mv) $(DEPDIR)/liblxc_la-commands.Tpo $(DEPDIR)/liblxc_la-commands.Plo
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	$(AM_V_CC)source='commands.c' object='liblxc_la-commands.lo' libtool=yes @AMDEPBACKSLASH@
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	DEPDIR=$(DEPDIR) $(CCDEPMODE) $(depcomp) @AMDEPBACKSLASH@
+@am__fastdepCC_FALSE@	$(AM_V_CC@am__nodep@)$(LIBTOOL) $(AM_V_lt) --tag=CC $(AM_LIBTOOLFLAGS) $(LIBTOOLFLAGS) --mode=compile $(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(liblxc_la_CFLAGS) $(CFLAGS) -c -o liblxc_la-commands.lo `test -f 'commands.c' || echo '$(srcdir)/'`commands.c
+
+liblxc_la-commands_utils.lo: commands_utils.c
+@am__fastdepCC_TRUE@	$(AM_V_CC)$(LIBTOOL) $(AM_V_lt) --tag=CC $(AM_LIBTOOLFLAGS) $(LIBTOOLFLAGS) --mode=compile $(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(liblxc_la_CFLAGS) $(CFLAGS) -MT liblxc_la-commands_utils.lo -MD -MP -MF $(DEPDIR)/liblxc_la-commands_utils.Tpo -c -o liblxc_la-commands_utils.lo `test -f 'commands_utils.c' || echo '$(srcdir)/'`commands_utils.c
+@am__fastdepCC_TRUE@	$(AM_V_at)$(am__mv) $(DEPDIR)/liblxc_la-commands_utils.Tpo $(DEPDIR)/liblxc_la-commands_utils.Plo
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	$(AM_V_CC)source='commands_utils.c' object='liblxc_la-commands_utils.lo' libtool=yes @AMDEPBACKSLASH@
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	DEPDIR=$(DEPDIR) $(CCDEPMODE) $(depcomp) @AMDEPBACKSLASH@
+@am__fastdepCC_FALSE@	$(AM_V_CC@am__nodep@)$(LIBTOOL) $(AM_V_lt) --tag=CC $(AM_LIBTOOLFLAGS) $(LIBTOOLFLAGS) --mode=compile $(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(liblxc_la_CFLAGS) $(CFLAGS) -c -o liblxc_la-commands_utils.lo `test -f 'commands_utils.c' || echo '$(srcdir)/'`commands_utils.c
+
+liblxc_la-conf.lo: conf.c
+@am__fastdepCC_TRUE@	$(AM_V_CC)$(LIBTOOL) $(AM_V_lt) --tag=CC $(AM_LIBTOOLFLAGS) $(LIBTOOLFLAGS) --mode=compile $(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(liblxc_la_CFLAGS) $(CFLAGS) -MT liblxc_la-conf.lo -MD -MP -MF $(DEPDIR)/liblxc_la-conf.Tpo -c -o liblxc_la-conf.lo `test -f 'conf.c' || echo '$(srcdir)/'`conf.c
+@am__fastdepCC_TRUE@	$(AM_V_at)$(am__mv) $(DEPDIR)/liblxc_la-conf.Tpo $(DEPDIR)/liblxc_la-conf.Plo
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	$(AM_V_CC)source='conf.c' object='liblxc_la-conf.lo' libtool=yes @AMDEPBACKSLASH@
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	DEPDIR=$(DEPDIR) $(CCDEPMODE) $(depcomp) @AMDEPBACKSLASH@
+@am__fastdepCC_FALSE@	$(AM_V_CC@am__nodep@)$(LIBTOOL) $(AM_V_lt) --tag=CC $(AM_LIBTOOLFLAGS) $(LIBTOOLFLAGS) --mode=compile $(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(liblxc_la_CFLAGS) $(CFLAGS) -c -o liblxc_la-conf.lo `test -f 'conf.c' || echo '$(srcdir)/'`conf.c
+
+liblxc_la-confile.lo: confile.c
+@am__fastdepCC_TRUE@	$(AM_V_CC)$(LIBTOOL) $(AM_V_lt) --tag=CC $(AM_LIBTOOLFLAGS) $(LIBTOOLFLAGS) --mode=compile $(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(liblxc_la_CFLAGS) $(CFLAGS) -MT liblxc_la-confile.lo -MD -MP -MF $(DEPDIR)/liblxc_la-confile.Tpo -c -o liblxc_la-confile.lo `test -f 'confile.c' || echo '$(srcdir)/'`confile.c
+@am__fastdepCC_TRUE@	$(AM_V_at)$(am__mv) $(DEPDIR)/liblxc_la-confile.Tpo $(DEPDIR)/liblxc_la-confile.Plo
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	$(AM_V_CC)source='confile.c' object='liblxc_la-confile.lo' libtool=yes @AMDEPBACKSLASH@
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	DEPDIR=$(DEPDIR) $(CCDEPMODE) $(depcomp) @AMDEPBACKSLASH@
+@am__fastdepCC_FALSE@	$(AM_V_CC@am__nodep@)$(LIBTOOL) $(AM_V_lt) --tag=CC $(AM_LIBTOOLFLAGS) $(LIBTOOLFLAGS) --mode=compile $(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(liblxc_la_CFLAGS) $(CFLAGS) -c -o liblxc_la-confile.lo `test -f 'confile.c' || echo '$(srcdir)/'`confile.c
+
+liblxc_la-confile_utils.lo: confile_utils.c
+@am__fastdepCC_TRUE@	$(AM_V_CC)$(LIBTOOL) $(AM_V_lt) --tag=CC $(AM_LIBTOOLFLAGS) $(LIBTOOLFLAGS) --mode=compile $(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(liblxc_la_CFLAGS) $(CFLAGS) -MT liblxc_la-confile_utils.lo -MD -MP -MF $(DEPDIR)/liblxc_la-confile_utils.Tpo -c -o liblxc_la-confile_utils.lo `test -f 'confile_utils.c' || echo '$(srcdir)/'`confile_utils.c
+@am__fastdepCC_TRUE@	$(AM_V_at)$(am__mv) $(DEPDIR)/liblxc_la-confile_utils.Tpo $(DEPDIR)/liblxc_la-confile_utils.Plo
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	$(AM_V_CC)source='confile_utils.c' object='liblxc_la-confile_utils.lo' libtool=yes @AMDEPBACKSLASH@
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	DEPDIR=$(DEPDIR) $(CCDEPMODE) $(depcomp) @AMDEPBACKSLASH@
+@am__fastdepCC_FALSE@	$(AM_V_CC@am__nodep@)$(LIBTOOL) $(AM_V_lt) --tag=CC $(AM_LIBTOOLFLAGS) $(LIBTOOLFLAGS) --mode=compile $(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(liblxc_la_CFLAGS) $(CFLAGS) -c -o liblxc_la-confile_utils.lo `test -f 'confile_utils.c' || echo '$(srcdir)/'`confile_utils.c
+
+liblxc_la-criu.lo: criu.c
+@am__fastdepCC_TRUE@	$(AM_V_CC)$(LIBTOOL) $(AM_V_lt) --tag=CC $(AM_LIBTOOLFLAGS) $(LIBTOOLFLAGS) --mode=compile $(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(liblxc_la_CFLAGS) $(CFLAGS) -MT liblxc_la-criu.lo -MD -MP -MF $(DEPDIR)/liblxc_la-criu.Tpo -c -o liblxc_la-criu.lo `test -f 'criu.c' || echo '$(srcdir)/'`criu.c
+@am__fastdepCC_TRUE@	$(AM_V_at)$(am__mv) $(DEPDIR)/liblxc_la-criu.Tpo $(DEPDIR)/liblxc_la-criu.Plo
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	$(AM_V_CC)source='criu.c' object='liblxc_la-criu.lo' libtool=yes @AMDEPBACKSLASH@
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	DEPDIR=$(DEPDIR) $(CCDEPMODE) $(depcomp) @AMDEPBACKSLASH@
+@am__fastdepCC_FALSE@	$(AM_V_CC@am__nodep@)$(LIBTOOL) $(AM_V_lt) --tag=CC $(AM_LIBTOOLFLAGS) $(LIBTOOLFLAGS) --mode=compile $(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(liblxc_la_CFLAGS) $(CFLAGS) -c -o liblxc_la-criu.lo `test -f 'criu.c' || echo '$(srcdir)/'`criu.c
+
+liblxc_la-error.lo: error.c
+@am__fastdepCC_TRUE@	$(AM_V_CC)$(LIBTOOL) $(AM_V_lt) --tag=CC $(AM_LIBTOOLFLAGS) $(LIBTOOLFLAGS) --mode=compile $(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(liblxc_la_CFLAGS) $(CFLAGS) -MT liblxc_la-error.lo -MD -MP -MF $(DEPDIR)/liblxc_la-error.Tpo -c -o liblxc_la-error.lo `test -f 'error.c' || echo '$(srcdir)/'`error.c
+@am__fastdepCC_TRUE@	$(AM_V_at)$(am__mv) $(DEPDIR)/liblxc_la-error.Tpo $(DEPDIR)/liblxc_la-error.Plo
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	$(AM_V_CC)source='error.c' object='liblxc_la-error.lo' libtool=yes @AMDEPBACKSLASH@
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	DEPDIR=$(DEPDIR) $(CCDEPMODE) $(depcomp) @AMDEPBACKSLASH@
+@am__fastdepCC_FALSE@	$(AM_V_CC@am__nodep@)$(LIBTOOL) $(AM_V_lt) --tag=CC $(AM_LIBTOOLFLAGS) $(LIBTOOLFLAGS) --mode=compile $(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(liblxc_la_CFLAGS) $(CFLAGS) -c -o liblxc_la-error.lo `test -f 'error.c' || echo '$(srcdir)/'`error.c
+
+liblxc_la-execute.lo: execute.c
+@am__fastdepCC_TRUE@	$(AM_V_CC)$(LIBTOOL) $(AM_V_lt) --tag=CC $(AM_LIBTOOLFLAGS) $(LIBTOOLFLAGS) --mode=compile $(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(liblxc_la_CFLAGS) $(CFLAGS) -MT liblxc_la-execute.lo -MD -MP -MF $(DEPDIR)/liblxc_la-execute.Tpo -c -o liblxc_la-execute.lo `test -f 'execute.c' || echo '$(srcdir)/'`execute.c
+@am__fastdepCC_TRUE@	$(AM_V_at)$(am__mv) $(DEPDIR)/liblxc_la-execute.Tpo $(DEPDIR)/liblxc_la-execute.Plo
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	$(AM_V_CC)source='execute.c' object='liblxc_la-execute.lo' libtool=yes @AMDEPBACKSLASH@
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	DEPDIR=$(DEPDIR) $(CCDEPMODE) $(depcomp) @AMDEPBACKSLASH@
+@am__fastdepCC_FALSE@	$(AM_V_CC@am__nodep@)$(LIBTOOL) $(AM_V_lt) --tag=CC $(AM_LIBTOOLFLAGS) $(LIBTOOLFLAGS) --mode=compile $(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(liblxc_la_CFLAGS) $(CFLAGS) -c -o liblxc_la-execute.lo `test -f 'execute.c' || echo '$(srcdir)/'`execute.c
+
+liblxc_la-freezer.lo: freezer.c
+@am__fastdepCC_TRUE@	$(AM_V_CC)$(LIBTOOL) $(AM_V_lt) --tag=CC $(AM_LIBTOOLFLAGS) $(LIBTOOLFLAGS) --mode=compile $(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(liblxc_la_CFLAGS) $(CFLAGS) -MT liblxc_la-freezer.lo -MD -MP -MF $(DEPDIR)/liblxc_la-freezer.Tpo -c -o liblxc_la-freezer.lo `test -f 'freezer.c' || echo '$(srcdir)/'`freezer.c
+@am__fastdepCC_TRUE@	$(AM_V_at)$(am__mv) $(DEPDIR)/liblxc_la-freezer.Tpo $(DEPDIR)/liblxc_la-freezer.Plo
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	$(AM_V_CC)source='freezer.c' object='liblxc_la-freezer.lo' libtool=yes @AMDEPBACKSLASH@
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	DEPDIR=$(DEPDIR) $(CCDEPMODE) $(depcomp) @AMDEPBACKSLASH@
+@am__fastdepCC_FALSE@	$(AM_V_CC@am__nodep@)$(LIBTOOL) $(AM_V_lt) --tag=CC $(AM_LIBTOOLFLAGS) $(LIBTOOLFLAGS) --mode=compile $(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(liblxc_la_CFLAGS) $(CFLAGS) -c -o liblxc_la-freezer.lo `test -f 'freezer.c' || echo '$(srcdir)/'`freezer.c
+
+liblxc_la-initutils.lo: initutils.c
+@am__fastdepCC_TRUE@	$(AM_V_CC)$(LIBTOOL) $(AM_V_lt) --tag=CC $(AM_LIBTOOLFLAGS) $(LIBTOOLFLAGS) --mode=compile $(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(liblxc_la_CFLAGS) $(CFLAGS) -MT liblxc_la-initutils.lo -MD -MP -MF $(DEPDIR)/liblxc_la-initutils.Tpo -c -o liblxc_la-initutils.lo `test -f 'initutils.c' || echo '$(srcdir)/'`initutils.c
+@am__fastdepCC_TRUE@	$(AM_V_at)$(am__mv) $(DEPDIR)/liblxc_la-initutils.Tpo $(DEPDIR)/liblxc_la-initutils.Plo
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	$(AM_V_CC)source='initutils.c' object='liblxc_la-initutils.lo' libtool=yes @AMDEPBACKSLASH@
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	DEPDIR=$(DEPDIR) $(CCDEPMODE) $(depcomp) @AMDEPBACKSLASH@
+@am__fastdepCC_FALSE@	$(AM_V_CC@am__nodep@)$(LIBTOOL) $(AM_V_lt) --tag=CC $(AM_LIBTOOLFLAGS) $(LIBTOOLFLAGS) --mode=compile $(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(liblxc_la_CFLAGS) $(CFLAGS) -c -o liblxc_la-initutils.lo `test -f 'initutils.c' || echo '$(srcdir)/'`initutils.c
+
+liblxc_la-log.lo: log.c
+@am__fastdepCC_TRUE@	$(AM_V_CC)$(LIBTOOL) $(AM_V_lt) --tag=CC $(AM_LIBTOOLFLAGS) $(LIBTOOLFLAGS) --mode=compile $(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(liblxc_la_CFLAGS) $(CFLAGS) -MT liblxc_la-log.lo -MD -MP -MF $(DEPDIR)/liblxc_la-log.Tpo -c -o liblxc_la-log.lo `test -f 'log.c' || echo '$(srcdir)/'`log.c
+@am__fastdepCC_TRUE@	$(AM_V_at)$(am__mv) $(DEPDIR)/liblxc_la-log.Tpo $(DEPDIR)/liblxc_la-log.Plo
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	$(AM_V_CC)source='log.c' object='liblxc_la-log.lo' libtool=yes @AMDEPBACKSLASH@
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	DEPDIR=$(DEPDIR) $(CCDEPMODE) $(depcomp) @AMDEPBACKSLASH@
+@am__fastdepCC_FALSE@	$(AM_V_CC@am__nodep@)$(LIBTOOL) $(AM_V_lt) --tag=CC $(AM_LIBTOOLFLAGS) $(LIBTOOLFLAGS) --mode=compile $(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(liblxc_la_CFLAGS) $(CFLAGS) -c -o liblxc_la-log.lo `test -f 'log.c' || echo '$(srcdir)/'`log.c
+
+liblxc_la-lxccontainer.lo: lxccontainer.c
+@am__fastdepCC_TRUE@	$(AM_V_CC)$(LIBTOOL) $(AM_V_lt) --tag=CC $(AM_LIBTOOLFLAGS) $(LIBTOOLFLAGS) --mode=compile $(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(liblxc_la_CFLAGS) $(CFLAGS) -MT liblxc_la-lxccontainer.lo -MD -MP -MF $(DEPDIR)/liblxc_la-lxccontainer.Tpo -c -o liblxc_la-lxccontainer.lo `test -f 'lxccontainer.c' || echo '$(srcdir)/'`lxccontainer.c
+@am__fastdepCC_TRUE@	$(AM_V_at)$(am__mv) $(DEPDIR)/liblxc_la-lxccontainer.Tpo $(DEPDIR)/liblxc_la-lxccontainer.Plo
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	$(AM_V_CC)source='lxccontainer.c' object='liblxc_la-lxccontainer.lo' libtool=yes @AMDEPBACKSLASH@
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	DEPDIR=$(DEPDIR) $(CCDEPMODE) $(depcomp) @AMDEPBACKSLASH@
+@am__fastdepCC_FALSE@	$(AM_V_CC@am__nodep@)$(LIBTOOL) $(AM_V_lt) --tag=CC $(AM_LIBTOOLFLAGS) $(LIBTOOLFLAGS) --mode=compile $(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(liblxc_la_CFLAGS) $(CFLAGS) -c -o liblxc_la-lxccontainer.lo `test -f 'lxccontainer.c' || echo '$(srcdir)/'`lxccontainer.c
+
+liblxc_la-lxclock.lo: lxclock.c
+@am__fastdepCC_TRUE@	$(AM_V_CC)$(LIBTOOL) $(AM_V_lt) --tag=CC $(AM_LIBTOOLFLAGS) $(LIBTOOLFLAGS) --mode=compile $(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(liblxc_la_CFLAGS) $(CFLAGS) -MT liblxc_la-lxclock.lo -MD -MP -MF $(DEPDIR)/liblxc_la-lxclock.Tpo -c -o liblxc_la-lxclock.lo `test -f 'lxclock.c' || echo '$(srcdir)/'`lxclock.c
+@am__fastdepCC_TRUE@	$(AM_V_at)$(am__mv) $(DEPDIR)/liblxc_la-lxclock.Tpo $(DEPDIR)/liblxc_la-lxclock.Plo
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	$(AM_V_CC)source='lxclock.c' object='liblxc_la-lxclock.lo' libtool=yes @AMDEPBACKSLASH@
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	DEPDIR=$(DEPDIR) $(CCDEPMODE) $(depcomp) @AMDEPBACKSLASH@
+@am__fastdepCC_FALSE@	$(AM_V_CC@am__nodep@)$(LIBTOOL) $(AM_V_lt) --tag=CC $(AM_LIBTOOLFLAGS) $(LIBTOOLFLAGS) --mode=compile $(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(liblxc_la_CFLAGS) $(CFLAGS) -c -o liblxc_la-lxclock.lo `test -f 'lxclock.c' || echo '$(srcdir)/'`lxclock.c
+
+liblxc_la-mainloop.lo: mainloop.c
+@am__fastdepCC_TRUE@	$(AM_V_CC)$(LIBTOOL) $(AM_V_lt) --tag=CC $(AM_LIBTOOLFLAGS) $(LIBTOOLFLAGS) --mode=compile $(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(liblxc_la_CFLAGS) $(CFLAGS) -MT liblxc_la-mainloop.lo -MD -MP -MF $(DEPDIR)/liblxc_la-mainloop.Tpo -c -o liblxc_la-mainloop.lo `test -f 'mainloop.c' || echo '$(srcdir)/'`mainloop.c
+@am__fastdepCC_TRUE@	$(AM_V_at)$(am__mv) $(DEPDIR)/liblxc_la-mainloop.Tpo $(DEPDIR)/liblxc_la-mainloop.Plo
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	$(AM_V_CC)source='mainloop.c' object='liblxc_la-mainloop.lo' libtool=yes @AMDEPBACKSLASH@
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	DEPDIR=$(DEPDIR) $(CCDEPMODE) $(depcomp) @AMDEPBACKSLASH@
+@am__fastdepCC_FALSE@	$(AM_V_CC@am__nodep@)$(LIBTOOL) $(AM_V_lt) --tag=CC $(AM_LIBTOOLFLAGS) $(LIBTOOLFLAGS) --mode=compile $(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(liblxc_la_CFLAGS) $(CFLAGS) -c -o liblxc_la-mainloop.lo `test -f 'mainloop.c' || echo '$(srcdir)/'`mainloop.c
+
+liblxc_la-namespace.lo: namespace.c
+@am__fastdepCC_TRUE@	$(AM_V_CC)$(LIBTOOL) $(AM_V_lt) --tag=CC $(AM_LIBTOOLFLAGS) $(LIBTOOLFLAGS) --mode=compile $(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(liblxc_la_CFLAGS) $(CFLAGS) -MT liblxc_la-namespace.lo -MD -MP -MF $(DEPDIR)/liblxc_la-namespace.Tpo -c -o liblxc_la-namespace.lo `test -f 'namespace.c' || echo '$(srcdir)/'`namespace.c
+@am__fastdepCC_TRUE@	$(AM_V_at)$(am__mv) $(DEPDIR)/liblxc_la-namespace.Tpo $(DEPDIR)/liblxc_la-namespace.Plo
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	$(AM_V_CC)source='namespace.c' object='liblxc_la-namespace.lo' libtool=yes @AMDEPBACKSLASH@
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	DEPDIR=$(DEPDIR) $(CCDEPMODE) $(depcomp) @AMDEPBACKSLASH@
+@am__fastdepCC_FALSE@	$(AM_V_CC@am__nodep@)$(LIBTOOL) $(AM_V_lt) --tag=CC $(AM_LIBTOOLFLAGS) $(LIBTOOLFLAGS) --mode=compile $(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(liblxc_la_CFLAGS) $(CFLAGS) -c -o liblxc_la-namespace.lo `test -f 'namespace.c' || echo '$(srcdir)/'`namespace.c
+
+liblxc_la-nl.lo: nl.c
+@am__fastdepCC_TRUE@	$(AM_V_CC)$(LIBTOOL) $(AM_V_lt) --tag=CC $(AM_LIBTOOLFLAGS) $(LIBTOOLFLAGS) --mode=compile $(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(liblxc_la_CFLAGS) $(CFLAGS) -MT liblxc_la-nl.lo -MD -MP -MF $(DEPDIR)/liblxc_la-nl.Tpo -c -o liblxc_la-nl.lo `test -f 'nl.c' || echo '$(srcdir)/'`nl.c
+@am__fastdepCC_TRUE@	$(AM_V_at)$(am__mv) $(DEPDIR)/liblxc_la-nl.Tpo $(DEPDIR)/liblxc_la-nl.Plo
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	$(AM_V_CC)source='nl.c' object='liblxc_la-nl.lo' libtool=yes @AMDEPBACKSLASH@
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	DEPDIR=$(DEPDIR) $(CCDEPMODE) $(depcomp) @AMDEPBACKSLASH@
+@am__fastdepCC_FALSE@	$(AM_V_CC@am__nodep@)$(LIBTOOL) $(AM_V_lt) --tag=CC $(AM_LIBTOOLFLAGS) $(LIBTOOLFLAGS) --mode=compile $(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(liblxc_la_CFLAGS) $(CFLAGS) -c -o liblxc_la-nl.lo `test -f 'nl.c' || echo '$(srcdir)/'`nl.c
+
+liblxc_la-network.lo: network.c
+@am__fastdepCC_TRUE@	$(AM_V_CC)$(LIBTOOL) $(AM_V_lt) --tag=CC $(AM_LIBTOOLFLAGS) $(LIBTOOLFLAGS) --mode=compile $(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(liblxc_la_CFLAGS) $(CFLAGS) -MT liblxc_la-network.lo -MD -MP -MF $(DEPDIR)/liblxc_la-network.Tpo -c -o liblxc_la-network.lo `test -f 'network.c' || echo '$(srcdir)/'`network.c
+@am__fastdepCC_TRUE@	$(AM_V_at)$(am__mv) $(DEPDIR)/liblxc_la-network.Tpo $(DEPDIR)/liblxc_la-network.Plo
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	$(AM_V_CC)source='network.c' object='liblxc_la-network.lo' libtool=yes @AMDEPBACKSLASH@
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	DEPDIR=$(DEPDIR) $(CCDEPMODE) $(depcomp) @AMDEPBACKSLASH@
+@am__fastdepCC_FALSE@	$(AM_V_CC@am__nodep@)$(LIBTOOL) $(AM_V_lt) --tag=CC $(AM_LIBTOOLFLAGS) $(LIBTOOLFLAGS) --mode=compile $(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(liblxc_la_CFLAGS) $(CFLAGS) -c -o liblxc_la-network.lo `test -f 'network.c' || echo '$(srcdir)/'`network.c
+
+liblxc_la-monitor.lo: monitor.c
+@am__fastdepCC_TRUE@	$(AM_V_CC)$(LIBTOOL) $(AM_V_lt) --tag=CC $(AM_LIBTOOLFLAGS) $(LIBTOOLFLAGS) --mode=compile $(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(liblxc_la_CFLAGS) $(CFLAGS) -MT liblxc_la-monitor.lo -MD -MP -MF $(DEPDIR)/liblxc_la-monitor.Tpo -c -o liblxc_la-monitor.lo `test -f 'monitor.c' || echo '$(srcdir)/'`monitor.c
+@am__fastdepCC_TRUE@	$(AM_V_at)$(am__mv) $(DEPDIR)/liblxc_la-monitor.Tpo $(DEPDIR)/liblxc_la-monitor.Plo
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	$(AM_V_CC)source='monitor.c' object='liblxc_la-monitor.lo' libtool=yes @AMDEPBACKSLASH@
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	DEPDIR=$(DEPDIR) $(CCDEPMODE) $(depcomp) @AMDEPBACKSLASH@
+@am__fastdepCC_FALSE@	$(AM_V_CC@am__nodep@)$(LIBTOOL) $(AM_V_lt) --tag=CC $(AM_LIBTOOLFLAGS) $(LIBTOOLFLAGS) --mode=compile $(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(liblxc_la_CFLAGS) $(CFLAGS) -c -o liblxc_la-monitor.lo `test -f 'monitor.c' || echo '$(srcdir)/'`monitor.c
+
+liblxc_la-parse.lo: parse.c
+@am__fastdepCC_TRUE@	$(AM_V_CC)$(LIBTOOL) $(AM_V_lt) --tag=CC $(AM_LIBTOOLFLAGS) $(LIBTOOLFLAGS) --mode=compile $(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(liblxc_la_CFLAGS) $(CFLAGS) -MT liblxc_la-parse.lo -MD -MP -MF $(DEPDIR)/liblxc_la-parse.Tpo -c -o liblxc_la-parse.lo `test -f 'parse.c' || echo '$(srcdir)/'`parse.c
+@am__fastdepCC_TRUE@	$(AM_V_at)$(am__mv) $(DEPDIR)/liblxc_la-parse.Tpo $(DEPDIR)/liblxc_la-parse.Plo
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	$(AM_V_CC)source='parse.c' object='liblxc_la-parse.lo' libtool=yes @AMDEPBACKSLASH@
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	DEPDIR=$(DEPDIR) $(CCDEPMODE) $(depcomp) @AMDEPBACKSLASH@
+@am__fastdepCC_FALSE@	$(AM_V_CC@am__nodep@)$(LIBTOOL) $(AM_V_lt) --tag=CC $(AM_LIBTOOLFLAGS) $(LIBTOOLFLAGS) --mode=compile $(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(liblxc_la_CFLAGS) $(CFLAGS) -c -o liblxc_la-parse.lo `test -f 'parse.c' || echo '$(srcdir)/'`parse.c
+
+liblxc_la-ringbuf.lo: ringbuf.c
+@am__fastdepCC_TRUE@	$(AM_V_CC)$(LIBTOOL) $(AM_V_lt) --tag=CC $(AM_LIBTOOLFLAGS) $(LIBTOOLFLAGS) --mode=compile $(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(liblxc_la_CFLAGS) $(CFLAGS) -MT liblxc_la-ringbuf.lo -MD -MP -MF $(DEPDIR)/liblxc_la-ringbuf.Tpo -c -o liblxc_la-ringbuf.lo `test -f 'ringbuf.c' || echo '$(srcdir)/'`ringbuf.c
+@am__fastdepCC_TRUE@	$(AM_V_at)$(am__mv) $(DEPDIR)/liblxc_la-ringbuf.Tpo $(DEPDIR)/liblxc_la-ringbuf.Plo
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	$(AM_V_CC)source='ringbuf.c' object='liblxc_la-ringbuf.lo' libtool=yes @AMDEPBACKSLASH@
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	DEPDIR=$(DEPDIR) $(CCDEPMODE) $(depcomp) @AMDEPBACKSLASH@
+@am__fastdepCC_FALSE@	$(AM_V_CC@am__nodep@)$(LIBTOOL) $(AM_V_lt) --tag=CC $(AM_LIBTOOLFLAGS) $(LIBTOOLFLAGS) --mode=compile $(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(liblxc_la_CFLAGS) $(CFLAGS) -c -o liblxc_la-ringbuf.lo `test -f 'ringbuf.c' || echo '$(srcdir)/'`ringbuf.c
+
+liblxc_la-rtnl.lo: rtnl.c
+@am__fastdepCC_TRUE@	$(AM_V_CC)$(LIBTOOL) $(AM_V_lt) --tag=CC $(AM_LIBTOOLFLAGS) $(LIBTOOLFLAGS) --mode=compile $(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(liblxc_la_CFLAGS) $(CFLAGS) -MT liblxc_la-rtnl.lo -MD -MP -MF $(DEPDIR)/liblxc_la-rtnl.Tpo -c -o liblxc_la-rtnl.lo `test -f 'rtnl.c' || echo '$(srcdir)/'`rtnl.c
+@am__fastdepCC_TRUE@	$(AM_V_at)$(am__mv) $(DEPDIR)/liblxc_la-rtnl.Tpo $(DEPDIR)/liblxc_la-rtnl.Plo
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	$(AM_V_CC)source='rtnl.c' object='liblxc_la-rtnl.lo' libtool=yes @AMDEPBACKSLASH@
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	DEPDIR=$(DEPDIR) $(CCDEPMODE) $(depcomp) @AMDEPBACKSLASH@
+@am__fastdepCC_FALSE@	$(AM_V_CC@am__nodep@)$(LIBTOOL) $(AM_V_lt) --tag=CC $(AM_LIBTOOLFLAGS) $(LIBTOOLFLAGS) --mode=compile $(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(liblxc_la_CFLAGS) $(CFLAGS) -c -o liblxc_la-rtnl.lo `test -f 'rtnl.c' || echo '$(srcdir)/'`rtnl.c
+
+liblxc_la-state.lo: state.c
+@am__fastdepCC_TRUE@	$(AM_V_CC)$(LIBTOOL) $(AM_V_lt) --tag=CC $(AM_LIBTOOLFLAGS) $(LIBTOOLFLAGS) --mode=compile $(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(liblxc_la_CFLAGS) $(CFLAGS) -MT liblxc_la-state.lo -MD -MP -MF $(DEPDIR)/liblxc_la-state.Tpo -c -o liblxc_la-state.lo `test -f 'state.c' || echo '$(srcdir)/'`state.c
+@am__fastdepCC_TRUE@	$(AM_V_at)$(am__mv) $(DEPDIR)/liblxc_la-state.Tpo $(DEPDIR)/liblxc_la-state.Plo
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	$(AM_V_CC)source='state.c' object='liblxc_la-state.lo' libtool=yes @AMDEPBACKSLASH@
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	DEPDIR=$(DEPDIR) $(CCDEPMODE) $(depcomp) @AMDEPBACKSLASH@
+@am__fastdepCC_FALSE@	$(AM_V_CC@am__nodep@)$(LIBTOOL) $(AM_V_lt) --tag=CC $(AM_LIBTOOLFLAGS) $(LIBTOOLFLAGS) --mode=compile $(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(liblxc_la_CFLAGS) $(CFLAGS) -c -o liblxc_la-state.lo `test -f 'state.c' || echo '$(srcdir)/'`state.c
+
+liblxc_la-start.lo: start.c
+@am__fastdepCC_TRUE@	$(AM_V_CC)$(LIBTOOL) $(AM_V_lt) --tag=CC $(AM_LIBTOOLFLAGS) $(LIBTOOLFLAGS) --mode=compile $(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(liblxc_la_CFLAGS) $(CFLAGS) -MT liblxc_la-start.lo -MD -MP -MF $(DEPDIR)/liblxc_la-start.Tpo -c -o liblxc_la-start.lo `test -f 'start.c' || echo '$(srcdir)/'`start.c
+@am__fastdepCC_TRUE@	$(AM_V_at)$(am__mv) $(DEPDIR)/liblxc_la-start.Tpo $(DEPDIR)/liblxc_la-start.Plo
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	$(AM_V_CC)source='start.c' object='liblxc_la-start.lo' libtool=yes @AMDEPBACKSLASH@
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	DEPDIR=$(DEPDIR) $(CCDEPMODE) $(depcomp) @AMDEPBACKSLASH@
+@am__fastdepCC_FALSE@	$(AM_V_CC@am__nodep@)$(LIBTOOL) $(AM_V_lt) --tag=CC $(AM_LIBTOOLFLAGS) $(LIBTOOLFLAGS) --mode=compile $(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(liblxc_la_CFLAGS) $(CFLAGS) -c -o liblxc_la-start.lo `test -f 'start.c' || echo '$(srcdir)/'`start.c
 
 storage/liblxc_la-btrfs.lo: storage/btrfs.c
 @am__fastdepCC_TRUE@	$(AM_V_CC)$(LIBTOOL) $(AM_V_lt) --tag=CC $(AM_LIBTOOLFLAGS) $(LIBTOOLFLAGS) --mode=compile $(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(liblxc_la_CFLAGS) $(CFLAGS) -MT storage/liblxc_la-btrfs.lo -MD -MP -MF storage/$(DEPDIR)/liblxc_la-btrfs.Tpo -c -o storage/liblxc_la-btrfs.lo `test -f 'storage/btrfs.c' || echo '$(srcdir)/'`storage/btrfs.c
@@ -1674,12 +1954,12 @@ storage/liblxc_la-rsync.lo: storage/rsync.c
 @AMDEP_TRUE@@am__fastdepCC_FALSE@	DEPDIR=$(DEPDIR) $(CCDEPMODE) $(depcomp) @AMDEPBACKSLASH@
 @am__fastdepCC_FALSE@	$(AM_V_CC@am__nodep@)$(LIBTOOL) $(AM_V_lt) --tag=CC $(AM_LIBTOOLFLAGS) $(LIBTOOLFLAGS) --mode=compile $(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(liblxc_la_CFLAGS) $(CFLAGS) -c -o storage/liblxc_la-rsync.lo `test -f 'storage/rsync.c' || echo '$(srcdir)/'`storage/rsync.c
 
-storage/liblxc_la-zfs.lo: storage/zfs.c
-@am__fastdepCC_TRUE@	$(AM_V_CC)$(LIBTOOL) $(AM_V_lt) --tag=CC $(AM_LIBTOOLFLAGS) $(LIBTOOLFLAGS) --mode=compile $(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(liblxc_la_CFLAGS) $(CFLAGS) -MT storage/liblxc_la-zfs.lo -MD -MP -MF storage/$(DEPDIR)/liblxc_la-zfs.Tpo -c -o storage/liblxc_la-zfs.lo `test -f 'storage/zfs.c' || echo '$(srcdir)/'`storage/zfs.c
-@am__fastdepCC_TRUE@	$(AM_V_at)$(am__mv) storage/$(DEPDIR)/liblxc_la-zfs.Tpo storage/$(DEPDIR)/liblxc_la-zfs.Plo
-@AMDEP_TRUE@@am__fastdepCC_FALSE@	$(AM_V_CC)source='storage/zfs.c' object='storage/liblxc_la-zfs.lo' libtool=yes @AMDEPBACKSLASH@
+storage/liblxc_la-storage.lo: storage/storage.c
+@am__fastdepCC_TRUE@	$(AM_V_CC)$(LIBTOOL) $(AM_V_lt) --tag=CC $(AM_LIBTOOLFLAGS) $(LIBTOOLFLAGS) --mode=compile $(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(liblxc_la_CFLAGS) $(CFLAGS) -MT storage/liblxc_la-storage.lo -MD -MP -MF storage/$(DEPDIR)/liblxc_la-storage.Tpo -c -o storage/liblxc_la-storage.lo `test -f 'storage/storage.c' || echo '$(srcdir)/'`storage/storage.c
+@am__fastdepCC_TRUE@	$(AM_V_at)$(am__mv) storage/$(DEPDIR)/liblxc_la-storage.Tpo storage/$(DEPDIR)/liblxc_la-storage.Plo
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	$(AM_V_CC)source='storage/storage.c' object='storage/liblxc_la-storage.lo' libtool=yes @AMDEPBACKSLASH@
 @AMDEP_TRUE@@am__fastdepCC_FALSE@	DEPDIR=$(DEPDIR) $(CCDEPMODE) $(depcomp) @AMDEPBACKSLASH@
-@am__fastdepCC_FALSE@	$(AM_V_CC@am__nodep@)$(LIBTOOL) $(AM_V_lt) --tag=CC $(AM_LIBTOOLFLAGS) $(LIBTOOLFLAGS) --mode=compile $(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(liblxc_la_CFLAGS) $(CFLAGS) -c -o storage/liblxc_la-zfs.lo `test -f 'storage/zfs.c' || echo '$(srcdir)/'`storage/zfs.c
+@am__fastdepCC_FALSE@	$(AM_V_CC@am__nodep@)$(LIBTOOL) $(AM_V_lt) --tag=CC $(AM_LIBTOOLFLAGS) $(LIBTOOLFLAGS) --mode=compile $(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(liblxc_la_CFLAGS) $(CFLAGS) -c -o storage/liblxc_la-storage.lo `test -f 'storage/storage.c' || echo '$(srcdir)/'`storage/storage.c
 
 storage/liblxc_la-storage_utils.lo: storage/storage_utils.c
 @am__fastdepCC_TRUE@	$(AM_V_CC)$(LIBTOOL) $(AM_V_lt) --tag=CC $(AM_LIBTOOLFLAGS) $(LIBTOOLFLAGS) --mode=compile $(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(liblxc_la_CFLAGS) $(CFLAGS) -MT storage/liblxc_la-storage_utils.lo -MD -MP -MF storage/$(DEPDIR)/liblxc_la-storage_utils.Tpo -c -o storage/liblxc_la-storage_utils.lo `test -f 'storage/storage_utils.c' || echo '$(srcdir)/'`storage/storage_utils.c
@@ -1688,103 +1968,12 @@ storage/liblxc_la-storage_utils.lo: storage/storage_utils.c
 @AMDEP_TRUE@@am__fastdepCC_FALSE@	DEPDIR=$(DEPDIR) $(CCDEPMODE) $(depcomp) @AMDEPBACKSLASH@
 @am__fastdepCC_FALSE@	$(AM_V_CC@am__nodep@)$(LIBTOOL) $(AM_V_lt) --tag=CC $(AM_LIBTOOLFLAGS) $(LIBTOOLFLAGS) --mode=compile $(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(liblxc_la_CFLAGS) $(CFLAGS) -c -o storage/liblxc_la-storage_utils.lo `test -f 'storage/storage_utils.c' || echo '$(srcdir)/'`storage/storage_utils.c
 
-cgroups/liblxc_la-cgfsng.lo: cgroups/cgfsng.c
-@am__fastdepCC_TRUE@	$(AM_V_CC)$(LIBTOOL) $(AM_V_lt) --tag=CC $(AM_LIBTOOLFLAGS) $(LIBTOOLFLAGS) --mode=compile $(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(liblxc_la_CFLAGS) $(CFLAGS) -MT cgroups/liblxc_la-cgfsng.lo -MD -MP -MF cgroups/$(DEPDIR)/liblxc_la-cgfsng.Tpo -c -o cgroups/liblxc_la-cgfsng.lo `test -f 'cgroups/cgfsng.c' || echo '$(srcdir)/'`cgroups/cgfsng.c
-@am__fastdepCC_TRUE@	$(AM_V_at)$(am__mv) cgroups/$(DEPDIR)/liblxc_la-cgfsng.Tpo cgroups/$(DEPDIR)/liblxc_la-cgfsng.Plo
-@AMDEP_TRUE@@am__fastdepCC_FALSE@	$(AM_V_CC)source='cgroups/cgfsng.c' object='cgroups/liblxc_la-cgfsng.lo' libtool=yes @AMDEPBACKSLASH@
+storage/liblxc_la-zfs.lo: storage/zfs.c
+@am__fastdepCC_TRUE@	$(AM_V_CC)$(LIBTOOL) $(AM_V_lt) --tag=CC $(AM_LIBTOOLFLAGS) $(LIBTOOLFLAGS) --mode=compile $(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(liblxc_la_CFLAGS) $(CFLAGS) -MT storage/liblxc_la-zfs.lo -MD -MP -MF storage/$(DEPDIR)/liblxc_la-zfs.Tpo -c -o storage/liblxc_la-zfs.lo `test -f 'storage/zfs.c' || echo '$(srcdir)/'`storage/zfs.c
+@am__fastdepCC_TRUE@	$(AM_V_at)$(am__mv) storage/$(DEPDIR)/liblxc_la-zfs.Tpo storage/$(DEPDIR)/liblxc_la-zfs.Plo
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	$(AM_V_CC)source='storage/zfs.c' object='storage/liblxc_la-zfs.lo' libtool=yes @AMDEPBACKSLASH@
 @AMDEP_TRUE@@am__fastdepCC_FALSE@	DEPDIR=$(DEPDIR) $(CCDEPMODE) $(depcomp) @AMDEPBACKSLASH@
-@am__fastdepCC_FALSE@	$(AM_V_CC@am__nodep@)$(LIBTOOL) $(AM_V_lt) --tag=CC $(AM_LIBTOOLFLAGS) $(LIBTOOLFLAGS) --mode=compile $(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(liblxc_la_CFLAGS) $(CFLAGS) -c -o cgroups/liblxc_la-cgfsng.lo `test -f 'cgroups/cgfsng.c' || echo '$(srcdir)/'`cgroups/cgfsng.c
-
-cgroups/liblxc_la-cgroup_utils.lo: cgroups/cgroup_utils.c
-@am__fastdepCC_TRUE@	$(AM_V_CC)$(LIBTOOL) $(AM_V_lt) --tag=CC $(AM_LIBTOOLFLAGS) $(LIBTOOLFLAGS) --mode=compile $(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(liblxc_la_CFLAGS) $(CFLAGS) -MT cgroups/liblxc_la-cgroup_utils.lo -MD -MP -MF cgroups/$(DEPDIR)/liblxc_la-cgroup_utils.Tpo -c -o cgroups/liblxc_la-cgroup_utils.lo `test -f 'cgroups/cgroup_utils.c' || echo '$(srcdir)/'`cgroups/cgroup_utils.c
-@am__fastdepCC_TRUE@	$(AM_V_at)$(am__mv) cgroups/$(DEPDIR)/liblxc_la-cgroup_utils.Tpo cgroups/$(DEPDIR)/liblxc_la-cgroup_utils.Plo
-@AMDEP_TRUE@@am__fastdepCC_FALSE@	$(AM_V_CC)source='cgroups/cgroup_utils.c' object='cgroups/liblxc_la-cgroup_utils.lo' libtool=yes @AMDEPBACKSLASH@
-@AMDEP_TRUE@@am__fastdepCC_FALSE@	DEPDIR=$(DEPDIR) $(CCDEPMODE) $(depcomp) @AMDEPBACKSLASH@
-@am__fastdepCC_FALSE@	$(AM_V_CC@am__nodep@)$(LIBTOOL) $(AM_V_lt) --tag=CC $(AM_LIBTOOLFLAGS) $(LIBTOOLFLAGS) --mode=compile $(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(liblxc_la_CFLAGS) $(CFLAGS) -c -o cgroups/liblxc_la-cgroup_utils.lo `test -f 'cgroups/cgroup_utils.c' || echo '$(srcdir)/'`cgroups/cgroup_utils.c
-
-cgroups/liblxc_la-cgroup.lo: cgroups/cgroup.c
-@am__fastdepCC_TRUE@	$(AM_V_CC)$(LIBTOOL) $(AM_V_lt) --tag=CC $(AM_LIBTOOLFLAGS) $(LIBTOOLFLAGS) --mode=compile $(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(liblxc_la_CFLAGS) $(CFLAGS) -MT cgroups/liblxc_la-cgroup.lo -MD -MP -MF cgroups/$(DEPDIR)/liblxc_la-cgroup.Tpo -c -o cgroups/liblxc_la-cgroup.lo `test -f 'cgroups/cgroup.c' || echo '$(srcdir)/'`cgroups/cgroup.c
-@am__fastdepCC_TRUE@	$(AM_V_at)$(am__mv) cgroups/$(DEPDIR)/liblxc_la-cgroup.Tpo cgroups/$(DEPDIR)/liblxc_la-cgroup.Plo
-@AMDEP_TRUE@@am__fastdepCC_FALSE@	$(AM_V_CC)source='cgroups/cgroup.c' object='cgroups/liblxc_la-cgroup.lo' libtool=yes @AMDEPBACKSLASH@
-@AMDEP_TRUE@@am__fastdepCC_FALSE@	DEPDIR=$(DEPDIR) $(CCDEPMODE) $(depcomp) @AMDEPBACKSLASH@
-@am__fastdepCC_FALSE@	$(AM_V_CC@am__nodep@)$(LIBTOOL) $(AM_V_lt) --tag=CC $(AM_LIBTOOLFLAGS) $(LIBTOOLFLAGS) --mode=compile $(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(liblxc_la_CFLAGS) $(CFLAGS) -c -o cgroups/liblxc_la-cgroup.lo `test -f 'cgroups/cgroup.c' || echo '$(srcdir)/'`cgroups/cgroup.c
-
-liblxc_la-commands.lo: commands.c
-@am__fastdepCC_TRUE@	$(AM_V_CC)$(LIBTOOL) $(AM_V_lt) --tag=CC $(AM_LIBTOOLFLAGS) $(LIBTOOLFLAGS) --mode=compile $(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(liblxc_la_CFLAGS) $(CFLAGS) -MT liblxc_la-commands.lo -MD -MP -MF $(DEPDIR)/liblxc_la-commands.Tpo -c -o liblxc_la-commands.lo `test -f 'commands.c' || echo '$(srcdir)/'`commands.c
-@am__fastdepCC_TRUE@	$(AM_V_at)$(am__mv) $(DEPDIR)/liblxc_la-commands.Tpo $(DEPDIR)/liblxc_la-commands.Plo
-@AMDEP_TRUE@@am__fastdepCC_FALSE@	$(AM_V_CC)source='commands.c' object='liblxc_la-commands.lo' libtool=yes @AMDEPBACKSLASH@
-@AMDEP_TRUE@@am__fastdepCC_FALSE@	DEPDIR=$(DEPDIR) $(CCDEPMODE) $(depcomp) @AMDEPBACKSLASH@
-@am__fastdepCC_FALSE@	$(AM_V_CC@am__nodep@)$(LIBTOOL) $(AM_V_lt) --tag=CC $(AM_LIBTOOLFLAGS) $(LIBTOOLFLAGS) --mode=compile $(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(liblxc_la_CFLAGS) $(CFLAGS) -c -o liblxc_la-commands.lo `test -f 'commands.c' || echo '$(srcdir)/'`commands.c
-
-liblxc_la-commands_utils.lo: commands_utils.c
-@am__fastdepCC_TRUE@	$(AM_V_CC)$(LIBTOOL) $(AM_V_lt) --tag=CC $(AM_LIBTOOLFLAGS) $(LIBTOOLFLAGS) --mode=compile $(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(liblxc_la_CFLAGS) $(CFLAGS) -MT liblxc_la-commands_utils.lo -MD -MP -MF $(DEPDIR)/liblxc_la-commands_utils.Tpo -c -o liblxc_la-commands_utils.lo `test -f 'commands_utils.c' || echo '$(srcdir)/'`commands_utils.c
-@am__fastdepCC_TRUE@	$(AM_V_at)$(am__mv) $(DEPDIR)/liblxc_la-commands_utils.Tpo $(DEPDIR)/liblxc_la-commands_utils.Plo
-@AMDEP_TRUE@@am__fastdepCC_FALSE@	$(AM_V_CC)source='commands_utils.c' object='liblxc_la-commands_utils.lo' libtool=yes @AMDEPBACKSLASH@
-@AMDEP_TRUE@@am__fastdepCC_FALSE@	DEPDIR=$(DEPDIR) $(CCDEPMODE) $(depcomp) @AMDEPBACKSLASH@
-@am__fastdepCC_FALSE@	$(AM_V_CC@am__nodep@)$(LIBTOOL) $(AM_V_lt) --tag=CC $(AM_LIBTOOLFLAGS) $(LIBTOOLFLAGS) --mode=compile $(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(liblxc_la_CFLAGS) $(CFLAGS) -c -o liblxc_la-commands_utils.lo `test -f 'commands_utils.c' || echo '$(srcdir)/'`commands_utils.c
-
-liblxc_la-start.lo: start.c
-@am__fastdepCC_TRUE@	$(AM_V_CC)$(LIBTOOL) $(AM_V_lt) --tag=CC $(AM_LIBTOOLFLAGS) $(LIBTOOLFLAGS) --mode=compile $(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(liblxc_la_CFLAGS) $(CFLAGS) -MT liblxc_la-start.lo -MD -MP -MF $(DEPDIR)/liblxc_la-start.Tpo -c -o liblxc_la-start.lo `test -f 'start.c' || echo '$(srcdir)/'`start.c
-@am__fastdepCC_TRUE@	$(AM_V_at)$(am__mv) $(DEPDIR)/liblxc_la-start.Tpo $(DEPDIR)/liblxc_la-start.Plo
-@AMDEP_TRUE@@am__fastdepCC_FALSE@	$(AM_V_CC)source='start.c' object='liblxc_la-start.lo' libtool=yes @AMDEPBACKSLASH@
-@AMDEP_TRUE@@am__fastdepCC_FALSE@	DEPDIR=$(DEPDIR) $(CCDEPMODE) $(depcomp) @AMDEPBACKSLASH@
-@am__fastdepCC_FALSE@	$(AM_V_CC@am__nodep@)$(LIBTOOL) $(AM_V_lt) --tag=CC $(AM_LIBTOOLFLAGS) $(LIBTOOLFLAGS) --mode=compile $(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(liblxc_la_CFLAGS) $(CFLAGS) -c -o liblxc_la-start.lo `test -f 'start.c' || echo '$(srcdir)/'`start.c
-
-liblxc_la-execute.lo: execute.c
-@am__fastdepCC_TRUE@	$(AM_V_CC)$(LIBTOOL) $(AM_V_lt) --tag=CC $(AM_LIBTOOLFLAGS) $(LIBTOOLFLAGS) --mode=compile $(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(liblxc_la_CFLAGS) $(CFLAGS) -MT liblxc_la-execute.lo -MD -MP -MF $(DEPDIR)/liblxc_la-execute.Tpo -c -o liblxc_la-execute.lo `test -f 'execute.c' || echo '$(srcdir)/'`execute.c
-@am__fastdepCC_TRUE@	$(AM_V_at)$(am__mv) $(DEPDIR)/liblxc_la-execute.Tpo $(DEPDIR)/liblxc_la-execute.Plo
-@AMDEP_TRUE@@am__fastdepCC_FALSE@	$(AM_V_CC)source='execute.c' object='liblxc_la-execute.lo' libtool=yes @AMDEPBACKSLASH@
-@AMDEP_TRUE@@am__fastdepCC_FALSE@	DEPDIR=$(DEPDIR) $(CCDEPMODE) $(depcomp) @AMDEPBACKSLASH@
-@am__fastdepCC_FALSE@	$(AM_V_CC@am__nodep@)$(LIBTOOL) $(AM_V_lt) --tag=CC $(AM_LIBTOOLFLAGS) $(LIBTOOLFLAGS) --mode=compile $(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(liblxc_la_CFLAGS) $(CFLAGS) -c -o liblxc_la-execute.lo `test -f 'execute.c' || echo '$(srcdir)/'`execute.c
-
-liblxc_la-monitor.lo: monitor.c
-@am__fastdepCC_TRUE@	$(AM_V_CC)$(LIBTOOL) $(AM_V_lt) --tag=CC $(AM_LIBTOOLFLAGS) $(LIBTOOLFLAGS) --mode=compile $(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(liblxc_la_CFLAGS) $(CFLAGS) -MT liblxc_la-monitor.lo -MD -MP -MF $(DEPDIR)/liblxc_la-monitor.Tpo -c -o liblxc_la-monitor.lo `test -f 'monitor.c' || echo '$(srcdir)/'`monitor.c
-@am__fastdepCC_TRUE@	$(AM_V_at)$(am__mv) $(DEPDIR)/liblxc_la-monitor.Tpo $(DEPDIR)/liblxc_la-monitor.Plo
-@AMDEP_TRUE@@am__fastdepCC_FALSE@	$(AM_V_CC)source='monitor.c' object='liblxc_la-monitor.lo' libtool=yes @AMDEPBACKSLASH@
-@AMDEP_TRUE@@am__fastdepCC_FALSE@	DEPDIR=$(DEPDIR) $(CCDEPMODE) $(depcomp) @AMDEPBACKSLASH@
-@am__fastdepCC_FALSE@	$(AM_V_CC@am__nodep@)$(LIBTOOL) $(AM_V_lt) --tag=CC $(AM_LIBTOOLFLAGS) $(LIBTOOLFLAGS) --mode=compile $(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(liblxc_la_CFLAGS) $(CFLAGS) -c -o liblxc_la-monitor.lo `test -f 'monitor.c' || echo '$(srcdir)/'`monitor.c
-
-liblxc_la-terminal.lo: terminal.c
-@am__fastdepCC_TRUE@	$(AM_V_CC)$(LIBTOOL) $(AM_V_lt) --tag=CC $(AM_LIBTOOLFLAGS) $(LIBTOOLFLAGS) --mode=compile $(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(liblxc_la_CFLAGS) $(CFLAGS) -MT liblxc_la-terminal.lo -MD -MP -MF $(DEPDIR)/liblxc_la-terminal.Tpo -c -o liblxc_la-terminal.lo `test -f 'terminal.c' || echo '$(srcdir)/'`terminal.c
-@am__fastdepCC_TRUE@	$(AM_V_at)$(am__mv) $(DEPDIR)/liblxc_la-terminal.Tpo $(DEPDIR)/liblxc_la-terminal.Plo
-@AMDEP_TRUE@@am__fastdepCC_FALSE@	$(AM_V_CC)source='terminal.c' object='liblxc_la-terminal.lo' libtool=yes @AMDEPBACKSLASH@
-@AMDEP_TRUE@@am__fastdepCC_FALSE@	DEPDIR=$(DEPDIR) $(CCDEPMODE) $(depcomp) @AMDEPBACKSLASH@
-@am__fastdepCC_FALSE@	$(AM_V_CC@am__nodep@)$(LIBTOOL) $(AM_V_lt) --tag=CC $(AM_LIBTOOLFLAGS) $(LIBTOOLFLAGS) --mode=compile $(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(liblxc_la_CFLAGS) $(CFLAGS) -c -o liblxc_la-terminal.lo `test -f 'terminal.c' || echo '$(srcdir)/'`terminal.c
-
-liblxc_la-freezer.lo: freezer.c
-@am__fastdepCC_TRUE@	$(AM_V_CC)$(LIBTOOL) $(AM_V_lt) --tag=CC $(AM_LIBTOOLFLAGS) $(LIBTOOLFLAGS) --mode=compile $(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(liblxc_la_CFLAGS) $(CFLAGS) -MT liblxc_la-freezer.lo -MD -MP -MF $(DEPDIR)/liblxc_la-freezer.Tpo -c -o liblxc_la-freezer.lo `test -f 'freezer.c' || echo '$(srcdir)/'`freezer.c
-@am__fastdepCC_TRUE@	$(AM_V_at)$(am__mv) $(DEPDIR)/liblxc_la-freezer.Tpo $(DEPDIR)/liblxc_la-freezer.Plo
-@AMDEP_TRUE@@am__fastdepCC_FALSE@	$(AM_V_CC)source='freezer.c' object='liblxc_la-freezer.lo' libtool=yes @AMDEPBACKSLASH@
-@AMDEP_TRUE@@am__fastdepCC_FALSE@	DEPDIR=$(DEPDIR) $(CCDEPMODE) $(depcomp) @AMDEPBACKSLASH@
-@am__fastdepCC_FALSE@	$(AM_V_CC@am__nodep@)$(LIBTOOL) $(AM_V_lt) --tag=CC $(AM_LIBTOOLFLAGS) $(LIBTOOLFLAGS) --mode=compile $(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(liblxc_la_CFLAGS) $(CFLAGS) -c -o liblxc_la-freezer.lo `test -f 'freezer.c' || echo '$(srcdir)/'`freezer.c
-
-liblxc_la-error.lo: error.c
-@am__fastdepCC_TRUE@	$(AM_V_CC)$(LIBTOOL) $(AM_V_lt) --tag=CC $(AM_LIBTOOLFLAGS) $(LIBTOOLFLAGS) --mode=compile $(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(liblxc_la_CFLAGS) $(CFLAGS) -MT liblxc_la-error.lo -MD -MP -MF $(DEPDIR)/liblxc_la-error.Tpo -c -o liblxc_la-error.lo `test -f 'error.c' || echo '$(srcdir)/'`error.c
-@am__fastdepCC_TRUE@	$(AM_V_at)$(am__mv) $(DEPDIR)/liblxc_la-error.Tpo $(DEPDIR)/liblxc_la-error.Plo
-@AMDEP_TRUE@@am__fastdepCC_FALSE@	$(AM_V_CC)source='error.c' object='liblxc_la-error.lo' libtool=yes @AMDEPBACKSLASH@
-@AMDEP_TRUE@@am__fastdepCC_FALSE@	DEPDIR=$(DEPDIR) $(CCDEPMODE) $(depcomp) @AMDEPBACKSLASH@
-@am__fastdepCC_FALSE@	$(AM_V_CC@am__nodep@)$(LIBTOOL) $(AM_V_lt) --tag=CC $(AM_LIBTOOLFLAGS) $(LIBTOOLFLAGS) --mode=compile $(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(liblxc_la_CFLAGS) $(CFLAGS) -c -o liblxc_la-error.lo `test -f 'error.c' || echo '$(srcdir)/'`error.c
-
-liblxc_la-parse.lo: parse.c
-@am__fastdepCC_TRUE@	$(AM_V_CC)$(LIBTOOL) $(AM_V_lt) --tag=CC $(AM_LIBTOOLFLAGS) $(LIBTOOLFLAGS) --mode=compile $(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(liblxc_la_CFLAGS) $(CFLAGS) -MT liblxc_la-parse.lo -MD -MP -MF $(DEPDIR)/liblxc_la-parse.Tpo -c -o liblxc_la-parse.lo `test -f 'parse.c' || echo '$(srcdir)/'`parse.c
-@am__fastdepCC_TRUE@	$(AM_V_at)$(am__mv) $(DEPDIR)/liblxc_la-parse.Tpo $(DEPDIR)/liblxc_la-parse.Plo
-@AMDEP_TRUE@@am__fastdepCC_FALSE@	$(AM_V_CC)source='parse.c' object='liblxc_la-parse.lo' libtool=yes @AMDEPBACKSLASH@
-@AMDEP_TRUE@@am__fastdepCC_FALSE@	DEPDIR=$(DEPDIR) $(CCDEPMODE) $(depcomp) @AMDEPBACKSLASH@
-@am__fastdepCC_FALSE@	$(AM_V_CC@am__nodep@)$(LIBTOOL) $(AM_V_lt) --tag=CC $(AM_LIBTOOLFLAGS) $(LIBTOOLFLAGS) --mode=compile $(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(liblxc_la_CFLAGS) $(CFLAGS) -c -o liblxc_la-parse.lo `test -f 'parse.c' || echo '$(srcdir)/'`parse.c
-
-liblxc_la-initutils.lo: initutils.c
-@am__fastdepCC_TRUE@	$(AM_V_CC)$(LIBTOOL) $(AM_V_lt) --tag=CC $(AM_LIBTOOLFLAGS) $(LIBTOOLFLAGS) --mode=compile $(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(liblxc_la_CFLAGS) $(CFLAGS) -MT liblxc_la-initutils.lo -MD -MP -MF $(DEPDIR)/liblxc_la-initutils.Tpo -c -o liblxc_la-initutils.lo `test -f 'initutils.c' || echo '$(srcdir)/'`initutils.c
-@am__fastdepCC_TRUE@	$(AM_V_at)$(am__mv) $(DEPDIR)/liblxc_la-initutils.Tpo $(DEPDIR)/liblxc_la-initutils.Plo
-@AMDEP_TRUE@@am__fastdepCC_FALSE@	$(AM_V_CC)source='initutils.c' object='liblxc_la-initutils.lo' libtool=yes @AMDEPBACKSLASH@
-@AMDEP_TRUE@@am__fastdepCC_FALSE@	DEPDIR=$(DEPDIR) $(CCDEPMODE) $(depcomp) @AMDEPBACKSLASH@
-@am__fastdepCC_FALSE@	$(AM_V_CC@am__nodep@)$(LIBTOOL) $(AM_V_lt) --tag=CC $(AM_LIBTOOLFLAGS) $(LIBTOOLFLAGS) --mode=compile $(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(liblxc_la_CFLAGS) $(CFLAGS) -c -o liblxc_la-initutils.lo `test -f 'initutils.c' || echo '$(srcdir)/'`initutils.c
-
-liblxc_la-utils.lo: utils.c
-@am__fastdepCC_TRUE@	$(AM_V_CC)$(LIBTOOL) $(AM_V_lt) --tag=CC $(AM_LIBTOOLFLAGS) $(LIBTOOLFLAGS) --mode=compile $(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(liblxc_la_CFLAGS) $(CFLAGS) -MT liblxc_la-utils.lo -MD -MP -MF $(DEPDIR)/liblxc_la-utils.Tpo -c -o liblxc_la-utils.lo `test -f 'utils.c' || echo '$(srcdir)/'`utils.c
-@am__fastdepCC_TRUE@	$(AM_V_at)$(am__mv) $(DEPDIR)/liblxc_la-utils.Tpo $(DEPDIR)/liblxc_la-utils.Plo
-@AMDEP_TRUE@@am__fastdepCC_FALSE@	$(AM_V_CC)source='utils.c' object='liblxc_la-utils.lo' libtool=yes @AMDEPBACKSLASH@
-@AMDEP_TRUE@@am__fastdepCC_FALSE@	DEPDIR=$(DEPDIR) $(CCDEPMODE) $(depcomp) @AMDEPBACKSLASH@
-@am__fastdepCC_FALSE@	$(AM_V_CC@am__nodep@)$(LIBTOOL) $(AM_V_lt) --tag=CC $(AM_LIBTOOLFLAGS) $(LIBTOOLFLAGS) --mode=compile $(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(liblxc_la_CFLAGS) $(CFLAGS) -c -o liblxc_la-utils.lo `test -f 'utils.c' || echo '$(srcdir)/'`utils.c
+@am__fastdepCC_FALSE@	$(AM_V_CC@am__nodep@)$(LIBTOOL) $(AM_V_lt) --tag=CC $(AM_LIBTOOLFLAGS) $(LIBTOOLFLAGS) --mode=compile $(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(liblxc_la_CFLAGS) $(CFLAGS) -c -o storage/liblxc_la-zfs.lo `test -f 'storage/zfs.c' || echo '$(srcdir)/'`storage/zfs.c
 
 liblxc_la-sync.lo: sync.c
 @am__fastdepCC_TRUE@	$(AM_V_CC)$(LIBTOOL) $(AM_V_lt) --tag=CC $(AM_LIBTOOLFLAGS) $(LIBTOOLFLAGS) --mode=compile $(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(liblxc_la_CFLAGS) $(CFLAGS) -MT liblxc_la-sync.lo -MD -MP -MF $(DEPDIR)/liblxc_la-sync.Tpo -c -o liblxc_la-sync.lo `test -f 'sync.c' || echo '$(srcdir)/'`sync.c
@@ -1793,131 +1982,19 @@ liblxc_la-sync.lo: sync.c
 @AMDEP_TRUE@@am__fastdepCC_FALSE@	DEPDIR=$(DEPDIR) $(CCDEPMODE) $(depcomp) @AMDEPBACKSLASH@
 @am__fastdepCC_FALSE@	$(AM_V_CC@am__nodep@)$(LIBTOOL) $(AM_V_lt) --tag=CC $(AM_LIBTOOLFLAGS) $(LIBTOOLFLAGS) --mode=compile $(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(liblxc_la_CFLAGS) $(CFLAGS) -c -o liblxc_la-sync.lo `test -f 'sync.c' || echo '$(srcdir)/'`sync.c
 
-liblxc_la-namespace.lo: namespace.c
-@am__fastdepCC_TRUE@	$(AM_V_CC)$(LIBTOOL) $(AM_V_lt) --tag=CC $(AM_LIBTOOLFLAGS) $(LIBTOOLFLAGS) --mode=compile $(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(liblxc_la_CFLAGS) $(CFLAGS) -MT liblxc_la-namespace.lo -MD -MP -MF $(DEPDIR)/liblxc_la-namespace.Tpo -c -o liblxc_la-namespace.lo `test -f 'namespace.c' || echo '$(srcdir)/'`namespace.c
-@am__fastdepCC_TRUE@	$(AM_V_at)$(am__mv) $(DEPDIR)/liblxc_la-namespace.Tpo $(DEPDIR)/liblxc_la-namespace.Plo
-@AMDEP_TRUE@@am__fastdepCC_FALSE@	$(AM_V_CC)source='namespace.c' object='liblxc_la-namespace.lo' libtool=yes @AMDEPBACKSLASH@
+liblxc_la-terminal.lo: terminal.c
+@am__fastdepCC_TRUE@	$(AM_V_CC)$(LIBTOOL) $(AM_V_lt) --tag=CC $(AM_LIBTOOLFLAGS) $(LIBTOOLFLAGS) --mode=compile $(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(liblxc_la_CFLAGS) $(CFLAGS) -MT liblxc_la-terminal.lo -MD -MP -MF $(DEPDIR)/liblxc_la-terminal.Tpo -c -o liblxc_la-terminal.lo `test -f 'terminal.c' || echo '$(srcdir)/'`terminal.c
+@am__fastdepCC_TRUE@	$(AM_V_at)$(am__mv) $(DEPDIR)/liblxc_la-terminal.Tpo $(DEPDIR)/liblxc_la-terminal.Plo
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	$(AM_V_CC)source='terminal.c' object='liblxc_la-terminal.lo' libtool=yes @AMDEPBACKSLASH@
 @AMDEP_TRUE@@am__fastdepCC_FALSE@	DEPDIR=$(DEPDIR) $(CCDEPMODE) $(depcomp) @AMDEPBACKSLASH@
-@am__fastdepCC_FALSE@	$(AM_V_CC@am__nodep@)$(LIBTOOL) $(AM_V_lt) --tag=CC $(AM_LIBTOOLFLAGS) $(LIBTOOLFLAGS) --mode=compile $(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(liblxc_la_CFLAGS) $(CFLAGS) -c -o liblxc_la-namespace.lo `test -f 'namespace.c' || echo '$(srcdir)/'`namespace.c
+@am__fastdepCC_FALSE@	$(AM_V_CC@am__nodep@)$(LIBTOOL) $(AM_V_lt) --tag=CC $(AM_LIBTOOLFLAGS) $(LIBTOOLFLAGS) --mode=compile $(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(liblxc_la_CFLAGS) $(CFLAGS) -c -o liblxc_la-terminal.lo `test -f 'terminal.c' || echo '$(srcdir)/'`terminal.c
 
-liblxc_la-conf.lo: conf.c
-@am__fastdepCC_TRUE@	$(AM_V_CC)$(LIBTOOL) $(AM_V_lt) --tag=CC $(AM_LIBTOOLFLAGS) $(LIBTOOLFLAGS) --mode=compile $(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(liblxc_la_CFLAGS) $(CFLAGS) -MT liblxc_la-conf.lo -MD -MP -MF $(DEPDIR)/liblxc_la-conf.Tpo -c -o liblxc_la-conf.lo `test -f 'conf.c' || echo '$(srcdir)/'`conf.c
-@am__fastdepCC_TRUE@	$(AM_V_at)$(am__mv) $(DEPDIR)/liblxc_la-conf.Tpo $(DEPDIR)/liblxc_la-conf.Plo
-@AMDEP_TRUE@@am__fastdepCC_FALSE@	$(AM_V_CC)source='conf.c' object='liblxc_la-conf.lo' libtool=yes @AMDEPBACKSLASH@
+liblxc_la-utils.lo: utils.c
+@am__fastdepCC_TRUE@	$(AM_V_CC)$(LIBTOOL) $(AM_V_lt) --tag=CC $(AM_LIBTOOLFLAGS) $(LIBTOOLFLAGS) --mode=compile $(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(liblxc_la_CFLAGS) $(CFLAGS) -MT liblxc_la-utils.lo -MD -MP -MF $(DEPDIR)/liblxc_la-utils.Tpo -c -o liblxc_la-utils.lo `test -f 'utils.c' || echo '$(srcdir)/'`utils.c
+@am__fastdepCC_TRUE@	$(AM_V_at)$(am__mv) $(DEPDIR)/liblxc_la-utils.Tpo $(DEPDIR)/liblxc_la-utils.Plo
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	$(AM_V_CC)source='utils.c' object='liblxc_la-utils.lo' libtool=yes @AMDEPBACKSLASH@
 @AMDEP_TRUE@@am__fastdepCC_FALSE@	DEPDIR=$(DEPDIR) $(CCDEPMODE) $(depcomp) @AMDEPBACKSLASH@
-@am__fastdepCC_FALSE@	$(AM_V_CC@am__nodep@)$(LIBTOOL) $(AM_V_lt) --tag=CC $(AM_LIBTOOLFLAGS) $(LIBTOOLFLAGS) --mode=compile $(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(liblxc_la_CFLAGS) $(CFLAGS) -c -o liblxc_la-conf.lo `test -f 'conf.c' || echo '$(srcdir)/'`conf.c
-
-liblxc_la-confile.lo: confile.c
-@am__fastdepCC_TRUE@	$(AM_V_CC)$(LIBTOOL) $(AM_V_lt) --tag=CC $(AM_LIBTOOLFLAGS) $(LIBTOOLFLAGS) --mode=compile $(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(liblxc_la_CFLAGS) $(CFLAGS) -MT liblxc_la-confile.lo -MD -MP -MF $(DEPDIR)/liblxc_la-confile.Tpo -c -o liblxc_la-confile.lo `test -f 'confile.c' || echo '$(srcdir)/'`confile.c
-@am__fastdepCC_TRUE@	$(AM_V_at)$(am__mv) $(DEPDIR)/liblxc_la-confile.Tpo $(DEPDIR)/liblxc_la-confile.Plo
-@AMDEP_TRUE@@am__fastdepCC_FALSE@	$(AM_V_CC)source='confile.c' object='liblxc_la-confile.lo' libtool=yes @AMDEPBACKSLASH@
-@AMDEP_TRUE@@am__fastdepCC_FALSE@	DEPDIR=$(DEPDIR) $(CCDEPMODE) $(depcomp) @AMDEPBACKSLASH@
-@am__fastdepCC_FALSE@	$(AM_V_CC@am__nodep@)$(LIBTOOL) $(AM_V_lt) --tag=CC $(AM_LIBTOOLFLAGS) $(LIBTOOLFLAGS) --mode=compile $(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(liblxc_la_CFLAGS) $(CFLAGS) -c -o liblxc_la-confile.lo `test -f 'confile.c' || echo '$(srcdir)/'`confile.c
-
-liblxc_la-confile_utils.lo: confile_utils.c
-@am__fastdepCC_TRUE@	$(AM_V_CC)$(LIBTOOL) $(AM_V_lt) --tag=CC $(AM_LIBTOOLFLAGS) $(LIBTOOLFLAGS) --mode=compile $(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(liblxc_la_CFLAGS) $(CFLAGS) -MT liblxc_la-confile_utils.lo -MD -MP -MF $(DEPDIR)/liblxc_la-confile_utils.Tpo -c -o liblxc_la-confile_utils.lo `test -f 'confile_utils.c' || echo '$(srcdir)/'`confile_utils.c
-@am__fastdepCC_TRUE@	$(AM_V_at)$(am__mv) $(DEPDIR)/liblxc_la-confile_utils.Tpo $(DEPDIR)/liblxc_la-confile_utils.Plo
-@AMDEP_TRUE@@am__fastdepCC_FALSE@	$(AM_V_CC)source='confile_utils.c' object='liblxc_la-confile_utils.lo' libtool=yes @AMDEPBACKSLASH@
-@AMDEP_TRUE@@am__fastdepCC_FALSE@	DEPDIR=$(DEPDIR) $(CCDEPMODE) $(depcomp) @AMDEPBACKSLASH@
-@am__fastdepCC_FALSE@	$(AM_V_CC@am__nodep@)$(LIBTOOL) $(AM_V_lt) --tag=CC $(AM_LIBTOOLFLAGS) $(LIBTOOLFLAGS) --mode=compile $(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(liblxc_la_CFLAGS) $(CFLAGS) -c -o liblxc_la-confile_utils.lo `test -f 'confile_utils.c' || echo '$(srcdir)/'`confile_utils.c
-
-liblxc_la-state.lo: state.c
-@am__fastdepCC_TRUE@	$(AM_V_CC)$(LIBTOOL) $(AM_V_lt) --tag=CC $(AM_LIBTOOLFLAGS) $(LIBTOOLFLAGS) --mode=compile $(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(liblxc_la_CFLAGS) $(CFLAGS) -MT liblxc_la-state.lo -MD -MP -MF $(DEPDIR)/liblxc_la-state.Tpo -c -o liblxc_la-state.lo `test -f 'state.c' || echo '$(srcdir)/'`state.c
-@am__fastdepCC_TRUE@	$(AM_V_at)$(am__mv) $(DEPDIR)/liblxc_la-state.Tpo $(DEPDIR)/liblxc_la-state.Plo
-@AMDEP_TRUE@@am__fastdepCC_FALSE@	$(AM_V_CC)source='state.c' object='liblxc_la-state.lo' libtool=yes @AMDEPBACKSLASH@
-@AMDEP_TRUE@@am__fastdepCC_FALSE@	DEPDIR=$(DEPDIR) $(CCDEPMODE) $(depcomp) @AMDEPBACKSLASH@
-@am__fastdepCC_FALSE@	$(AM_V_CC@am__nodep@)$(LIBTOOL) $(AM_V_lt) --tag=CC $(AM_LIBTOOLFLAGS) $(LIBTOOLFLAGS) --mode=compile $(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(liblxc_la_CFLAGS) $(CFLAGS) -c -o liblxc_la-state.lo `test -f 'state.c' || echo '$(srcdir)/'`state.c
-
-liblxc_la-log.lo: log.c
-@am__fastdepCC_TRUE@	$(AM_V_CC)$(LIBTOOL) $(AM_V_lt) --tag=CC $(AM_LIBTOOLFLAGS) $(LIBTOOLFLAGS) --mode=compile $(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(liblxc_la_CFLAGS) $(CFLAGS) -MT liblxc_la-log.lo -MD -MP -MF $(DEPDIR)/liblxc_la-log.Tpo -c -o liblxc_la-log.lo `test -f 'log.c' || echo '$(srcdir)/'`log.c
-@am__fastdepCC_TRUE@	$(AM_V_at)$(am__mv) $(DEPDIR)/liblxc_la-log.Tpo $(DEPDIR)/liblxc_la-log.Plo
-@AMDEP_TRUE@@am__fastdepCC_FALSE@	$(AM_V_CC)source='log.c' object='liblxc_la-log.lo' libtool=yes @AMDEPBACKSLASH@
-@AMDEP_TRUE@@am__fastdepCC_FALSE@	DEPDIR=$(DEPDIR) $(CCDEPMODE) $(depcomp) @AMDEPBACKSLASH@
-@am__fastdepCC_FALSE@	$(AM_V_CC@am__nodep@)$(LIBTOOL) $(AM_V_lt) --tag=CC $(AM_LIBTOOLFLAGS) $(LIBTOOLFLAGS) --mode=compile $(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(liblxc_la_CFLAGS) $(CFLAGS) -c -o liblxc_la-log.lo `test -f 'log.c' || echo '$(srcdir)/'`log.c
-
-liblxc_la-attach.lo: attach.c
-@am__fastdepCC_TRUE@	$(AM_V_CC)$(LIBTOOL) $(AM_V_lt) --tag=CC $(AM_LIBTOOLFLAGS) $(LIBTOOLFLAGS) --mode=compile $(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(liblxc_la_CFLAGS) $(CFLAGS) -MT liblxc_la-attach.lo -MD -MP -MF $(DEPDIR)/liblxc_la-attach.Tpo -c -o liblxc_la-attach.lo `test -f 'attach.c' || echo '$(srcdir)/'`attach.c
-@am__fastdepCC_TRUE@	$(AM_V_at)$(am__mv) $(DEPDIR)/liblxc_la-attach.Tpo $(DEPDIR)/liblxc_la-attach.Plo
-@AMDEP_TRUE@@am__fastdepCC_FALSE@	$(AM_V_CC)source='attach.c' object='liblxc_la-attach.lo' libtool=yes @AMDEPBACKSLASH@
-@AMDEP_TRUE@@am__fastdepCC_FALSE@	DEPDIR=$(DEPDIR) $(CCDEPMODE) $(depcomp) @AMDEPBACKSLASH@
-@am__fastdepCC_FALSE@	$(AM_V_CC@am__nodep@)$(LIBTOOL) $(AM_V_lt) --tag=CC $(AM_LIBTOOLFLAGS) $(LIBTOOLFLAGS) --mode=compile $(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(liblxc_la_CFLAGS) $(CFLAGS) -c -o liblxc_la-attach.lo `test -f 'attach.c' || echo '$(srcdir)/'`attach.c
-
-liblxc_la-criu.lo: criu.c
-@am__fastdepCC_TRUE@	$(AM_V_CC)$(LIBTOOL) $(AM_V_lt) --tag=CC $(AM_LIBTOOLFLAGS) $(LIBTOOLFLAGS) --mode=compile $(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(liblxc_la_CFLAGS) $(CFLAGS) -MT liblxc_la-criu.lo -MD -MP -MF $(DEPDIR)/liblxc_la-criu.Tpo -c -o liblxc_la-criu.lo `test -f 'criu.c' || echo '$(srcdir)/'`criu.c
-@am__fastdepCC_TRUE@	$(AM_V_at)$(am__mv) $(DEPDIR)/liblxc_la-criu.Tpo $(DEPDIR)/liblxc_la-criu.Plo
-@AMDEP_TRUE@@am__fastdepCC_FALSE@	$(AM_V_CC)source='criu.c' object='liblxc_la-criu.lo' libtool=yes @AMDEPBACKSLASH@
-@AMDEP_TRUE@@am__fastdepCC_FALSE@	DEPDIR=$(DEPDIR) $(CCDEPMODE) $(depcomp) @AMDEPBACKSLASH@
-@am__fastdepCC_FALSE@	$(AM_V_CC@am__nodep@)$(LIBTOOL) $(AM_V_lt) --tag=CC $(AM_LIBTOOLFLAGS) $(LIBTOOLFLAGS) --mode=compile $(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(liblxc_la_CFLAGS) $(CFLAGS) -c -o liblxc_la-criu.lo `test -f 'criu.c' || echo '$(srcdir)/'`criu.c
-
-liblxc_la-ringbuf.lo: ringbuf.c
-@am__fastdepCC_TRUE@	$(AM_V_CC)$(LIBTOOL) $(AM_V_lt) --tag=CC $(AM_LIBTOOLFLAGS) $(LIBTOOLFLAGS) --mode=compile $(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(liblxc_la_CFLAGS) $(CFLAGS) -MT liblxc_la-ringbuf.lo -MD -MP -MF $(DEPDIR)/liblxc_la-ringbuf.Tpo -c -o liblxc_la-ringbuf.lo `test -f 'ringbuf.c' || echo '$(srcdir)/'`ringbuf.c
-@am__fastdepCC_TRUE@	$(AM_V_at)$(am__mv) $(DEPDIR)/liblxc_la-ringbuf.Tpo $(DEPDIR)/liblxc_la-ringbuf.Plo
-@AMDEP_TRUE@@am__fastdepCC_FALSE@	$(AM_V_CC)source='ringbuf.c' object='liblxc_la-ringbuf.lo' libtool=yes @AMDEPBACKSLASH@
-@AMDEP_TRUE@@am__fastdepCC_FALSE@	DEPDIR=$(DEPDIR) $(CCDEPMODE) $(depcomp) @AMDEPBACKSLASH@
-@am__fastdepCC_FALSE@	$(AM_V_CC@am__nodep@)$(LIBTOOL) $(AM_V_lt) --tag=CC $(AM_LIBTOOLFLAGS) $(LIBTOOLFLAGS) --mode=compile $(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(liblxc_la_CFLAGS) $(CFLAGS) -c -o liblxc_la-ringbuf.lo `test -f 'ringbuf.c' || echo '$(srcdir)/'`ringbuf.c
-
-liblxc_la-network.lo: network.c
-@am__fastdepCC_TRUE@	$(AM_V_CC)$(LIBTOOL) $(AM_V_lt) --tag=CC $(AM_LIBTOOLFLAGS) $(LIBTOOLFLAGS) --mode=compile $(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(liblxc_la_CFLAGS) $(CFLAGS) -MT liblxc_la-network.lo -MD -MP -MF $(DEPDIR)/liblxc_la-network.Tpo -c -o liblxc_la-network.lo `test -f 'network.c' || echo '$(srcdir)/'`network.c
-@am__fastdepCC_TRUE@	$(AM_V_at)$(am__mv) $(DEPDIR)/liblxc_la-network.Tpo $(DEPDIR)/liblxc_la-network.Plo
-@AMDEP_TRUE@@am__fastdepCC_FALSE@	$(AM_V_CC)source='network.c' object='liblxc_la-network.lo' libtool=yes @AMDEPBACKSLASH@
-@AMDEP_TRUE@@am__fastdepCC_FALSE@	DEPDIR=$(DEPDIR) $(CCDEPMODE) $(depcomp) @AMDEPBACKSLASH@
-@am__fastdepCC_FALSE@	$(AM_V_CC@am__nodep@)$(LIBTOOL) $(AM_V_lt) --tag=CC $(AM_LIBTOOLFLAGS) $(LIBTOOLFLAGS) --mode=compile $(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(liblxc_la_CFLAGS) $(CFLAGS) -c -o liblxc_la-network.lo `test -f 'network.c' || echo '$(srcdir)/'`network.c
-
-liblxc_la-nl.lo: nl.c
-@am__fastdepCC_TRUE@	$(AM_V_CC)$(LIBTOOL) $(AM_V_lt) --tag=CC $(AM_LIBTOOLFLAGS) $(LIBTOOLFLAGS) --mode=compile $(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(liblxc_la_CFLAGS) $(CFLAGS) -MT liblxc_la-nl.lo -MD -MP -MF $(DEPDIR)/liblxc_la-nl.Tpo -c -o liblxc_la-nl.lo `test -f 'nl.c' || echo '$(srcdir)/'`nl.c
-@am__fastdepCC_TRUE@	$(AM_V_at)$(am__mv) $(DEPDIR)/liblxc_la-nl.Tpo $(DEPDIR)/liblxc_la-nl.Plo
-@AMDEP_TRUE@@am__fastdepCC_FALSE@	$(AM_V_CC)source='nl.c' object='liblxc_la-nl.lo' libtool=yes @AMDEPBACKSLASH@
-@AMDEP_TRUE@@am__fastdepCC_FALSE@	DEPDIR=$(DEPDIR) $(CCDEPMODE) $(depcomp) @AMDEPBACKSLASH@
-@am__fastdepCC_FALSE@	$(AM_V_CC@am__nodep@)$(LIBTOOL) $(AM_V_lt) --tag=CC $(AM_LIBTOOLFLAGS) $(LIBTOOLFLAGS) --mode=compile $(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(liblxc_la_CFLAGS) $(CFLAGS) -c -o liblxc_la-nl.lo `test -f 'nl.c' || echo '$(srcdir)/'`nl.c
-
-liblxc_la-rtnl.lo: rtnl.c
-@am__fastdepCC_TRUE@	$(AM_V_CC)$(LIBTOOL) $(AM_V_lt) --tag=CC $(AM_LIBTOOLFLAGS) $(LIBTOOLFLAGS) --mode=compile $(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(liblxc_la_CFLAGS) $(CFLAGS) -MT liblxc_la-rtnl.lo -MD -MP -MF $(DEPDIR)/liblxc_la-rtnl.Tpo -c -o liblxc_la-rtnl.lo `test -f 'rtnl.c' || echo '$(srcdir)/'`rtnl.c
-@am__fastdepCC_TRUE@	$(AM_V_at)$(am__mv) $(DEPDIR)/liblxc_la-rtnl.Tpo $(DEPDIR)/liblxc_la-rtnl.Plo
-@AMDEP_TRUE@@am__fastdepCC_FALSE@	$(AM_V_CC)source='rtnl.c' object='liblxc_la-rtnl.lo' libtool=yes @AMDEPBACKSLASH@
-@AMDEP_TRUE@@am__fastdepCC_FALSE@	DEPDIR=$(DEPDIR) $(CCDEPMODE) $(depcomp) @AMDEPBACKSLASH@
-@am__fastdepCC_FALSE@	$(AM_V_CC@am__nodep@)$(LIBTOOL) $(AM_V_lt) --tag=CC $(AM_LIBTOOLFLAGS) $(LIBTOOLFLAGS) --mode=compile $(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(liblxc_la_CFLAGS) $(CFLAGS) -c -o liblxc_la-rtnl.lo `test -f 'rtnl.c' || echo '$(srcdir)/'`rtnl.c
-
-liblxc_la-caps.lo: caps.c
-@am__fastdepCC_TRUE@	$(AM_V_CC)$(LIBTOOL) $(AM_V_lt) --tag=CC $(AM_LIBTOOLFLAGS) $(LIBTOOLFLAGS) --mode=compile $(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(liblxc_la_CFLAGS) $(CFLAGS) -MT liblxc_la-caps.lo -MD -MP -MF $(DEPDIR)/liblxc_la-caps.Tpo -c -o liblxc_la-caps.lo `test -f 'caps.c' || echo '$(srcdir)/'`caps.c
-@am__fastdepCC_TRUE@	$(AM_V_at)$(am__mv) $(DEPDIR)/liblxc_la-caps.Tpo $(DEPDIR)/liblxc_la-caps.Plo
-@AMDEP_TRUE@@am__fastdepCC_FALSE@	$(AM_V_CC)source='caps.c' object='liblxc_la-caps.lo' libtool=yes @AMDEPBACKSLASH@
-@AMDEP_TRUE@@am__fastdepCC_FALSE@	DEPDIR=$(DEPDIR) $(CCDEPMODE) $(depcomp) @AMDEPBACKSLASH@
-@am__fastdepCC_FALSE@	$(AM_V_CC@am__nodep@)$(LIBTOOL) $(AM_V_lt) --tag=CC $(AM_LIBTOOLFLAGS) $(LIBTOOLFLAGS) --mode=compile $(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(liblxc_la_CFLAGS) $(CFLAGS) -c -o liblxc_la-caps.lo `test -f 'caps.c' || echo '$(srcdir)/'`caps.c
-
-liblxc_la-mainloop.lo: mainloop.c
-@am__fastdepCC_TRUE@	$(AM_V_CC)$(LIBTOOL) $(AM_V_lt) --tag=CC $(AM_LIBTOOLFLAGS) $(LIBTOOLFLAGS) --mode=compile $(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(liblxc_la_CFLAGS) $(CFLAGS) -MT liblxc_la-mainloop.lo -MD -MP -MF $(DEPDIR)/liblxc_la-mainloop.Tpo -c -o liblxc_la-mainloop.lo `test -f 'mainloop.c' || echo '$(srcdir)/'`mainloop.c
-@am__fastdepCC_TRUE@	$(AM_V_at)$(am__mv) $(DEPDIR)/liblxc_la-mainloop.Tpo $(DEPDIR)/liblxc_la-mainloop.Plo
-@AMDEP_TRUE@@am__fastdepCC_FALSE@	$(AM_V_CC)source='mainloop.c' object='liblxc_la-mainloop.lo' libtool=yes @AMDEPBACKSLASH@
-@AMDEP_TRUE@@am__fastdepCC_FALSE@	DEPDIR=$(DEPDIR) $(CCDEPMODE) $(depcomp) @AMDEPBACKSLASH@
-@am__fastdepCC_FALSE@	$(AM_V_CC@am__nodep@)$(LIBTOOL) $(AM_V_lt) --tag=CC $(AM_LIBTOOLFLAGS) $(LIBTOOLFLAGS) --mode=compile $(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(liblxc_la_CFLAGS) $(CFLAGS) -c -o liblxc_la-mainloop.lo `test -f 'mainloop.c' || echo '$(srcdir)/'`mainloop.c
-
-liblxc_la-af_unix.lo: af_unix.c
-@am__fastdepCC_TRUE@	$(AM_V_CC)$(LIBTOOL) $(AM_V_lt) --tag=CC $(AM_LIBTOOLFLAGS) $(LIBTOOLFLAGS) --mode=compile $(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(liblxc_la_CFLAGS) $(CFLAGS) -MT liblxc_la-af_unix.lo -MD -MP -MF $(DEPDIR)/liblxc_la-af_unix.Tpo -c -o liblxc_la-af_unix.lo `test -f 'af_unix.c' || echo '$(srcdir)/'`af_unix.c
-@am__fastdepCC_TRUE@	$(AM_V_at)$(am__mv) $(DEPDIR)/liblxc_la-af_unix.Tpo $(DEPDIR)/liblxc_la-af_unix.Plo
-@AMDEP_TRUE@@am__fastdepCC_FALSE@	$(AM_V_CC)source='af_unix.c' object='liblxc_la-af_unix.lo' libtool=yes @AMDEPBACKSLASH@
-@AMDEP_TRUE@@am__fastdepCC_FALSE@	DEPDIR=$(DEPDIR) $(CCDEPMODE) $(depcomp) @AMDEPBACKSLASH@
-@am__fastdepCC_FALSE@	$(AM_V_CC@am__nodep@)$(LIBTOOL) $(AM_V_lt) --tag=CC $(AM_LIBTOOLFLAGS) $(LIBTOOLFLAGS) --mode=compile $(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(liblxc_la_CFLAGS) $(CFLAGS) -c -o liblxc_la-af_unix.lo `test -f 'af_unix.c' || echo '$(srcdir)/'`af_unix.c
-
-liblxc_la-lxclock.lo: lxclock.c
-@am__fastdepCC_TRUE@	$(AM_V_CC)$(LIBTOOL) $(AM_V_lt) --tag=CC $(AM_LIBTOOLFLAGS) $(LIBTOOLFLAGS) --mode=compile $(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(liblxc_la_CFLAGS) $(CFLAGS) -MT liblxc_la-lxclock.lo -MD -MP -MF $(DEPDIR)/liblxc_la-lxclock.Tpo -c -o liblxc_la-lxclock.lo `test -f 'lxclock.c' || echo '$(srcdir)/'`lxclock.c
-@am__fastdepCC_TRUE@	$(AM_V_at)$(am__mv) $(DEPDIR)/liblxc_la-lxclock.Tpo $(DEPDIR)/liblxc_la-lxclock.Plo
-@AMDEP_TRUE@@am__fastdepCC_FALSE@	$(AM_V_CC)source='lxclock.c' object='liblxc_la-lxclock.lo' libtool=yes @AMDEPBACKSLASH@
-@AMDEP_TRUE@@am__fastdepCC_FALSE@	DEPDIR=$(DEPDIR) $(CCDEPMODE) $(depcomp) @AMDEPBACKSLASH@
-@am__fastdepCC_FALSE@	$(AM_V_CC@am__nodep@)$(LIBTOOL) $(AM_V_lt) --tag=CC $(AM_LIBTOOLFLAGS) $(LIBTOOLFLAGS) --mode=compile $(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(liblxc_la_CFLAGS) $(CFLAGS) -c -o liblxc_la-lxclock.lo `test -f 'lxclock.c' || echo '$(srcdir)/'`lxclock.c
-
-liblxc_la-lxccontainer.lo: lxccontainer.c
-@am__fastdepCC_TRUE@	$(AM_V_CC)$(LIBTOOL) $(AM_V_lt) --tag=CC $(AM_LIBTOOLFLAGS) $(LIBTOOLFLAGS) --mode=compile $(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(liblxc_la_CFLAGS) $(CFLAGS) -MT liblxc_la-lxccontainer.lo -MD -MP -MF $(DEPDIR)/liblxc_la-lxccontainer.Tpo -c -o liblxc_la-lxccontainer.lo `test -f 'lxccontainer.c' || echo '$(srcdir)/'`lxccontainer.c
-@am__fastdepCC_TRUE@	$(AM_V_at)$(am__mv) $(DEPDIR)/liblxc_la-lxccontainer.Tpo $(DEPDIR)/liblxc_la-lxccontainer.Plo
-@AMDEP_TRUE@@am__fastdepCC_FALSE@	$(AM_V_CC)source='lxccontainer.c' object='liblxc_la-lxccontainer.lo' libtool=yes @AMDEPBACKSLASH@
-@AMDEP_TRUE@@am__fastdepCC_FALSE@	DEPDIR=$(DEPDIR) $(CCDEPMODE) $(depcomp) @AMDEPBACKSLASH@
-@am__fastdepCC_FALSE@	$(AM_V_CC@am__nodep@)$(LIBTOOL) $(AM_V_lt) --tag=CC $(AM_LIBTOOLFLAGS) $(LIBTOOLFLAGS) --mode=compile $(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(liblxc_la_CFLAGS) $(CFLAGS) -c -o liblxc_la-lxccontainer.lo `test -f 'lxccontainer.c' || echo '$(srcdir)/'`lxccontainer.c
-
-lsm/liblxc_la-nop.lo: lsm/nop.c
-@am__fastdepCC_TRUE@	$(AM_V_CC)$(LIBTOOL) $(AM_V_lt) --tag=CC $(AM_LIBTOOLFLAGS) $(LIBTOOLFLAGS) --mode=compile $(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(liblxc_la_CFLAGS) $(CFLAGS) -MT lsm/liblxc_la-nop.lo -MD -MP -MF lsm/$(DEPDIR)/liblxc_la-nop.Tpo -c -o lsm/liblxc_la-nop.lo `test -f 'lsm/nop.c' || echo '$(srcdir)/'`lsm/nop.c
-@am__fastdepCC_TRUE@	$(AM_V_at)$(am__mv) lsm/$(DEPDIR)/liblxc_la-nop.Tpo lsm/$(DEPDIR)/liblxc_la-nop.Plo
-@AMDEP_TRUE@@am__fastdepCC_FALSE@	$(AM_V_CC)source='lsm/nop.c' object='lsm/liblxc_la-nop.lo' libtool=yes @AMDEPBACKSLASH@
-@AMDEP_TRUE@@am__fastdepCC_FALSE@	DEPDIR=$(DEPDIR) $(CCDEPMODE) $(depcomp) @AMDEPBACKSLASH@
-@am__fastdepCC_FALSE@	$(AM_V_CC@am__nodep@)$(LIBTOOL) $(AM_V_lt) --tag=CC $(AM_LIBTOOLFLAGS) $(LIBTOOLFLAGS) --mode=compile $(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(liblxc_la_CFLAGS) $(CFLAGS) -c -o lsm/liblxc_la-nop.lo `test -f 'lsm/nop.c' || echo '$(srcdir)/'`lsm/nop.c
+@am__fastdepCC_FALSE@	$(AM_V_CC@am__nodep@)$(LIBTOOL) $(AM_V_lt) --tag=CC $(AM_LIBTOOLFLAGS) $(LIBTOOLFLAGS) --mode=compile $(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(liblxc_la_CFLAGS) $(CFLAGS) -c -o liblxc_la-utils.lo `test -f 'utils.c' || echo '$(srcdir)/'`utils.c
 
 lsm/liblxc_la-lsm.lo: lsm/lsm.c
 @am__fastdepCC_TRUE@	$(AM_V_CC)$(LIBTOOL) $(AM_V_lt) --tag=CC $(AM_LIBTOOLFLAGS) $(LIBTOOLFLAGS) --mode=compile $(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(liblxc_la_CFLAGS) $(CFLAGS) -MT lsm/liblxc_la-lsm.lo -MD -MP -MF lsm/$(DEPDIR)/liblxc_la-lsm.Tpo -c -o lsm/liblxc_la-lsm.lo `test -f 'lsm/lsm.c' || echo '$(srcdir)/'`lsm/lsm.c
@@ -1925,6 +2002,13 @@ lsm/liblxc_la-lsm.lo: lsm/lsm.c
 @AMDEP_TRUE@@am__fastdepCC_FALSE@	$(AM_V_CC)source='lsm/lsm.c' object='lsm/liblxc_la-lsm.lo' libtool=yes @AMDEPBACKSLASH@
 @AMDEP_TRUE@@am__fastdepCC_FALSE@	DEPDIR=$(DEPDIR) $(CCDEPMODE) $(depcomp) @AMDEPBACKSLASH@
 @am__fastdepCC_FALSE@	$(AM_V_CC@am__nodep@)$(LIBTOOL) $(AM_V_lt) --tag=CC $(AM_LIBTOOLFLAGS) $(LIBTOOLFLAGS) --mode=compile $(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(liblxc_la_CFLAGS) $(CFLAGS) -c -o lsm/liblxc_la-lsm.lo `test -f 'lsm/lsm.c' || echo '$(srcdir)/'`lsm/lsm.c
+
+lsm/liblxc_la-nop.lo: lsm/nop.c
+@am__fastdepCC_TRUE@	$(AM_V_CC)$(LIBTOOL) $(AM_V_lt) --tag=CC $(AM_LIBTOOLFLAGS) $(LIBTOOLFLAGS) --mode=compile $(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(liblxc_la_CFLAGS) $(CFLAGS) -MT lsm/liblxc_la-nop.lo -MD -MP -MF lsm/$(DEPDIR)/liblxc_la-nop.Tpo -c -o lsm/liblxc_la-nop.lo `test -f 'lsm/nop.c' || echo '$(srcdir)/'`lsm/nop.c
+@am__fastdepCC_TRUE@	$(AM_V_at)$(am__mv) lsm/$(DEPDIR)/liblxc_la-nop.Tpo lsm/$(DEPDIR)/liblxc_la-nop.Plo
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	$(AM_V_CC)source='lsm/nop.c' object='lsm/liblxc_la-nop.lo' libtool=yes @AMDEPBACKSLASH@
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	DEPDIR=$(DEPDIR) $(CCDEPMODE) $(depcomp) @AMDEPBACKSLASH@
+@am__fastdepCC_FALSE@	$(AM_V_CC@am__nodep@)$(LIBTOOL) $(AM_V_lt) --tag=CC $(AM_LIBTOOLFLAGS) $(LIBTOOLFLAGS) --mode=compile $(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(liblxc_la_CFLAGS) $(CFLAGS) -c -o lsm/liblxc_la-nop.lo `test -f 'lsm/nop.c' || echo '$(srcdir)/'`lsm/nop.c
 
 lsm/liblxc_la-apparmor.lo: lsm/apparmor.c
 @am__fastdepCC_TRUE@	$(AM_V_CC)$(LIBTOOL) $(AM_V_lt) --tag=CC $(AM_LIBTOOLFLAGS) $(LIBTOOLFLAGS) --mode=compile $(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(liblxc_la_CFLAGS) $(CFLAGS) -MT lsm/liblxc_la-apparmor.lo -MD -MP -MF lsm/$(DEPDIR)/liblxc_la-apparmor.Tpo -c -o lsm/liblxc_la-apparmor.lo `test -f 'lsm/apparmor.c' || echo '$(srcdir)/'`lsm/apparmor.c
@@ -1947,13 +2031,6 @@ lsm/liblxc_la-selinux.lo: lsm/selinux.c
 @AMDEP_TRUE@@am__fastdepCC_FALSE@	DEPDIR=$(DEPDIR) $(CCDEPMODE) $(depcomp) @AMDEPBACKSLASH@
 @am__fastdepCC_FALSE@	$(AM_V_CC@am__nodep@)$(LIBTOOL) $(AM_V_lt) --tag=CC $(AM_LIBTOOLFLAGS) $(LIBTOOLFLAGS) --mode=compile $(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(liblxc_la_CFLAGS) $(CFLAGS) -c -o ../include/liblxc_la-ifaddrs.lo `test -f '../include/ifaddrs.c' || echo '$(srcdir)/'`../include/ifaddrs.c
 
-../include/liblxc_la-openpty.lo: ../include/openpty.c
-@am__fastdepCC_TRUE@	$(AM_V_CC)$(LIBTOOL) $(AM_V_lt) --tag=CC $(AM_LIBTOOLFLAGS) $(LIBTOOLFLAGS) --mode=compile $(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(liblxc_la_CFLAGS) $(CFLAGS) -MT ../include/liblxc_la-openpty.lo -MD -MP -MF ../include/$(DEPDIR)/liblxc_la-openpty.Tpo -c -o ../include/liblxc_la-openpty.lo `test -f '../include/openpty.c' || echo '$(srcdir)/'`../include/openpty.c
-@am__fastdepCC_TRUE@	$(AM_V_at)$(am__mv) ../include/$(DEPDIR)/liblxc_la-openpty.Tpo ../include/$(DEPDIR)/liblxc_la-openpty.Plo
-@AMDEP_TRUE@@am__fastdepCC_FALSE@	$(AM_V_CC)source='../include/openpty.c' object='../include/liblxc_la-openpty.lo' libtool=yes @AMDEPBACKSLASH@
-@AMDEP_TRUE@@am__fastdepCC_FALSE@	DEPDIR=$(DEPDIR) $(CCDEPMODE) $(depcomp) @AMDEPBACKSLASH@
-@am__fastdepCC_FALSE@	$(AM_V_CC@am__nodep@)$(LIBTOOL) $(AM_V_lt) --tag=CC $(AM_LIBTOOLFLAGS) $(LIBTOOLFLAGS) --mode=compile $(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(liblxc_la_CFLAGS) $(CFLAGS) -c -o ../include/liblxc_la-openpty.lo `test -f '../include/openpty.c' || echo '$(srcdir)/'`../include/openpty.c
-
 ../include/liblxc_la-lxcmntent.lo: ../include/lxcmntent.c
 @am__fastdepCC_TRUE@	$(AM_V_CC)$(LIBTOOL) $(AM_V_lt) --tag=CC $(AM_LIBTOOLFLAGS) $(LIBTOOLFLAGS) --mode=compile $(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(liblxc_la_CFLAGS) $(CFLAGS) -MT ../include/liblxc_la-lxcmntent.lo -MD -MP -MF ../include/$(DEPDIR)/liblxc_la-lxcmntent.Tpo -c -o ../include/liblxc_la-lxcmntent.lo `test -f '../include/lxcmntent.c' || echo '$(srcdir)/'`../include/lxcmntent.c
 @am__fastdepCC_TRUE@	$(AM_V_at)$(am__mv) ../include/$(DEPDIR)/liblxc_la-lxcmntent.Tpo ../include/$(DEPDIR)/liblxc_la-lxcmntent.Plo
@@ -1961,12 +2038,19 @@ lsm/liblxc_la-selinux.lo: lsm/selinux.c
 @AMDEP_TRUE@@am__fastdepCC_FALSE@	DEPDIR=$(DEPDIR) $(CCDEPMODE) $(depcomp) @AMDEPBACKSLASH@
 @am__fastdepCC_FALSE@	$(AM_V_CC@am__nodep@)$(LIBTOOL) $(AM_V_lt) --tag=CC $(AM_LIBTOOLFLAGS) $(LIBTOOLFLAGS) --mode=compile $(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(liblxc_la_CFLAGS) $(CFLAGS) -c -o ../include/liblxc_la-lxcmntent.lo `test -f '../include/lxcmntent.c' || echo '$(srcdir)/'`../include/lxcmntent.c
 
-../include/liblxc_la-prlimit.lo: ../include/prlimit.c
-@am__fastdepCC_TRUE@	$(AM_V_CC)$(LIBTOOL) $(AM_V_lt) --tag=CC $(AM_LIBTOOLFLAGS) $(LIBTOOLFLAGS) --mode=compile $(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(liblxc_la_CFLAGS) $(CFLAGS) -MT ../include/liblxc_la-prlimit.lo -MD -MP -MF ../include/$(DEPDIR)/liblxc_la-prlimit.Tpo -c -o ../include/liblxc_la-prlimit.lo `test -f '../include/prlimit.c' || echo '$(srcdir)/'`../include/prlimit.c
-@am__fastdepCC_TRUE@	$(AM_V_at)$(am__mv) ../include/$(DEPDIR)/liblxc_la-prlimit.Tpo ../include/$(DEPDIR)/liblxc_la-prlimit.Plo
-@AMDEP_TRUE@@am__fastdepCC_FALSE@	$(AM_V_CC)source='../include/prlimit.c' object='../include/liblxc_la-prlimit.lo' libtool=yes @AMDEPBACKSLASH@
+../include/liblxc_la-openpty.lo: ../include/openpty.c
+@am__fastdepCC_TRUE@	$(AM_V_CC)$(LIBTOOL) $(AM_V_lt) --tag=CC $(AM_LIBTOOLFLAGS) $(LIBTOOLFLAGS) --mode=compile $(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(liblxc_la_CFLAGS) $(CFLAGS) -MT ../include/liblxc_la-openpty.lo -MD -MP -MF ../include/$(DEPDIR)/liblxc_la-openpty.Tpo -c -o ../include/liblxc_la-openpty.lo `test -f '../include/openpty.c' || echo '$(srcdir)/'`../include/openpty.c
+@am__fastdepCC_TRUE@	$(AM_V_at)$(am__mv) ../include/$(DEPDIR)/liblxc_la-openpty.Tpo ../include/$(DEPDIR)/liblxc_la-openpty.Plo
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	$(AM_V_CC)source='../include/openpty.c' object='../include/liblxc_la-openpty.lo' libtool=yes @AMDEPBACKSLASH@
 @AMDEP_TRUE@@am__fastdepCC_FALSE@	DEPDIR=$(DEPDIR) $(CCDEPMODE) $(depcomp) @AMDEPBACKSLASH@
-@am__fastdepCC_FALSE@	$(AM_V_CC@am__nodep@)$(LIBTOOL) $(AM_V_lt) --tag=CC $(AM_LIBTOOLFLAGS) $(LIBTOOLFLAGS) --mode=compile $(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(liblxc_la_CFLAGS) $(CFLAGS) -c -o ../include/liblxc_la-prlimit.lo `test -f '../include/prlimit.c' || echo '$(srcdir)/'`../include/prlimit.c
+@am__fastdepCC_FALSE@	$(AM_V_CC@am__nodep@)$(LIBTOOL) $(AM_V_lt) --tag=CC $(AM_LIBTOOLFLAGS) $(LIBTOOLFLAGS) --mode=compile $(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(liblxc_la_CFLAGS) $(CFLAGS) -c -o ../include/liblxc_la-openpty.lo `test -f '../include/openpty.c' || echo '$(srcdir)/'`../include/openpty.c
+
+../include/liblxc_la-getgrgid_r.lo: ../include/getgrgid_r.c
+@am__fastdepCC_TRUE@	$(AM_V_CC)$(LIBTOOL) $(AM_V_lt) --tag=CC $(AM_LIBTOOLFLAGS) $(LIBTOOLFLAGS) --mode=compile $(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(liblxc_la_CFLAGS) $(CFLAGS) -MT ../include/liblxc_la-getgrgid_r.lo -MD -MP -MF ../include/$(DEPDIR)/liblxc_la-getgrgid_r.Tpo -c -o ../include/liblxc_la-getgrgid_r.lo `test -f '../include/getgrgid_r.c' || echo '$(srcdir)/'`../include/getgrgid_r.c
+@am__fastdepCC_TRUE@	$(AM_V_at)$(am__mv) ../include/$(DEPDIR)/liblxc_la-getgrgid_r.Tpo ../include/$(DEPDIR)/liblxc_la-getgrgid_r.Plo
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	$(AM_V_CC)source='../include/getgrgid_r.c' object='../include/liblxc_la-getgrgid_r.lo' libtool=yes @AMDEPBACKSLASH@
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	DEPDIR=$(DEPDIR) $(CCDEPMODE) $(depcomp) @AMDEPBACKSLASH@
+@am__fastdepCC_FALSE@	$(AM_V_CC@am__nodep@)$(LIBTOOL) $(AM_V_lt) --tag=CC $(AM_LIBTOOLFLAGS) $(LIBTOOLFLAGS) --mode=compile $(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(liblxc_la_CFLAGS) $(CFLAGS) -c -o ../include/liblxc_la-getgrgid_r.lo `test -f '../include/getgrgid_r.c' || echo '$(srcdir)/'`../include/getgrgid_r.c
 
 ../include/liblxc_la-getline.lo: ../include/getline.c
 @am__fastdepCC_TRUE@	$(AM_V_CC)$(LIBTOOL) $(AM_V_lt) --tag=CC $(AM_LIBTOOLFLAGS) $(LIBTOOLFLAGS) --mode=compile $(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(liblxc_la_CFLAGS) $(CFLAGS) -MT ../include/liblxc_la-getline.lo -MD -MP -MF ../include/$(DEPDIR)/liblxc_la-getline.Tpo -c -o ../include/liblxc_la-getline.lo `test -f '../include/getline.c' || echo '$(srcdir)/'`../include/getline.c
@@ -1975,12 +2059,12 @@ lsm/liblxc_la-selinux.lo: lsm/selinux.c
 @AMDEP_TRUE@@am__fastdepCC_FALSE@	DEPDIR=$(DEPDIR) $(CCDEPMODE) $(depcomp) @AMDEPBACKSLASH@
 @am__fastdepCC_FALSE@	$(AM_V_CC@am__nodep@)$(LIBTOOL) $(AM_V_lt) --tag=CC $(AM_LIBTOOLFLAGS) $(LIBTOOLFLAGS) --mode=compile $(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(liblxc_la_CFLAGS) $(CFLAGS) -c -o ../include/liblxc_la-getline.lo `test -f '../include/getline.c' || echo '$(srcdir)/'`../include/getline.c
 
-../include/liblxc_la-strlcpy.lo: ../include/strlcpy.c
-@am__fastdepCC_TRUE@	$(AM_V_CC)$(LIBTOOL) $(AM_V_lt) --tag=CC $(AM_LIBTOOLFLAGS) $(LIBTOOLFLAGS) --mode=compile $(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(liblxc_la_CFLAGS) $(CFLAGS) -MT ../include/liblxc_la-strlcpy.lo -MD -MP -MF ../include/$(DEPDIR)/liblxc_la-strlcpy.Tpo -c -o ../include/liblxc_la-strlcpy.lo `test -f '../include/strlcpy.c' || echo '$(srcdir)/'`../include/strlcpy.c
-@am__fastdepCC_TRUE@	$(AM_V_at)$(am__mv) ../include/$(DEPDIR)/liblxc_la-strlcpy.Tpo ../include/$(DEPDIR)/liblxc_la-strlcpy.Plo
-@AMDEP_TRUE@@am__fastdepCC_FALSE@	$(AM_V_CC)source='../include/strlcpy.c' object='../include/liblxc_la-strlcpy.lo' libtool=yes @AMDEPBACKSLASH@
+../include/liblxc_la-prlimit.lo: ../include/prlimit.c
+@am__fastdepCC_TRUE@	$(AM_V_CC)$(LIBTOOL) $(AM_V_lt) --tag=CC $(AM_LIBTOOLFLAGS) $(LIBTOOLFLAGS) --mode=compile $(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(liblxc_la_CFLAGS) $(CFLAGS) -MT ../include/liblxc_la-prlimit.lo -MD -MP -MF ../include/$(DEPDIR)/liblxc_la-prlimit.Tpo -c -o ../include/liblxc_la-prlimit.lo `test -f '../include/prlimit.c' || echo '$(srcdir)/'`../include/prlimit.c
+@am__fastdepCC_TRUE@	$(AM_V_at)$(am__mv) ../include/$(DEPDIR)/liblxc_la-prlimit.Tpo ../include/$(DEPDIR)/liblxc_la-prlimit.Plo
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	$(AM_V_CC)source='../include/prlimit.c' object='../include/liblxc_la-prlimit.lo' libtool=yes @AMDEPBACKSLASH@
 @AMDEP_TRUE@@am__fastdepCC_FALSE@	DEPDIR=$(DEPDIR) $(CCDEPMODE) $(depcomp) @AMDEPBACKSLASH@
-@am__fastdepCC_FALSE@	$(AM_V_CC@am__nodep@)$(LIBTOOL) $(AM_V_lt) --tag=CC $(AM_LIBTOOLFLAGS) $(LIBTOOLFLAGS) --mode=compile $(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(liblxc_la_CFLAGS) $(CFLAGS) -c -o ../include/liblxc_la-strlcpy.lo `test -f '../include/strlcpy.c' || echo '$(srcdir)/'`../include/strlcpy.c
+@am__fastdepCC_FALSE@	$(AM_V_CC@am__nodep@)$(LIBTOOL) $(AM_V_lt) --tag=CC $(AM_LIBTOOLFLAGS) $(LIBTOOLFLAGS) --mode=compile $(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(liblxc_la_CFLAGS) $(CFLAGS) -c -o ../include/liblxc_la-prlimit.lo `test -f '../include/prlimit.c' || echo '$(srcdir)/'`../include/prlimit.c
 
 liblxc_la-seccomp.lo: seccomp.c
 @am__fastdepCC_TRUE@	$(AM_V_CC)$(LIBTOOL) $(AM_V_lt) --tag=CC $(AM_LIBTOOLFLAGS) $(LIBTOOLFLAGS) --mode=compile $(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(liblxc_la_CFLAGS) $(CFLAGS) -MT liblxc_la-seccomp.lo -MD -MP -MF $(DEPDIR)/liblxc_la-seccomp.Tpo -c -o liblxc_la-seccomp.lo `test -f 'seccomp.c' || echo '$(srcdir)/'`seccomp.c
@@ -1988,6 +2072,20 @@ liblxc_la-seccomp.lo: seccomp.c
 @AMDEP_TRUE@@am__fastdepCC_FALSE@	$(AM_V_CC)source='seccomp.c' object='liblxc_la-seccomp.lo' libtool=yes @AMDEPBACKSLASH@
 @AMDEP_TRUE@@am__fastdepCC_FALSE@	DEPDIR=$(DEPDIR) $(CCDEPMODE) $(depcomp) @AMDEPBACKSLASH@
 @am__fastdepCC_FALSE@	$(AM_V_CC@am__nodep@)$(LIBTOOL) $(AM_V_lt) --tag=CC $(AM_LIBTOOLFLAGS) $(LIBTOOLFLAGS) --mode=compile $(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(liblxc_la_CFLAGS) $(CFLAGS) -c -o liblxc_la-seccomp.lo `test -f 'seccomp.c' || echo '$(srcdir)/'`seccomp.c
+
+../include/liblxc_la-strlcpy.lo: ../include/strlcpy.c
+@am__fastdepCC_TRUE@	$(AM_V_CC)$(LIBTOOL) $(AM_V_lt) --tag=CC $(AM_LIBTOOLFLAGS) $(LIBTOOLFLAGS) --mode=compile $(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(liblxc_la_CFLAGS) $(CFLAGS) -MT ../include/liblxc_la-strlcpy.lo -MD -MP -MF ../include/$(DEPDIR)/liblxc_la-strlcpy.Tpo -c -o ../include/liblxc_la-strlcpy.lo `test -f '../include/strlcpy.c' || echo '$(srcdir)/'`../include/strlcpy.c
+@am__fastdepCC_TRUE@	$(AM_V_at)$(am__mv) ../include/$(DEPDIR)/liblxc_la-strlcpy.Tpo ../include/$(DEPDIR)/liblxc_la-strlcpy.Plo
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	$(AM_V_CC)source='../include/strlcpy.c' object='../include/liblxc_la-strlcpy.lo' libtool=yes @AMDEPBACKSLASH@
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	DEPDIR=$(DEPDIR) $(CCDEPMODE) $(depcomp) @AMDEPBACKSLASH@
+@am__fastdepCC_FALSE@	$(AM_V_CC@am__nodep@)$(LIBTOOL) $(AM_V_lt) --tag=CC $(AM_LIBTOOLFLAGS) $(LIBTOOLFLAGS) --mode=compile $(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(liblxc_la_CFLAGS) $(CFLAGS) -c -o ../include/liblxc_la-strlcpy.lo `test -f '../include/strlcpy.c' || echo '$(srcdir)/'`../include/strlcpy.c
+
+../include/liblxc_la-strlcat.lo: ../include/strlcat.c
+@am__fastdepCC_TRUE@	$(AM_V_CC)$(LIBTOOL) $(AM_V_lt) --tag=CC $(AM_LIBTOOLFLAGS) $(LIBTOOLFLAGS) --mode=compile $(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(liblxc_la_CFLAGS) $(CFLAGS) -MT ../include/liblxc_la-strlcat.lo -MD -MP -MF ../include/$(DEPDIR)/liblxc_la-strlcat.Tpo -c -o ../include/liblxc_la-strlcat.lo `test -f '../include/strlcat.c' || echo '$(srcdir)/'`../include/strlcat.c
+@am__fastdepCC_TRUE@	$(AM_V_at)$(am__mv) ../include/$(DEPDIR)/liblxc_la-strlcat.Tpo ../include/$(DEPDIR)/liblxc_la-strlcat.Plo
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	$(AM_V_CC)source='../include/strlcat.c' object='../include/liblxc_la-strlcat.lo' libtool=yes @AMDEPBACKSLASH@
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	DEPDIR=$(DEPDIR) $(CCDEPMODE) $(depcomp) @AMDEPBACKSLASH@
+@am__fastdepCC_FALSE@	$(AM_V_CC@am__nodep@)$(LIBTOOL) $(AM_V_lt) --tag=CC $(AM_LIBTOOLFLAGS) $(LIBTOOLFLAGS) --mode=compile $(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(liblxc_la_CFLAGS) $(CFLAGS) -c -o ../include/liblxc_la-strlcat.lo `test -f '../include/strlcat.c' || echo '$(srcdir)/'`../include/strlcat.c
 
 pam/pam_cgfs_la-pam_cgfs.lo: pam/pam_cgfs.c
 @am__fastdepCC_TRUE@	$(AM_V_CC)$(LIBTOOL) $(AM_V_lt) --tag=CC $(AM_LIBTOOLFLAGS) $(LIBTOOLFLAGS) --mode=compile $(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(pam_cgfs_la_CFLAGS) $(CFLAGS) -MT pam/pam_cgfs_la-pam_cgfs.lo -MD -MP -MF pam/$(DEPDIR)/pam_cgfs_la-pam_cgfs.Tpo -c -o pam/pam_cgfs_la-pam_cgfs.lo `test -f 'pam/pam_cgfs.c' || echo '$(srcdir)/'`pam/pam_cgfs.c
@@ -2017,6 +2115,20 @@ cmd/init_lxc_static-lxc_init.obj: cmd/lxc_init.c
 @AMDEP_TRUE@@am__fastdepCC_FALSE@	DEPDIR=$(DEPDIR) $(CCDEPMODE) $(depcomp) @AMDEPBACKSLASH@
 @am__fastdepCC_FALSE@	$(AM_V_CC@am__nodep@)$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(init_lxc_static_CFLAGS) $(CFLAGS) -c -o cmd/init_lxc_static-lxc_init.obj `if test -f 'cmd/lxc_init.c'; then $(CYGPATH_W) 'cmd/lxc_init.c'; else $(CYGPATH_W) '$(srcdir)/cmd/lxc_init.c'; fi`
 
+init_lxc_static-caps.o: caps.c
+@am__fastdepCC_TRUE@	$(AM_V_CC)$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(init_lxc_static_CFLAGS) $(CFLAGS) -MT init_lxc_static-caps.o -MD -MP -MF $(DEPDIR)/init_lxc_static-caps.Tpo -c -o init_lxc_static-caps.o `test -f 'caps.c' || echo '$(srcdir)/'`caps.c
+@am__fastdepCC_TRUE@	$(AM_V_at)$(am__mv) $(DEPDIR)/init_lxc_static-caps.Tpo $(DEPDIR)/init_lxc_static-caps.Po
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	$(AM_V_CC)source='caps.c' object='init_lxc_static-caps.o' libtool=no @AMDEPBACKSLASH@
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	DEPDIR=$(DEPDIR) $(CCDEPMODE) $(depcomp) @AMDEPBACKSLASH@
+@am__fastdepCC_FALSE@	$(AM_V_CC@am__nodep@)$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(init_lxc_static_CFLAGS) $(CFLAGS) -c -o init_lxc_static-caps.o `test -f 'caps.c' || echo '$(srcdir)/'`caps.c
+
+init_lxc_static-caps.obj: caps.c
+@am__fastdepCC_TRUE@	$(AM_V_CC)$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(init_lxc_static_CFLAGS) $(CFLAGS) -MT init_lxc_static-caps.obj -MD -MP -MF $(DEPDIR)/init_lxc_static-caps.Tpo -c -o init_lxc_static-caps.obj `if test -f 'caps.c'; then $(CYGPATH_W) 'caps.c'; else $(CYGPATH_W) '$(srcdir)/caps.c'; fi`
+@am__fastdepCC_TRUE@	$(AM_V_at)$(am__mv) $(DEPDIR)/init_lxc_static-caps.Tpo $(DEPDIR)/init_lxc_static-caps.Po
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	$(AM_V_CC)source='caps.c' object='init_lxc_static-caps.obj' libtool=no @AMDEPBACKSLASH@
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	DEPDIR=$(DEPDIR) $(CCDEPMODE) $(depcomp) @AMDEPBACKSLASH@
+@am__fastdepCC_FALSE@	$(AM_V_CC@am__nodep@)$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(init_lxc_static_CFLAGS) $(CFLAGS) -c -o init_lxc_static-caps.obj `if test -f 'caps.c'; then $(CYGPATH_W) 'caps.c'; else $(CYGPATH_W) '$(srcdir)/caps.c'; fi`
+
 init_lxc_static-error.o: error.c
 @am__fastdepCC_TRUE@	$(AM_V_CC)$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(init_lxc_static_CFLAGS) $(CFLAGS) -MT init_lxc_static-error.o -MD -MP -MF $(DEPDIR)/init_lxc_static-error.Tpo -c -o init_lxc_static-error.o `test -f 'error.c' || echo '$(srcdir)/'`error.c
 @am__fastdepCC_TRUE@	$(AM_V_at)$(am__mv) $(DEPDIR)/init_lxc_static-error.Tpo $(DEPDIR)/init_lxc_static-error.Po
@@ -2030,20 +2142,6 @@ init_lxc_static-error.obj: error.c
 @AMDEP_TRUE@@am__fastdepCC_FALSE@	$(AM_V_CC)source='error.c' object='init_lxc_static-error.obj' libtool=no @AMDEPBACKSLASH@
 @AMDEP_TRUE@@am__fastdepCC_FALSE@	DEPDIR=$(DEPDIR) $(CCDEPMODE) $(depcomp) @AMDEPBACKSLASH@
 @am__fastdepCC_FALSE@	$(AM_V_CC@am__nodep@)$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(init_lxc_static_CFLAGS) $(CFLAGS) -c -o init_lxc_static-error.obj `if test -f 'error.c'; then $(CYGPATH_W) 'error.c'; else $(CYGPATH_W) '$(srcdir)/error.c'; fi`
-
-init_lxc_static-log.o: log.c
-@am__fastdepCC_TRUE@	$(AM_V_CC)$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(init_lxc_static_CFLAGS) $(CFLAGS) -MT init_lxc_static-log.o -MD -MP -MF $(DEPDIR)/init_lxc_static-log.Tpo -c -o init_lxc_static-log.o `test -f 'log.c' || echo '$(srcdir)/'`log.c
-@am__fastdepCC_TRUE@	$(AM_V_at)$(am__mv) $(DEPDIR)/init_lxc_static-log.Tpo $(DEPDIR)/init_lxc_static-log.Po
-@AMDEP_TRUE@@am__fastdepCC_FALSE@	$(AM_V_CC)source='log.c' object='init_lxc_static-log.o' libtool=no @AMDEPBACKSLASH@
-@AMDEP_TRUE@@am__fastdepCC_FALSE@	DEPDIR=$(DEPDIR) $(CCDEPMODE) $(depcomp) @AMDEPBACKSLASH@
-@am__fastdepCC_FALSE@	$(AM_V_CC@am__nodep@)$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(init_lxc_static_CFLAGS) $(CFLAGS) -c -o init_lxc_static-log.o `test -f 'log.c' || echo '$(srcdir)/'`log.c
-
-init_lxc_static-log.obj: log.c
-@am__fastdepCC_TRUE@	$(AM_V_CC)$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(init_lxc_static_CFLAGS) $(CFLAGS) -MT init_lxc_static-log.obj -MD -MP -MF $(DEPDIR)/init_lxc_static-log.Tpo -c -o init_lxc_static-log.obj `if test -f 'log.c'; then $(CYGPATH_W) 'log.c'; else $(CYGPATH_W) '$(srcdir)/log.c'; fi`
-@am__fastdepCC_TRUE@	$(AM_V_at)$(am__mv) $(DEPDIR)/init_lxc_static-log.Tpo $(DEPDIR)/init_lxc_static-log.Po
-@AMDEP_TRUE@@am__fastdepCC_FALSE@	$(AM_V_CC)source='log.c' object='init_lxc_static-log.obj' libtool=no @AMDEPBACKSLASH@
-@AMDEP_TRUE@@am__fastdepCC_FALSE@	DEPDIR=$(DEPDIR) $(CCDEPMODE) $(depcomp) @AMDEPBACKSLASH@
-@am__fastdepCC_FALSE@	$(AM_V_CC@am__nodep@)$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(init_lxc_static_CFLAGS) $(CFLAGS) -c -o init_lxc_static-log.obj `if test -f 'log.c'; then $(CYGPATH_W) 'log.c'; else $(CYGPATH_W) '$(srcdir)/log.c'; fi`
 
 init_lxc_static-initutils.o: initutils.c
 @am__fastdepCC_TRUE@	$(AM_V_CC)$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(init_lxc_static_CFLAGS) $(CFLAGS) -MT init_lxc_static-initutils.o -MD -MP -MF $(DEPDIR)/init_lxc_static-initutils.Tpo -c -o init_lxc_static-initutils.o `test -f 'initutils.c' || echo '$(srcdir)/'`initutils.c
@@ -2059,33 +2157,19 @@ init_lxc_static-initutils.obj: initutils.c
 @AMDEP_TRUE@@am__fastdepCC_FALSE@	DEPDIR=$(DEPDIR) $(CCDEPMODE) $(depcomp) @AMDEPBACKSLASH@
 @am__fastdepCC_FALSE@	$(AM_V_CC@am__nodep@)$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(init_lxc_static_CFLAGS) $(CFLAGS) -c -o init_lxc_static-initutils.obj `if test -f 'initutils.c'; then $(CYGPATH_W) 'initutils.c'; else $(CYGPATH_W) '$(srcdir)/initutils.c'; fi`
 
-init_lxc_static-caps.o: caps.c
-@am__fastdepCC_TRUE@	$(AM_V_CC)$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(init_lxc_static_CFLAGS) $(CFLAGS) -MT init_lxc_static-caps.o -MD -MP -MF $(DEPDIR)/init_lxc_static-caps.Tpo -c -o init_lxc_static-caps.o `test -f 'caps.c' || echo '$(srcdir)/'`caps.c
-@am__fastdepCC_TRUE@	$(AM_V_at)$(am__mv) $(DEPDIR)/init_lxc_static-caps.Tpo $(DEPDIR)/init_lxc_static-caps.Po
-@AMDEP_TRUE@@am__fastdepCC_FALSE@	$(AM_V_CC)source='caps.c' object='init_lxc_static-caps.o' libtool=no @AMDEPBACKSLASH@
+init_lxc_static-log.o: log.c
+@am__fastdepCC_TRUE@	$(AM_V_CC)$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(init_lxc_static_CFLAGS) $(CFLAGS) -MT init_lxc_static-log.o -MD -MP -MF $(DEPDIR)/init_lxc_static-log.Tpo -c -o init_lxc_static-log.o `test -f 'log.c' || echo '$(srcdir)/'`log.c
+@am__fastdepCC_TRUE@	$(AM_V_at)$(am__mv) $(DEPDIR)/init_lxc_static-log.Tpo $(DEPDIR)/init_lxc_static-log.Po
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	$(AM_V_CC)source='log.c' object='init_lxc_static-log.o' libtool=no @AMDEPBACKSLASH@
 @AMDEP_TRUE@@am__fastdepCC_FALSE@	DEPDIR=$(DEPDIR) $(CCDEPMODE) $(depcomp) @AMDEPBACKSLASH@
-@am__fastdepCC_FALSE@	$(AM_V_CC@am__nodep@)$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(init_lxc_static_CFLAGS) $(CFLAGS) -c -o init_lxc_static-caps.o `test -f 'caps.c' || echo '$(srcdir)/'`caps.c
+@am__fastdepCC_FALSE@	$(AM_V_CC@am__nodep@)$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(init_lxc_static_CFLAGS) $(CFLAGS) -c -o init_lxc_static-log.o `test -f 'log.c' || echo '$(srcdir)/'`log.c
 
-init_lxc_static-caps.obj: caps.c
-@am__fastdepCC_TRUE@	$(AM_V_CC)$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(init_lxc_static_CFLAGS) $(CFLAGS) -MT init_lxc_static-caps.obj -MD -MP -MF $(DEPDIR)/init_lxc_static-caps.Tpo -c -o init_lxc_static-caps.obj `if test -f 'caps.c'; then $(CYGPATH_W) 'caps.c'; else $(CYGPATH_W) '$(srcdir)/caps.c'; fi`
-@am__fastdepCC_TRUE@	$(AM_V_at)$(am__mv) $(DEPDIR)/init_lxc_static-caps.Tpo $(DEPDIR)/init_lxc_static-caps.Po
-@AMDEP_TRUE@@am__fastdepCC_FALSE@	$(AM_V_CC)source='caps.c' object='init_lxc_static-caps.obj' libtool=no @AMDEPBACKSLASH@
+init_lxc_static-log.obj: log.c
+@am__fastdepCC_TRUE@	$(AM_V_CC)$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(init_lxc_static_CFLAGS) $(CFLAGS) -MT init_lxc_static-log.obj -MD -MP -MF $(DEPDIR)/init_lxc_static-log.Tpo -c -o init_lxc_static-log.obj `if test -f 'log.c'; then $(CYGPATH_W) 'log.c'; else $(CYGPATH_W) '$(srcdir)/log.c'; fi`
+@am__fastdepCC_TRUE@	$(AM_V_at)$(am__mv) $(DEPDIR)/init_lxc_static-log.Tpo $(DEPDIR)/init_lxc_static-log.Po
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	$(AM_V_CC)source='log.c' object='init_lxc_static-log.obj' libtool=no @AMDEPBACKSLASH@
 @AMDEP_TRUE@@am__fastdepCC_FALSE@	DEPDIR=$(DEPDIR) $(CCDEPMODE) $(depcomp) @AMDEPBACKSLASH@
-@am__fastdepCC_FALSE@	$(AM_V_CC@am__nodep@)$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(init_lxc_static_CFLAGS) $(CFLAGS) -c -o init_lxc_static-caps.obj `if test -f 'caps.c'; then $(CYGPATH_W) 'caps.c'; else $(CYGPATH_W) '$(srcdir)/caps.c'; fi`
-
-init_lxc_static-parse.o: parse.c
-@am__fastdepCC_TRUE@	$(AM_V_CC)$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(init_lxc_static_CFLAGS) $(CFLAGS) -MT init_lxc_static-parse.o -MD -MP -MF $(DEPDIR)/init_lxc_static-parse.Tpo -c -o init_lxc_static-parse.o `test -f 'parse.c' || echo '$(srcdir)/'`parse.c
-@am__fastdepCC_TRUE@	$(AM_V_at)$(am__mv) $(DEPDIR)/init_lxc_static-parse.Tpo $(DEPDIR)/init_lxc_static-parse.Po
-@AMDEP_TRUE@@am__fastdepCC_FALSE@	$(AM_V_CC)source='parse.c' object='init_lxc_static-parse.o' libtool=no @AMDEPBACKSLASH@
-@AMDEP_TRUE@@am__fastdepCC_FALSE@	DEPDIR=$(DEPDIR) $(CCDEPMODE) $(depcomp) @AMDEPBACKSLASH@
-@am__fastdepCC_FALSE@	$(AM_V_CC@am__nodep@)$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(init_lxc_static_CFLAGS) $(CFLAGS) -c -o init_lxc_static-parse.o `test -f 'parse.c' || echo '$(srcdir)/'`parse.c
-
-init_lxc_static-parse.obj: parse.c
-@am__fastdepCC_TRUE@	$(AM_V_CC)$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(init_lxc_static_CFLAGS) $(CFLAGS) -MT init_lxc_static-parse.obj -MD -MP -MF $(DEPDIR)/init_lxc_static-parse.Tpo -c -o init_lxc_static-parse.obj `if test -f 'parse.c'; then $(CYGPATH_W) 'parse.c'; else $(CYGPATH_W) '$(srcdir)/parse.c'; fi`
-@am__fastdepCC_TRUE@	$(AM_V_at)$(am__mv) $(DEPDIR)/init_lxc_static-parse.Tpo $(DEPDIR)/init_lxc_static-parse.Po
-@AMDEP_TRUE@@am__fastdepCC_FALSE@	$(AM_V_CC)source='parse.c' object='init_lxc_static-parse.obj' libtool=no @AMDEPBACKSLASH@
-@AMDEP_TRUE@@am__fastdepCC_FALSE@	DEPDIR=$(DEPDIR) $(CCDEPMODE) $(depcomp) @AMDEPBACKSLASH@
-@am__fastdepCC_FALSE@	$(AM_V_CC@am__nodep@)$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(init_lxc_static_CFLAGS) $(CFLAGS) -c -o init_lxc_static-parse.obj `if test -f 'parse.c'; then $(CYGPATH_W) 'parse.c'; else $(CYGPATH_W) '$(srcdir)/parse.c'; fi`
+@am__fastdepCC_FALSE@	$(AM_V_CC@am__nodep@)$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(init_lxc_static_CFLAGS) $(CFLAGS) -c -o init_lxc_static-log.obj `if test -f 'log.c'; then $(CYGPATH_W) 'log.c'; else $(CYGPATH_W) '$(srcdir)/log.c'; fi`
 
 init_lxc_static-namespace.o: namespace.c
 @am__fastdepCC_TRUE@	$(AM_V_CC)$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(init_lxc_static_CFLAGS) $(CFLAGS) -MT init_lxc_static-namespace.o -MD -MP -MF $(DEPDIR)/init_lxc_static-namespace.Tpo -c -o init_lxc_static-namespace.o `test -f 'namespace.c' || echo '$(srcdir)/'`namespace.c
@@ -2100,6 +2184,20 @@ init_lxc_static-namespace.obj: namespace.c
 @AMDEP_TRUE@@am__fastdepCC_FALSE@	$(AM_V_CC)source='namespace.c' object='init_lxc_static-namespace.obj' libtool=no @AMDEPBACKSLASH@
 @AMDEP_TRUE@@am__fastdepCC_FALSE@	DEPDIR=$(DEPDIR) $(CCDEPMODE) $(depcomp) @AMDEPBACKSLASH@
 @am__fastdepCC_FALSE@	$(AM_V_CC@am__nodep@)$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(init_lxc_static_CFLAGS) $(CFLAGS) -c -o init_lxc_static-namespace.obj `if test -f 'namespace.c'; then $(CYGPATH_W) 'namespace.c'; else $(CYGPATH_W) '$(srcdir)/namespace.c'; fi`
+
+init_lxc_static-parse.o: parse.c
+@am__fastdepCC_TRUE@	$(AM_V_CC)$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(init_lxc_static_CFLAGS) $(CFLAGS) -MT init_lxc_static-parse.o -MD -MP -MF $(DEPDIR)/init_lxc_static-parse.Tpo -c -o init_lxc_static-parse.o `test -f 'parse.c' || echo '$(srcdir)/'`parse.c
+@am__fastdepCC_TRUE@	$(AM_V_at)$(am__mv) $(DEPDIR)/init_lxc_static-parse.Tpo $(DEPDIR)/init_lxc_static-parse.Po
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	$(AM_V_CC)source='parse.c' object='init_lxc_static-parse.o' libtool=no @AMDEPBACKSLASH@
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	DEPDIR=$(DEPDIR) $(CCDEPMODE) $(depcomp) @AMDEPBACKSLASH@
+@am__fastdepCC_FALSE@	$(AM_V_CC@am__nodep@)$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(init_lxc_static_CFLAGS) $(CFLAGS) -c -o init_lxc_static-parse.o `test -f 'parse.c' || echo '$(srcdir)/'`parse.c
+
+init_lxc_static-parse.obj: parse.c
+@am__fastdepCC_TRUE@	$(AM_V_CC)$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(init_lxc_static_CFLAGS) $(CFLAGS) -MT init_lxc_static-parse.obj -MD -MP -MF $(DEPDIR)/init_lxc_static-parse.Tpo -c -o init_lxc_static-parse.obj `if test -f 'parse.c'; then $(CYGPATH_W) 'parse.c'; else $(CYGPATH_W) '$(srcdir)/parse.c'; fi`
+@am__fastdepCC_TRUE@	$(AM_V_at)$(am__mv) $(DEPDIR)/init_lxc_static-parse.Tpo $(DEPDIR)/init_lxc_static-parse.Po
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	$(AM_V_CC)source='parse.c' object='init_lxc_static-parse.obj' libtool=no @AMDEPBACKSLASH@
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	DEPDIR=$(DEPDIR) $(CCDEPMODE) $(depcomp) @AMDEPBACKSLASH@
+@am__fastdepCC_FALSE@	$(AM_V_CC@am__nodep@)$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(init_lxc_static_CFLAGS) $(CFLAGS) -c -o init_lxc_static-parse.obj `if test -f 'parse.c'; then $(CYGPATH_W) 'parse.c'; else $(CYGPATH_W) '$(srcdir)/parse.c'; fi`
 
 ../include/init_lxc_static-getline.o: ../include/getline.c
 @am__fastdepCC_TRUE@	$(AM_V_CC)$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(init_lxc_static_CFLAGS) $(CFLAGS) -MT ../include/init_lxc_static-getline.o -MD -MP -MF ../include/$(DEPDIR)/init_lxc_static-getline.Tpo -c -o ../include/init_lxc_static-getline.o `test -f '../include/getline.c' || echo '$(srcdir)/'`../include/getline.c
@@ -2128,6 +2226,20 @@ init_lxc_static-namespace.obj: namespace.c
 @AMDEP_TRUE@@am__fastdepCC_FALSE@	$(AM_V_CC)source='../include/strlcpy.c' object='../include/init_lxc_static-strlcpy.obj' libtool=no @AMDEPBACKSLASH@
 @AMDEP_TRUE@@am__fastdepCC_FALSE@	DEPDIR=$(DEPDIR) $(CCDEPMODE) $(depcomp) @AMDEPBACKSLASH@
 @am__fastdepCC_FALSE@	$(AM_V_CC@am__nodep@)$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(init_lxc_static_CFLAGS) $(CFLAGS) -c -o ../include/init_lxc_static-strlcpy.obj `if test -f '../include/strlcpy.c'; then $(CYGPATH_W) '../include/strlcpy.c'; else $(CYGPATH_W) '$(srcdir)/../include/strlcpy.c'; fi`
+
+../include/init_lxc_static-strlcat.o: ../include/strlcat.c
+@am__fastdepCC_TRUE@	$(AM_V_CC)$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(init_lxc_static_CFLAGS) $(CFLAGS) -MT ../include/init_lxc_static-strlcat.o -MD -MP -MF ../include/$(DEPDIR)/init_lxc_static-strlcat.Tpo -c -o ../include/init_lxc_static-strlcat.o `test -f '../include/strlcat.c' || echo '$(srcdir)/'`../include/strlcat.c
+@am__fastdepCC_TRUE@	$(AM_V_at)$(am__mv) ../include/$(DEPDIR)/init_lxc_static-strlcat.Tpo ../include/$(DEPDIR)/init_lxc_static-strlcat.Po
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	$(AM_V_CC)source='../include/strlcat.c' object='../include/init_lxc_static-strlcat.o' libtool=no @AMDEPBACKSLASH@
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	DEPDIR=$(DEPDIR) $(CCDEPMODE) $(depcomp) @AMDEPBACKSLASH@
+@am__fastdepCC_FALSE@	$(AM_V_CC@am__nodep@)$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(init_lxc_static_CFLAGS) $(CFLAGS) -c -o ../include/init_lxc_static-strlcat.o `test -f '../include/strlcat.c' || echo '$(srcdir)/'`../include/strlcat.c
+
+../include/init_lxc_static-strlcat.obj: ../include/strlcat.c
+@am__fastdepCC_TRUE@	$(AM_V_CC)$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(init_lxc_static_CFLAGS) $(CFLAGS) -MT ../include/init_lxc_static-strlcat.obj -MD -MP -MF ../include/$(DEPDIR)/init_lxc_static-strlcat.Tpo -c -o ../include/init_lxc_static-strlcat.obj `if test -f '../include/strlcat.c'; then $(CYGPATH_W) '../include/strlcat.c'; else $(CYGPATH_W) '$(srcdir)/../include/strlcat.c'; fi`
+@am__fastdepCC_TRUE@	$(AM_V_at)$(am__mv) ../include/$(DEPDIR)/init_lxc_static-strlcat.Tpo ../include/$(DEPDIR)/init_lxc_static-strlcat.Po
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	$(AM_V_CC)source='../include/strlcat.c' object='../include/init_lxc_static-strlcat.obj' libtool=no @AMDEPBACKSLASH@
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	DEPDIR=$(DEPDIR) $(CCDEPMODE) $(depcomp) @AMDEPBACKSLASH@
+@am__fastdepCC_FALSE@	$(AM_V_CC@am__nodep@)$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(init_lxc_static_CFLAGS) $(CFLAGS) -c -o ../include/init_lxc_static-strlcat.obj `if test -f '../include/strlcat.c'; then $(CYGPATH_W) '../include/strlcat.c'; else $(CYGPATH_W) '$(srcdir)/../include/strlcat.c'; fi`
 
 mostlyclean-libtool:
 	-rm -f *.lo
@@ -2420,6 +2532,7 @@ install-exec-hook:
 
 uninstall-local:
 	$(RM) $(DESTDIR)$(libdir)/liblxc.so*
+	$(RM) $(DESTDIR)$(libdir)/liblxc.a
 @ENABLE_PAM_TRUE@@HAVE_PAM_TRUE@	$(RM) $(DESTDIR)$(pamdir)/pam_cgfs.so*
 
 @ENABLE_PAM_TRUE@@HAVE_PAM_TRUE@install-data-hook: install-pamLTLIBRARIES

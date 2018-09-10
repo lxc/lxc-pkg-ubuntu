@@ -36,7 +36,11 @@
 #include "parse.h"
 #include "utils.h"
 
-lxc_log_define(lxc_confile_utils, lxc);
+#ifndef HAVE_STRLCPY
+#include "include/strlcpy.h"
+#endif
+
+lxc_log_define(confile_utils, lxc);
 
 int parse_idmaps(const char *idmap, char *type, unsigned long *nsid,
 		 unsigned long *hostid, unsigned long *range)
@@ -145,6 +149,7 @@ int parse_idmaps(const char *idmap, char *type, unsigned long *nsid,
 	 */
 	if (*(slide + strspn(slide, " \t\r\n")) != '\0')
 		goto on_error;
+
 	/* Mark end of range. */
 	*slide = '\0';
 
@@ -207,6 +212,7 @@ struct lxc_netdev *lxc_network_add(struct lxc_list *networks, int idx, bool tail
 		lxc_list_add_tail(networks, newlist);
 	else
 		lxc_list_add(networks, newlist);
+
 	return netdev;
 }
 
@@ -261,23 +267,29 @@ void lxc_log_configured_netdevs(const struct lxc_conf *conf)
 
 		TRACE("index: %zd", netdev->idx);
 		TRACE("ifindex: %d", netdev->ifindex);
+
 		switch (netdev->type) {
 		case LXC_NET_VETH:
 			TRACE("type: veth");
+
 			if (netdev->priv.veth_attr.pair[0] != '\0')
 				TRACE("veth pair: %s",
 				      netdev->priv.veth_attr.pair);
+
 			if (netdev->priv.veth_attr.veth1[0] != '\0')
 				TRACE("veth1 : %s",
 				      netdev->priv.veth_attr.veth1);
+
 			if (netdev->priv.veth_attr.ifindex > 0)
 				TRACE("host side ifindex for veth device: %d",
 				      netdev->priv.veth_attr.ifindex);
 			break;
 		case LXC_NET_MACVLAN:
 			TRACE("type: macvlan");
+
 			if (netdev->priv.macvlan_attr.mode > 0) {
 				char *macvlan_mode;
+
 				macvlan_mode = lxc_macvlan_flag_to_mode(
 				    netdev->priv.macvlan_attr.mode);
 				TRACE("macvlan mode: %s",
@@ -291,10 +303,10 @@ void lxc_log_configured_netdevs(const struct lxc_conf *conf)
 			break;
 		case LXC_NET_PHYS:
 			TRACE("type: phys");
-			if (netdev->priv.phys_attr.ifindex > 0) {
+
+			if (netdev->priv.phys_attr.ifindex > 0)
 				TRACE("host side ifindex for phys device: %d",
 				      netdev->priv.phys_attr.ifindex);
-			}
 			break;
 		case LXC_NET_EMPTY:
 			TRACE("type: empty");
@@ -310,16 +322,22 @@ void lxc_log_configured_netdevs(const struct lxc_conf *conf)
 		if (netdev->type != LXC_NET_EMPTY) {
 			TRACE("flags: %s",
 			      netdev->flags == IFF_UP ? "up" : "none");
+
 			if (netdev->link[0] != '\0')
 				TRACE("link: %s", netdev->link);
+
 			if (netdev->name[0] != '\0')
 				TRACE("name: %s", netdev->name);
+
 			if (netdev->hwaddr)
 				TRACE("hwaddr: %s", netdev->hwaddr);
+
 			if (netdev->mtu)
 				TRACE("mtu: %s", netdev->mtu);
+
 			if (netdev->upscript)
 				TRACE("upscript: %s", netdev->upscript);
+
 			if (netdev->downscript)
 				TRACE("downscript: %s", netdev->downscript);
 
@@ -341,11 +359,13 @@ void lxc_log_configured_netdevs(const struct lxc_conf *conf)
 
 			TRACE("ipv6 gateway auto: %s",
 			      netdev->ipv6_gateway_auto ? "true" : "false");
+
 			if (netdev->ipv6_gateway) {
 				inet_ntop(AF_INET6, netdev->ipv6_gateway,
 					  bufinet6, sizeof(bufinet6));
 				TRACE("ipv6 gateway: %s", bufinet6);
 			}
+
 			lxc_list_for_each_safe(cur, &netdev->ipv6, next) {
 				inet6dev = cur->elem;
 				inet_ntop(AF_INET6, &inet6dev->addr, bufinet6,
@@ -473,7 +493,7 @@ int set_config_string_item(char **conf_item, const char *value)
 
 	new_value = strdup(value);
 	if (!new_value) {
-		SYSERROR("failed to duplicate string \"%s\"", value);
+		SYSERROR("Failed to duplicate string \"%s\"", value);
 		return -1;
 	}
 
@@ -501,37 +521,44 @@ int config_ip_prefix(struct in_addr *addr)
 {
 	if (IN_CLASSA(addr->s_addr))
 		return 32 - IN_CLASSA_NSHIFT;
+
 	if (IN_CLASSB(addr->s_addr))
 		return 32 - IN_CLASSB_NSHIFT;
+
 	if (IN_CLASSC(addr->s_addr))
 		return 32 - IN_CLASSC_NSHIFT;
 
 	return 0;
 }
 
-int network_ifname(char *valuep, const char *value)
+int network_ifname(char *valuep, const char *value, size_t size)
 {
-	if (strlen(value) >= IFNAMSIZ) {
-		ERROR("Network devie name \"%s\" is too long (>= %zu)", value,
-		      (size_t)IFNAMSIZ);
-	}
+	size_t retlen;
 
-	strcpy(valuep, value);
+	if (!valuep || !value)
+		return -1;
+
+	retlen = strlcpy(valuep, value, size);
+	if (retlen >= size)
+		ERROR("Network devie name \"%s\" is too long (>= %zu)", value,
+		      size);
+
 	return 0;
 }
 
-int rand_complete_hwaddr(char *hwaddr)
+void rand_complete_hwaddr(char *hwaddr)
 {
 	const char hex[] = "0123456789abcdef";
 	char *curs = hwaddr;
-
-#ifndef HAVE_RAND_R
-	randseed(true);
-#else
+#ifdef HAVE_RAND_R
 	unsigned int seed;
 
 	seed = randseed(false);
+#else
+
+	(void)randseed(true);
 #endif
+
 	while (*curs != '\0' && *curs != '\n') {
 		if (*curs == 'x' || *curs == 'X') {
 			if (curs - hwaddr == 1) {
@@ -549,7 +576,6 @@ int rand_complete_hwaddr(char *hwaddr)
 		}
 		curs++;
 	}
-	return 0;
 }
 
 bool lxc_config_net_hwaddr(const char *line)
@@ -559,11 +585,15 @@ bool lxc_config_net_hwaddr(const char *line)
 
 	if (strncmp(line, "lxc.net", 7) != 0)
 		return false;
+
 	if (strncmp(line, "lxc.net.hwaddr", 14) == 0)
 		return true;
+
 	if (strncmp(line, "lxc.network.hwaddr", 18) == 0)
 		return true;
-	if (sscanf(line, "lxc.net.%u.%6s", &index, tmp) == 2 || sscanf(line, "lxc.network.%u.%6s", &index, tmp) == 2)
+
+	if (sscanf(line, "lxc.net.%u.%6s", &index, tmp) == 2 ||
+	    sscanf(line, "lxc.network.%u.%6s", &index, tmp) == 2)
 		return strncmp(tmp, "hwaddr", 6) == 0;
 
 	return false;
@@ -606,13 +636,22 @@ void update_hwaddr(const char *line)
 bool new_hwaddr(char *hwaddr)
 {
 	int ret;
+#ifdef HAVE_RAND_R
+	unsigned int seed;
+
+	seed = randseed(false);
+
+	ret = snprintf(hwaddr, 18, "00:16:3e:%02x:%02x:%02x", rand_r(&seed) % 255,
+		       rand_r(&seed) % 255, rand_r(&seed) % 255);
+#else
 
 	(void)randseed(true);
 
 	ret = snprintf(hwaddr, 18, "00:16:3e:%02x:%02x:%02x", rand() % 255,
 		       rand() % 255, rand() % 255);
+#endif
 	if (ret < 0 || ret >= 18) {
-		SYSERROR("Failed to call snprintf().");
+		SYSERROR("Failed to call snprintf()");
 		return false;
 	}
 
@@ -630,7 +669,7 @@ int lxc_get_conf_str(char *retv, int inlen, const char *value)
 	if (retv && inlen >= value_len + 1)
 		memcpy(retv, value, value_len + 1);
 
-	return strlen(value);
+	return value_len;
 }
 
 int lxc_get_conf_int(struct lxc_conf *c, char *retv, int inlen, int v)
@@ -692,6 +731,7 @@ bool parse_limit_value(const char **value, rlim_t *res)
 	*res = strtoull(*value, &endptr, 10);
 	if (errno || !endptr)
 		return false;
+
 	*value = endptr;
 
 	return true;
@@ -734,9 +774,8 @@ static int lxc_container_name_to_pid(const char *lxcname_or_pid,
 
 	ret = kill(pid, 0);
 	if (ret < 0) {
-		ERROR("%s - Failed to send signal to pid %d", strerror(errno),
-		      (int)pid);
-		return -EPERM;
+		SYSERROR("Failed to send signal to pid %d", (int)pid);
+		return -1;
 	}
 
 	return pid;
@@ -752,7 +791,7 @@ int lxc_inherit_namespace(const char *lxcname_or_pid, const char *lxcpath,
 	if (lastslash) {
 		dup = strdup(lxcname_or_pid);
 		if (!dup)
-			return -ENOMEM;
+			return -1;
 
 		dup[lastslash - lxcname_or_pid] = '\0';
 		pid = lxc_container_name_to_pid(lastslash + 1, dup);
@@ -762,11 +801,143 @@ int lxc_inherit_namespace(const char *lxcname_or_pid, const char *lxcpath,
 	}
 
 	if (pid < 0)
-		return -EINVAL;
+		return -1;
 
 	fd = lxc_preserve_ns(pid, namespace);
 	if (fd < 0)
-		return -EINVAL;
+		return -1;
 
 	return fd;
+}
+
+struct signame {
+	int num;
+	const char *name;
+};
+
+static const struct signame signames[] = {
+	{ SIGHUP,    "HUP"    },
+	{ SIGINT,    "INT"    },
+	{ SIGQUIT,   "QUIT"   },
+	{ SIGILL,    "ILL"    },
+	{ SIGABRT,   "ABRT"   },
+	{ SIGFPE,    "FPE"    },
+	{ SIGKILL,   "KILL"   },
+	{ SIGSEGV,   "SEGV"   },
+	{ SIGPIPE,   "PIPE"   },
+	{ SIGALRM,   "ALRM"   },
+	{ SIGTERM,   "TERM"   },
+	{ SIGUSR1,   "USR1"   },
+	{ SIGUSR2,   "USR2"   },
+	{ SIGCHLD,   "CHLD"   },
+	{ SIGCONT,   "CONT"   },
+	{ SIGSTOP,   "STOP"   },
+	{ SIGTSTP,   "TSTP"   },
+	{ SIGTTIN,   "TTIN"   },
+	{ SIGTTOU,   "TTOU"   },
+#ifdef SIGTRAP
+	{ SIGTRAP,   "TRAP"   },
+#endif
+#ifdef SIGIOT
+	{ SIGIOT,    "IOT"    },
+#endif
+#ifdef SIGEMT
+	{ SIGEMT,    "EMT"    },
+#endif
+#ifdef SIGBUS
+	{ SIGBUS,    "BUS"    },
+#endif
+#ifdef SIGSTKFLT
+	{ SIGSTKFLT, "STKFLT" },
+#endif
+#ifdef SIGCLD
+	{ SIGCLD,    "CLD"    },
+#endif
+#ifdef SIGURG
+	{ SIGURG,    "URG"    },
+#endif
+#ifdef SIGXCPU
+	{ SIGXCPU,   "XCPU"   },
+#endif
+#ifdef SIGXFSZ
+	{ SIGXFSZ,   "XFSZ"   },
+#endif
+#ifdef SIGVTALRM
+	{ SIGVTALRM, "VTALRM" },
+#endif
+#ifdef SIGPROF
+	{ SIGPROF,   "PROF"   },
+#endif
+#ifdef SIGWINCH
+	{ SIGWINCH,  "WINCH"  },
+#endif
+#ifdef SIGIO
+	{ SIGIO,     "IO"     },
+#endif
+#ifdef SIGPOLL
+	{ SIGPOLL,   "POLL"   },
+#endif
+#ifdef SIGINFO
+	{ SIGINFO,   "INFO"   },
+#endif
+#ifdef SIGLOST
+	{ SIGLOST,   "LOST"   },
+#endif
+#ifdef SIGPWR
+	{ SIGPWR,    "PWR"    },
+#endif
+#ifdef SIGUNUSED
+	{ SIGUNUSED, "UNUSED" },
+#endif
+#ifdef SIGSYS
+	{ SIGSYS,    "SYS"    },
+#endif
+};
+
+static int sig_num(const char *sig)
+{
+	unsigned int signum;
+
+	if (lxc_safe_uint(sig, &signum) < 0)
+		return -1;
+
+	return signum;
+}
+
+static int rt_sig_num(const char *signame)
+{
+	int rtmax = 0, sig_n = 0;
+
+	if (strncasecmp(signame, "max-", 4) == 0)
+		rtmax = 1;
+
+	signame += 4;
+	if (!isdigit(*signame))
+		return -1;
+
+	sig_n = sig_num(signame);
+	sig_n = rtmax ? SIGRTMAX - sig_n : SIGRTMIN + sig_n;
+	if (sig_n > SIGRTMAX || sig_n < SIGRTMIN)
+		return -1;
+
+	return sig_n;
+}
+
+int sig_parse(const char *signame)
+{
+	size_t n;
+
+	if (isdigit(*signame)) {
+		return sig_num(signame);
+	} else if (strncasecmp(signame, "sig", 3) == 0) {
+		signame += 3;
+		if (strncasecmp(signame, "rt", 2) == 0)
+			return rt_sig_num(signame + 2);
+
+		for (n = 0; n < sizeof(signames) / sizeof((signames)[0]); n++)
+			if (strcasecmp(signames[n].name, signame) == 0)
+				return signames[n].num;
+	}
+
+	return -1;
 }
