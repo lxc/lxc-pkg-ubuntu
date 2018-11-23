@@ -17,8 +17,9 @@
  * 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
  */
 
-#include "config.h"
-
+#ifndef _GNU_SOURCE
+#define _GNU_SOURCE 1
+#endif
 #define __STDC_FORMAT_MACROS /* Required for PRIu64 to work. */
 #include <ctype.h>
 #include <dirent.h>
@@ -28,11 +29,11 @@
 #include <inttypes.h>
 #include <libgen.h>
 #include <pthread.h>
+#include <stdarg.h>
 #include <stddef.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
-#include <unistd.h>
 #include <sys/mman.h>
 #include <sys/mount.h>
 #include <sys/param.h>
@@ -40,13 +41,14 @@
 #include <sys/stat.h>
 #include <sys/types.h>
 #include <sys/wait.h>
+#include <unistd.h>
 
-#include "log.h"
+#include "config.h"
 #include "lxclock.h"
+#include "macro.h"
 #include "namespace.h"
 #include "parse.h"
 #include "string_utils.h"
-#include "utils.h"
 
 #ifndef HAVE_STRLCPY
 #include "include/strlcpy.h"
@@ -54,10 +56,6 @@
 
 #ifndef HAVE_STRLCAT
 #include "include/strlcat.h"
-#endif
-
-#ifndef NO_LOG
-lxc_log_define(string_utils, lxc);
 #endif
 
 char **lxc_va_arg_list_to_argv(va_list ap, size_t skip, int do_strdup)
@@ -681,7 +679,7 @@ int lxc_safe_uint64(const char *numstr, uint64_t *converted, int base)
 
 	errno = 0;
 	u = strtoull(numstr, &err, base);
-	if (errno == ERANGE && u == ULLONG_MAX)
+	if (errno == ERANGE && u == UINT64_MAX)
 		return -ERANGE;
 
 	if (err == numstr || *err != '\0')
@@ -774,7 +772,7 @@ char *must_concat(const char *first, ...)
 	}
 	va_end(args);
 
-	dest[cur_len] = 0;
+	dest[cur_len] = '\0';
 	return dest;
 }
 
@@ -784,24 +782,32 @@ char *must_make_path(const char *first, ...)
 	char *cur, *dest;
 	size_t full_len = strlen(first);
 	size_t buf_len;
+	size_t cur_len;
 
 	dest = must_copy_string(first);
+	cur_len = full_len;
 
 	va_start(args, first);
 	while ((cur = va_arg(args, char *)) != NULL) {
-		full_len += strlen(cur);
+		buf_len = strlen(cur);
+
+		full_len += buf_len;
 		if (cur[0] != '/')
 			full_len++;
 
-		buf_len = full_len + 1;
-		dest = must_realloc(dest, buf_len);
+		dest = must_realloc(dest, full_len + 1);
 
-		if (cur[0] != '/')
-			(void)strlcat(dest, "/", buf_len);
-		(void)strlcat(dest, cur, buf_len);
+		if (cur[0] != '/') {
+			memcpy(dest + cur_len, "/", 1);
+			cur_len++;
+		}
+
+		memcpy(dest + cur_len, cur, buf_len);
+		cur_len += buf_len;
 	}
 	va_end(args);
 
+	dest[cur_len] = '\0';
 	return dest;
 }
 
@@ -812,23 +818,32 @@ char *must_append_path(char *first, ...)
 	va_list args;
 	char *dest = first;
 	size_t buf_len;
+	size_t cur_len;
 
 	full_len = strlen(first);
+	cur_len = full_len;
+
 	va_start(args, first);
 	while ((cur = va_arg(args, char *)) != NULL) {
-		full_len += strlen(cur);
+		buf_len = strlen(cur);
+
+		full_len += buf_len;
 		if (cur[0] != '/')
 			full_len++;
 
-		buf_len = full_len + 1;
-		dest = must_realloc(dest, buf_len);
+		dest = must_realloc(dest, full_len + 1);
 
-		if (cur[0] != '/')
-			(void)strlcat(dest, "/", buf_len);
-		(void)strlcat(dest, cur, buf_len);
+		if (cur[0] != '/') {
+			memcpy(dest + cur_len, "/", 1);
+			cur_len++;
+		}
+
+		memcpy(dest + cur_len, cur, buf_len);
+		cur_len += buf_len;
 	}
 	va_end(args);
 
+	dest[cur_len] = '\0';
 	return dest;
 }
 
@@ -863,7 +878,7 @@ int parse_byte_size_string(const char *s, int64_t *converted)
 	long long int conv;
 	int64_t mltpl, overflow;
 	char *end;
-	char dup[LXC_NUMSTRLEN64 + 2];
+	char dup[INTTYPE_TO_STRLEN(int64_t)];
 	char suffix[3] = {0};
 
 	if (!s || !strcmp(s, ""))
@@ -980,4 +995,11 @@ int lxc_is_line_empty(const char *line)
 		    line[i] != '\f' && line[i] != '\0')
 			return 0;
 	return 1;
+}
+
+void remove_trailing_slashes(char *p)
+{
+	int l = strlen(p);
+	while (--l >= 0 && (p[l] == '/' || p[l] == '\n'))
+		p[l] = '\0';
 }

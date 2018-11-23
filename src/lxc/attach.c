@@ -21,38 +21,29 @@
  * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA
  */
 
-#define _GNU_SOURCE
+#ifndef _GNU_SOURCE
+#define _GNU_SOURCE 1
+#endif
 #include <errno.h>
 #include <fcntl.h>
-#include <termios.h>
 #include <grp.h>
+#include <linux/unistd.h>
 #include <pwd.h>
+#include <pthread.h>
 #include <signal.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
-#include <unistd.h>
-#include <linux/unistd.h>
 #include <sys/mount.h>
 #include <sys/param.h>
 #include <sys/prctl.h>
 #include <sys/socket.h>
 #include <sys/syscall.h>
 #include <sys/wait.h>
+#include <termios.h>
+#include <unistd.h>
 
 #include <lxc/lxccontainer.h>
-
-#ifndef HAVE_DECL_PR_CAPBSET_DROP
-#define PR_CAPBSET_DROP 24
-#endif
-
-#ifndef HAVE_DECL_PR_SET_NO_NEW_PRIVS
-#define PR_SET_NO_NEW_PRIVS 38
-#endif
-
-#ifndef HAVE_DECL_PR_GET_NO_NEW_PRIVS
-#define PR_GET_NO_NEW_PRIVS 39
-#endif
 
 #include "af_unix.h"
 #include "attach.h"
@@ -66,8 +57,11 @@
 #include "lsm/lsm.h"
 #include "lxclock.h"
 #include "lxcseccomp.h"
+#include "macro.h"
 #include "mainloop.h"
 #include "namespace.h"
+#include "raw_syscalls.h"
+#include "syscall_wrappers.h"
 #include "terminal.h"
 #include "utils.h"
 
@@ -75,35 +69,24 @@
 #include <sys/personality.h>
 #endif
 
-#ifndef SOCK_CLOEXEC
-#define SOCK_CLOEXEC 02000000
-#endif
-
-#ifndef MS_REC
-#define MS_REC 16384
-#endif
-
-#ifndef MS_SLAVE
-#define MS_SLAVE (1 << 19)
-#endif
-
 lxc_log_define(attach, lxc);
 
-/* /proc/pid-to-str/status\0 = (5 + 21 + 7 + 1) */
-#define __PROC_STATUS_LEN (5 + (LXC_NUMSTRLEN64) + 7 + 1)
+/* Define default options if no options are supplied by the user. */
+static lxc_attach_options_t attach_static_default_options = LXC_ATTACH_OPTIONS_DEFAULT;
+
 static struct lxc_proc_context_info *lxc_proc_get_context_info(pid_t pid)
 {
 	int ret;
 	bool found;
 	FILE *proc_file;
-	char proc_fn[__PROC_STATUS_LEN];
+	char proc_fn[LXC_PROC_STATUS_LEN];
 	size_t line_bufsz = 0;
 	char *line = NULL;
 	struct lxc_proc_context_info *info = NULL;
 
 	/* Read capabilities. */
-	ret = snprintf(proc_fn, __PROC_STATUS_LEN, "/proc/%d/status", pid);
-	if (ret < 0 || ret >= __PROC_STATUS_LEN)
+	ret = snprintf(proc_fn, LXC_PROC_STATUS_LEN, "/proc/%d/status", pid);
+	if (ret < 0 || ret >= LXC_PROC_STATUS_LEN)
 		goto on_error;
 
 	proc_file = fopen(proc_fn, "r");
@@ -604,7 +587,7 @@ static char *lxc_attach_getpwshell(uid_t uid)
 static void lxc_attach_get_init_uidgid(uid_t *init_uid, gid_t *init_gid)
 {
 	FILE *proc_file;
-	char proc_fn[__PROC_STATUS_LEN];
+	char proc_fn[LXC_PROC_STATUS_LEN];
 	int ret;
 	char *line = NULL;
 	size_t line_bufsz = 0;
@@ -612,8 +595,8 @@ static void lxc_attach_get_init_uidgid(uid_t *init_uid, gid_t *init_gid)
 	uid_t uid = (uid_t)-1;
 	gid_t gid = (gid_t)-1;
 
-	ret = snprintf(proc_fn, __PROC_STATUS_LEN, "/proc/%d/status", 1);
-	if (ret < 0 || ret >= __PROC_STATUS_LEN)
+	ret = snprintf(proc_fn, LXC_PROC_STATUS_LEN, "/proc/%d/status", 1);
+	if (ret < 0 || ret >= LXC_PROC_STATUS_LEN)
 		return;
 
 	proc_file = fopen(proc_fn, "r");
@@ -651,9 +634,6 @@ static void lxc_attach_get_init_uidgid(uid_t *init_uid, gid_t *init_gid)
 	 * setgroups() to set them.
 	 */
 }
-
-/* Define default options if no options are supplied by the user. */
-static lxc_attach_options_t attach_static_default_options = LXC_ATTACH_OPTIONS_DEFAULT;
 
 static bool fetch_seccomp(struct lxc_container *c, lxc_attach_options_t *options)
 {
@@ -753,7 +733,6 @@ struct attach_clone_payload {
 static void lxc_put_attach_clone_payload(struct attach_clone_payload *p)
 {
 	if (p->ipc_socket >= 0) {
-		shutdown(p->ipc_socket, SHUT_RDWR);
 		close(p->ipc_socket);
 		p->ipc_socket = -EBADF;
 	}
@@ -774,6 +753,8 @@ static int attach_child_main(struct attach_clone_payload *payload)
 	int fd, lsm_fd, ret;
 	uid_t new_uid;
 	gid_t new_gid;
+	uid_t ns_root_uid = 0;
+	gid_t ns_root_gid = 0;
 	lxc_attach_options_t* options = payload->options;
 	struct lxc_proc_context_info* init_ctx = payload->init_ctx;
 	bool needs_lsm = (options->namespaces & CLONE_NEWNS) &&
@@ -861,32 +842,39 @@ static int attach_child_main(struct attach_clone_payload *payload)
 			goto on_error;
 	}
 
-	/* Set {u,g}id. */
-	new_uid = 0;
-	new_gid = 0;
+	if (options->namespaces & CLONE_NEWUSER) {
+		/* Check whether nsuid 0 has a mapping. */
+		ns_root_uid = get_ns_uid(0);
 
-	/* Ignore errors, we will fall back to root in that case (/proc was not
-	 * mounted etc.).
-	 */
-	if (options->namespaces & CLONE_NEWUSER)
-		lxc_attach_get_init_uidgid(&new_uid, &new_gid);
+		/* Check whether nsgid 0 has a mapping. */
+		ns_root_gid = get_ns_gid(0);
 
-	if (options->uid != (uid_t)-1)
-		new_uid = options->uid;
+		/* If there's no mapping for nsuid 0 try to retrieve the nsuid
+		 * init was started with.
+		 */
+		if (ns_root_uid == LXC_INVALID_UID)
+			lxc_attach_get_init_uidgid(&ns_root_uid, &ns_root_gid);
 
-	if (options->gid != (gid_t)-1)
-		new_gid = options->gid;
+		if (ns_root_uid == LXC_INVALID_UID)
+			goto on_error;
 
-	/* Try to set the {u,g}id combination. */
-	if (new_uid != 0 || new_gid != 0 || options->namespaces & CLONE_NEWUSER) {
-		ret = lxc_switch_uid_gid(new_uid, new_gid);
-		if (ret < 0)
+		if (!lxc_switch_uid_gid(ns_root_uid, ns_root_gid))
 			goto on_error;
 	}
 
-	ret = lxc_setgroups(0, NULL);
-	if (ret < 0 && errno != EPERM)
+	if (!lxc_setgroups(0, NULL) && errno != EPERM)
 		goto on_error;
+
+	/* Set {u,g}id. */
+	if (options->uid != LXC_INVALID_UID)
+		new_uid = options->uid;
+	else
+		new_uid = ns_root_uid;
+
+	if (options->gid != LXC_INVALID_GID)
+		new_gid = options->gid;
+	else
+		new_gid = ns_root_gid;
 
 	if ((init_ctx->container && init_ctx->container->lxc_conf &&
 	     init_ctx->container->lxc_conf->no_new_privs) ||
@@ -922,7 +910,6 @@ static int attach_child_main(struct attach_clone_payload *payload)
 		TRACE("Loaded seccomp profile");
 	}
 
-	shutdown(payload->ipc_socket, SHUT_RDWR);
 	close(payload->ipc_socket);
 	payload->ipc_socket = -EBADF;
 	lxc_proc_put_context_info(init_ctx);
@@ -976,6 +963,16 @@ static int attach_child_main(struct attach_clone_payload *payload)
 
 		TRACE("Prepared terminal file descriptor %d", payload->terminal_slave_fd);
 	}
+
+	/* Avoid unnecessary syscalls. */
+	if (new_uid == ns_root_uid)
+		new_uid = LXC_INVALID_UID;
+
+	if (new_gid == ns_root_gid)
+		new_gid = LXC_INVALID_GID;
+
+	if (!lxc_switch_uid_gid(new_uid, new_gid))
+		goto on_error;
 
 	/* We're done, so we can now do whatever the user intended us to do. */
 	_exit(payload->exec_function(payload->exec_payload));
@@ -1222,7 +1219,7 @@ int lxc_attach(const char *name, const char *lxcpath,
 	 * just fork()s away without exec'ing directly after, the socket fd will
 	 * exist in the forked process from the other thread and any close() in
 	 * our own child process will not really cause the socket to close
-	 * properly, potentiall causing the parent to hang.
+	 * properly, potentially causing the parent to hang.
 	 *
 	 * For this reason, while IPC is still active, we have to use shutdown()
 	 * if the child exits prematurely in order to signal that the socket is
@@ -1487,6 +1484,15 @@ int lxc_attach(const char *name, const char *lxcpath,
 	}
 
 	if (pid == 0) {
+		if (options->attach_flags & LXC_ATTACH_TERMINAL) {
+			ret = pthread_sigmask(SIG_SETMASK,
+					      &terminal.tty_state->oldmask, NULL);
+			if (ret < 0) {
+				SYSERROR("Failed to reset signal mask");
+				_exit(EXIT_FAILURE);
+			}
+		}
+
 		ret = attach_child_main(&payload);
 		if (ret < 0)
 			ERROR("Failed to exec");
@@ -1518,14 +1524,25 @@ int lxc_attach(const char *name, const char *lxcpath,
 	_exit(0);
 }
 
-int lxc_attach_run_command(void* payload)
+int lxc_attach_run_command(void *payload)
 {
-	lxc_attach_command_t* cmd = (lxc_attach_command_t*)payload;
+	int ret = -1;
+	lxc_attach_command_t *cmd = payload;
 
-	execvp(cmd->program, cmd->argv);
+	ret = execvp(cmd->program, cmd->argv);
+	if (ret < 0) {
+		switch (errno) {
+		case ENOEXEC:
+			ret = 126;
+			break;
+		case ENOENT:
+			ret = 127;
+			break;
+		}
+	}
 
 	SYSERROR("Failed to exec \"%s\"", cmd->program);
-	return -1;
+	return ret;
 }
 
 int lxc_attach_run_shell(void* payload)

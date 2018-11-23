@@ -20,8 +20,6 @@
 #ifndef __LXC_FILE_UTILS_H
 #define __LXC_FILE_UTILS_H
 
-#include "config.h"
-
 #include <fcntl.h>
 #include <stdbool.h>
 #include <stdio.h>
@@ -37,9 +35,12 @@ extern int lxc_read_from_file(const char *filename, void *buf, size_t count);
 
 /* send and receive buffers completely */
 extern ssize_t lxc_write_nointr(int fd, const void *buf, size_t count);
+extern ssize_t lxc_send_nointr(int sockfd, void *buf, size_t len, int flags);
 extern ssize_t lxc_read_nointr(int fd, void *buf, size_t count);
 extern ssize_t lxc_read_nointr_expect(int fd, void *buf, size_t count,
 				      const void *expected_buf);
+extern ssize_t lxc_recv_nointr(int sockfd, void *buf, size_t len, int flags);
+
 extern bool file_exists(const char *f);
 extern int print_to_file(const char *file, const char *content);
 extern int is_dir(const char *path);
@@ -52,5 +53,7 @@ extern bool has_fs_type(const char *path, fs_type_magic magic_val);
 extern bool fhas_fs_type(int fd, fs_type_magic magic_val);
 extern bool is_fs_type(const struct statfs *fs, fs_type_magic magic_val);
 extern FILE *fopen_cloexec(const char *path, const char *mode);
+extern ssize_t lxc_sendfile_nointr(int out_fd, int in_fd, off_t *offset,
+				   size_t count);
 
 #endif /* __LXC_FILE_UTILS_H */

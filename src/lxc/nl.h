@@ -23,6 +23,8 @@
 #ifndef __LXC_NL_H
 #define __LXC_NL_H
 
+#include <stdio.h>
+
 /*
  * Use this as a good size to allocate generic netlink messages
  */
@@ -124,9 +126,9 @@ int __netlink_send(struct nl_handler *handler, struct nlmsghdr *nlmsg);
  * Returns 0 on success, < 0 otherwise
  */
 int netlink_transaction(struct nl_handler *handler,
-			struct nlmsg *request, struct nlmsg *anwser);
+			struct nlmsg *request, struct nlmsg *answer);
 int __netlink_transaction(struct nl_handler *handler, struct nlmsghdr *request,
-			  struct nlmsghdr *anwser);
+			  struct nlmsghdr *answer);
 
 /*
  * nla_put_string: copy a null terminated string to a netlink message
@@ -259,5 +261,7 @@ void nlmsg_free(struct nlmsg *nlmsg);
  */
 void *nlmsg_data(struct nlmsg *nlmsg);
 
+extern int addattr(struct nlmsghdr *n, size_t maxlen, int type,
+		   const void *data, size_t alen);
 
 #endif

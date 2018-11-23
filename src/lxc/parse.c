@@ -21,19 +21,24 @@
  * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA
  */
 
-#define _GNU_SOURCE
-#include <stdio.h>
-#undef _GNU_SOURCE
+#ifndef _GNU_SOURCE
+#define _GNU_SOURCE 1
+#endif
 #include <dirent.h>
 #include <errno.h>
+#include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 #include <sys/mman.h>
+#include <sys/sendfile.h>
 
-#include "parse.h"
 #include "config.h"
-#include "utils.h"
+#include "file_utils.h"
 #include "log.h"
+#include "macro.h"
+#include "parse.h"
+#include "syscall_wrappers.h"
+#include "utils.h"
 
 lxc_log_define(parse, lxc);
 
@@ -64,35 +69,68 @@ int lxc_strmunmap(void *addr, size_t length)
 	return munmap(addr, length + 1);
 }
 
-int lxc_file_for_each_line_mmap(const char *file, lxc_file_cb callback,
-				void *data)
+int lxc_file_for_each_line_mmap(const char *file, lxc_file_cb callback, void *data)
 {
-	int fd;
-	char *buf, *line;
-	struct stat st;
-	int ret = 0;
+	int saved_errno;
+	ssize_t ret = -1, bytes_sent;
+	char *line;
+	int fd = -1, memfd = -1;
+	char *buf = NULL;
+
+	memfd = memfd_create(".lxc_config_file", MFD_CLOEXEC);
+	if (memfd < 0) {
+		char template[] = P_tmpdir "/.lxc_config_file_XXXXXX";
+
+		if (errno != ENOSYS) {
+			SYSERROR("Failed to create memory file");
+			goto on_error;
+		}
+
+		TRACE("Failed to create in-memory file. Falling back to "
+		      "temporary file");
+		memfd = lxc_make_tmpfile(template, true);
+		if (memfd < 0) {
+			SYSERROR("Failed to create temporary file \"%s\"", template);
+			goto on_error;
+		}
+	}
 
 	fd = open(file, O_RDONLY | O_CLOEXEC);
-	if (fd < 0)
+	if (fd < 0) {
+		SYSERROR("Failed to open file \"%s\"", file);
 		return -1;
+	}
 
-	ret = fstat(fd, &st);
+	/* sendfile() handles up to 2GB. No config file should be that big. */
+	bytes_sent = lxc_sendfile_nointr(memfd, fd, NULL, LXC_SENDFILE_MAX);
+	if (bytes_sent < 0) {
+		SYSERROR("Failed to sendfile \"%s\"", file);
+		goto on_error;
+	}
+
+	ret = lxc_write_nointr(memfd, "\0", 1);
 	if (ret < 0) {
-		close(fd);
-		return -1;
+		SYSERROR("Failed to append zero byte");
+		goto on_error;
+	}
+	bytes_sent++;
+
+	ret = lseek(memfd, 0, SEEK_SET);
+	if (ret < 0) {
+		SYSERROR("Failed to lseek");
+		goto on_error;
 	}
 
-	if (st.st_size == 0) {
-		close(fd);
-		return 0;
-	}
-
-	buf = lxc_strmmap(NULL, st.st_size, PROT_READ | PROT_WRITE, MAP_PRIVATE, fd, 0);
+	ret = -1;
+	buf = mmap(NULL, bytes_sent, PROT_READ | PROT_WRITE,
+		   MAP_SHARED | MAP_POPULATE, memfd, 0);
 	if (buf == MAP_FAILED) {
-		close(fd);
-		return -1;
+		buf = NULL;
+		SYSERROR("Failed to mmap");
+		goto on_error;
 	}
 
+	ret = 0;
 	lxc_iterate_parts(line, buf, "\n\0") {
 		ret = callback(line, data);
 		if (ret) {
@@ -100,13 +138,25 @@ int lxc_file_for_each_line_mmap(const char *file, lxc_file_cb callback,
 			 * error.
 			 */
 			if (ret < 0)
-				ERROR("Failed to parse config: %s", line);
+				ERROR("Failed to parse config file \"%s\" at "
+				      "line \"%s\"", file, line);
 			break;
 		}
 	}
 
-	lxc_strmunmap(buf, st.st_size);
-	close(fd);
+on_error:
+	saved_errno = errno;
+	if (fd >= 0)
+		close(fd);
+	if (memfd >= 0)
+		close(memfd);
+	if (buf && munmap(buf, bytes_sent)) {
+		SYSERROR("Failed to unmap");
+		if (ret == 0)
+			ret = -1;
+	}
+	errno = saved_errno;
+
 	return ret;
 }
 
@@ -119,7 +169,7 @@ int lxc_file_for_each_line(const char *file, lxc_file_cb callback, void *data)
 
 	f = fopen(file, "r");
 	if (!f) {
-		SYSERROR("failed to open %s", file);
+		SYSERROR("Failed to open \"%s\"", file);
 		return -1;
 	}
 
@@ -130,7 +180,7 @@ int lxc_file_for_each_line(const char *file, lxc_file_cb callback, void *data)
 			 * error.
 			 */
 			if (err < 0)
-				ERROR("Failed to parse config: %s", line);
+				ERROR("Failed to parse config: \"%s\"", line);
 			break;
 		}
 	}

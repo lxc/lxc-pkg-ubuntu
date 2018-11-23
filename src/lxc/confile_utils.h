@@ -25,22 +25,6 @@
 #include "conf.h"
 #include "confile_utils.h"
 
-#ifndef MACVLAN_MODE_PRIVATE
-#define MACVLAN_MODE_PRIVATE 1
-#endif
-
-#ifndef MACVLAN_MODE_VEPA
-#define MACVLAN_MODE_VEPA 2
-#endif
-
-#ifndef MACVLAN_MODE_BRIDGE
-#define MACVLAN_MODE_BRIDGE 4
-#endif
-
-#ifndef MACVLAN_MODE_PASSTHRU
-#define MACVLAN_MODE_PASSTHRU 8
-#endif
-
 #define strprint(str, inlen, ...)                                       \
 	do {                                                            \
 		if (str)                                                \

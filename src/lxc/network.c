@@ -21,16 +21,13 @@
  * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA
  */
 
-#define _GNU_SOURCE
+#ifndef _GNU_SOURCE
+#define _GNU_SOURCE 1
+#endif
+#include <arpa/inet.h>
 #include <ctype.h>
 #include <errno.h>
 #include <fcntl.h>
-#include <stdio.h>
-#include <stdlib.h>
-#include <string.h>
-#include <time.h>
-#include <unistd.h>
-#include <arpa/inet.h>
 #include <linux/netlink.h>
 #include <linux/rtnetlink.h>
 #include <linux/sockios.h>
@@ -38,26 +35,30 @@
 #include <net/if.h>
 #include <net/if_arp.h>
 #include <netinet/in.h>
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
 #include <sys/inotify.h>
 #include <sys/ioctl.h>
 #include <sys/param.h>
 #include <sys/socket.h>
 #include <sys/stat.h>
 #include <sys/types.h>
+#include <time.h>
+#include <unistd.h>
 
+#include "../include/netns_ifaddrs.h"
 #include "af_unix.h"
 #include "conf.h"
 #include "config.h"
+#include "file_utils.h"
 #include "log.h"
+#include "macro.h"
 #include "network.h"
 #include "nl.h"
+#include "raw_syscalls.h"
+#include "syscall_wrappers.h"
 #include "utils.h"
-
-#if HAVE_IFADDRS_H
-#include <ifaddrs.h>
-#else
-#include <../include/ifaddrs.h>
-#endif
 
 #ifndef HAVE_STRLCPY
 #include "include/strlcpy.h"
@@ -960,6 +961,9 @@ int netdev_get_mtu(int ifindex)
 	if (err < 0)
 		goto out;
 
+#pragma GCC diagnostic push
+#pragma GCC diagnostic ignored "-Wcast-align"
+
 	do {
 		/* Restore the answer buffer length, it might have been
 		 * overwritten by a previous receive.
@@ -1021,6 +1025,8 @@ int netdev_get_mtu(int ifindex)
 			msg = NLMSG_NEXT(msg, recv_len);
 		}
 	} while (readmore);
+
+#pragma GCC diagnostic pop
 
 	/* If we end up here, we didn't find any result, so signal an error. */
 	err = -1;
@@ -1352,15 +1358,15 @@ static int proc_sys_net_write(const char *path, const char *value)
 static int neigh_proxy_set(const char *ifname, int family, int flag)
 {
 	int ret;
-	char path[MAXPATHLEN];
+	char path[PATH_MAX];
 
 	if (family != AF_INET && family != AF_INET6)
 		return -EINVAL;
 
-	ret = snprintf(path, MAXPATHLEN, "/proc/sys/net/%s/conf/%s/%s",
+	ret = snprintf(path, PATH_MAX, "/proc/sys/net/%s/conf/%s/%s",
 		       family == AF_INET ? "ipv4" : "ipv6", ifname,
 		       family == AF_INET ? "proxy_arp" : "proxy_ndp");
-	if (ret < 0 || (size_t)ret >= MAXPATHLEN)
+	if (ret < 0 || (size_t)ret >= PATH_MAX)
 		return -E2BIG;
 
 	return proc_sys_net_write(path, flag ? "1" : "0");
@@ -1499,6 +1505,9 @@ int lxc_ipv4_addr_add(int ifindex, struct in_addr *addr, struct in_addr *bcast,
  * the given RTM_NEWADDR message. Allocates memory for the address and stores
  * that pointer in *res (so res should be an in_addr** or in6_addr**).
  */
+#pragma GCC diagnostic push
+#pragma GCC diagnostic ignored "-Wcast-align"
+
 static int ifa_get_local_ip(int family, struct nlmsghdr *msg, void **res)
 {
 	int addrlen;
@@ -1544,6 +1553,8 @@ static int ifa_get_local_ip(int family, struct nlmsghdr *msg, void **res)
 	return 0;
 }
 
+#pragma GCC diagnostic pop
+
 static int ip_addr_get(int family, int ifindex, void **res)
 {
 	int answer_len, err;
@@ -1585,6 +1596,9 @@ static int ip_addr_get(int family, int ifindex, void **res)
 	err = netlink_send(&nlh, nlmsg);
 	if (err < 0)
 		goto out;
+
+#pragma GCC diagnostic push
+#pragma GCC diagnostic ignored "-Wcast-align"
 
 	do {
 		/* Restore the answer buffer length, it might have been
@@ -1644,6 +1658,8 @@ static int ip_addr_get(int family, int ifindex, void **res)
 			msg = NLMSG_NEXT(msg, recv_len);
 		}
 	} while (readmore);
+
+#pragma GCC diagnostic pop
 
 	/* If we end up here, we didn't find any result, so signal an
 	 * error.
@@ -1831,7 +1847,7 @@ static int lxc_ovs_delete_port_exec(void *data)
 int lxc_ovs_delete_port(const char *bridge, const char *nic)
 {
 	int ret;
-	char cmd_output[MAXPATHLEN];
+	char cmd_output[PATH_MAX];
 	struct ovs_veth_args args;
 
 	args.bridge = bridge;
@@ -1859,7 +1875,7 @@ static int lxc_ovs_attach_bridge_exec(void *data)
 static int lxc_ovs_attach_bridge(const char *bridge, const char *nic)
 {
 	int ret;
-	char cmd_output[MAXPATHLEN];
+	char cmd_output[PATH_MAX];
 	struct ovs_veth_args args;
 
 	args.bridge = bridge;
@@ -1933,7 +1949,7 @@ static const char padchar[] = "0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ";
 char *lxc_mkifname(char *template)
 {
 	int ret;
-	struct ifaddrs *ifa, *ifaddr;
+	struct netns_ifaddrs *ifa, *ifaddr;
 	char name[IFNAMSIZ];
 	bool exists = false;
 	size_t i = 0;
@@ -1950,7 +1966,7 @@ char *lxc_mkifname(char *template)
 		return NULL;
 
 	/* Get all the network interfaces. */
-	ret = getifaddrs(&ifaddr);
+	ret = netns_getifaddrs(&ifaddr, -1, &(bool){false});
 	if (ret < 0) {
 		SYSERROR("Failed to get network interfaces");
 		return NULL;
@@ -1984,7 +2000,7 @@ char *lxc_mkifname(char *template)
 			break;
 	}
 
-	freeifaddrs(ifaddr);
+	netns_freeifaddrs(ifaddr);
 	(void)strlcpy(template, name, strlen(template) + 1);
 
 	return template;
@@ -2077,7 +2093,7 @@ static int lxc_create_network_unpriv_exec(const char *lxcpath, const char *lxcna
 	int bytes, pipefd[2];
 	char *token, *saveptr = NULL;
 	char netdev_link[IFNAMSIZ];
-	char buffer[MAXPATHLEN] = {0};
+	char buffer[PATH_MAX] = {0};
 	size_t retlen;
 
 	if (netdev->type != LXC_NET_VETH) {
@@ -2102,7 +2118,7 @@ static int lxc_create_network_unpriv_exec(const char *lxcpath, const char *lxcna
 	if (child == 0) {
 		int ret;
 		size_t retlen;
-		char pidstr[LXC_NUMSTRLEN64];
+		char pidstr[INTTYPE_TO_STRLEN(pid_t)];
 
 		close(pipefd[0]);
 
@@ -2124,10 +2140,10 @@ static int lxc_create_network_unpriv_exec(const char *lxcpath, const char *lxcna
 			_exit(EXIT_FAILURE);
 		}
 
-		ret = snprintf(pidstr, LXC_NUMSTRLEN64, "%d", pid);
-		if (ret < 0 || ret >= LXC_NUMSTRLEN64)
+		ret = snprintf(pidstr, sizeof(pidstr), "%d", pid);
+		if (ret < 0 || ret >= sizeof(pidstr))
 			_exit(EXIT_FAILURE);
-		pidstr[LXC_NUMSTRLEN64 - 1] = '\0';
+		pidstr[sizeof(pidstr) - 1] = '\0';
 
 		INFO("Execing lxc-user-nic create %s %s %s veth %s %s", lxcpath,
 		     lxcname, pidstr, netdev_link,
@@ -2147,7 +2163,7 @@ static int lxc_create_network_unpriv_exec(const char *lxcpath, const char *lxcna
 	/* close the write-end of the pipe */
 	close(pipefd[1]);
 
-	bytes = lxc_read_nointr(pipefd[0], &buffer, MAXPATHLEN);
+	bytes = lxc_read_nointr(pipefd[0], &buffer, PATH_MAX);
 	if (bytes < 0) {
 		SYSERROR("Failed to read from pipe file descriptor");
 		close(pipefd[0]);
@@ -2241,7 +2257,7 @@ static int lxc_delete_network_unpriv_exec(const char *lxcpath, const char *lxcna
 	int bytes, ret;
 	pid_t child;
 	int pipefd[2];
-	char buffer[MAXPATHLEN] = {0};
+	char buffer[PATH_MAX] = {0};
 
 	if (netdev->type != LXC_NET_VETH) {
 		ERROR("Network type %d not support for unprivileged use", netdev->type);
@@ -2303,7 +2319,7 @@ static int lxc_delete_network_unpriv_exec(const char *lxcpath, const char *lxcna
 
 	close(pipefd[1]);
 
-	bytes = lxc_read_nointr(pipefd[0], &buffer, MAXPATHLEN);
+	bytes = lxc_read_nointr(pipefd[0], &buffer, PATH_MAX);
 	if (bytes < 0) {
 		SYSERROR("Failed to read from pipe file descriptor.");
 		close(pipefd[0]);
@@ -2329,15 +2345,15 @@ bool lxc_delete_network_unpriv(struct lxc_handler *handler)
 	struct lxc_list *network = &handler->conf->network;
 	/* strlen("/proc/") = 6
 	 * +
-	 * LXC_NUMSTRLEN64
+	 * INTTYPE_TO_STRLEN(pid_t)
 	 * +
 	 * strlen("/fd/") = 4
 	 * +
-	 * LXC_NUMSTRLEN64
+	 * INTTYPE_TO_STRLEN(int)
 	 * +
 	 * \0
 	 */
-	char netns_path[6 + LXC_NUMSTRLEN64 + 4 + LXC_NUMSTRLEN64 + 1];
+	char netns_path[6 + INTTYPE_TO_STRLEN(pid_t) + 4 + INTTYPE_TO_STRLEN(int) + 1];
 
 	*netns_path = '\0';
 
@@ -2405,7 +2421,7 @@ bool lxc_delete_network_unpriv(struct lxc_handler *handler)
 		     netdev->link);
 
 clear_ifindices:
-		/* We need to clear any ifindeces we recorded so liblxc won't
+		/* We need to clear any ifindices we recorded so liblxc won't
 		 * have cached stale data which would cause it to fail on reboot
 		 * we're we don't re-read the on-disk config file.
 		 */
@@ -2616,7 +2632,7 @@ bool lxc_delete_network_priv(struct lxc_handler *handler)
 			     hostveth, netdev->link);
 
 clear_ifindices:
-		/* We need to clear any ifindeces we recorded so liblxc won't
+		/* We need to clear any ifindices we recorded so liblxc won't
 		 * have cached stale data which would cause it to fail on reboot
 		 * we're we don't re-read the on-disk config file.
 		 */
@@ -3055,7 +3071,7 @@ int lxc_network_send_veth_names_to_child(struct lxc_handler *handler)
 		if (netdev->type != LXC_NET_VETH)
 			continue;
 
-		ret = send(data_sock, netdev->name, IFNAMSIZ, MSG_NOSIGNAL);
+		ret = lxc_send_nointr(data_sock, netdev->name, IFNAMSIZ, MSG_NOSIGNAL);
 		if (ret < 0)
 			return -1;
 		TRACE("Sent network device name \"%s\" to child", netdev->name);
@@ -3080,7 +3096,7 @@ int lxc_network_recv_veth_names_from_parent(struct lxc_handler *handler)
 		if (netdev->type != LXC_NET_VETH)
 			continue;
 
-		ret = recv(data_sock, netdev->name, IFNAMSIZ, 0);
+		ret = lxc_recv_nointr(data_sock, netdev->name, IFNAMSIZ, 0);
 		if (ret < 0)
 			return -1;
 		TRACE("Received network device name \"%s\" from parent", netdev->name);
@@ -3103,19 +3119,19 @@ int lxc_network_send_name_and_ifindex_to_parent(struct lxc_handler *handler)
 		struct lxc_netdev *netdev = iterator->elem;
 
 		/* Send network device name in the child's namespace to parent. */
-		ret = send(data_sock, netdev->name, IFNAMSIZ, MSG_NOSIGNAL);
+		ret = lxc_send_nointr(data_sock, netdev->name, IFNAMSIZ, MSG_NOSIGNAL);
 		if (ret < 0)
 			return -1;
 
 		/* Send network device ifindex in the child's namespace to
 		 * parent.
 		 */
-		ret = send(data_sock, &netdev->ifindex, sizeof(netdev->ifindex), MSG_NOSIGNAL);
+		ret = lxc_send_nointr(data_sock, &netdev->ifindex, sizeof(netdev->ifindex), MSG_NOSIGNAL);
 		if (ret < 0)
 			return -1;
 	}
 
-	TRACE("Sent network device names and ifindeces to parent");
+	TRACE("Sent network device names and ifindices to parent");
 	return 0;
 }
 
@@ -3135,14 +3151,14 @@ int lxc_network_recv_name_and_ifindex_from_child(struct lxc_handler *handler)
 		/* Receive network device name in the child's namespace to
 		 * parent.
 		 */
-		ret = recv(data_sock, netdev->name, IFNAMSIZ, 0);
+		ret = lxc_recv_nointr(data_sock, netdev->name, IFNAMSIZ, 0);
 		if (ret < 0)
 			return -1;
 
 		/* Receive network device ifindex in the child's namespace to
 		 * parent.
 		 */
-		ret = recv(data_sock, &netdev->ifindex, sizeof(netdev->ifindex), 0);
+		ret = lxc_recv_nointr(data_sock, &netdev->ifindex, sizeof(netdev->ifindex), 0);
 		if (ret < 0)
 			return -1;
 	}
@@ -3164,53 +3180,30 @@ void lxc_delete_network(struct lxc_handler *handler)
 		DEBUG("Deleted network devices");
 }
 
-int addattr(struct nlmsghdr *n, size_t maxlen, int type, const void *data, size_t alen)
-{
-	int len = RTA_LENGTH(alen);
-	struct rtattr *rta;
-
-	if (NLMSG_ALIGN(n->nlmsg_len) + RTA_ALIGN(len) > maxlen)
-		return -1;
-
-	rta = NLMSG_TAIL(n);
-	rta->rta_type = type;
-	rta->rta_len = len;
-	if (alen)
-		memcpy(RTA_DATA(rta), data, alen);
-	n->nlmsg_len = NLMSG_ALIGN(n->nlmsg_len) + RTA_ALIGN(len);
-
-	return 0;
-}
-
-/* Attributes of RTM_NEWNSID/RTM_GETNSID messages */
-enum {
-	__LXC_NETNSA_NONE,
-#define __LXC_NETNSA_NSID_NOT_ASSIGNED -1
-	__LXC_NETNSA_NSID,
-	__LXC_NETNSA_PID,
-	__LXC_NETNSA_FD,
-	__LXC_NETNSA_MAX,
-};
-
 int lxc_netns_set_nsid(int fd)
 {
-	ssize_t ret;
+	int ret;
 	char buf[NLMSG_ALIGN(sizeof(struct nlmsghdr)) +
 		 NLMSG_ALIGN(sizeof(struct rtgenmsg)) +
 		 NLMSG_ALIGN(1024)];
 	struct nl_handler nlh;
 	struct nlmsghdr *hdr;
 	struct rtgenmsg *msg;
-	__s32 ns_id = -1;
-	__u32 netns_fd = fd;
+	int saved_errno;
+	const __s32 ns_id = -1;
+	const __u32 netns_fd = fd;
 
 	ret = netlink_open(&nlh, NETLINK_ROUTE);
 	if (ret < 0)
-		return ret;
+		return -1;
 
 	memset(buf, 0, sizeof(buf));
+
+#pragma GCC diagnostic push
+#pragma GCC diagnostic ignored "-Wcast-align"
 	hdr = (struct nlmsghdr *)buf;
 	msg = (struct rtgenmsg *)NLMSG_DATA(hdr);
+#pragma GCC diagnostic pop
 
 	hdr->nlmsg_len = NLMSG_LENGTH(sizeof(*msg));
 	hdr->nlmsg_type = RTM_NEWNSID;
@@ -3219,13 +3212,109 @@ int lxc_netns_set_nsid(int fd)
 	hdr->nlmsg_seq = RTM_NEWNSID;
 	msg->rtgen_family = AF_UNSPEC;
 
-	addattr(hdr, 1024, __LXC_NETNSA_FD, &netns_fd, sizeof(netns_fd));
-	addattr(hdr, 1024, __LXC_NETNSA_NSID, &ns_id, sizeof(ns_id));
+	ret = addattr(hdr, 1024, __LXC_NETNSA_FD, &netns_fd, sizeof(netns_fd));
+	if (ret < 0)
+		goto on_error;
+
+	ret = addattr(hdr, 1024, __LXC_NETNSA_NSID, &ns_id, sizeof(ns_id));
+	if (ret < 0)
+		goto on_error;
 
 	ret = __netlink_transaction(&nlh, hdr, hdr);
+
+on_error:
+	saved_errno = errno;
 	netlink_close(&nlh);
+	errno = saved_errno;
+
+	return ret;
+}
+
+static int parse_rtattr(struct rtattr *tb[], int max, struct rtattr *rta, int len)
+{
+
+	memset(tb, 0, sizeof(struct rtattr *) * (max + 1));
+
+	while (RTA_OK(rta, len)) {
+		unsigned short type = rta->rta_type;
+
+		if ((type <= max) && (!tb[type]))
+			tb[type] = rta;
+
+#pragma GCC diagnostic push
+#pragma GCC diagnostic ignored "-Wcast-align"
+		rta = RTA_NEXT(rta, len);
+#pragma GCC diagnostic pop
+	}
+
+	return 0;
+}
+
+static inline __s32 rta_getattr_s32(const struct rtattr *rta)
+{
+	return *(__s32 *)RTA_DATA(rta);
+}
+
+#ifndef NETNS_RTA
+#define NETNS_RTA(r) \
+	((struct rtattr *)(((char *)(r)) + NLMSG_ALIGN(sizeof(struct rtgenmsg))))
+#endif
+
+int lxc_netns_get_nsid(int fd)
+{
+	int ret;
+	ssize_t len;
+	char buf[NLMSG_ALIGN(sizeof(struct nlmsghdr)) +
+		 NLMSG_ALIGN(sizeof(struct rtgenmsg)) +
+		 NLMSG_ALIGN(1024)];
+	struct rtattr *tb[__LXC_NETNSA_MAX + 1];
+	struct nl_handler nlh;
+	struct nlmsghdr *hdr;
+	struct rtgenmsg *msg;
+	int saved_errno;
+	__u32 netns_fd = fd;
+
+	ret = netlink_open(&nlh, NETLINK_ROUTE);
 	if (ret < 0)
 		return -1;
 
-	return 0;
+	memset(buf, 0, sizeof(buf));
+
+#pragma GCC diagnostic push
+#pragma GCC diagnostic ignored "-Wcast-align"
+	hdr = (struct nlmsghdr *)buf;
+	msg = (struct rtgenmsg *)NLMSG_DATA(hdr);
+#pragma GCC diagnostic pop
+
+	hdr->nlmsg_len = NLMSG_LENGTH(sizeof(*msg));
+	hdr->nlmsg_type = RTM_GETNSID;
+	hdr->nlmsg_flags = NLM_F_REQUEST | NLM_F_ACK;
+	hdr->nlmsg_pid = 0;
+	hdr->nlmsg_seq = RTM_GETNSID;
+	msg->rtgen_family = AF_UNSPEC;
+
+	ret = addattr(hdr, 1024, __LXC_NETNSA_FD, &netns_fd, sizeof(netns_fd));
+	if (ret == 0)
+		ret = __netlink_transaction(&nlh, hdr, hdr);
+
+	saved_errno = errno;
+	netlink_close(&nlh);
+	errno = saved_errno;
+	if (ret < 0)
+		return -1;
+
+	errno = EINVAL;
+	msg = NLMSG_DATA(hdr);
+	len = hdr->nlmsg_len - NLMSG_SPACE(sizeof(*msg));
+	if (len < 0)
+		return -1;
+
+#pragma GCC diagnostic push
+#pragma GCC diagnostic ignored "-Wcast-align"
+	parse_rtattr(tb, __LXC_NETNSA_MAX, NETNS_RTA(msg), len);
+	if (tb[__LXC_NETNSA_NSID])
+		return rta_getattr_s32(tb[__LXC_NETNSA_NSID]);
+#pragma GCC diagnostic pop
+
+	return -1;
 }
