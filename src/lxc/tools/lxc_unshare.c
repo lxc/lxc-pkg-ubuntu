@@ -21,26 +21,29 @@
  * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA
  */
 
-#define _GNU_SOURCE
+#ifndef _GNU_SOURCE
+#define _GNU_SOURCE 1
+#endif
 #include <errno.h>
 #include <fcntl.h>
 #include <getopt.h>
 #include <libgen.h>
+#include <netinet/in.h>
 #include <pwd.h>
 #include <sched.h>
 #include <signal.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
-#include <netinet/in.h>
-#include <unistd.h>
 #include <sys/eventfd.h>
 #include <sys/socket.h>
 #include <sys/types.h>
 #include <sys/wait.h>
+#include <unistd.h>
 
 #include "arguments.h"
 #include "caps.h"
+#include "config.h"
 #include "list.h"
 #include "log.h"
 #include "namespace.h"
@@ -105,7 +108,6 @@ Options :\n\
 	.log_priority = "ERROR",
 	.log_file     = "none",
 	.daemonize    = 0,
-	.pidfile      = NULL,
 };
 
 static int my_parser(struct lxc_arguments *args, int c, char *arg)
@@ -180,7 +182,7 @@ static int get_namespace_flags(char *namespaces)
 
 static bool lookup_user(const char *optarg, uid_t *uid)
 {
-	char name[MAXPATHLEN];
+	char name[PATH_MAX];
 	struct passwd pwent;
 	struct passwd *pwentp = NULL;
 	char *buf;
@@ -249,7 +251,7 @@ static void lxc_setup_fs(void)
 
 	/* if /dev has been populated by us, /dev/shm does not exist */
 	if (access("/dev/shm", F_OK))
-		(void)mkdir("/dev/shm", 0777);
+		(void)mkdir("/dev/shm", 0770);
 
 	/* if we can't mount /dev/shm, continue anyway */
 	(void)mount_fs("shmfs", "/dev/shm", "tmpfs");
@@ -257,7 +259,7 @@ static void lxc_setup_fs(void)
 	/* If we were able to mount /dev/shm, then /dev exists */
 	/* Sure, but it's read-only per config :) */
 	if (access("/dev/mqueue", F_OK))
-		(void)mkdir("/dev/mqueue", 0666);
+		(void)mkdir("/dev/mqueue", 0660);
 
 	/* continue even without posix message queue support */
 	(void)mount_fs("mqueue", "/dev/mqueue", "mqueue");
@@ -470,6 +472,6 @@ int main(int argc, char *argv[])
 		exit(EXIT_FAILURE);
 	}
 
-	/* Call exit() directly on this function because it retuns an exit code. */
+	/* Call exit() directly on this function because it returns an exit code. */
 	exit(EXIT_SUCCESS);
 }

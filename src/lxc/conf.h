@@ -23,22 +23,28 @@
 #ifndef __LXC_CONF_H
 #define __LXC_CONF_H
 
-#include "config.h"
-
-#include <stdio.h>
+#ifndef _GNU_SOURCE
+#define _GNU_SOURCE 1
+#endif
+#include <linux/magic.h>
 #include <net/if.h>
 #include <netinet/in.h>
+#include <stdbool.h>
+#include <stdio.h>
 #include <sys/param.h>
 #include <sys/types.h>
+#include <sys/vfs.h>
+
+#include "compiler.h"
+#include "config.h"
+#include "list.h"
+#include "ringbuf.h"
+#include "start.h"
+#include "terminal.h"
+
 #if HAVE_SYS_RESOURCE_H
 #include <sys/resource.h>
 #endif
-#include <stdbool.h>
-
-#include "list.h"
-#include "ringbuf.h"
-#include "start.h" /* for lxc_handler */
-#include "terminal.h"
 
 #if HAVE_SCMP_FILTER_CTX
 typedef void * scmp_filter_ctx;
@@ -153,7 +159,7 @@ struct lxc_tty_info {
  * @bev_type   : optional backing store type
  * @options    : mount options
  * @mountflags : the portion of @options that are flags
- * @data       : the porition of @options that are not flags
+ * @data       : the portion of @options that are not flags
  */
 struct lxc_rootfs {
 	char *path;
@@ -290,13 +296,13 @@ struct lxc_conf {
 	int stopsignal; /* signal used to hard stop container */
 	char *rcfile;	/* Copy of the top level rcfile we read */
 
-	/* Logfile and logleve can be set in a container config file. Those
-	 * function as defaults. The defaults can be overriden by command line.
+	/* Logfile and loglevel can be set in a container config file. Those
+	 * function as defaults. The defaults can be overridden by command line.
 	 * However we don't want the command line specified values to be saved
 	 * on c->save_config(). So we store the config file specified values
 	 * here. */
-	char *logfile; /* the logfile as specifed in config */
-	int loglevel; /* loglevel as specifed in config (if any) */
+	char *logfile; /* the logfile as specified in config */
+	int loglevel; /* loglevel as specified in config (if any) */
 	int logfd;
 
 	unsigned int start_auto;
@@ -376,7 +382,7 @@ extern int write_id_mapping(enum idtype idtype, pid_t pid, const char *buf,
 			    size_t buf_size);
 
 #ifdef HAVE_TLS
-extern __thread struct lxc_conf *current_config;
+extern thread_local struct lxc_conf *current_config;
 #else
 extern struct lxc_conf *current_config;
 #endif

@@ -16,7 +16,9 @@
  * 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
  */
 
-#define _GNU_SOURCE
+#ifndef _GNU_SOURCE
+#define _GNU_SOURCE 1
+#endif
 #include <dirent.h>
 #include <getopt.h>
 #include <limits.h>
@@ -26,16 +28,17 @@
 #include <stdlib.h>
 #include <string.h>
 #include <strings.h>
-#include <termios.h>
-#include <unistd.h>
 #include <sys/ioctl.h>
 #include <sys/socket.h>
 #include <sys/stat.h>
 #include <sys/types.h>
+#include <termios.h>
+#include <unistd.h>
 
 #include <lxc/lxccontainer.h>
 
 #include "arguments.h"
+#include "config.h"
 #include "log.h"
 #include "utils.h"
 
@@ -460,7 +463,7 @@ static int ls_get(struct ls **m, size_t *size, const struct lxc_arguments *args,
 		if (!l->name)
 			goto put_and_next;
 
-		/* Do not record stuff the user did not explictly request. */
+		/* Do not record stuff the user did not explicitly request. */
 		if (args->ls_fancy) {
 			/* Maybe we should even consider the name sensitive and
 			 * hide it when you're not allowed to control the

@@ -21,41 +21,27 @@
  * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA
  */
 
-#define _GNU_SOURCE
-#include <stdio.h>
-#include <string.h>
+#ifndef _GNU_SOURCE
+#define _GNU_SOURCE 1
+#endif
 #include <libgen.h>
-#include <unistd.h>
-#include <stdlib.h>
 #include <signal.h>
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
 #include <sys/types.h>
+#include <unistd.h>
 
 #include <lxc/lxccontainer.h>
 
 #include "arguments.h"
+#include "config.h"
 #include "log.h"
 
 lxc_log_define(lxc_wait, lxc);
 
-static int my_checker(const struct lxc_arguments *args)
-{
-	if (!args->states) {
-		ERROR("Missing state option to wait for");
-		return -1;
-	}
-
-	return 0;
-}
-
-static int my_parser(struct lxc_arguments *args, int c, char *arg)
-{
-	switch (c) {
-	case 's': args->states = optarg; break;
-	case 't': args->timeout = atol(optarg); break;
-	}
-
-	return 0;
-}
+static int my_parser(struct lxc_arguments *args, int c, char *arg);
+static int my_checker(const struct lxc_arguments *args);
 
 static const struct option my_longopts[] = {
 	{"state", required_argument, 0, 's'},
@@ -64,8 +50,8 @@ static const struct option my_longopts[] = {
 };
 
 static struct lxc_arguments my_args = {
-	.progname = "lxc-wait",
-	.help     = "\
+	.progname     = "lxc-wait",
+	.help         = "\
 --name=NAME --state=STATE\n\
 \n\
 lxc-wait waits for NAME container state to reach STATE\n\
@@ -77,11 +63,37 @@ Options :\n\
                     ABORTING, FREEZING, FROZEN, THAWED\n\
   -t, --timeout=TMO Seconds to wait for state changes\n\
   --rcfile=FILE     Load configuration file FILE\n",
-	.options  = my_longopts,
-	.parser   = my_parser,
-	.checker  = my_checker,
-	.timeout = -1,
+	.options      = my_longopts,
+	.parser       = my_parser,
+	.checker      = my_checker,
+	.log_priority = "ERROR",
+	.log_file     = "none",
+	.timeout      = -1,
 };
+
+static int my_parser(struct lxc_arguments *args, int c, char *arg)
+{
+	switch (c) {
+	case 's':
+		args->states = optarg;
+		break;
+	case 't':
+		args->timeout = atol(optarg);
+		break;
+	}
+
+	return 0;
+}
+
+static int my_checker(const struct lxc_arguments *args)
+{
+	if (!args->states) {
+		ERROR("Missing state option to wait for");
+		return -1;
+	}
+
+	return 0;
+}
 
 int main(int argc, char *argv[])
 {
@@ -91,18 +103,15 @@ int main(int argc, char *argv[])
 	if (lxc_arguments_parse(&my_args, argc, argv))
 		exit(EXIT_FAILURE);
 
-	/* Only create log if explicitly instructed */
-	if (my_args.log_file || my_args.log_priority) {
-		log.name = my_args.name;
-		log.file = my_args.log_file;
-		log.level = my_args.log_priority;
-		log.prefix = my_args.progname;
-		log.quiet = my_args.quiet;
-		log.lxcpath = my_args.lxcpath[0];
+	log.name = my_args.name;
+	log.file = my_args.log_file;
+	log.level = my_args.log_priority;
+	log.prefix = my_args.progname;
+	log.quiet = my_args.quiet;
+	log.lxcpath = my_args.lxcpath[0];
 
-		if (lxc_log_init(&log))
-			exit(EXIT_FAILURE);
-	}
+	if (lxc_log_init(&log))
+		exit(EXIT_FAILURE);
 
 	c = lxc_container_new(my_args.name, my_args.lxcpath[0]);
 	if (!c)

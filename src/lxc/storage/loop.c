@@ -21,7 +21,9 @@
  * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA
  */
 
-#define _GNU_SOURCE
+#ifndef _GNU_SOURCE
+#define _GNU_SOURCE 1
+#endif
 #define __STDC_FORMAT_MACROS
 #include <dirent.h>
 #include <errno.h>
@@ -30,10 +32,11 @@
 #include <stdint.h>
 #include <stdlib.h>
 #include <string.h>
-#include <unistd.h>
 #include <sys/stat.h>
 #include <sys/types.h>
+#include <unistd.h>
 
+#include "config.h"
 #include "log.h"
 #include "loop.h"
 #include "storage.h"
@@ -234,7 +237,7 @@ bool loop_detect(const char *path)
 int loop_mount(struct lxc_storage *bdev)
 {
 	int ret, loopfd;
-	char loname[MAXPATHLEN];
+	char loname[PATH_MAX];
 	const char *src;
 
 	if (strcmp(bdev->type, "loop"))
@@ -297,7 +300,8 @@ int loop_umount(struct lxc_storage *bdev)
 static int do_loop_create(const char *path, uint64_t size, const char *fstype)
 {
 	int fd, ret;
-	char cmd_output[MAXPATHLEN];
+	off_t ret_size;
+	char cmd_output[PATH_MAX];
 	const char *cmd_args[2] = {fstype, path};
 
 	/* create the new loopback file */
@@ -307,8 +311,8 @@ static int do_loop_create(const char *path, uint64_t size, const char *fstype)
 		return -1;
 	}
 
-	ret = lseek(fd, size, SEEK_SET);
-	if (ret < 0) {
+	ret_size = lseek(fd, size, SEEK_SET);
+	if (ret_size < 0) {
 		SYSERROR("Failed to seek to set new loop file size for loop "
 			 "file \"%s\"", path);
 		close(fd);

@@ -24,12 +24,11 @@
 #ifndef __LXC_TERMINAL_H
 #define __LXC_TERMINAL_H
 
-#include "config.h"
-
 #include <signal.h>
 #include <stdio.h>
 
 #include "list.h"
+#include "macro.h"
 #include "ringbuf.h"
 
 struct lxc_container;
@@ -38,7 +37,7 @@ struct lxc_epoll_descr;
 
 struct lxc_terminal_info {
 	/* the path name of the slave side */
-	char name[MAXPATHLEN];
+	char name[PATH_MAX];
 
 	/* the file descriptor of the master */
 	int master;
@@ -91,7 +90,7 @@ struct lxc_terminal {
 	struct lxc_terminal_info proxy;
 	struct lxc_epoll_descr *descr;
 	char *path;
-	char name[MAXPATHLEN];
+	char name[PATH_MAX];
 	struct termios *tios;
 	struct lxc_terminal_state *tty_state;
 
@@ -251,7 +250,7 @@ extern void lxc_terminal_winsz(int srcfd, int dstfd);
  * Must be called with process_lock held to protect the lxc_ttys list, or from
  * a non-threaded context.
  *
- * Note that the signal handler isn't installed as a classic asychronous
+ * Note that the signal handler isn't installed as a classic asynchronous
  * handler, rather signalfd(2) is used so that we can handle the signal when
  * we're ready for it. This avoids deadlocks since a signal handler (ie
  * lxc_terminal_sigwinch()) would need to take the thread mutex to prevent

@@ -21,9 +21,9 @@
  * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA
  */
 
-#define _GNU_SOURCE
-#include "config.h"
-
+#ifndef _GNU_SOURCE
+#define _GNU_SOURCE 1
+#endif
 #include <errno.h>
 #include <limits.h>
 #include <fcntl.h>
@@ -32,37 +32,14 @@
 #include <sys/prctl.h>
 
 #include "caps.h"
+#include "config.h"
+#include "file_utils.h"
 #include "log.h"
 #include "macro.h"
 
 lxc_log_define(caps, lxc);
 
 #if HAVE_LIBCAP
-
-#ifndef PR_CAPBSET_READ
-#define PR_CAPBSET_READ 23
-#endif
-
-/* Control the ambient capability set */
-#ifndef PR_CAP_AMBIENT
-#define PR_CAP_AMBIENT 47
-#endif
-
-#ifndef PR_CAP_AMBIENT_IS_SET
-#define PR_CAP_AMBIENT_IS_SET 1
-#endif
-
-#ifndef PR_CAP_AMBIENT_RAISE
-#define PR_CAP_AMBIENT_RAISE 2
-#endif
-
-#ifndef PR_CAP_AMBIENT_LOWER
-#define PR_CAP_AMBIENT_LOWER 3
-#endif
-
-#ifndef PR_CAP_AMBIENT_CLEAR_ALL
-#define PR_CAP_AMBIENT_CLEAR_ALL 4
-#endif
 
 int lxc_caps_down(void)
 {
@@ -321,15 +298,10 @@ static long int _real_caps_last_cap(void)
 	if (fd >= 0) {
 		ssize_t n;
 		char *ptr;
-		char buf[LXC_NUMSTRLEN64 + 1];
+		char buf[INTTYPE_TO_STRLEN(int)] = {0};
 
-	again:
-		n = read(fd, buf, LXC_NUMSTRLEN64);
-		if (n < 0 && errno == EINTR) {
-			goto again;
-		} else if (n >= 0) {
-			buf[n] = '\0';
-
+		n = lxc_read_nointr(fd, buf, STRARRAYLEN(buf));
+		if (n >= 0) {
 			errno = 0;
 			result = strtol(buf, &ptr, 10);
 			if (!ptr || (*ptr != '\0' && *ptr != '\n') || errno != 0)
