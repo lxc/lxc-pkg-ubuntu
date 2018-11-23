@@ -24,9 +24,9 @@
 #define __LXC_MONITOR_H
 
 #include <limits.h>
+#include <poll.h>
 #include <sys/param.h>
 #include <sys/un.h>
-#include <poll.h>
 
 typedef enum {
 	lxc_msg_state,
@@ -78,7 +78,7 @@ extern int lxc_monitor_read_timeout(int fd, struct lxc_msg *msg, int timeout);
 /*
  * Blocking read from multiple monitors for the next container state
  * change with timeout
- * @fds     : struct pollfd descripting the fds to use
+ * @fds     : struct pollfd describing the fds to use
  * @nfds    : the number of entries in fds
  * @msg     : the variable which will be filled with the state
  * @timeout : the timeout in seconds to wait for a state change

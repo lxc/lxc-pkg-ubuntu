@@ -26,26 +26,22 @@
 /* Properly support loop devices on 32bit systems. */
 #define _FILE_OFFSET_BITS 64
 
-#include "config.h"
-
 #include <errno.h>
-#include <stdarg.h>
-#include <stdio.h>
-#include <stdbool.h>
-#include <unistd.h>
 #include <linux/loop.h>
-#include <linux/magic.h>
 #include <linux/types.h>
+#include <stdarg.h>
+#include <stdbool.h>
+#include <stdio.h>
 #include <sys/syscall.h>
 #include <sys/types.h>
 #include <sys/vfs.h>
+#include <unistd.h>
 
-#ifdef HAVE_LINUX_MEMFD_H
-#include <linux/memfd.h>
-#endif
-
+#include "file_utils.h"
 #include "initutils.h"
 #include "macro.h"
+#include "raw_syscalls.h"
+#include "string_utils.h"
 
 /* returns 1 on success, 0 if there were any failures */
 extern int lxc_rmdir_onedev(const char *path, const char *exclude);
@@ -58,189 +54,6 @@ extern char *get_rundir(void);
 #ifdef HAVE_FGETLN
 #include <../include/getline.h>
 #endif
-#endif
-
-#if !defined(__NR_setns) && !defined(__NR_set_ns)
-	#if defined(__x86_64__)
-		#define __NR_setns 308
-	#elif defined(__i386__)
-		#define __NR_setns 346
-	#elif defined(__arm__)
-		#define __NR_setns 375
-	#elif defined(__aarch64__)
-		#define __NR_setns 375
-	#elif defined(__powerpc__)
-		#define __NR_setns 350
-	#elif defined(__s390__)
-		#define __NR_setns 339
-	#endif
-#endif
-
-/* Define setns() if missing from the C library */
-#ifndef HAVE_SETNS
-static inline int setns(int fd, int nstype)
-{
-#ifdef __NR_setns
-	return syscall(__NR_setns, fd, nstype);
-#elif defined(__NR_set_ns)
-	return syscall(__NR_set_ns, fd, nstype);
-#else
-	errno = ENOSYS;
-	return -1;
-#endif
-}
-#endif
-
-/* Define sethostname() if missing from the C library */
-#ifndef HAVE_SETHOSTNAME
-static inline int sethostname(const char *name, size_t len)
-{
-#ifdef __NR_sethostname
-return syscall(__NR_sethostname, name, len);
-#else
-errno = ENOSYS;
-return -1;
-#endif
-}
-#endif
-
-/* Define unshare() if missing from the C library */
-#ifndef HAVE_UNSHARE
-static inline int unshare(int flags)
-{
-#ifdef __NR_unshare
-	return syscall(__NR_unshare, flags);
-#else
-	errno = ENOSYS;
-	return -1;
-#endif
-}
-#else
-extern int unshare(int);
-#endif
-
-/* Define signalfd() if missing from the C library */
-#ifdef HAVE_SYS_SIGNALFD_H
-#  include <sys/signalfd.h>
-#else
-/* assume kernel headers are too old */
-#include <stdint.h>
-struct signalfd_siginfo
-{
-	uint32_t ssi_signo;
-	int32_t ssi_errno;
-	int32_t ssi_code;
-	uint32_t ssi_pid;
-	uint32_t ssi_uid;
-	int32_t ssi_fd;
-	uint32_t ssi_tid;
-	uint32_t ssi_band;
-	uint32_t ssi_overrun;
-	uint32_t ssi_trapno;
-	int32_t ssi_status;
-	int32_t ssi_int;
-	uint64_t ssi_ptr;
-	uint64_t ssi_utime;
-	uint64_t ssi_stime;
-	uint64_t ssi_addr;
-	uint8_t __pad[48];
-};
-
-#  ifndef __NR_signalfd4
-/* assume kernel headers are too old */
-#    if __i386__
-#      define __NR_signalfd4 327
-#    elif __x86_64__
-#      define __NR_signalfd4 289
-#    elif __powerpc__
-#      define __NR_signalfd4 313
-#    elif __s390x__
-#      define __NR_signalfd4 322
-#    elif __arm__
-#      define __NR_signalfd4 355
-#    elif __mips__ && _MIPS_SIM == _ABIO32
-#      define __NR_signalfd4 4324
-#    elif __mips__ && _MIPS_SIM == _ABI64
-#      define __NR_signalfd4 5283
-#    elif __mips__ && _MIPS_SIM == _ABIN32
-#      define __NR_signalfd4 6287
-#    endif
-#endif
-
-#  ifndef __NR_signalfd
-/* assume kernel headers are too old */
-#    if __i386__
-#      define __NR_signalfd 321
-#    elif __x86_64__
-#      define __NR_signalfd 282
-#    elif __powerpc__
-#      define __NR_signalfd 305
-#    elif __s390x__
-#      define __NR_signalfd 316
-#    elif __arm__
-#      define __NR_signalfd 349
-#    elif __mips__ && _MIPS_SIM == _ABIO32
-#      define __NR_signalfd 4317
-#    elif __mips__ && _MIPS_SIM == _ABI64
-#      define __NR_signalfd 5276
-#    elif __mips__ && _MIPS_SIM == _ABIN32
-#      define __NR_signalfd 6280
-#    endif
-#endif
-
-static inline int signalfd(int fd, const sigset_t *mask, int flags)
-{
-	int retval;
-
-	retval = syscall (__NR_signalfd4, fd, mask, _NSIG / 8, flags);
-	if (errno == ENOSYS && flags == 0)
-		retval = syscall (__NR_signalfd, fd, mask, _NSIG / 8);
-	return retval;
-}
-#endif
-
-#ifndef HAVE_MEMFD_CREATE
-static inline int memfd_create(const char *name, unsigned int flags) {
-	#ifndef __NR_memfd_create
-		#if defined __i386__
-			#define __NR_memfd_create 356
-		#elif defined __x86_64__
-			#define __NR_memfd_create 319
-		#elif defined __arm__
-			#define __NR_memfd_create 385
-		#elif defined __aarch64__
-			#define __NR_memfd_create 279
-		#elif defined __s390__
-			#define __NR_memfd_create 350
-		#elif defined __powerpc__
-			#define __NR_memfd_create 360
-		#elif defined __sparc__
-			#define __NR_memfd_create 348
-		#elif defined __blackfin__
-			#define __NR_memfd_create 390
-		#elif defined __ia64__
-			#define __NR_memfd_create 1340
-		#elif defined _MIPS_SIM
-			#if _MIPS_SIM == _MIPS_SIM_ABI32
-				#define __NR_memfd_create 4354
-			#endif
-			#if _MIPS_SIM == _MIPS_SIM_NABI32
-				#define __NR_memfd_create 6318
-			#endif
-			#if _MIPS_SIM == _MIPS_SIM_ABI64
-				#define __NR_memfd_create 5314
-			#endif
-		#endif
-	#endif
-	#ifdef __NR_memfd_create
-	return syscall(__NR_memfd_create, name, flags);
-	#else
-	errno = ENOSYS;
-	return -1;
-	#endif
-}
-#else
-extern int memfd_create(const char *name, unsigned int flags);
 #endif
 
 static inline int lxc_set_cloexec(int fd)
@@ -281,69 +94,10 @@ extern int lxc_pclose(struct lxc_popen_FILE *fp);
 extern int wait_for_pid(pid_t pid);
 extern int lxc_wait_for_pid_status(pid_t pid);
 
-/* send and receive buffers completely */
-extern ssize_t lxc_write_nointr(int fd, const void *buf, size_t count);
-extern ssize_t lxc_read_nointr(int fd, void *buf, size_t count);
-extern ssize_t lxc_read_nointr_expect(int fd, void *buf, size_t count,
-				      const void *expected_buf);
 #if HAVE_LIBGNUTLS
 #define SHA_DIGEST_LENGTH 20
 extern int sha1sum_file(char *fnam, unsigned char *md_value);
 #endif
-
-/* read and write whole files */
-extern int lxc_write_to_file(const char *filename, const void *buf,
-			     size_t count, bool add_newline, mode_t mode);
-extern int lxc_read_from_file(const char *filename, void *buf, size_t count);
-
-/* convert variadic argument lists to arrays (for execl type argument lists) */
-extern char** lxc_va_arg_list_to_argv(va_list ap, size_t skip, int do_strdup);
-extern const char** lxc_va_arg_list_to_argv_const(va_list ap, size_t skip);
-
-/* Some simple string functions; if they return pointers, they are allocated
- * buffers.
- */
-extern char *lxc_string_replace(const char *needle, const char *replacement,
-				const char *haystack);
-extern bool lxc_string_in_array(const char *needle, const char **haystack);
-extern char *lxc_string_join(const char *sep, const char **parts,
-			     bool use_as_prefix);
-/* Normalize and split path: Leading and trailing / are removed, multiple
- * / are compactified, .. and . are resolved (.. on the top level is considered
- * identical to .).
- * Examples:
- *     /            ->   { NULL }
- *     foo/../bar   ->   { bar, NULL }
- *     ../../       ->   { NULL }
- *     ./bar/baz/.. ->   { bar, NULL }
- *     foo//bar     ->   { foo, bar, NULL }
- */
-extern char **lxc_normalize_path(const char *path);
-/* remove multiple slashes from the path, e.g. ///foo//bar -> /foo/bar */
-extern char *lxc_deslashify(const char *path);
-extern char *lxc_append_paths(const char *first, const char *second);
-/* Note: the following two functions use strtok(), so they will never
- *       consider an empty element, even if two delimiters are next to
- *       each other.
- */
-extern bool lxc_string_in_list(const char *needle, const char *haystack,
-			       char sep);
-extern char **lxc_string_split(const char *string, char sep);
-extern char **lxc_string_split_and_trim(const char *string, char sep);
-extern char **lxc_string_split_quoted(char *string);
-/* Append string to NULL-terminated string array. */
-extern int lxc_append_string(char ***list, char *entry);
-
-/* some simple array manipulation utilities */
-typedef void (*lxc_free_fn)(void *);
-typedef void *(*lxc_dup_fn)(void *);
-extern int lxc_grow_array(void ***array, size_t *capacity, size_t new_size,
-			  size_t capacity_increment);
-extern void lxc_free_array(void **array, lxc_free_fn element_free_fn);
-extern size_t lxc_array_len(void **array);
-
-extern void **lxc_append_null_to_array(void **array, size_t count);
-extern void remove_trailing_newlines(char *l);
 
 /* initialize rand with urandom */
 extern int randseed(bool);
@@ -386,6 +140,10 @@ inline static bool am_host_unpriv(void)
  * parse /proc/self/uid_map to find what @orig maps to
  */
 extern uid_t get_ns_uid(uid_t orig);
+/*
+ * parse /proc/self/gid_map to find what @orig maps to
+ */
+extern gid_t get_ns_gid(gid_t orig);
 
 extern bool dir_exists(const char *path);
 
@@ -395,12 +153,9 @@ extern uint64_t fnv_64a_buf(void *buf, size_t len, uint64_t hval);
 extern int detect_shared_rootfs(void);
 extern bool detect_ramfs_rootfs(void);
 extern char *on_path(const char *cmd, const char *rootfs);
-extern bool file_exists(const char *f);
 extern bool cgns_supported(void);
 extern char *choose_init(const char *rootfs);
-extern int print_to_file(const char *file, const char *content);
 extern bool switch_to_ns(pid_t pid, const char *ns);
-extern int is_dir(const char *path);
 extern char *get_template_path(const char *t);
 extern int safe_mount(const char *src, const char *dest, const char *fstype,
 		      unsigned long flags, const void *data,
@@ -409,25 +164,16 @@ extern int lxc_mount_proc_if_needed(const char *rootfs);
 extern int open_devnull(void);
 extern int set_stdfds(int fd);
 extern int null_stdfds(void);
-extern int lxc_count_file_lines(const char *fn);
 extern int lxc_preserve_ns(const int pid, const char *ns);
 
 /* Check whether a signal is blocked by a process. */
 extern bool task_blocks_signal(pid_t pid, int signal);
 
-/* Helper functions to parse numbers. */
-extern int lxc_safe_uint(const char *numstr, unsigned int *converted);
-extern int lxc_safe_int(const char *numstr, int *converted);
-extern int lxc_safe_long(const char *numstr, long int *converted);
-extern int lxc_safe_long_long(const char *numstr, long long int *converted);
-extern int lxc_safe_ulong(const char *numstr, unsigned long *converted);
-extern int lxc_safe_uint64(const char *numstr, uint64_t *converted, int base);
-/* Handles B, kb, MB, GB. Detects overflows and reports -ERANGE. */
-extern int parse_byte_size_string(const char *s, int64_t *converted);
-
-/* Switch to a new uid and gid. */
-extern int lxc_switch_uid_gid(uid_t uid, gid_t gid);
-extern int lxc_setgroups(int size, gid_t list[]);
+/* Switch to a new uid and gid.
+ * If LXC_INVALID_{G,U}ID is passed then the set{g,u}id() will not be called.
+ */
+extern bool lxc_switch_uid_gid(uid_t uid, gid_t gid);
+extern bool lxc_setgroups(int size, gid_t list[]);
 
 /* Find an unused loop device and associate it with source. */
 extern int lxc_prepare_loop_dev(const char *source, char *loop_dev, int flags);
@@ -464,16 +210,10 @@ __attribute__((sentinel)) extern char *must_append_path(char *first, ...);
 /* return copy of string @entry;  do not fail. */
 extern char *must_copy_string(const char *entry);
 
-/* Re-alllocate a pointer, do not fail */
+/* Re-allocate a pointer, do not fail */
 extern void *must_realloc(void *orig, size_t sz);
 
-/* __typeof__ should be safe to use with all compilers. */
-typedef __typeof__(((struct statfs *)NULL)->f_type) fs_type_magic;
-extern bool has_fs_type(const char *path, fs_type_magic magic_val);
-extern bool fhas_fs_type(int fd, fs_type_magic magic_val);
-extern bool is_fs_type(const struct statfs *fs, fs_type_magic magic_val);
 extern bool lxc_nic_exists(char *nic);
-extern int lxc_make_tmpfile(char *template, bool rm);
 
 static inline uint64_t lxc_getpagesize(void)
 {
@@ -496,18 +236,10 @@ static inline uint64_t lxc_getpagesize(void)
  */
 extern uint64_t lxc_find_next_power2(uint64_t n);
 
-static inline pid_t lxc_raw_gettid(void)
-{
-#ifdef SYS_gettid
-	return syscall(SYS_gettid);
-#else
-	return lxc_raw_getpid();
-#endif
-}
-
 /* Set a signal the child process will receive after the parent has died. */
-extern int lxc_set_death_signal(int signal);
+extern int lxc_set_death_signal(int signal, pid_t parent);
 extern int fd_cloexec(int fd, bool cloexec);
 extern int recursive_destroy(char *dirname);
+extern int lxc_setup_keyring(void);
 
 #endif /* __LXC_UTILS_H */

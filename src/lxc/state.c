@@ -21,19 +21,21 @@
  * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA
  */
 
-#define _GNU_SOURCE
+#ifndef _GNU_SOURCE
+#define _GNU_SOURCE 1
+#endif
 #include <errno.h>
 #include <fcntl.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
-#include <time.h>
-#include <unistd.h>
 #include <sys/file.h>
 #include <sys/param.h>
 #include <sys/socket.h>
 #include <sys/stat.h>
 #include <sys/types.h>
+#include <time.h>
+#include <unistd.h>
 
 #include "cgroup.h"
 #include "commands.h"
@@ -131,11 +133,6 @@ int lxc_wait(const char *lxcname, const char *states, int timeout,
 			return -1;
 
 		(void)nanosleep(&onesec, NULL);
-	}
-
-	if (state < 0) {
-		ERROR("Failed to retrieve state from monitor");
-		return -1;
 	}
 
 	TRACE("Retrieved state of container %s", lxc_state2str(state));

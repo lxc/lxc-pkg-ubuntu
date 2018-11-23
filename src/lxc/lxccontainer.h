@@ -22,11 +22,12 @@
 
 #ifndef __LXC_CONTAINER_H
 #define __LXC_CONTAINER_H
+
 #include <malloc.h>
 #include <semaphore.h>
 #include <stdbool.h>
-#include <stdlib.h>
 #include <stdint.h>
+#include <stdlib.h>
 
 #include <lxc/attach_options.h>
 
@@ -293,7 +294,7 @@ struct lxc_container {
 	bool (*destroy)(struct lxc_container *c);
 
 	/*!
-	 * \brief Save configuaration to a file.
+	 * \brief Save configuration to a file.
 	 *
 	 * \param c Container.
 	 * \param alt_file Full path to file to save configuration in.
@@ -818,7 +819,7 @@ struct lxc_container {
 	/*!
 	 * \brief An API call to perform various migration operations
 	 *
-	 * \param cmd One of the MIGRATE_ contstants.
+	 * \param cmd One of the MIGRATE_ constants.
 	 * \param opts A migrate_opts struct filled with relevant options.
 	 * \param size The size of the migrate_opts struct, i.e. sizeof(struct migrate_opts).
 	 *

@@ -21,7 +21,9 @@
  * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA
  */
 
-#define _GNU_SOURCE
+#ifndef _GNU_SOURCE
+#define _GNU_SOURCE 1
+#endif
 #include <errno.h>
 #include <fcntl.h>
 #include <grp.h>
@@ -29,15 +31,16 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
-#include <unistd.h>
 #include <sys/ioctl.h>
 #include <sys/stat.h>
-#include <sys/wait.h>
 #include <sys/types.h>
 #include <sys/vfs.h>
+#include <sys/wait.h>
+#include <unistd.h>
 
-#include "log.h"
 #include "btrfs.h"
+#include "config.h"
+#include "log.h"
 #include "rsync.h"
 #include "storage.h"
 #include "utils.h"
@@ -363,6 +366,7 @@ int btrfs_snapshot(const char *orig, const char *new)
 		goto out;
 
 	memset(&args, 0, sizeof(args));
+	args.fd = fd;
 	retlen = strlcpy(args.name, newname, BTRFS_SUBVOL_NAME_MAX);
 	if (retlen >= BTRFS_SUBVOL_NAME_MAX)
 		goto out;
@@ -458,7 +462,7 @@ bool btrfs_create_clone(struct lxc_conf *conf, struct lxc_storage *orig,
 {
 	int ret;
 	struct rsync_data data = {0, 0};
-	char cmd_output[MAXPATHLEN] = {0};
+	char cmd_output[PATH_MAX] = {0};
 
 	ret = rmdir(new->dest);
 	if (ret < 0 && errno != ENOENT)
@@ -827,7 +831,7 @@ static int btrfs_recursive_destroy(const char *path)
 
 			/*
 			 * A backref key with the name and dirid of the parent
-			 * comes followed by the reoot ref key which has the
+			 * comes followed by the root ref key which has the
 			 * name of the child subvol in question.
 			 */
 			if (sh.objectid != root_id && sh.type == BTRFS_ROOT_BACKREF_KEY) {
