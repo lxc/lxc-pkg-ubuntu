@@ -21,39 +21,47 @@
  * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA
  */
 
-#define _GNU_SOURCE
+#ifndef _GNU_SOURCE
+#define _GNU_SOURCE 1
+#endif
 #define __STDC_FORMAT_MACROS /* Required for PRIu64 to work. */
-#include <stdint.h>
-#include <stdio.h>
 #include <errno.h>
+#include <fcntl.h>
 #include <inttypes.h>
 #include <limits.h>
-#include <unistd.h>
-#include <sys/types.h>
-#include <sys/stat.h>
-#include <string.h>
 #include <pthread.h>
-
-#include <syslog.h>
+#include <stdint.h>
 #include <stdio.h>
-
-#include <fcntl.h>
 #include <stdlib.h>
+#include <string.h>
+#include <sys/stat.h>
+#include <sys/types.h>
+#include <syslog.h>
+#include <unistd.h>
 
-#include "log.h"
 #include "caps.h"
-#include "utils.h"
+#include "config.h"
+#include "file_utils.h"
+#include "log.h"
 #include "lxccontainer.h"
+#include "utils.h"
 
 #ifndef HAVE_STRLCPY
 #include "include/strlcpy.h"
+#endif
+
+#if HAVE_DLOG
+#include <dlog.h>
+
+#undef LOG_TAG
+#define LOG_TAG "LXC"
 #endif
 
 /* We're logging in seconds and nanoseconds. Assuming that the underlying
  * datatype is currently at maximum a 64bit integer, we have a date string that
  * is of maximum length (2^64 - 1) * 2 = (21 + 21) = 42.
  */
-#define LXC_LOG_TIME_SIZE ((LXC_NUMSTRLEN64)*2)
+#define LXC_LOG_TIME_SIZE ((INTTYPE_TO_STRLEN(uint64_t)) * 2)
 
 int lxc_log_fd = -1;
 static int syslog_enable = 0;
@@ -94,36 +102,57 @@ static int lxc_log_priority_to_syslog(int priority)
 	return LOG_NOTICE;
 }
 
-/*---------------------------------------------------------------------------*/
-static int log_append_syslog(const struct lxc_log_appender *appender,
-			     struct lxc_log_event *event)
+static const char *lxc_log_get_container_name()
+{
+#ifndef NO_LXC_CONF
+	if (current_config && !log_vmname)
+		return current_config->name;
+#endif
+
+	return log_vmname;
+}
+
+static char *lxc_log_get_va_msg(struct lxc_log_event *event)
 {
 	char *msg;
 	int rc, len;
 	va_list args;
-	const char *log_container_name = log_vmname;
 
-#ifndef NO_LXC_CONF
-	if (current_config && !log_container_name)
-		log_container_name = current_config->name;
-#endif
-
-	if (!syslog_enable)
-		return 0;
+	if (!event)
+		return NULL;
 
 	va_copy(args, *event->vap);
 	len = vsnprintf(NULL, 0, event->fmt, args) + 1;
 	va_end(args);
 
 	msg = malloc(len * sizeof(char));
-	if (msg == NULL)
-		return 0;
+	if (!msg)
+		return NULL;
 
 	rc = vsnprintf(msg, len, event->fmt, *event->vap);
 	if (rc == -1 || rc >= len) {
 		free(msg);
-		return 0;
+		return NULL;
 	}
+
+	return msg;
+}
+
+/*---------------------------------------------------------------------------*/
+static int log_append_syslog(const struct lxc_log_appender *appender,
+			     struct lxc_log_event *event)
+{
+	char *msg;
+	const char *log_container_name;
+
+	if (!syslog_enable)
+		return 0;
+
+	log_container_name = lxc_log_get_container_name();
+
+	msg = lxc_log_get_va_msg(event);
+	if (!msg)
+		return 0;
 
 	syslog(lxc_log_priority_to_syslog(event->priority),
 	       "%s%s %s - %s:%s:%d - %s" ,
@@ -147,12 +176,7 @@ static int log_append_stderr(const struct lxc_log_appender *appender,
 	if (event->priority < LXC_LOG_LEVEL_ERROR)
 		return 0;
 
-	log_container_name = log_vmname;
-
-#ifndef NO_LXC_CONF
-	if (current_config && !log_container_name)
-		log_container_name = current_config->name;
-#endif
+	log_container_name = lxc_log_get_container_name();
 
 	fprintf(stderr, "%s: %s%s", log_prefix,
 	        log_container_name ? log_container_name : "",
@@ -170,7 +194,7 @@ static int lxc_unix_epoch_to_utc(char *buf, size_t bufsize, const struct timespe
 {
 	int64_t epoch_to_days, z, era, doe, yoe, year, doy, mp, day, month,
 	    d_in_s, hours, h_in_s, minutes, seconds;
-	char nanosec[LXC_NUMSTRLEN64];
+	char nanosec[INTTYPE_TO_STRLEN(int64_t)];
 	int ret;
 
 	/* See https://howardhinnant.github.io/date_algorithms.html for an
@@ -235,20 +259,20 @@ static int lxc_unix_epoch_to_utc(char *buf, size_t bufsize, const struct timespe
 	/* Transform hours to seconds. */
 	h_in_s = hours * 3600;
 
-	/* Calculate minutes by substracting the seconds for all days in the
+	/* Calculate minutes by subtracting the seconds for all days in the
 	 * epoch and for all hours in the epoch and divide by the number of
 	 * minutes in an hour.
 	 */
 	minutes = (time->tv_sec - d_in_s - h_in_s) / 60;
 
-	/* Calculate the seconds by substracting the seconds for all days in the
+	/* Calculate the seconds by subtracting the seconds for all days in the
 	 * epoch, hours in the epoch and minutes in the epoch.
 	 */
 	seconds = (time->tv_sec - d_in_s - h_in_s - (minutes * 60));
 
 	/* Make string from nanoseconds. */
-	ret = snprintf(nanosec, LXC_NUMSTRLEN64, "%"PRId64, (int64_t)time->tv_nsec);
-	if (ret < 0 || ret >= LXC_NUMSTRLEN64)
+	ret = snprintf(nanosec, sizeof(nanosec), "%"PRId64, (int64_t)time->tv_nsec);
+	if (ret < 0 || ret >= sizeof(nanosec))
 		return -1;
 
 	/* Create final timestamp for the log and shorten nanoseconds to 3
@@ -273,7 +297,7 @@ static int lxc_unix_epoch_to_utc(char *buf, size_t bufsize, const struct timespe
  * think you are, you __will__ cause trouble using them.
  * (As a short example how this can cause trouble: LXD uses forkstart to fork
  * off a new process that runs the container. At the same time the go runtime
- * LXD relies on does its own multi-threading thing which we can't controll. The
+ * LXD relies on does its own multi-threading thing which we can't control. The
  * fork()ing + threading then seems to mess with the locking states in these
  * time functions causing deadlocks.)
  * The current solution is to be good old unix people and use the Epoch as our
@@ -292,17 +316,15 @@ static int log_append_logfile(const struct lxc_log_appender *appender,
 	int n;
 	ssize_t ret;
 	int fd_to_use = -1;
-	const char *log_container_name = log_vmname;
+	const char *log_container_name;
 
 #ifndef NO_LXC_CONF
-	if (current_config) {
+	if (current_config)
 		if (!lxc_log_use_global_fd)
 			fd_to_use = current_config->logfd;
-
-		if (!log_container_name)
-			log_container_name = current_config->name;
-	}
 #endif
+
+	log_container_name = lxc_log_get_container_name();
 
 	if (fd_to_use == -1)
 		fd_to_use = lxc_log_fd;
@@ -311,7 +333,7 @@ static int log_append_logfile(const struct lxc_log_appender *appender,
 		return 0;
 
 	if (lxc_unix_epoch_to_utc(date_time, LXC_LOG_TIME_SIZE, &event->timestamp) < 0)
-		return 0;
+		return -1;
 
 	n = snprintf(buffer, sizeof(buffer),
 		     "%s%s%s %s %-8s %s - %s:%s:%d - ",
@@ -326,7 +348,7 @@ static int log_append_logfile(const struct lxc_log_appender *appender,
 	if (n < 0)
 		return n;
 
-	if ((size_t)n < (sizeof(buffer) - 1)) {
+	if ((size_t)n < STRARRAYLEN(buffer)) {
 		ret = vsnprintf(buffer + n, sizeof(buffer) - n, event->fmt, *event->vap);
 		if (ret < 0)
 			return 0;
@@ -335,17 +357,63 @@ static int log_append_logfile(const struct lxc_log_appender *appender,
 	}
 
 	if ((size_t)n >= sizeof(buffer))
-		n = sizeof(buffer) - 1;
+		n = STRARRAYLEN(buffer);
 
 	buffer[n] = '\n';
 
-again:
-	ret = write(fd_to_use, buffer, n + 1);
-	if (ret < 0 && errno == EINTR)
-		goto again;
-
-	return ret;
+	return lxc_write_nointr(fd_to_use, buffer, n + 1);
 }
+
+#if HAVE_DLOG
+static int log_append_dlog(const struct lxc_log_appender *appender,
+			     struct lxc_log_event *event)
+{
+	char *msg = lxc_log_get_va_msg(event);
+	const char *log_container_name = lxc_log_get_container_name();
+
+	switch (event->priority) {
+	case LXC_LOG_LEVEL_TRACE:
+	case LXC_LOG_LEVEL_DEBUG:
+		print_log(DLOG_DEBUG, LOG_TAG, "%s: %s(%d) > [%s] %s",
+		          event->locinfo->file, event->locinfo->func, event->locinfo->line,
+		          log_container_name ? log_container_name : "-",
+		          msg ? msg : "-");
+		break;
+	case LXC_LOG_LEVEL_INFO:
+		print_log(DLOG_INFO, LOG_TAG, "%s: %s(%d) > [%s] %s",
+		          event->locinfo->file, event->locinfo->func, event->locinfo->line,
+		          log_container_name ? log_container_name : "-",
+		          msg ? msg : "-");
+		break;
+	case LXC_LOG_LEVEL_NOTICE:
+	case LXC_LOG_LEVEL_WARN:
+		print_log(DLOG_WARN, LOG_TAG, "%s: %s(%d) > [%s] %s",
+		          event->locinfo->file, event->locinfo->func, event->locinfo->line,
+		          log_container_name ? log_container_name : "-",
+		          msg ? msg : "-");
+		break;
+	case LXC_LOG_LEVEL_ERROR:
+		print_log(DLOG_ERROR, LOG_TAG, "%s: %s(%d) > [%s] %s",
+		          event->locinfo->file, event->locinfo->func, event->locinfo->line,
+		          log_container_name ? log_container_name : "-",
+		          msg ? msg : "-");
+		break;
+	case LXC_LOG_LEVEL_CRIT:
+	case LXC_LOG_LEVEL_ALERT:
+	case LXC_LOG_LEVEL_FATAL:
+		print_log(DLOG_FATAL, LOG_TAG, "%s: %s(%d) > [%s] %s",
+		          event->locinfo->file, event->locinfo->func, event->locinfo->line,
+		          log_container_name ? log_container_name : "-",
+		          msg ? msg : "-");
+		break;
+	default:
+		break;
+	}
+
+	free(msg);
+	return 0;
+}
+#endif
 
 static struct lxc_log_appender log_appender_syslog = {
 	.name		= "syslog",
@@ -365,6 +433,14 @@ static struct lxc_log_appender log_appender_logfile = {
 	.next		= NULL,
 };
 
+#if HAVE_DLOG
+static struct lxc_log_appender log_appender_dlog = {
+	.name		= "dlog",
+	.append		= log_append_dlog,
+	.next		= NULL,
+};
+#endif
+
 static struct lxc_log_category log_root = {
 	.name		= "root",
 	.priority	= LXC_LOG_LEVEL_ERROR,
@@ -372,12 +448,21 @@ static struct lxc_log_category log_root = {
 	.parent		= NULL,
 };
 
+#if HAVE_DLOG
+struct lxc_log_category lxc_log_category_lxc = {
+	.name		= "lxc",
+	.priority	= LXC_LOG_LEVEL_TRACE,
+	.appender	= &log_appender_dlog,
+	.parent		= &log_root
+};
+#else
 struct lxc_log_category lxc_log_category_lxc = {
 	.name		= "lxc",
 	.priority	= LXC_LOG_LEVEL_ERROR,
 	.appender	= &log_appender_logfile,
 	.parent		= &log_root
 };
+#endif
 
 /*---------------------------------------------------------------------------*/
 static int build_dir(const char *name)
@@ -399,7 +484,7 @@ static int build_dir(const char *name)
 
 		ret = lxc_unpriv(mkdir(n, 0755));
 		if (ret && errno != EEXIST) {
-			SYSERROR("Failed to create directory %s", n);
+			SYSERROR("Failed to create directory \"%s\"", n);
 			free(n);
 			return -1;
 		}
@@ -417,7 +502,7 @@ static int log_open(const char *name)
 	int fd;
 	int newfd;
 
-	fd = lxc_unpriv(open(name, O_CREAT | O_WRONLY | O_APPEND | O_CLOEXEC, 0666));
+	fd = lxc_unpriv(open(name, O_CREAT | O_WRONLY | O_APPEND | O_CLOEXEC, 0660));
 	if (fd < 0) {
 		SYSERROR("Failed to open log file \"%s\"", name);
 		return -1;
@@ -551,7 +636,7 @@ static int _lxc_log_set_file(const char *name, const char *lxcpath, int create_d
 /*
  * lxc_log_init:
  * Called from lxc front-end programs (like lxc-create, lxc-start) to
- * initalize the log defaults.
+ * initialize the log defaults.
  */
 int lxc_log_init(struct lxc_log *log)
 {
@@ -746,7 +831,7 @@ inline const char *lxc_log_get_file(void)
 
 inline void lxc_log_set_prefix(const char *prefix)
 {
-	/* We don't care if thte prefix is truncated. */
+	/* We don't care if the prefix is truncated. */
 	(void)strlcpy(log_prefix, prefix, sizeof(log_prefix));
 }
 

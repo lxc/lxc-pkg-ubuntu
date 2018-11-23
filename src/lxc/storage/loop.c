@@ -21,7 +21,9 @@
  * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA
  */
 
-#define _GNU_SOURCE
+#ifndef _GNU_SOURCE
+#define _GNU_SOURCE 1
+#endif
 #define __STDC_FORMAT_MACROS
 #include <dirent.h>
 #include <errno.h>
@@ -30,10 +32,11 @@
 #include <stdint.h>
 #include <stdlib.h>
 #include <string.h>
-#include <unistd.h>
 #include <sys/stat.h>
 #include <sys/types.h>
+#include <unistd.h>
 
+#include "config.h"
 #include "log.h"
 #include "loop.h"
 #include "storage.h"
@@ -234,7 +237,7 @@ bool loop_detect(const char *path)
 int loop_mount(struct lxc_storage *bdev)
 {
 	int ret, loopfd;
-	char loname[MAXPATHLEN];
+	char loname[PATH_MAX];
 	const char *src;
 
 	if (strcmp(bdev->type, "loop"))
@@ -298,7 +301,7 @@ static int do_loop_create(const char *path, uint64_t size, const char *fstype)
 {
 	int fd, ret;
 	off_t ret_size;
-	char cmd_output[MAXPATHLEN];
+	char cmd_output[PATH_MAX];
 	const char *cmd_args[2] = {fstype, path};
 
 	/* create the new loopback file */

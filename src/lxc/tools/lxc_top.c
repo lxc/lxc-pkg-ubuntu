@@ -21,7 +21,9 @@
  * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA
  */
 
-#define _GNU_SOURCE
+#ifndef _GNU_SOURCE
+#define _GNU_SOURCE 1
+#endif
 #define __STDC_FORMAT_MACROS /* Required for PRIu64 to work. */
 #include <errno.h>
 #include <inttypes.h>
@@ -31,15 +33,16 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
-#include <termios.h>
-#include <unistd.h>
 #include <sys/epoll.h>
 #include <sys/ioctl.h>
 #include <sys/time.h>
+#include <termios.h>
+#include <unistd.h>
 
 #include <lxc/lxccontainer.h>
 
 #include "arguments.h"
+#include "config.h"
 #include "mainloop.h"
 #include "utils.h"
 
@@ -70,7 +73,7 @@ struct stats {
 	struct blkio_stats io_serviced;
 };
 
-struct ct {
+struct container_stats {
 	struct lxc_container *c;
 	struct stats *stats;
 };
@@ -81,7 +84,7 @@ static int delay = 3;
 static char sort_by = 'n';
 static int sort_reverse = 0;
 static struct termios oldtios;
-static struct ct *ct = NULL;
+static struct container_stats *container_stats = NULL;
 static int ct_alloc_cnt = 0;
 
 static int my_parser(struct lxc_arguments *args, int c, char *arg)
@@ -333,7 +336,7 @@ out:
 	return;
 }
 
-static void stats_get(struct lxc_container *c, struct ct *ct, struct stats *total)
+static void stats_get(struct lxc_container *c, struct container_stats *ct, struct stats *total)
 {
 	ct->c = c;
 	ct->stats->mem_used      = stat_get_int(c, "memory.usage_in_bytes");
@@ -445,8 +448,8 @@ static void stats_print(const char *name, const struct stats *stats,
 
 static int cmp_name(const void *sct1, const void *sct2)
 {
-	const struct ct *ct1 = sct1;
-	const struct ct *ct2 = sct2;
+	const struct container_stats *ct1 = sct1;
+	const struct container_stats *ct2 = sct2;
 
 	if (sort_reverse)
 		return strncmp(ct2->c->name, ct1->c->name, strlen(ct2->c->name));
@@ -456,8 +459,8 @@ static int cmp_name(const void *sct1, const void *sct2)
 
 static int cmp_cpuuse(const void *sct1, const void *sct2)
 {
-	const struct ct *ct1 = sct1;
-	const struct ct *ct2 = sct2;
+	const struct container_stats *ct1 = sct1;
+	const struct container_stats *ct2 = sct2;
 
 	if (sort_reverse)
 		return ct2->stats->cpu_use_nanos < ct1->stats->cpu_use_nanos;
@@ -467,8 +470,8 @@ static int cmp_cpuuse(const void *sct1, const void *sct2)
 
 static int cmp_blkio(const void *sct1, const void *sct2)
 {
-	const struct ct *ct1 = sct1;
-	const struct ct *ct2 = sct2;
+	const struct container_stats *ct1 = sct1;
+	const struct container_stats *ct2 = sct2;
 
 	if (sort_reverse)
 		return ct2->stats->io_service_bytes.total < ct1->stats->io_service_bytes.total;
@@ -478,8 +481,8 @@ static int cmp_blkio(const void *sct1, const void *sct2)
 
 static int cmp_memory(const void *sct1, const void *sct2)
 {
-	const struct ct *ct1 = sct1;
-	const struct ct *ct2 = sct2;
+	const struct container_stats *ct1 = sct1;
+	const struct container_stats *ct2 = sct2;
 
 	if (sort_reverse)
 		return ct2->stats->mem_used < ct1->stats->mem_used;
@@ -489,8 +492,8 @@ static int cmp_memory(const void *sct1, const void *sct2)
 
 static int cmp_memorysw(const void *sct1, const void *sct2)
 {
-	const struct ct *ct1 = sct1;
-	const struct ct *ct2 = sct2;
+	const struct container_stats *ct1 = sct1;
+	const struct container_stats *ct2 = sct2;
 
 	if (sort_reverse)
 		return ct2->stats->memsw_used < ct1->stats->memsw_used;
@@ -500,8 +503,8 @@ static int cmp_memorysw(const void *sct1, const void *sct2)
 
 static int cmp_kmemory(const void *sct1, const void *sct2)
 {
-	const struct ct *ct1 = sct1;
-	const struct ct *ct2 = sct2;
+	const struct container_stats *ct1 = sct1;
+	const struct container_stats *ct2 = sct2;
 
 	if (sort_reverse)
 		return ct2->stats->kmem_used < ct1->stats->kmem_used;
@@ -523,7 +526,7 @@ static void ct_sort(int active)
 	case 'k': cmp_func = cmp_kmemory; break;
 	}
 
-	qsort(ct, active, sizeof(*ct), (int (*)(const void *,const void *))cmp_func);
+	qsort(container_stats, active, sizeof(*container_stats), (int (*)(const void *,const void *))cmp_func);
 }
 
 static void ct_free(void)
@@ -531,13 +534,13 @@ static void ct_free(void)
 	int i;
 
 	for (i = 0; i < ct_alloc_cnt; i++) {
-		if (ct[i].c) {
-			lxc_container_put(ct[i].c);
-			ct[i].c = NULL;
+		if (container_stats[i].c) {
+			lxc_container_put(container_stats[i].c);
+			container_stats[i].c = NULL;
 		}
 
-		free(ct[i].stats);
-		ct[i].stats = NULL;
+		free(container_stats[i].stats);
+		container_stats[i].stats = NULL;
 	}
 }
 
@@ -548,15 +551,15 @@ static void ct_realloc(int active_cnt)
 
 		ct_free();
 
-		ct = realloc(ct, sizeof(*ct) * active_cnt);
-		if (!ct) {
+		container_stats = realloc(container_stats, sizeof(*container_stats) * active_cnt);
+		if (!container_stats) {
 			fprintf(stderr, "Cannot alloc mem\n");
 			exit(EXIT_FAILURE);
 		}
 
 		for (i = 0; i < active_cnt; i++) {
-			ct[i].stats = malloc(sizeof(*ct[0].stats));
-			if (!ct[i].stats) {
+			container_stats[i].stats = malloc(sizeof(*container_stats[0].stats));
+			if (!container_stats[i].stats) {
 				fprintf(stderr, "Cannot alloc mem\n");
 				exit(EXIT_FAILURE);
 			}
@@ -637,7 +640,7 @@ int main(int argc, char *argv[])
 		memset(&total, 0, sizeof(total));
 
 		for (i = 0; i < active_cnt; i++)
-			stats_get(active[i], &ct[i], &total);
+			stats_get(active[i], &container_stats[i], &total);
 
 		ct_sort(active_cnt);
 
@@ -647,7 +650,7 @@ int main(int argc, char *argv[])
 		}
 
 		for (i = 0; i < active_cnt && i < ct_print_cnt; i++) {
-			stats_print(ct[i].c->name, ct[i].stats, &total);
+			stats_print(container_stats[i].c->name, container_stats[i].stats, &total);
 			printf("\n");
 		}
 
@@ -658,8 +661,8 @@ int main(int argc, char *argv[])
 		fflush(stdout);
 
 		for (i = 0; i < active_cnt; i++) {
-			lxc_container_put(ct[i].c);
-			ct[i].c = NULL;
+			lxc_container_put(container_stats[i].c);
+			container_stats[i].c = NULL;
 		}
 
 		in_char = '\0';

@@ -21,12 +21,17 @@
  * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA
  */
 
+#ifndef _GNU_SOURCE
+#define _GNU_SOURCE 1
+#endif
 #include <stdlib.h>
-#include <unistd.h>
+#include <string.h>
 #include <sys/types.h>
+#include <unistd.h>
 
 #include "cgroup.h"
 #include "conf.h"
+#include "config.h"
 #include "initutils.h"
 #include "log.h"
 #include "start.h"
@@ -84,8 +89,8 @@ void cgroup_exit(struct cgroup_ops *ops)
 		free((*it)->controllers);
 
 		free((*it)->mountpoint);
-		free((*it)->base_cgroup);
-		free((*it)->fullcgpath);
+		free((*it)->container_base_path);
+		free((*it)->container_full_path);
 		free(*it);
 	}
 	free(ops->hierarchies);

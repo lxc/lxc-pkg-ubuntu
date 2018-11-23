@@ -33,10 +33,14 @@
  * See COPYING file for details.
  */
 
+#ifndef _GNU_SOURCE
+#define _GNU_SOURCE 1
+#endif
 #include <ctype.h>
 #include <dirent.h>
 #include <errno.h>
 #include <fcntl.h>
+#include <linux/unistd.h>
 #include <pwd.h>
 #include <stdarg.h>
 #include <stdbool.h>
@@ -44,21 +48,22 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
-#include <syslog.h>
-#include <unistd.h>
-#include <linux/unistd.h>
 #include <sys/mount.h>
 #include <sys/param.h>
 #include <sys/stat.h>
 #include <sys/types.h>
 #include <sys/vfs.h>
+#include <syslog.h>
+#include <unistd.h>
+
+#include "config.h"
+#include "file_utils.h"
+#include "macro.h"
+#include "string_utils.h"
 
 #define PAM_SM_SESSION
 #include <security/_pam_macros.h>
 #include <security/pam_modules.h>
-
-#include "macro.h"
-#include "utils.h"
 
 #ifndef HAVE_STRLCPY
 #include "include/strlcpy.h"
@@ -115,14 +120,12 @@ static inline bool is_set(unsigned bit, uint32_t *bitarr)
 static bool is_lxcfs(const char *line);
 static bool is_cgv1(char *line);
 static bool is_cgv2(char *line);
-static void *must_alloc(size_t sz);
 static void must_add_to_list(char ***clist, char *entry);
 static void must_append_controller(char **klist, char **nlist, char ***clist,
 				   char *entry);
 static void must_append_string(char ***list, char *entry);
 static void mysyslog(int err, const char *format, ...) __attribute__((sentinel));
 static char *read_file(char *fnam);
-static int read_from_file(const char *filename, void* buf, size_t count);
 static int recursive_rmdir(char *dirname);
 static inline void set_bit(unsigned bit, uint32_t *bitarr)
 {
@@ -132,9 +135,6 @@ static bool string_in_list(char **list, const char *entry);
 static char *string_join(const char *sep, const char **parts, bool use_as_prefix);
 static void trim(char *s);
 static bool write_int(char *path, int v);
-static ssize_t write_nointr(int fd, const void* buf, size_t count);
-static int write_to_file(const char *filename, const void *buf, size_t count,
-			 bool add_newline);
 
 /* cgroupfs prototypes. */
 static bool cg_belongs_to_uid_gid(const char *path, uid_t uid, gid_t gid);
@@ -388,12 +388,6 @@ static void trim(char *s)
 		s[--len] = '\0';
 }
 
-/* Allocate pointer; do not fail. */
-static void *must_alloc(size_t sz)
-{
-	return must_realloc(NULL, sz);
-}
-
 /* Make allocated copy of string. End of string is taken to be '\n'. */
 static char *copy_to_eol(char *s)
 {
@@ -405,7 +399,7 @@ static char *copy_to_eol(char *s)
 		return NULL;
 
 	len = newline - s;
-	sret = must_alloc(len + 1);
+	sret = must_realloc(NULL, len + 1);
 	memcpy(sret, s, len);
 	sret[len] = '\0';
 
@@ -603,7 +597,7 @@ static char *get_mountpoint(char *line)
 		*p2 = '\0';
 
 	len = strlen(p);
-	sret = must_alloc(len + 1);
+	sret = must_realloc(NULL, len + 1);
 	memcpy(sret, p, len);
 	sret[len] = '\0';
 
@@ -775,7 +769,7 @@ static char *cgv1_must_prefix_named(char *entry)
 	size_t len;
 
 	len = strlen(entry);
-	s = must_alloc(len + 6);
+	s = must_realloc(NULL, len + 6);
 
 	ret = snprintf(s, len + 6, "name=%s", entry);
 	if (ret < 0 || (size_t)ret >= (len + 6)) {
@@ -937,7 +931,7 @@ static void cgv1_add_controller(char **clist, char *mountpoint, char *base_cgrou
 	struct cgv1_hierarchy *new;
 	int newentry;
 
-	new = must_alloc(sizeof(*new));
+	new = must_realloc(NULL, sizeof(*new));
 
 	new->controllers = clist;
 	new->mountpoint = mountpoint;
@@ -964,7 +958,7 @@ static void cgv2_add_controller(char **clist, char *mountpoint, char *base_cgrou
 	struct cgv2_hierarchy *new;
 	int newentry;
 
-	new = must_alloc(sizeof(*new));
+	new = must_realloc(NULL, sizeof(*new));
 
 	new->controllers = clist;
 	new->mountpoint = mountpoint;
@@ -1277,7 +1271,7 @@ static inline int cg_get_version_of_mntpt(const char *path)
 }
 
 /* Detect and store information about the cgroupfs v2 hierarchy. Currently only
- * deals with the empty v2 hierachy as we do not retrieve enabled controllers.
+ * deals with the empty v2 hierarchy as we do not retrieve enabled controllers.
  */
 static bool cgv2_init(uid_t uid, gid_t gid)
 {
@@ -1734,49 +1728,6 @@ static ssize_t cg_get_max_cpus(char *cpulist)
 	return cpus;
 }
 
-static ssize_t write_nointr(int fd, const void* buf, size_t count)
-{
-	ssize_t ret;
-
-again:
-	ret = write(fd, buf, count);
-	if (ret < 0 && errno == EINTR)
-		goto again;
-
-	return ret;
-}
-
-static int write_to_file(const char *filename, const void* buf, size_t count, bool add_newline)
-{
-	int fd, saved_errno;
-	ssize_t ret;
-
-	fd = open(filename, O_WRONLY | O_TRUNC | O_CREAT | O_CLOEXEC, 0666);
-	if (fd < 0)
-		return -1;
-
-	ret = write_nointr(fd, buf, count);
-	if (ret < 0)
-		goto out_error;
-	if ((size_t)ret != count)
-		goto out_error;
-
-	if (add_newline) {
-		ret = write_nointr(fd, "\n", 1);
-		if (ret != 1)
-			goto out_error;
-	}
-
-	close(fd);
-	return 0;
-
-out_error:
-	saved_errno = errno;
-	close(fd);
-	errno = saved_errno;
-	return -1;
-}
-
 #define __ISOL_CPUS "/sys/devices/system/cpu/isolated"
 static bool cg_filter_and_set_cpus(char *path, bool am_initialized)
 {
@@ -1901,7 +1852,7 @@ copy_parent:
 	free(fpath);
 
 	fpath = must_make_path(path, "cpuset.cpus", NULL);
-	ret = write_to_file(fpath, cpulist, strlen(cpulist), false);
+	ret = lxc_write_to_file(fpath, cpulist, strlen(cpulist), false, 0660);
 	if (ret < 0) {
 		pam_cgfs_debug("Could not write cpu list to: %s\n", fpath);
 		goto on_error;
@@ -1925,37 +1876,6 @@ on_error:
 	return bret;
 }
 
-int read_from_file(const char *filename, void* buf, size_t count)
-{
-	int fd = -1, saved_errno;
-	ssize_t ret;
-
-	fd = open(filename, O_RDONLY | O_CLOEXEC);
-	if (fd < 0)
-		return -1;
-
-	if (!buf || !count) {
-		char buf2[100];
-		size_t count2 = 0;
-
-		while ((ret = read(fd, buf2, 100)) > 0)
-			count2 += ret;
-		if (ret >= 0)
-			ret = count2;
-	} else {
-		memset(buf, 0, count);
-		ret = read(fd, buf, count);
-	}
-
-	if (ret < 0)
-		pam_cgfs_debug("read %s: %s", filename, strerror(errno));
-
-	saved_errno = errno;
-	close(fd);
-	errno = saved_errno;
-	return ret;
-}
-
 /* Copy contents of parent(@path)/@file to @path/@file */
 static bool cg_copy_parent_file(char *path, char *file)
 {
@@ -1973,19 +1893,23 @@ static bool cg_copy_parent_file(char *path, char *file)
 	*lastslash = '\0';
 
 	fpath = must_make_path(path, file, NULL);
-	len = read_from_file(fpath, NULL, 0);
-	if (len <= 0)
+	len = lxc_read_from_file(fpath, NULL, 0);
+	if (len <= 0) {
+		pam_cgfs_debug("Failed to read %s: %s", fpath, strerror(errno));
 		goto bad;
+	}
 
-	value = must_alloc(len + 1);
-	if (read_from_file(fpath, value, len) != len)
+	value = must_realloc(NULL, len + 1);
+	if (lxc_read_from_file(fpath, value, len) != len) {
+		pam_cgfs_debug("Failed to read %s: %s", fpath, strerror(errno));
 		goto bad;
+	}
 	free(fpath);
 
 	*lastslash = oldv;
 
 	fpath = must_make_path(path, file, NULL);
-	ret = write_to_file(fpath, value, len, false);
+	ret = lxc_write_to_file(fpath, value, len, false, 0660);
 	if (ret < 0)
 		pam_cgfs_debug("Unable to write %s to %s", value, fpath);
 
@@ -2014,8 +1938,8 @@ static bool cgv1_handle_root_cpuset_hierarchy(struct cgv1_hierarchy *h)
 
 	clonechildrenpath = must_make_path(h->mountpoint, "cgroup.clone_children", NULL);
 
-	if (read_from_file(clonechildrenpath, &v, 1) < 0) {
-		pam_cgfs_debug("Failed to read '%s'", clonechildrenpath);
+	if (lxc_read_from_file(clonechildrenpath, &v, 1) < 0) {
+		pam_cgfs_debug("Failed to read %s: %s", clonechildrenpath, strerror(errno));
 		free(clonechildrenpath);
 		return false;
 	}
@@ -2025,7 +1949,7 @@ static bool cgv1_handle_root_cpuset_hierarchy(struct cgv1_hierarchy *h)
 		return true;
 	}
 
-	if (write_to_file(clonechildrenpath, "1", 1, false) < 0) {
+	if (lxc_write_to_file(clonechildrenpath, "1", 1, false, 0660) < 0) {
 		/* Set clone_children so children inherit our settings */
 		pam_cgfs_debug("Failed to write 1 to %s", clonechildrenpath);
 		free(clonechildrenpath);
@@ -2073,8 +1997,8 @@ static bool cgv1_handle_cpuset_hierarchy(struct cgv1_hierarchy *h,
 		return true;
 	}
 
-	if (read_from_file(clonechildrenpath, &v, 1) < 0) {
-		pam_cgfs_debug("Failed to read '%s'", clonechildrenpath);
+	if (lxc_read_from_file(clonechildrenpath, &v, 1) < 0) {
+		pam_cgfs_debug("Failed to read %s: %s", clonechildrenpath, strerror(errno));
 		free(clonechildrenpath);
 		free(cgpath);
 		return false;
@@ -2104,7 +2028,7 @@ static bool cgv1_handle_cpuset_hierarchy(struct cgv1_hierarchy *h,
 	}
 	free(cgpath);
 
-	if (write_to_file(clonechildrenpath, "1", 1, false) < 0) {
+	if (lxc_write_to_file(clonechildrenpath, "1", 1, false, 0660) < 0) {
 		/* Set clone_children so children inherit our settings */
 		pam_cgfs_debug("Failed to write 1 to %s", clonechildrenpath);
 		free(clonechildrenpath);
@@ -2404,13 +2328,13 @@ static int handle_login(const char *user, uid_t uid, gid_t gid)
 {
 	int idx = 0, ret;
 	bool existed;
-	char cg[MAXPATHLEN];
+	char cg[PATH_MAX];
 
 	cg_escape();
 
 	while (idx >= 0) {
-		ret = snprintf(cg, MAXPATHLEN, "/user/%s/%d", user, idx);
-		if (ret < 0 || ret >= MAXPATHLEN) {
+		ret = snprintf(cg, PATH_MAX, "/user/%s/%d", user, idx);
+		if (ret < 0 || ret >= PATH_MAX) {
 			mysyslog(LOG_ERR, "Username too long\n", NULL);
 			return PAM_SESSION_ERR;
 		}

@@ -21,16 +21,18 @@
  * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA
  */
 
-#define _GNU_SOURCE
+#ifndef _GNU_SOURCE
+#define _GNU_SOURCE 1
+#endif
 #define __STDC_FORMAT_MACROS
 #include <inttypes.h>
 #include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
-#include <unistd.h>
 #include <sys/sysmacros.h>
 #include <sys/wait.h>
+#include <unistd.h>
 
 #include "config.h"
 #include "log.h"
@@ -73,11 +75,11 @@ static int lvm_create_exec_wrapper(void *data)
 
 	(void)setenv("LVM_SUPPRESS_FD_WARNINGS", "1", 1);
 	if (args->thinpool)
-		execlp("lvcreate", "lvcreate", "--thinpool", args->thinpool,
+		execlp("lvcreate", "lvcreate", "-qq", "--thinpool", args->thinpool,
 		       "-V", args->size, args->vg, "-n", args->lv,
 		       (char *)NULL);
 	else
-		execlp("lvcreate", "lvcreate", "-L", args->size, args->vg, "-n",
+		execlp("lvcreate", "lvcreate", "-qq", "-L", args->size, args->vg, "-n",
 		       args->lv, (char *)NULL);
 
 	return -1;
@@ -109,7 +111,7 @@ static int do_lvm_create(const char *path, uint64_t size, const char *thinpool)
 {
 	int len, ret;
 	char *pathdup, *vg, *lv;
-	char cmd_output[MAXPATHLEN];
+	char cmd_output[PATH_MAX];
 	char sz[24];
 	char *tp = NULL;
 	struct lvcreate_args cmd_args = {0};
@@ -199,7 +201,7 @@ bool lvm_detect(const char *path)
 	int fd;
 	ssize_t ret;
 	struct stat statbuf;
-	char devp[MAXPATHLEN], buf[4];
+	char devp[PATH_MAX], buf[4];
 
 	if (!strncmp(path, "lvm:", 4))
 		return true;
@@ -211,9 +213,9 @@ bool lvm_detect(const char *path)
 	if (!S_ISBLK(statbuf.st_mode))
 		return false;
 
-	ret = snprintf(devp, MAXPATHLEN, "/sys/dev/block/%d:%d/dm/uuid",
+	ret = snprintf(devp, PATH_MAX, "/sys/dev/block/%d:%d/dm/uuid",
 		       major(statbuf.st_rdev), minor(statbuf.st_rdev));
-	if (ret < 0 || ret >= MAXPATHLEN) {
+	if (ret < 0 || ret >= PATH_MAX) {
 		ERROR("Failed to create string");
 		return false;
 	}
@@ -333,7 +335,7 @@ static int lvm_snapshot(struct lxc_storage *orig, const char *path, uint64_t siz
 	char *lv, *pathdup;
 	char sz[24];
 	char fstype[100];
-	char cmd_output[MAXPATHLEN];
+	char cmd_output[PATH_MAX];
 	char repairchar;
 	const char *origsrc;
 	struct lvcreate_args cmd_args = {0};
@@ -504,7 +506,7 @@ bool lvm_create_clone(struct lxc_conf *conf, struct lxc_storage *orig,
 	const char *thinpool;
 	struct rsync_data data;
 	const char *cmd_args[2];
-	char cmd_output[MAXPATHLEN] = {0};
+	char cmd_output[PATH_MAX] = {0};
 	char fstype[100] = "ext4";
 	uint64_t size = newsize;
 
@@ -591,7 +593,7 @@ bool lvm_create_snapshot(struct lxc_conf *conf, struct lxc_storage *orig,
 int lvm_destroy(struct lxc_storage *orig)
 {
 	int ret;
-	char cmd_output[MAXPATHLEN];
+	char cmd_output[PATH_MAX];
 	struct lvcreate_args cmd_args = {0};
 
 	cmd_args.lv = lxc_storage_get_path(orig->src, "lvm");
@@ -614,7 +616,7 @@ int lvm_create(struct lxc_storage *bdev, const char *dest, const char *n,
 	uint64_t sz;
 	int ret, len;
 	const char *cmd_args[2];
-	char cmd_output[MAXPATHLEN];
+	char cmd_output[PATH_MAX];
 
 	if (!specs)
 		return -1;

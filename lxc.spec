@@ -57,7 +57,7 @@ BuildRequires: systemd
 %endif
 
 Name: lxc
-Version: 3.0.2
+Version: 3.0.3
 Release: %{?beta_rel:0.1.%{beta_rel}}%{?!beta_rel:%{norm_rel}}%{?dist}
 URL: http://linuxcontainers.org
 Source: http://linuxcontainers.org/downloads/%{name}-%{version}%{?beta_dot}.tar.gz
@@ -89,6 +89,13 @@ BuildRequires:  libapparmor-devel linux-glibc-devel lsb-release docbook-utils
 %ifarch %ix86 x86_64
 BuildRequires:  libseccomp-devel
 %endif
+%endif
+
+#
+# Additional package for Tizen
+#
+%if %{defined tizen_version}
+BuildRequires:  pkgconfig(dlog)
 %endif
 
 %description
@@ -145,6 +152,11 @@ fi
 
 %post
 # This test should trigger a network configure on a new install.
+if [ ! -d /usr/local/etc/default ]
+then
+	mkdir -p /usr/local/etc/default
+fi
+
 if [ ! -f /usr/local/etc/default/lxc-net ] || ! grep -q 'USE_LXC_BRIDGE=' /usr/local/etc/default/lxc-net
 then
 	# Grab a random 10net subnet.  Need to add test logic...
@@ -244,6 +256,7 @@ fi
 %defattr(-,root,root)
 %{_sbindir}/*
 %{_libdir}/*.so.*
+%{_libdir}/*.a
 %{_libdir}/%{name}
 %{_localstatedir}/*
 %{_libexecdir}/%{name}/hooks/unmount-namespace

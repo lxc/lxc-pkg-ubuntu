@@ -32,7 +32,6 @@
 #include <sys/un.h>
 
 #include "conf.h"
-#include "config.h"
 #include "namespace.h"
 #include "state.h"
 
@@ -98,7 +97,7 @@ struct lxc_handler {
 	bool am_root;
 
 	/* Indicates whether should we close std{in,out,err} on start. */
-	bool backgrounded;
+	bool daemonize;
 
 	/* The child's pid. */
 	pid_t pid;

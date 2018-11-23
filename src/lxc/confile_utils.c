@@ -17,21 +17,24 @@
  * 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
  */
 
-#include "config.h"
-
+#ifndef _GNU_SOURCE
+#define _GNU_SOURCE 1
+#endif
+#include <arpa/inet.h>
 #include <ctype.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
-#include <arpa/inet.h>
 
 #include "conf.h"
+#include "config.h"
 #include "confile.h"
 #include "confile_utils.h"
 #include "error.h"
 #include "list.h"
 #include "log.h"
 #include "lxccontainer.h"
+#include "macro.h"
 #include "network.h"
 #include "parse.h"
 #include "utils.h"
@@ -288,13 +291,12 @@ void lxc_log_configured_netdevs(const struct lxc_conf *conf)
 			TRACE("type: macvlan");
 
 			if (netdev->priv.macvlan_attr.mode > 0) {
-				char *macvlan_mode;
+				char *mode;
 
-				macvlan_mode = lxc_macvlan_flag_to_mode(
+				mode = lxc_macvlan_flag_to_mode(
 				    netdev->priv.macvlan_attr.mode);
 				TRACE("macvlan mode: %s",
-				      macvlan_mode ? macvlan_mode
-						   : "(invalid mode)");
+				      mode ? mode : "(invalid mode)");
 			}
 			break;
 		case LXC_NET_VLAN:
@@ -442,7 +444,7 @@ void lxc_free_networks(struct lxc_list *networks)
 	lxc_list_init(networks);
 }
 
-static struct macvlan_mode {
+static struct lxc_macvlan_mode {
 	char *name;
 	int mode;
 } macvlan_mode[] = {
@@ -540,7 +542,7 @@ int network_ifname(char *valuep, const char *value, size_t size)
 
 	retlen = strlcpy(valuep, value, size);
 	if (retlen >= size)
-		ERROR("Network devie name \"%s\" is too long (>= %zu)", value,
+		ERROR("Network device name \"%s\" is too long (>= %zu)", value,
 		      size);
 
 	return 0;
@@ -721,9 +723,9 @@ bool parse_limit_value(const char **value, rlim_t *res)
 {
 	char *endptr = NULL;
 
-	if (strncmp(*value, "unlimited", sizeof("unlimited") - 1) == 0) {
+	if (strncmp(*value, "unlimited", STRLITERALLEN("unlimited")) == 0) {
 		*res = RLIM_INFINITY;
-		*value += sizeof("unlimited") - 1;
+		*value += STRLITERALLEN("unlimited");
 		return true;
 	}
 

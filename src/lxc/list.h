@@ -63,7 +63,7 @@ struct lxc_list {
 	for (__iterator = (__list)->next, __next = __iterator->next;           \
 	     __iterator != __list; __iterator = __next, __next = __next->next)
 
-/* Initalize list. */
+/* Initialize list. */
 static inline void lxc_list_init(struct lxc_list *list)
 {
 	list->elem = NULL;
@@ -154,14 +154,14 @@ static inline void lxc_list_del(struct lxc_list *list)
 /* Return length of the list. */
 static inline size_t lxc_list_len(struct lxc_list *list)
 {
-	 size_t i = 0;
-	 struct lxc_list *iter;
+	size_t i = 0;
+	struct lxc_list *iter;
 
-	 lxc_list_for_each(iter, list) {
+	lxc_list_for_each(iter, list) {
 		i++;
-	 }
+	}
 
-	 return i;
+	return i;
 }
 
 #endif /* __LXC_LIST_H */
