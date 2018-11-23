@@ -21,16 +21,20 @@
  * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA
  */
 
-#define _GNU_SOURCE
+#ifndef _GNU_SOURCE
+#define _GNU_SOURCE 1
+#endif
 #include <errno.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 
 #include "conf.h"
+#include "config.h"
 #include "confile.h"
 #include "log.h"
 #include "lxccontainer.h"
+#include "macro.h"
 #include "overlay.h"
 #include "rsync.h"
 #include "storage.h"
@@ -94,7 +98,7 @@ int ovl_clonepaths(struct lxc_storage *orig, struct lxc_storage *new, const char
 			return -22;
 		}
 
-		if (strlen(lastslash) < (sizeof("/rootfs") - 1)) {
+		if (strlen(lastslash) < STRLITERALLEN("/rootfs")) {
 			ERROR("Failed to detect \"/rootfs\" in string \"%s\"",
 			      new->dest);
 			return -22;
@@ -110,8 +114,8 @@ int ovl_clonepaths(struct lxc_storage *orig, struct lxc_storage *new, const char
 		}
 
 		memcpy(delta, new->dest, lastslashidx + 1);
-		memcpy(delta + lastslashidx, "delta0", sizeof("delta0") - 1);
-		delta[lastslashidx + sizeof("delta0") - 1] = '\0';
+		memcpy(delta + lastslashidx, "delta0", STRLITERALLEN("delta0"));
+		delta[lastslashidx + STRLITERALLEN("delta0")] = '\0';
 
 		ret = mkdir(delta, 0755);
 		if (ret < 0 && errno != EEXIST) {
@@ -142,8 +146,8 @@ int ovl_clonepaths(struct lxc_storage *orig, struct lxc_storage *new, const char
 		}
 
 		memcpy(work, new->dest, lastslashidx + 1);
-		memcpy(work + lastslashidx, "olwork", sizeof("olwork") - 1);
-		work[lastslashidx + sizeof("olwork") - 1] = '\0';
+		memcpy(work + lastslashidx, "olwork", STRLITERALLEN("olwork"));
+		work[lastslashidx + STRLITERALLEN("olwork")] = '\0';
 
 		ret = mkdir(work, 0755);
 		if (ret < 0) {
@@ -253,8 +257,8 @@ int ovl_clonepaths(struct lxc_storage *orig, struct lxc_storage *new, const char
 		}
 
 		memcpy(work, ndelta, lastslashidx + 1);
-		memcpy(work + lastslashidx, "olwork", sizeof("olwork") - 1);
-		work[lastslashidx + sizeof("olwork") - 1] = '\0';
+		memcpy(work + lastslashidx, "olwork", STRLITERALLEN("olwork"));
+		work[lastslashidx + STRLITERALLEN("olwork")] = '\0';
 
 		ret = mkdir(work, 0755);
 		if (ret < 0 && errno != EEXIST) {
@@ -335,11 +339,11 @@ int ovl_clonepaths(struct lxc_storage *orig, struct lxc_storage *new, const char
 			return -1;
 		}
 
-		if (!strncmp(s1, "/snaps", sizeof("/snaps") - 1)) {
+		if (!strncmp(s1, "/snaps", STRLITERALLEN("/snaps"))) {
 			s1 = clean_new_path;
 			s2 = clean_old_path;
 			s3 = (char *)cname;
-		} else if (!strncmp(s2, "/snaps", sizeof("/snaps") - 1)) {
+		} else if (!strncmp(s2, "/snaps", STRLITERALLEN("/snaps"))) {
 			s1 = clean_old_path;
 			s2 = clean_new_path;
 			s3 = (char *)oldname;
@@ -415,7 +419,7 @@ int ovl_create(struct lxc_storage *bdev, const char *dest, const char *n,
 		ERROR("Failed to allocate memory");
 		return -1;
 	}
-	memcpy(delta + len - 6, "delta0", sizeof("delta0") - 1);
+	memcpy(delta + len - 6, "delta0", STRLITERALLEN("delta0"));
 
 	ret = mkdir_p(delta, 0755);
 	if (ret < 0) {
@@ -568,8 +572,8 @@ int ovl_mount(struct lxc_storage *bdev)
 	}
 
 	memcpy(work, upper, lastslashidx + 1);
-	memcpy(work + lastslashidx, "olwork", sizeof("olwork") - 1);
-	work[lastslashidx + sizeof("olwork") - 1] = '\0';
+	memcpy(work + lastslashidx, "olwork", STRLITERALLEN("olwork"));
+	work[lastslashidx + STRLITERALLEN("olwork")] = '\0';
 
 	ret = parse_mntopts(bdev->mntopts, &mntflags, &mntdata);
 	if (ret < 0) {
@@ -733,7 +737,7 @@ char *ovl_get_rootfs(const char *rootfs_path, size_t *rootfslen)
 int ovl_mkdir(const struct mntent *mntent, const struct lxc_rootfs *rootfs,
 	      const char *lxc_name, const char *lxc_path)
 {
-	char lxcpath[MAXPATHLEN];
+	char lxcpath[PATH_MAX];
 	char **opts;
 	int ret;
 	size_t arrlen, i, len, rootfslen;
@@ -762,8 +766,8 @@ int ovl_mkdir(const struct mntent *mntent, const struct lxc_rootfs *rootfs,
 	}
 
 	if (rootfs_path) {
-		ret = snprintf(lxcpath, MAXPATHLEN, "%s/%s", lxc_path, lxc_name);
-		if (ret < 0 || ret >= MAXPATHLEN)
+		ret = snprintf(lxcpath, PATH_MAX, "%s/%s", lxc_path, lxc_name);
+		if (ret < 0 || ret >= PATH_MAX)
 			goto err;
 
 		rootfs_dir = ovl_get_rootfs(rootfs_path, &rootfslen);
@@ -821,8 +825,8 @@ int ovl_update_abs_paths(struct lxc_conf *lxc_conf, const char *lxc_path,
 			 const char *lxc_name, const char *newpath,
 			 const char *newname)
 {
-	char new_upper[MAXPATHLEN], new_work[MAXPATHLEN], old_upper[MAXPATHLEN],
-	    old_work[MAXPATHLEN];
+	char new_upper[PATH_MAX], new_work[PATH_MAX], old_upper[PATH_MAX],
+	    old_work[PATH_MAX];
 	size_t i;
 	struct lxc_list *iterator;
 	char *cleanpath = NULL;
@@ -848,13 +852,13 @@ int ovl_update_abs_paths(struct lxc_conf *lxc_conf, const char *lxc_path,
 	}
 
 	ret =
-	    snprintf(old_work, MAXPATHLEN, "workdir=%s/%s", lxc_path, lxc_name);
-	if (ret < 0 || ret >= MAXPATHLEN)
+	    snprintf(old_work, PATH_MAX, "workdir=%s/%s", lxc_path, lxc_name);
+	if (ret < 0 || ret >= PATH_MAX)
 		goto err;
 
 	ret =
-	    snprintf(new_work, MAXPATHLEN, "workdir=%s/%s", cleanpath, newname);
-	if (ret < 0 || ret >= MAXPATHLEN)
+	    snprintf(new_work, PATH_MAX, "workdir=%s/%s", cleanpath, newname);
+	if (ret < 0 || ret >= PATH_MAX)
 		goto err;
 
 	lxc_list_for_each(iterator, &lxc_conf->mount_list) {
@@ -868,14 +872,14 @@ int ovl_update_abs_paths(struct lxc_conf *lxc_conf, const char *lxc_path,
 		if (!tmp)
 			continue;
 
-		ret = snprintf(old_upper, MAXPATHLEN, "%s=%s/%s", tmp, lxc_path,
+		ret = snprintf(old_upper, PATH_MAX, "%s=%s/%s", tmp, lxc_path,
 			       lxc_name);
-		if (ret < 0 || ret >= MAXPATHLEN)
+		if (ret < 0 || ret >= PATH_MAX)
 			goto err;
 
-		ret = snprintf(new_upper, MAXPATHLEN, "%s=%s/%s", tmp,
+		ret = snprintf(new_upper, PATH_MAX, "%s=%s/%s", tmp,
 			       cleanpath, newname);
-		if (ret < 0 || ret >= MAXPATHLEN)
+		if (ret < 0 || ret >= PATH_MAX)
 			goto err;
 
 		if (strstr(mnt_entry, old_upper)) {
@@ -952,7 +956,7 @@ static int ovl_do_rsync(const char *src, const char *dest,
 {
 	int ret = -1;
 	struct rsync_data_char rdata = {0};
-	char cmd_output[MAXPATHLEN] = {0};
+	char cmd_output[PATH_MAX] = {0};
 
 	rdata.src = (char *)src;
 	rdata.dest = (char *)dest;

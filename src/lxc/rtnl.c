@@ -20,15 +20,20 @@
  * License along with this library; if not, write to the Free Software
  * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA
  */
-#include <string.h>
-#include <stdio.h>
-#include <sys/socket.h>
-#include <stdlib.h>
+
+#ifndef _GNU_SOURCE
+#define _GNU_SOURCE 1
+#endif
 #include <errno.h>
-#include <unistd.h>
 #include <linux/netlink.h>
 #include <linux/rtnetlink.h>
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
+#include <sys/socket.h>
+#include <unistd.h>
 
+#include "config.h"
 #include "nl.h"
 #include "rtnl.h"
 
@@ -41,6 +46,9 @@ extern int rtnetlink_close(struct rtnl_handler *handler)
 {
 	return netlink_close(&handler->nlh);
 }
+
+#pragma GCC diagnostic push
+#pragma GCC diagnostic ignored "-Wcast-align"
 
 extern int rtnetlink_rcv(struct rtnl_handler *handler, struct rtnlmsg *rtnlmsg)
 {
@@ -61,6 +69,8 @@ extern int rtnetlink_transaction(struct rtnl_handler *handler,
 				   (struct nlmsg *)&request->nlmsghdr,
 				   (struct nlmsg *)&answer->nlmsghdr);
 }
+
+#pragma GCC diagnostic pop
 
 extern struct rtnlmsg *rtnlmsg_alloc(size_t size)
 {

@@ -21,38 +21,33 @@
  * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA
  */
 
-#define _GNU_SOURCE
+#ifndef _GNU_SOURCE
+#define _GNU_SOURCE 1
+#endif
 #include <libgen.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
-#include <unistd.h>
 #include <sys/types.h>
+#include <unistd.h>
 
 #include <lxc/lxccontainer.h>
 
 #include "arguments.h"
+#include "config.h"
 #include "log.h"
 
 lxc_log_define(lxc_cgroup, lxc);
 
-static int my_checker(const struct lxc_arguments* args)
-{
-	if (!args->argc) {
-		ERROR("Missing state object");
-		return -1;
-	}
-
-	return 0;
-}
+static int my_checker(const struct lxc_arguments *args);
 
 static const struct option my_longopts[] = {
 	LXC_COMMON_OPTIONS
 };
 
 static struct lxc_arguments my_args = {
-	.progname = "lxc-cgroup",
-	.help     = "\
+	.progname     = "lxc-cgroup",
+	.help         = "\
 --name=NAME state-object [value]\n\
 \n\
 Get or set the value of a state object (for example, 'cpuset.cpus')\n\
@@ -61,10 +56,22 @@ in the container's cgroup for the corresponding subsystem.\n\
 Options :\n\
   -n, --name=NAME      NAME of the container\n\
   --rcfile=FILE        Load configuration file FILE\n",
-	.options  = my_longopts,
-	.parser   = NULL,
-	.checker  = my_checker,
+	.options      = my_longopts,
+	.parser       = NULL,
+	.checker      = my_checker,
+	.log_priority = "ERROR",
+	.log_file     = "none",
 };
+
+static int my_checker(const struct lxc_arguments *args)
+{
+	if (!args->argc) {
+		ERROR("Missing state object");
+		return -1;
+	}
+
+	return 0;
+}
 
 int main(int argc, char *argv[])
 {
@@ -75,18 +82,15 @@ int main(int argc, char *argv[])
 	if (lxc_arguments_parse(&my_args, argc, argv))
 		exit(EXIT_FAILURE);
 
-	/* Only create log if explicitly instructed */
-	if (my_args.log_file || my_args.log_priority) {
-		log.name = my_args.name;
-		log.file = my_args.log_file;
-		log.level = my_args.log_priority;
-		log.prefix = my_args.progname;
-		log.quiet = my_args.quiet;
-		log.lxcpath = my_args.lxcpath[0];
+	log.name = my_args.name;
+	log.file = my_args.log_file;
+	log.level = my_args.log_priority;
+	log.prefix = my_args.progname;
+	log.quiet = my_args.quiet;
+	log.lxcpath = my_args.lxcpath[0];
 
-		if (lxc_log_init(&log))
-			exit(EXIT_FAILURE);
-	}
+	if (lxc_log_init(&log))
+		exit(EXIT_FAILURE);
 
 	state_object = my_args.argv[0];
 
@@ -133,16 +137,17 @@ int main(int argc, char *argv[])
 			exit(EXIT_FAILURE);
 		}
 	} else {
-		char buffer[MAXPATHLEN];
+		char buffer[PATH_MAX];
 		int ret;
 
-		ret = c->get_cgroup_item(c, state_object, buffer, MAXPATHLEN);
+		ret = c->get_cgroup_item(c, state_object, buffer, PATH_MAX);
 		if (ret < 0) {
 			ERROR("Failed to retrieve value of '%s' for '%s:%s'",
 			      state_object, my_args.lxcpath[0], my_args.name);
 			lxc_container_put(c);
 			exit(EXIT_FAILURE);
 		}
+
 		INFO("%*s", ret, buffer);
 	}
 

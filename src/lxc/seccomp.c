@@ -21,7 +21,9 @@
  * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA
  */
 
-#define _GNU_SOURCE
+#ifndef _GNU_SOURCE
+#define _GNU_SOURCE 1
+#endif
 #include <errno.h>
 #include <seccomp.h>
 #include <stdio.h>
@@ -905,8 +907,9 @@ static int parse_config_v2(FILE *f, char *line, size_t *line_bufsz, struct lxc_c
 				}
 
 				cur_rule_arch = lxc_seccomp_arch_s390x;
+			}
 #endif
-			} else {
+			else {
 				goto bad_arch;
 			}
 

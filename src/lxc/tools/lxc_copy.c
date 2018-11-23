@@ -16,8 +16,9 @@
  * 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
  */
 
-#define _GNU_SOURCE
-#include <ctype.h>
+#ifndef _GNU_SOURCE
+#define _GNU_SOURCE 1
+#endif
 #include <errno.h>
 #include <fcntl.h>
 #include <getopt.h>
@@ -27,16 +28,18 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
-#include <time.h>
-#include <unistd.h>
 #include <sys/stat.h>
 #include <sys/types.h>
 #include <sys/wait.h>
+#include <time.h>
+#include <unistd.h>
 
 #include <lxc/lxccontainer.h>
 
 #include "arguments.h"
+#include "config.h"
 #include "log.h"
+#include "storage_utils.h"
 #include "utils.h"
 
 #ifndef HAVE_GETSUBOPT
@@ -84,7 +87,7 @@ static const struct option my_longopts[] = {
 };
 
 /* mount keys */
-static char *const keys[] = {
+static char *const mount_keys[] = {
 	[LXC_MNT_BIND] = "bind",
 	[LXC_MNT_OVL] = "overlay",
 	NULL
@@ -114,7 +117,7 @@ Options :\n\
   -t, --tmpfs               place ephemeral container on a tmpfs\n\
                             (WARNING: On reboot all changes made to the container will be lost.)\n\
   -L, --fssize              size of the new block device for block device containers\n\
-  -D, --keedata             pass together with -e start a persistent snapshot \n\
+  -D, --keepdata            pass together with -e start a persistent snapshot \n\
   -K, --keepname            keep the hostname of the original container\n\
   --  hook options          arguments passed to the hook program\n\
   -M, --keepmac             keep the MAC address of the original container\n\
@@ -143,7 +146,6 @@ static int do_clone_rename(struct lxc_container *c, char *newname);
 static int do_clone_task(struct lxc_container *c, enum task task, int flags,
 			 char **args);
 static void free_mnts(void);
-static uint64_t get_fssize(char *s);
 
 /* Place an ephemeral container started with -e flag on a tmpfs. Restrictions
  * are that you cannot request the data to be kept while placing the container
@@ -261,17 +263,17 @@ static struct mnts *add_mnt(struct mnts **mnts, unsigned int *num, enum mnttype 
 
 static int mk_rand_ovl_dirs(struct mnts *mnts, unsigned int num, struct lxc_arguments *arg)
 {
-	char upperdir[MAXPATHLEN];
-	char workdir[MAXPATHLEN];
+	char upperdir[PATH_MAX];
+	char workdir[PATH_MAX];
 	unsigned int i;
 	int ret;
 	struct mnts *m = NULL;
 
 	for (i = 0, m = mnts; i < num; i++, m++) {
 		if (m->mnt_type == LXC_MNT_OVL) {
-			ret = snprintf(upperdir, MAXPATHLEN, "%s/%s/delta#XXXXXX",
+			ret = snprintf(upperdir, PATH_MAX, "%s/%s/delta#XXXXXX",
 					arg->newpath, arg->newname);
-			if (ret < 0 || ret >= MAXPATHLEN)
+			if (ret < 0 || ret >= PATH_MAX)
 				return -1;
 
 			if (!mkdtemp(upperdir))
@@ -283,9 +285,9 @@ static int mk_rand_ovl_dirs(struct mnts *mnts, unsigned int num, struct lxc_argu
 		}
 
 		if (m->mnt_type == LXC_MNT_OVL) {
-			ret = snprintf(workdir, MAXPATHLEN, "%s/%s/work#XXXXXX",
+			ret = snprintf(workdir, PATH_MAX, "%s/%s/work#XXXXXX",
 					arg->newpath, arg->newname);
-			if (ret < 0 || ret >= MAXPATHLEN)
+			if (ret < 0 || ret >= PATH_MAX)
 				return -1;
 
 			if (!mkdtemp(workdir))
@@ -379,7 +381,7 @@ static int do_clone_ephemeral(struct lxc_container *c,
 		struct lxc_arguments *arg, char **args, int flags)
 {
 	char *premount;
-	char randname[MAXPATHLEN];
+	char randname[PATH_MAX];
 	unsigned int i;
 	int ret = 0;
 	bool bret = true, started = false;
@@ -389,8 +391,8 @@ static int do_clone_ephemeral(struct lxc_container *c,
 	attach_options.env_policy = LXC_ATTACH_CLEAR_ENV;
 
 	if (!arg->newname) {
-		ret = snprintf(randname, MAXPATHLEN, "%s/%s_XXXXXX", arg->newpath, arg->name);
-		if (ret < 0 || ret >= MAXPATHLEN)
+		ret = snprintf(randname, PATH_MAX, "%s/%s_XXXXXX", arg->newpath, arg->name);
+		if (ret < 0 || ret >= PATH_MAX)
 			return -1;
 
 		if (!mkdtemp(randname))
@@ -479,7 +481,7 @@ destroy_and_put:
 	if (started)
 		clone->shutdown(clone, -1);
 
-	ret = clone->get_config_item(clone, "lxc.ephemeral", tmp_buf, MAXPATHLEN);
+	ret = clone->get_config_item(clone, "lxc.ephemeral", tmp_buf, PATH_MAX);
 	if (ret > 0 && strcmp(tmp_buf, "0"))
 		clone->destroy(clone);
 
@@ -538,39 +540,6 @@ static void free_mnts()
 	mnt_table_size = 0;
 }
 
-/* we pass fssize in bytes */
-static uint64_t get_fssize(char *s)
-{
-	uint64_t ret;
-	char *end;
-
-	ret = strtoull(s, &end, 0);
-	if (end == s) {
-		ERROR("Invalid blockdev size '%s', using default size", s);
-		return 0;
-	}
-	while (isblank(*end))
-		end++;
-	if (*end == '\0') {
-		ret *= 1024ULL * 1024ULL; /* MB by default */
-	} else if (*end == 'b' || *end == 'B') {
-		ret *= 1ULL;
-	} else if (*end == 'k' || *end == 'K') {
-		ret *= 1024ULL;
-	} else if (*end == 'm' || *end == 'M') {
-		ret *= 1024ULL * 1024ULL;
-	} else if (*end == 'g' || *end == 'G') {
-		ret *= 1024ULL * 1024ULL * 1024ULL;
-	} else if (*end == 't' || *end == 'T') {
-		ret *= 1024ULL * 1024ULL * 1024ULL * 1024ULL;
-	} else {
-		ERROR("Invalid blockdev unit size '%c' in '%s', " "using default size", *end, s);
-		return 0;
-	}
-
-	return ret;
-}
-
 static int my_parser(struct lxc_arguments *args, int c, char *arg)
 {
 	char *subopts = NULL;
@@ -599,7 +568,7 @@ static int my_parser(struct lxc_arguments *args, int c, char *arg)
 		break;
 	case 'm':
 		subopts = optarg;
-		if (parse_mntsubopts(subopts, keys, mntparameters) < 0)
+		if (parse_mntsubopts(subopts, mount_keys, mntparameters) < 0)
 			return -1;
 		break;
 	case 'B':

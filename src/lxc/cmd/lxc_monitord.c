@@ -21,31 +21,35 @@
  * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA
  */
 
-#define _GNU_SOURCE
+#ifndef _GNU_SOURCE
+#define _GNU_SOURCE 1
+#endif
 #include <errno.h>
 #include <fcntl.h>
+#include <net/if.h>
+#include <netinet/in.h>
 #include <pthread.h>
+#include <setjmp.h>
 #include <signal.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
-#include <unistd.h>
-#include <net/if.h>
-#include <netinet/in.h>
-#include <setjmp.h>
 #include <sys/epoll.h>
 #include <sys/param.h>
 #include <sys/socket.h>
 #include <sys/stat.h>
 #include <sys/types.h>
 #include <sys/un.h>
+#include <unistd.h>
 
 #include <lxc/lxccontainer.h>
 
 #include "af_unix.h"
+#include "config.h"
 #include "log.h"
 #include "mainloop.h"
 #include "monitor.h"
+#include "raw_syscalls.h"
 #include "utils.h"
 
 #define CLIENTFDS_CHUNK 64
@@ -76,7 +80,7 @@ struct lxc_monitor {
 	struct lxc_epoll_descr descr;
 };
 
-static struct lxc_monitor mon;
+static struct lxc_monitor monitor;
 static int quit;
 
 static int lxc_monitord_fifo_create(struct lxc_monitor *mon)
@@ -89,7 +93,7 @@ static int lxc_monitord_fifo_create(struct lxc_monitor *mon)
 	if (ret < 0)
 		return ret;
 
-	ret = mknod(fifo_path, S_IFIFO|S_IRUSR|S_IWUSR, 0);
+	ret = mknod(fifo_path, S_IFIFO | S_IRUSR | S_IWUSR, 0);
 	if (ret < 0 && errno != EEXIST) {
 		SYSINFO("Failed to mknod monitor fifo %s", fifo_path);
 		return -1;
@@ -208,7 +212,7 @@ static int lxc_monitord_sock_accept(int fd, uint32_t events, void *data,
 
 		clientfds = realloc(mon->clientfds,
 				    (mon->clientfds_size + CLIENTFDS_CHUNK) * sizeof(mon->clientfds[0]));
-		if (clientfds == NULL) {
+		if (!clientfds) {
 			ERROR("Failed to realloc memory for %d client file descriptors",
 			      mon->clientfds_size + CLIENTFDS_CHUNK);
 			goto err1;
@@ -345,7 +349,7 @@ static int lxc_monitord_mainloop_add(struct lxc_monitor *mon)
 
 static void lxc_monitord_cleanup(void)
 {
-	lxc_monitord_delete(&mon);
+	lxc_monitord_delete(&monitor);
 }
 
 static void lxc_monitord_sig_handler(int sig)
@@ -411,15 +415,15 @@ int main(int argc, char *argv[])
 
 	ret = EXIT_FAILURE;
 
-	memset(&mon, 0, sizeof(mon));
-	mon.lxcpath = lxcpath;
-	if (lxc_mainloop_open(&mon.descr)) {
+	memset(&monitor, 0, sizeof(monitor));
+	monitor.lxcpath = lxcpath;
+	if (lxc_mainloop_open(&monitor.descr)) {
 		ERROR("Failed to create mainloop");
 		goto on_error;
 	}
 	mainloop_opened = true;
 
-	if (lxc_monitord_create(&mon))
+	if (lxc_monitord_create(&monitor))
 		goto on_error;
 	monitord_created = true;
 
@@ -433,28 +437,28 @@ int main(int argc, char *argv[])
 		;
 	close(pipefd);
 
-	if (lxc_monitord_mainloop_add(&mon)) {
+	if (lxc_monitord_mainloop_add(&monitor)) {
 		ERROR("Failed to add mainloop handlers");
 		goto on_error;
 	}
 
 	NOTICE("lxc-monitord with pid %d is now monitoring lxcpath %s",
-	       lxc_raw_getpid(), mon.lxcpath);
+	       lxc_raw_getpid(), monitor.lxcpath);
 
 	for (;;) {
-		ret = lxc_mainloop(&mon.descr, 1000 * 30);
+		ret = lxc_mainloop(&monitor.descr, 1000 * 30);
 		if (ret) {
 			ERROR("mainloop returned an error");
 			break;
 		}
 
-		if (mon.clientfds_cnt <= 0) {
+		if (monitor.clientfds_cnt <= 0) {
 			NOTICE("No remaining clients. lxc-monitord is exiting");
 			break;
 		}
 
 		if (quit == LXC_MAINLOOP_CLOSE) {
-			NOTICE("Got quit command. lxc-monitord is exitting");
+			NOTICE("Got quit command. lxc-monitord is exiting");
 			break;
 		}
 	}
@@ -467,7 +471,7 @@ on_error:
 		lxc_monitord_cleanup();
 
 	if (mainloop_opened)
-		lxc_mainloop_close(&mon.descr);
+		lxc_mainloop_close(&monitor.descr);
 
 	exit(ret);
 }

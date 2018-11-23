@@ -6,11 +6,14 @@ noinst_HEADERS = attach.h \
 		 caps.h \
 		 cgroups/cgroup.h \
 		 cgroups/cgroup_utils.h \
+		 compiler.h \
 		 conf.h \
 		 confile.h \
 		 confile_utils.h \
 		 criu.h \
 		 error.h \
+		 file_utils.h \
+		 ../include/netns_ifaddrs.h \
 		 initutils.h \
 		 list.h \
 		 log.h \
@@ -19,6 +22,7 @@ noinst_HEADERS = attach.h \
 		 macro.h \
 		 monitor.h \
 		 namespace.h \
+		 raw_syscalls.h \
 		 start.h \
 		 state.h \
 		 storage/btrfs.h \
@@ -32,14 +36,16 @@ noinst_HEADERS = attach.h \
 		 storage/storage.h \
 		 storage/storage_utils.h \
 		 storage/zfs.h \
+		 string_utils.h \
+		 syscall_wrappers.h \
 		 terminal.h \
 		 ../tests/lxctest.h \
 		 tools/arguments.h \
+		 storage/storage_utils.h \
 		 utils.h
 
 if IS_BIONIC
-noinst_HEADERS += ../include/ifaddrs.h \
-		  ../include/lxcmntent.h \
+noinst_HEADERS += ../include/lxcmntent.h \
 		  ../include/openpty.h
 endif
 
@@ -84,6 +90,7 @@ liblxc_la_SOURCES = af_unix.c af_unix.h \
 		    cgroups/cgfsng.c \
 		    cgroups/cgroup.c cgroups/cgroup.h \
 		    cgroups/cgroup_utils.c cgroups/cgroup_utils.h \
+		    compiler.h \
 		    commands.c commands.h \
 		    commands_utils.c commands_utils.h \
 		    conf.c conf.h \
@@ -93,6 +100,8 @@ liblxc_la_SOURCES = af_unix.c af_unix.h \
 		    error.c error.h \
 		    execute.c \
 		    freezer.c \
+		    file_utils.c file_utils.h \
+		    ../include/netns_ifaddrs.c ../include/netns_ifaddrs.h \
 		    initutils.c initutils.h \
 		    list.h \
 		    log.c log.h \
@@ -107,6 +116,7 @@ liblxc_la_SOURCES = af_unix.c af_unix.h \
 		    network.c network.h \
 		    monitor.c monitor.h \
 		    parse.c parse.h \
+		    raw_syscalls.c raw_syscalls.h \
 		    ringbuf.c ringbuf.h \
 		    rtnl.c rtnl.h \
 		    state.c state.h \
@@ -122,15 +132,16 @@ liblxc_la_SOURCES = af_unix.c af_unix.h \
 		    storage/storage.c storage/storage.h \
 		    storage/storage_utils.c storage/storage_utils.h \
 		    storage/zfs.c storage/zfs.h \
+		    string_utils.c string_utils.h \
 		    sync.c sync.h \
+		    syscall_wrappers.h \
 		    terminal.c \
 		    utils.c utils.h \
 		    version.h \
 		    $(LSM_SOURCES)
 
 if IS_BIONIC
-liblxc_la_SOURCES += ../include/ifaddrs.c ../include/ifaddrs.h \
-		     ../include/lxcmntent.c ../include/lxcmntent.h \
+liblxc_la_SOURCES += ../include/lxcmntent.c ../include/lxcmntent.h \
 		     ../include/openpty.c ../include/openpty.h
 endif
 
@@ -209,6 +220,7 @@ liblxc_la_CFLAGS = -fPIC \
 		   -pthread
 
 liblxc_la_LDFLAGS = -pthread \
+		    -Wl,-no-undefined \
 		    -Wl,-soname,liblxc.so.$(firstword $(subst ., ,@LXC_ABI@)) \
 		    -version-info @LXC_ABI_MAJOR@
 
@@ -246,11 +258,17 @@ bin_PROGRAMS = lxc-attach \
 	       lxc-top \
 	       lxc-unfreeze \
 	       lxc-unshare \
-	       lxc-usernsexec \
 	       lxc-wait
 endif
 
 if ENABLE_COMMANDS
+
+if ENABLE_TOOLS
+bin_PROGRAMS += lxc-usernsexec
+else
+bin_PROGRAMS = lxc-usernsexec
+endif
+
 sbin_PROGRAMS = init.lxc
 
 pkglibexec_PROGRAMS = lxc-monitord \
@@ -291,11 +309,13 @@ lxc_freeze_SOURCES = tools/lxc_freeze.c \
 lxc_info_SOURCES = tools/lxc_info.c \
 		   tools/arguments.c tools/arguments.h
 lxc_monitor_SOURCES = tools/lxc_monitor.c \
+		      macro.h \
 		      tools/arguments.c tools/arguments.h
 lxc_ls_SOURCES = tools/lxc_ls.c \
 		 tools/arguments.c tools/arguments.h
 lxc_copy_SOURCES = tools/lxc_copy.c \
-		   tools/arguments.c tools/arguments.h
+		   tools/arguments.c tools/arguments.h \
+		   storage/storage_utils.c storage/storage_utils.h
 lxc_start_SOURCES = tools/lxc_start.c \
 		    tools/arguments.c tools/arguments.h
 lxc_stop_SOURCES = tools/lxc_stop.c \
@@ -309,7 +329,8 @@ lxc_unshare_SOURCES = tools/lxc_unshare.c \
 lxc_wait_SOURCES = tools/lxc_wait.c \
 		   tools/arguments.c tools/arguments.h
 lxc_create_SOURCES = tools/lxc_create.c \
-		     tools/arguments.c tools/arguments.h
+		     tools/arguments.c tools/arguments.h \
+		     storage/storage_utils.c storage/storage_utils.h
 lxc_snapshot_SOURCES = tools/lxc_snapshot.c \
 		       tools/arguments.c tools/arguments.h
 lxc_checkpoint_SOURCES = tools/lxc_checkpoint.c \
@@ -318,17 +339,35 @@ endif
 
 if ENABLE_COMMANDS
 # Binaries shipping with liblxc
-init_lxc_SOURCES = cmd/lxc_init.c
-lxc_monitord_SOURCES = cmd/lxc_monitord.c
+init_lxc_SOURCES = cmd/lxc_init.c \
+		   compiler.h \
+		   error.h \
+		   initutils.c initutils.h \
+		   parse.c parse.h \
+		   raw_syscalls.c raw_syscalls.h \
+		   string_utils.c string_utils.h
+lxc_monitord_SOURCES = cmd/lxc_monitord.c \
+		       af_unix.c af_unix.h \
+		       log.c log.h \
+		       mainloop.c mainloop.h \
+		       monitor.c monitor.h \
+		       raw_syscalls.c raw_syscalls.h \
+		       utils.c utils.h
 lxc_user_nic_SOURCES = cmd/lxc_user_nic.c \
-		       namespace.c namespace.h \
+		       ../include/netns_ifaddrs.c ../include/netns_ifaddrs.h \
+		       log.c log.h \
 		       network.c network.h \
-		       parse.c parse.h
+		       parse.c parse.h \
+		       raw_syscalls.c raw_syscalls.h \
+		       syscall_wrappers.h
 lxc_usernsexec_SOURCES = cmd/lxc_usernsexec.c \
 			 conf.c conf.h \
 			 list.h \
 			 log.c log.h \
-			 namespace.c namespace.h \
+			 macro.h \
+			 file_utils.c file_utils.h \
+			 string_utils.c string_utils.h \
+			 syscall_wrappers.h \
 			 utils.c utils.h
 endif
 
@@ -347,10 +386,11 @@ init_lxc_static_SOURCES = cmd/lxc_init.c \
 			  caps.c caps.h \
 			  error.c error.h \
 			  initutils.c initutils.h \
+			  file_utils.c file_utils.h \
 			  log.c log.h \
 			  macro.h \
 			  namespace.c namespace.h \
-			  parse.c parse.h
+			  string_utils.c string_utils.h
 
 if !HAVE_GETLINE
 if HAVE_FGETLN
@@ -375,16 +415,31 @@ endif
 if ENABLE_PAM
 if HAVE_PAM
 pam_LTLIBRARIES = pam_cgfs.la
+
 pam_cgfs_la_SOURCES = pam/pam_cgfs.c \
-		      pam/utils.c pam/utils.h
-pam_cgfs_la_CFLAGS = $(AM_CFLAGS)
+		      file_utils.c file_utils.h \
+		      macro.h \
+		      string_utils.c string_utils.h
+
+if !HAVE_STRLCAT
+pam_cgfs_la_SOURCES += ../include/strlcat.c ../include/strlcat.h
+endif
+
+if !HAVE_STRLCPY
+pam_cgfs_la_SOURCES += ../include/strlcpy.c ../include/strlcpy.h
+endif
+
+pam_cgfs_la_CFLAGS = $(AM_CFLAGS) -DNO_LXC_CONF
+
 pam_cgfs_la_LIBADD = $(AM_LIBS) \
 		     $(PAM_LIBS) \
 		     -L$(top_srcdir)
+
 pam_cgfs_la_LDFLAGS = $(AM_LDFLAGS) \
 		      -avoid-version \
 		      -module \
-		      -shared
+		      -shared \
+		      -Wl,-no-undefined
 endif
 endif
 
