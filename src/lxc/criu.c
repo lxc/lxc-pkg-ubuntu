@@ -20,7 +20,10 @@
  * License along with this library; if not, write to the Free Software
  * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA
  */
-#define _GNU_SOURCE
+
+#ifndef _GNU_SOURCE
+#define _GNU_SOURCE 1
+#endif
 #include <inttypes.h>
 #include <linux/limits.h>
 #include <sched.h>
@@ -32,17 +35,17 @@
 #include <sys/wait.h>
 #include <unistd.h>
 
-#include "config.h"
-
 #include "cgroup.h"
-#include "conf.h"
 #include "commands.h"
+#include "conf.h"
+#include "config.h"
 #include "criu.h"
 #include "log.h"
 #include "lxc.h"
 #include "lxclock.h"
 #include "network.h"
 #include "storage.h"
+#include "syscall_wrappers.h"
 #include "utils.h"
 
 #if IS_BIONIC
@@ -103,7 +106,7 @@ static int load_tty_major_minor(char *directory, char *output, int len)
 
 	ret = snprintf(path, sizeof(path), "%s/tty.info", directory);
 	if (ret < 0 || ret >= sizeof(path)) {
-		ERROR("snprintf'd too many chacters: %d", ret);
+		ERROR("snprintf'd too many characters: %d", ret);
 		return -1;
 	}
 
@@ -171,7 +174,8 @@ static int cmp_version(const char *v1, const char *v2)
 	return -1;
 }
 
-static void exec_criu(struct cgroup_ops *cgroup_ops, struct criu_opts *opts)
+static void exec_criu(struct cgroup_ops *cgroup_ops, struct lxc_conf *conf,
+		      struct criu_opts *opts)
 {
 	char **argv, log[PATH_MAX];
 	int static_args = 23, argc = 0, i, ret;
@@ -690,7 +694,7 @@ bool __criu_check_feature(uint64_t *features_to_check)
 		return false;
 	}
 
-	while (current_bit < sizeof(uint64_t) * 8) {
+	while (current_bit < (sizeof(uint64_t) * 8 - 1)) {
 		/* only test requested features */
 		if (!(features & (1ULL << current_bit))) {
 			/* skip this */
@@ -947,7 +951,7 @@ static void do_restore(struct lxc_container *c, int status_pipe, struct migrate_
 	struct cgroup_ops *cgroup_ops;
 
 	/* Try to detach from the current controlling tty if it exists.
-	 * Othwerise, lxc_init (via lxc_console) will attach the container's
+	 * Otherwise, lxc_init (via lxc_console) will attach the container's
 	 * console output to the current tty, which is probably not what any
 	 * library user wants, and if they do, they can just manually configure
 	 * it :)
@@ -971,7 +975,7 @@ static void do_restore(struct lxc_container *c, int status_pipe, struct migrate_
 		goto out_fini_handler;
 	handler->cgroup_ops = cgroup_ops;
 
-	if (!cgroup_ops->create(cgroup_ops, handler)) {
+	if (!cgroup_ops->payload_create(cgroup_ops, handler)) {
 		ERROR("failed creating groups");
 		goto out_fini_handler;
 	}
@@ -1061,7 +1065,7 @@ static void do_restore(struct lxc_container *c, int status_pipe, struct migrate_
 		os.console_name = c->lxc_conf->console.name;
 
 		/* exec_criu() returning is an error */
-		exec_criu(cgroup_ops, &os);
+		exec_criu(cgroup_ops, c->lxc_conf, &os);
 		umount(rootfs->mount);
 		rmdir(rootfs->mount);
 		goto out_fini_handler;
@@ -1196,7 +1200,7 @@ static int save_tty_major_minor(char *directory, struct lxc_container *c, char *
 
 	ret = snprintf(path, sizeof(path), "/proc/%d/root/dev/console", c->init_pid(c));
 	if (ret < 0 || ret >= sizeof(path)) {
-		ERROR("snprintf'd too many chacters: %d", ret);
+		ERROR("snprintf'd too many characters: %d", ret);
 		return -1;
 	}
 
@@ -1262,14 +1266,9 @@ static bool do_dump(struct lxc_container *c, char *mode, struct migrate_opts *op
 
 	if (pid == 0) {
 		struct criu_opts os;
-		struct lxc_handler h;
 		struct cgroup_ops *cgroup_ops;
 
 		close(criuout[0]);
-
-		lxc_zero_handler(&h);
-
-		h.name = c->name;
 
 		cgroup_ops = cgroup_init(NULL);
 		if (!cgroup_ops) {
@@ -1277,7 +1276,6 @@ static bool do_dump(struct lxc_container *c, char *mode, struct migrate_opts *op
 			_exit(EXIT_FAILURE);
 			return -1;
 		}
-		h.cgroup_ops = cgroup_ops;
 
 		os.pipefd = criuout[1];
 		os.action = mode;
@@ -1285,6 +1283,7 @@ static bool do_dump(struct lxc_container *c, char *mode, struct migrate_opts *op
 		os.c = c;
 		os.console_name = c->lxc_conf->console.path;
 		os.criu_version = criu_version;
+		os.handler = NULL;
 
 		ret = save_tty_major_minor(opts->directory, c, os.tty_id, sizeof(os.tty_id));
 		if (ret < 0) {
@@ -1293,7 +1292,7 @@ static bool do_dump(struct lxc_container *c, char *mode, struct migrate_opts *op
 		}
 
 		/* exec_criu() returning is an error */
-		exec_criu(cgroup_ops, &os);
+		exec_criu(cgroup_ops, c->lxc_conf, &os);
 		free(criu_version);
 		_exit(EXIT_FAILURE);
 	} else {

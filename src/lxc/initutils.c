@@ -21,9 +21,13 @@
  * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA
  */
 
-#define _GNU_SOURCE
+#ifndef _GNU_SOURCE
+#define _GNU_SOURCE 1
+#endif
 #include <sys/prctl.h>
 
+#include "compiler.h"
+#include "config.h"
 #include "file_utils.h"
 #include "initutils.h"
 #include "log.h"
@@ -72,9 +76,9 @@ const char *lxc_global_config_value(const char *option_name)
 
 	/* placed in the thread local storage pool for non-bionic targets */
 #ifdef HAVE_TLS
-	static __thread const char *values[sizeof(options) / sizeof(options[0])] = { 0 };
+	static thread_local const char *values[sizeof(options) / sizeof(options[0])] = {0};
 #else
-	static const char *values[sizeof(options) / sizeof(options[0])] = { 0 };
+	static const char *values[sizeof(options) / sizeof(options[0])] = {0};
 #endif
 
 	/* user_config_path is freed as soon as it is used */
@@ -217,13 +221,6 @@ out:
 	return values[i];
 }
 
-extern void remove_trailing_slashes(char *p)
-{
-	int l = strlen(p);
-	while (--l >= 0 && (p[l] == '/' || p[l] == '\n'))
-		p[l] = '\0';
-}
-
 /*
  * Sets the process title to the specified title. Note that this may fail if
  * the kernel doesn't support PR_SET_MM_MAP (kernels <3.18).
@@ -324,7 +321,7 @@ int setproctitle(char *title)
 	if (ret == 0)
 		(void)strlcpy((char*)arg_start, title, len);
 	else
-		SYSINFO("setting cmdline failed");
+		SYSWARN("Failed to set cmdline");
 
 	return ret;
 }

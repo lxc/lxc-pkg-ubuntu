@@ -22,8 +22,9 @@
  * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA
  */
 
-#include "config.h"
-
+#ifndef _GNU_SOURCE
+#define _GNU_SOURCE 1
+#endif
 #include <errno.h>
 #include <fcntl.h>
 #include <grp.h>
@@ -42,10 +43,13 @@
 #include <unistd.h>
 
 #include "conf.h"
+#include "config.h"
 #include "list.h"
 #include "log.h"
 #include "macro.h"
-#include "namespace.h"
+#include "file_utils.h"
+#include "string_utils.h"
+#include "syscall_wrappers.h"
 #include "utils.h"
 
 extern int lxc_log_fd;
@@ -104,12 +108,10 @@ static int do_child(void *vargv)
 	char **argv = (char **)vargv;
 
 	/* Assume we want to become root */
-	ret = lxc_switch_uid_gid(0, 0);
-	if (ret < 0)
+	if (!lxc_switch_uid_gid(0, 0))
 		return -1;
 
-	ret = lxc_setgroups(0, NULL);
-	if (ret < 0)
+	if (!lxc_setgroups(0, NULL))
 		return -1;
 
 	ret = unshare(CLONE_NEWNS);

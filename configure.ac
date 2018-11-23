@@ -4,7 +4,7 @@
 m4_define([lxc_devel], 0)
 m4_define([lxc_version_major], 3)
 m4_define([lxc_version_minor], 0)
-m4_define([lxc_version_micro], 2)
+m4_define([lxc_version_micro], 3)
 m4_define([lxc_version_beta], [])
 
 m4_define([lxc_abi_major], 1)
@@ -53,7 +53,7 @@ AC_COMPILE_IFELSE([AC_LANG_PROGRAM([[
 #define CLANG_VERSION \
 	(__clang_major__ * 10000 + __clang_minor__ * 100 + __clang_patchlevel__)
 
-#if GCC_VERSION < 40600 && CLANG_VERSION < 10000
+#if GCC_VERSION < 40700 && CLANG_VERSION < 10000
 #error Sorry, your compiler is too old - please upgrade it
 #endif
 	]])], [valid_compiler=yes], [valid_compiler=no])
@@ -603,7 +603,12 @@ AC_CHECK_DECLS([PR_SET_NO_NEW_PRIVS], [], [], [#include <sys/prctl.h>])
 AC_CHECK_DECLS([PR_GET_NO_NEW_PRIVS], [], [], [#include <sys/prctl.h>])
 
 # Check for some headers
-AC_CHECK_HEADERS([sys/signalfd.h pty.h ifaddrs.h sys/memfd.h sys/personality.h utmpx.h sys/timerfd.h sys/resource.h])
+AC_CHECK_HEADERS([pty.h sys/memfd.h sys/personality.h sys/resource.h sys/signalfd.h sys/timerfd.h utmpx.h])
+
+AC_CHECK_HEADER([ifaddrs.h],
+	AM_CONDITIONAL(HAVE_IFADDRS_H, true)
+	AC_DEFINE(HAVE_IFADDRS_H, 1, [Have ifaddrs.h]),
+	AM_CONDITIONAL(HAVE_IFADDRS_H, false))
 
 # lookup major()/minor()/makedev()
 AC_HEADER_MAJOR
@@ -638,6 +643,10 @@ AC_CHECK_FUNCS([fgetln],
 	AM_CONDITIONAL(HAVE_FGETLN, true)
 	AC_DEFINE(HAVE_FGETLN,1,[Have fgetln]),
 	AM_CONDITIONAL(HAVE_FGETLN, false))
+AC_CHECK_FUNCS([keyctl],
+	AM_CONDITIONAL(HAVE_KEYCTL, true)
+	AC_DEFINE(HAVE_KEYCTL,1,[Have keyctl]),
+	AM_CONDITIONAL(HAVE_KEYCTL, false))
 AC_CHECK_FUNCS([prlimit],
 	AM_CONDITIONAL(HAVE_PRLIMIT, true)
 	AC_DEFINE(HAVE_PRLIMIT,1,[Have prlimit]),
@@ -659,6 +668,9 @@ AC_CHECK_FUNCS([strlcat],
 	AC_DEFINE(HAVE_STRLCAT,1,[Have strlcat]),
 	AM_CONDITIONAL(HAVE_STRLCAT, false))
 
+# HAVE_STRUCT_RTNL_LINK_STATS64={0,1}
+AC_CHECK_TYPES([struct rtnl_link_stats64], [], [], [[#include <linux/if_link.h>]])
+
 # Check for some libraries
 AX_PTHREAD
 AC_SEARCH_LIBS(clock_gettime, [rt])
@@ -670,8 +682,23 @@ AC_PROG_SED
 # See if we support thread-local storage.
 LXC_CHECK_TLS
 
+AX_CHECK_COMPILE_FLAG([-fdiagnostics-color], [CFLAGS="$CFLAGS -fdiagnostics-color"],,[-Werror])
+AX_CHECK_COMPILE_FLAG([-Wimplicit-fallthrough], [CFLAGS="$CFLAGS -Wimplicit-fallthrough"],,[-Werror])
+AX_CHECK_COMPILE_FLAG([-Wcast-align], [CFLAGS="$CFLAGS -Wcast-align"],,[-Werror])
+AX_CHECK_COMPILE_FLAG([-Wstrict-prototypes], [CFLAGS="$CFLAGS -Wstrict-prototypes"],,[-Werror])
+AX_CHECK_COMPILE_FLAG([-fno-strict-aliasing], [CFLAGS="$CFLAGS -fno-strict-aliasing"],,[-Werror])
+AX_CHECK_COMPILE_FLAG([-fstack-clash-protection], [CFLAGS="$CFLAGS -fstack-clash-protection"],,[-Werror])
+AX_CHECK_COMPILE_FLAG([-fstack-protector-strong], [CFLAGS="$CFLAGS -fstack-protector-strong"],,[-Werror])
+AX_CHECK_COMPILE_FLAG([-g], [CFLAGS="$CFLAGS -g"],,[-Werror])
+AX_CHECK_COMPILE_FLAG([--mcet -fcf-protection], [CFLAGS="$CFLAGS --mcet -fcf-protection"],,[-Werror])
+AX_CHECK_COMPILE_FLAG([-Werror=implicit-function-declaration], [CFLAGS="$CFLAGS -Werror=implicit-function-declaration"],,[-Werror])
+
+AX_CHECK_LINK_FLAG([-z relro], [LDLAGS="$LDLAGS -z relro"],,[])
+AX_CHECK_LINK_FLAG([-z now], [LDLAGS="$LDLAGS -z now"],,[])
+
+CFLAGS="$CFLAGS -Wvla -std=gnu11"
 if test "x$enable_werror" = "xyes"; then
-	CFLAGS="$CFLAGS -Werror -Wvla -std=gnu11"
+	CFLAGS="$CFLAGS -Werror"
 fi
 
 AC_ARG_ENABLE([thread-safety],
@@ -687,6 +714,7 @@ AC_CONFIG_FILES([
 
 	config/Makefile
 	config/apparmor/Makefile
+	config/apparmor/abstractions/start-container
 	config/selinux/Makefile
 	config/bash/Makefile
 	config/bash/lxc
@@ -925,4 +953,5 @@ Paths:
 
 Thread-safety:
  - enforce: $enable_thread_safety
+
 EOF

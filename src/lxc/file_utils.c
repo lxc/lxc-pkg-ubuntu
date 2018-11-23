@@ -17,23 +17,21 @@
  * 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
  */
 
-#include "config.h"
-
+#ifndef _GNU_SOURCE
+#define _GNU_SOURCE 1
+#endif
 #include <errno.h>
 #include <fcntl.h>
 #include <linux/magic.h>
 #include <stdlib.h>
 #include <sys/stat.h>
+#include <sys/sendfile.h>
 #include <sys/types.h>
 
+#include "config.h"
 #include "file_utils.h"
-#include "log.h"
 #include "macro.h"
 #include "string.h"
-
-#ifndef NO_LOG
-lxc_log_define(file_utils, lxc);
-#endif
 
 int lxc_write_to_file(const char *filename, const void *buf, size_t count,
 		      bool add_newline, mode_t mode)
@@ -108,11 +106,33 @@ again:
 	return ret;
 }
 
+ssize_t lxc_send_nointr(int sockfd, void *buf, size_t len, int flags)
+{
+	ssize_t ret;
+again:
+	ret = send(sockfd, buf, len, flags);
+	if (ret < 0 && errno == EINTR)
+		goto again;
+
+	return ret;
+}
+
 ssize_t lxc_read_nointr(int fd, void *buf, size_t count)
 {
 	ssize_t ret;
 again:
 	ret = read(fd, buf, count);
+	if (ret < 0 && errno == EINTR)
+		goto again;
+
+	return ret;
+}
+
+ssize_t lxc_recv_nointr(int sockfd, void *buf, size_t len, int flags)
+{
+	ssize_t ret;
+again:
+	ret = recv(sockfd, buf, len, flags);
 	if (ret < 0 && errno == EINTR)
 		goto again;
 
@@ -219,18 +239,6 @@ int lxc_make_tmpfile(char *template, bool rm)
 	return fd;
 }
 
-/* In overlayfs, st_dev is unreliable. So on overlayfs we don't do the
- * lxc_rmdir_onedev()
- */
-static bool is_native_overlayfs(const char *path)
-{
-	if (has_fs_type(path, OVERLAY_SUPER_MAGIC) ||
-	    has_fs_type(path, OVERLAYFS_SUPER_MAGIC))
-		return true;
-
-	return false;
-}
-
 bool is_fs_type(const struct statfs *fs, fs_type_magic magic_val)
 {
 	return (fs->f_type == (fs_type_magic)magic_val);
@@ -238,7 +246,6 @@ bool is_fs_type(const struct statfs *fs, fs_type_magic magic_val)
 
 bool has_fs_type(const char *path, fs_type_magic magic_val)
 {
-	bool has_type;
 	int ret;
 	struct statfs sb;
 
@@ -293,7 +300,7 @@ FILE *fopen_cloexec(const char *path, const char *mode)
 			open_mode |= O_EXCL;
 	open_mode |= O_CLOEXEC;
 
-	fd = open(path, open_mode, 0666);
+	fd = open(path, open_mode, 0660);
 	if (fd < 0)
 		return NULL;
 
@@ -302,5 +309,21 @@ FILE *fopen_cloexec(const char *path, const char *mode)
 	if (!ret)
 		close(fd);
 	errno = saved_errno;
+	return ret;
+}
+
+ssize_t lxc_sendfile_nointr(int out_fd, int in_fd, off_t *offset, size_t count)
+{
+	ssize_t ret;
+
+again:
+	ret = sendfile(out_fd, in_fd, offset, count);
+	if (ret < 0) {
+		if (errno == EINTR)
+			goto again;
+
+		return -1;
+	}
+
 	return ret;
 }
