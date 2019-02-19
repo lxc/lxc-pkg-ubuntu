@@ -24,6 +24,7 @@
 #define _GNU_SOURCE
 #include <errno.h>
 #include <fcntl.h>
+#include <pthread.h>
 #include <signal.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -44,6 +45,7 @@
 #include "mainloop.h"
 #include "monitor.h"
 #include "utils.h"
+#include "lxccontainer.h"
 
 #define CLIENTFDS_CHUNK 64
 
@@ -156,7 +158,7 @@ static int lxc_monitord_sock_handler(int fd, uint32_t events, void *data,
 		int rc;
 		char buf[4];
 
-		rc = read(fd, buf, sizeof(buf));
+		rc = lxc_read_nointr(fd, buf, sizeof(buf));
 		if (rc > 0 && !strncmp(buf, "quit", 4))
 			quit = 1;
 	}
@@ -295,14 +297,14 @@ static int lxc_monitord_fifo_handler(int fd, uint32_t events, void *data,
 	struct lxc_msg msglxc;
 	struct lxc_monitor *mon = data;
 
-	ret = read(fd, &msglxc, sizeof(msglxc));
+	ret = lxc_read_nointr(fd, &msglxc, sizeof(msglxc));
 	if (ret != sizeof(msglxc)) {
 		SYSERROR("Reading from fifo failed: %s.", strerror(errno));
 		return 1;
 	}
 
 	for (i = 0; i < mon->clientfds_cnt; i++) {
-		ret = write(mon->clientfds[i], &msglxc, sizeof(msglxc));
+		ret = lxc_write_nointr(mon->clientfds[i], &msglxc, sizeof(msglxc));
 		if (ret < 0)
 			ERROR("Failed to send message to client file descriptor %d: %s.",
 			      mon->clientfds[i], strerror(errno));
@@ -350,6 +352,7 @@ int main(int argc, char *argv[])
 	char *lxcpath = argv[1];
 	bool mainloop_opened = false;
 	bool monitord_created = false;
+	struct lxc_log log;
 
 	if (argc != 3) {
 		fprintf(stderr,
@@ -364,7 +367,13 @@ int main(int argc, char *argv[])
 	if (ret < 0 || ret >= sizeof(logpath))
 		exit(EXIT_FAILURE);
 
-	ret = lxc_log_init(NULL, logpath, "DEBUG", "lxc-monitord", 0, lxcpath);
+	log.name = NULL;
+	log.file = logpath;
+	log.level = "DEBUG";
+	log.prefix = "lxc-monitord";
+	log.quiet = 0;
+	log.lxcpath = lxcpath;
+	ret = lxc_log_init(&log);
 	if (ret)
 		INFO("Failed to open log file %s, log will be lost.", lxcpath);
 	lxc_log_options_no_override();
@@ -377,7 +386,7 @@ int main(int argc, char *argv[])
 	    sigdelset(&mask, SIGSEGV) ||
 	    sigdelset(&mask, SIGBUS)  ||
 	    sigdelset(&mask, SIGTERM) ||
-	    sigprocmask(SIG_BLOCK, &mask, NULL)) {
+	    pthread_sigmask(SIG_BLOCK, &mask, NULL)) {
 		SYSERROR("Failed to set signal mask.");
 		exit(EXIT_FAILURE);
 	}
@@ -409,7 +418,7 @@ int main(int argc, char *argv[])
 	 * if-empty-statement construct is to quiet the
 	 * warn-unused-result warning.
 	 */
-	if (write(pipefd, "S", 1))
+	if (lxc_write_nointr(pipefd, "S", 1))
 		;
 	close(pipefd);
 
@@ -419,11 +428,19 @@ int main(int argc, char *argv[])
 	}
 
 	NOTICE("lxc-monitord with pid %d is now monitoring lxcpath %s.",
-	       getpid(), mon.lxcpath);
+	       lxc_raw_getpid(), mon.lxcpath);
 	for (;;) {
 		ret = lxc_mainloop(&mon.descr, 1000 * 30);
+		if (ret) {
+			ERROR("mainloop returned an error");
+			break;
+		}
 		if (mon.clientfds_cnt <= 0) {
 			NOTICE("No remaining clients. lxc-monitord is exiting.");
+			break;
+		}
+		if (quit == 1) {
+			NOTICE("got quit command. lxc-monitord is exitting.");
 			break;
 		}
 	}

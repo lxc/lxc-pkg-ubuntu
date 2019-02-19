@@ -41,8 +41,6 @@
 #include "lxc.h"
 #include "utils.h"
 
-lxc_log_define(lxc_ls, lxc);
-
 /* Per default we only allow five levels of recursion to protect the stack at
  * least a little bit. */
 #define MAX_NESTLVL 5
@@ -53,6 +51,7 @@ lxc_log_define(lxc_ls, lxc);
 #define LS_RUNNING 4
 #define LS_NESTING 5
 #define LS_FILTER 6
+#define LS_DEFINED 7
 
 #ifndef SOCK_CLOEXEC
 #  define SOCK_CLOEXEC                02000000
@@ -167,6 +166,7 @@ static const struct option my_longopts[] = {
 	{"running", no_argument, 0, LS_RUNNING},
 	{"frozen", no_argument, 0, LS_FROZEN},
 	{"stopped", no_argument, 0, LS_STOPPED},
+	{"defined", no_argument, 0, LS_DEFINED},
 	{"nesting", optional_argument, 0, LS_NESTING},
 	{"groups", required_argument, 0, 'g'},
 	{"filter", required_argument, 0, LS_FILTER},
@@ -192,6 +192,7 @@ Options :\n\
   --running          list only running containers\n\
   --frozen           list only frozen containers\n\
   --stopped          list only stopped containers\n\
+  --defined          list only defined containers\n\
   --nesting=NUM      list nested containers up to NUM (default is 5) levels of nesting\n\
   --filter=REGEX     filter container names by regular expression\n\
   -g --groups        comma separated list of groups a container must have to be displayed\n",
@@ -203,6 +204,7 @@ Options :\n\
 int main(int argc, char *argv[])
 {
 	int ret = EXIT_FAILURE;
+	struct lxc_log log;
 	/*
 	 * The lxc parser requires that my_args.name is set. So let's satisfy
 	 * that condition by setting a dummy name which is never used.
@@ -218,8 +220,14 @@ int main(int argc, char *argv[])
 	 * We set the first argument that usually takes my_args.name to NULL so
 	 * that the log is only used when the user specifies a file.
 	 */
-	if (lxc_log_init(NULL, my_args.log_file, my_args.log_priority,
-			 my_args.progname, my_args.quiet, my_args.lxcpath[0]))
+	log.name = NULL;
+	log.file = my_args.log_file;
+	log.level = my_args.log_priority;
+	log.prefix = my_args.progname;
+	log.quiet = my_args.quiet;
+	log.lxcpath = my_args.lxcpath[0];
+
+	if (lxc_log_init(&log))
 		exit(EXIT_FAILURE);
 	lxc_log_options_no_override();
 
@@ -395,8 +403,9 @@ static int ls_get(struct ls **m, size_t *size, const struct lxc_arguments *args,
  		else if (!c)
  			continue;
 
-		if (!c->is_defined(c))
+		if (args->ls_defined && !c->is_defined(c)){
 			goto put_and_next;
+		}
 
 		/* This does not allocate memory so no worries about freeing it
 		 * when we goto next or out. */
@@ -461,9 +470,9 @@ static int ls_get(struct ls **m, size_t *size, const struct lxc_arguments *args,
 			if (tmp) {
 				unsigned int astart = 0;
 				if (lxc_safe_uint(tmp, &astart) < 0)
-					WARN("Could not parse value for 'lxc.start.auto'.");
+					printf("Could not parse value for 'lxc.start.auto'.\n");
 				if (astart > 1)
-					DEBUG("Wrong value for 'lxc.start.auto = %d'.", astart);
+					printf("Wrong value for 'lxc.start.auto = %d'.\n", astart);
 				l->autostart = astart == 1 ? true : false;
 			}
 			free(tmp);
@@ -552,8 +561,10 @@ static int ls_get(struct ls **m, size_t *size, const struct lxc_arguments *args,
 			/* We want to remove all locks we create under
 			 * /run/lxc/lock so we create a string pointing us to
 			 * the lock path for the current container. */
-			if (ls_remove_lock(path, name, lockpath, &len_lockpath, true) == -1)
+			if (ls_remove_lock(path, name, lockpath, &len_lockpath, true) == -1) {
+				free(newpath);
 				goto put_and_next;
+			}
 
 			ls_get(m, size, args, newpath, l->name, lvl + 1, lockpath, len_lockpath, grps_must, grps_must_len);
 			free(newpath);
@@ -792,11 +803,12 @@ static void ls_print_fancy_format(struct ls *l, struct lengths *lht,
 	/* Check for invalid keys. */
 	for (s = tmp; s && *s; s++) {
 		if (strcasecmp(*s, "NAME") && strcasecmp(*s, "STATE") &&
-				strcasecmp(*s, "PID") && strcasecmp(*s, "RAM") &&
-				strcasecmp(*s, "SWAP") && strcasecmp(*s, "AUTOSTART") &&
-				strcasecmp(*s, "GROUPS") && strcasecmp(*s, "INTERFACE") &&
-				strcasecmp(*s, "IPV4") && strcasecmp(*s, "IPV6")) {
+		    strcasecmp(*s, "PID") && strcasecmp(*s, "RAM") &&
+		    strcasecmp(*s, "SWAP") && strcasecmp(*s, "AUTOSTART") &&
+		    strcasecmp(*s, "GROUPS") && strcasecmp(*s, "INTERFACE") &&
+		    strcasecmp(*s, "IPV4") && strcasecmp(*s, "IPV6")) {
 			fprintf(stderr, "Invalid key: %s\n", *s);
+			lxc_free_array((void **)tmp, free);
 			return;
 		}
 	}
@@ -868,6 +880,8 @@ static void ls_print_fancy_format(struct ls *l, struct lengths *lht,
 		}
 		printf("\n");
 	}
+
+	lxc_free_array((void **)tmp, free);
 }
 
 static void ls_print_table(struct ls *l, struct lengths *lht,
@@ -927,6 +941,9 @@ static int my_parser(struct lxc_arguments *args, int c, char *arg)
 		break;
 	case LS_STOPPED:
 		args->ls_stopped = true;
+		break;
+	case LS_DEFINED:
+		args->ls_defined = true;
 		break;
 	case LS_NESTING:
 		/* In case strtoul() receives a string that represents a
@@ -1102,17 +1119,27 @@ static int ls_serialize(int wpipefd, struct ls *n)
 
 static int ls_recv_str(int fd, char **buf)
 {
+	ssize_t ret;
 	size_t slen = 0;
-	if (lxc_read_nointr(fd, &slen, sizeof(slen)) != sizeof(slen))
+
+	ret = lxc_read_nointr(fd, &slen, sizeof(slen));
+	if (ret != sizeof(slen))
 		return -1;
+
 	if (slen > 0) {
 		*buf = malloc(sizeof(char) * (slen + 1));
 		if (!*buf)
 			return -1;
-		if (lxc_read_nointr(fd, *buf, slen) != (ssize_t)slen)
+
+		ret = lxc_read_nointr(fd, *buf, slen);
+		if (ret != (ssize_t)slen) {
+			free(*buf);
 			return -1;
+		}
+
 		(*buf)[slen] = '\0';
 	}
+
 	return 0;
 }
 

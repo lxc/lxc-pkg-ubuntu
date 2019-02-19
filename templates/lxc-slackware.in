@@ -564,7 +564,9 @@ glibc-solibs
 gnupg
 grep
 gzip
+hostname
 iputils
+libunistring
 logrotate
 mpfr
 net-tools

@@ -35,8 +35,7 @@
 #include "log.h"
 #include "monitor.h"
 #include "arguments.h"
-
-lxc_log_define(lxc_monitor_ui, lxc);
+#include "lxccontainer.h"
 
 static bool quit_monitord;
 
@@ -91,6 +90,7 @@ int main(int argc, char *argv[])
 	struct pollfd *fds;
 	nfds_t nfds;
 	int len, rc_main, rc_snp, i;
+	struct lxc_log log;
 
 	rc_main = EXIT_FAILURE;
 
@@ -100,8 +100,14 @@ int main(int argc, char *argv[])
 	if (!my_args.log_file)
 		my_args.log_file = "none";
 
-	if (lxc_log_init(my_args.name, my_args.log_file, my_args.log_priority,
-			 my_args.progname, my_args.quiet, my_args.lxcpath[0]))
+	log.name = my_args.name;
+	log.file = my_args.log_file;
+	log.level = my_args.log_priority;
+	log.prefix = my_args.progname;
+	log.quiet = my_args.quiet;
+	log.lxcpath = my_args.lxcpath[0];
+
+	if (lxc_log_init(&log))
 		exit(rc_main);
 	lxc_log_options_no_override();
 
@@ -112,12 +118,12 @@ int main(int argc, char *argv[])
 
 			fd = lxc_monitor_open(my_args.lxcpath[i]);
 			if (fd < 0) {
-				ERROR("Unable to open monitor on path: %s", my_args.lxcpath[i]);
+				fprintf(stderr, "Unable to open monitor on path: %s\n", my_args.lxcpath[i]);
 				ret = EXIT_FAILURE;
 				continue;
 			}
 			if (write(fd, "quit", 4) < 0) {
-				SYSERROR("Unable to close monitor on path: %s", my_args.lxcpath[i]);
+				fprintf(stderr, "Unable to close monitor on path: %s\n", my_args.lxcpath[i]);
 				ret = EXIT_FAILURE;
 				close(fd);
 				continue;
@@ -130,23 +136,23 @@ int main(int argc, char *argv[])
 	len = strlen(my_args.name) + 3;
 	regexp = malloc(len + 3);
 	if (!regexp) {
-		ERROR("failed to allocate memory");
+		fprintf(stderr, "failed to allocate memory\n");
 		exit(rc_main);
 	}
 	rc_snp = snprintf(regexp, len, "^%s$", my_args.name);
 	if (rc_snp < 0 || rc_snp >= len) {
-		ERROR("Name too long");
+		fprintf(stderr, "Name too long\n");
 		goto error;
 	}
 
 	if (regcomp(&preg, regexp, REG_NOSUB|REG_EXTENDED)) {
-		ERROR("failed to compile the regex '%s'", my_args.name);
+		fprintf(stderr, "failed to compile the regex '%s'\n", my_args.name);
 		goto error;
 	}
 
 	fds = malloc(my_args.lxcpath_cnt * sizeof(struct pollfd));
 	if (!fds) {
-		SYSERROR("out of memory");
+		fprintf(stderr, "out of memory\n");
 		goto cleanup;
 	}
 

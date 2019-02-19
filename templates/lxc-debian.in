@@ -34,7 +34,7 @@ done
 export PATH=$PATH:/usr/sbin:/usr/bin:/sbin:/bin
 export GREP_OPTIONS=""
 
-MIRROR=${MIRROR:-http://httpredir.debian.org/debian}
+MIRROR=${MIRROR:-http://deb.debian.org/debian}
 SECURITY_MIRROR=${SECURITY_MIRROR:-http://security.debian.org/}
 LOCALSTATEDIR="@LOCALSTATEDIR@"
 LXC_TEMPLATE_CONFIG="@LXCTEMPLATECONFIG@"
@@ -99,7 +99,7 @@ EOF
     # reconfigure some services
 
     # but first reconfigure locales - so we get no noisy perl-warnings
-    if [ -z "$LANG" ]; then
+    if [ -z "$LANG" ] || echo $LANG | grep -E -q "^C(\..+)*$"; then
         cat >> "$rootfs/etc/locale.gen" << EOF
 en_US.UTF-8 UTF-8
 EOF
@@ -207,14 +207,6 @@ configure_debian_systemd()
     config=$3
     num_tty=$4
 
-    # this only works if we have getty@.service to manipulate
-    if [ -f "${rootfs}/lib/systemd/system/getty@.service" ]; then
-       sed -e 's/^ConditionPathExists=/# ConditionPathExists=/' \
-           -e 's/After=dev-%i.device/After=/' \
-           < "${rootfs}/lib/systemd/system/getty@.service" \
-           > "${rootfs}/etc/systemd/system/getty@.service"
-    fi
-
     # just in case systemd is not installed
     mkdir -p "${rootfs}/lib/systemd/system"
     mkdir -p "${rootfs}/etc/systemd/system/getty.target.wants"
@@ -258,9 +250,11 @@ download_debian()
     case "$release" in
       wheezy)
         init=sysvinit
+        iproute=iproute
         ;;
       *)
         init=init
+        iproute=iproute2
         ;;
     esac
     packages=\
@@ -271,7 +265,7 @@ dialog,\
 isc-dhcp-client,\
 netbase,\
 net-tools,\
-iproute,\
+$iproute,\
 openssh-server
 
     cache=$1
@@ -335,7 +329,7 @@ copy_debian()
     # make a local copy of the minidebian
     echo -n "Copying rootfs to $rootfs..."
     mkdir -p "$rootfs"
-    rsync -Ha "$cache/rootfs-$release-$arch"/ "$rootfs"/ || return 1
+    rsync -SHaAX "$cache/rootfs-$release-$arch"/ "$rootfs"/ || return 1
     return 0
 }
 
@@ -504,7 +498,7 @@ Options :
   -p, --path=PATH        directory where config and rootfs of this VM will be kept
   -a, --arch=ARCH        The container architecture. Can be one of: i686, x86_64,
                          amd64, armhf, armel, powerpc. Defaults to host arch.
-  -r, --release=RELEASE  Debian release. Can be one of: wheezy, jessie, stretch, sid.
+  -r, --release=RELEASE  Debian release. Can be one of: wheezy, jessie, stretch, buster, sid.
                          Defaults to current stable.
   --mirror=MIRROR        Debian mirror to use during installation. Overrides the MIRROR
                          environment variable (see below).
@@ -543,6 +537,8 @@ elif [ "$arch" = "x86_64" ]; then
     arch="amd64"
 elif [ "$arch" = "armv7l" ]; then
     arch="armhf"
+elif [ "$arch" = "aarch64" ]; then
+    arch="arm64"
 elif [ "$arch" = "ppc" ]; then
     arch="powerpc"
 elif [ "$arch" = "ppc64le" ]; then
@@ -622,7 +618,7 @@ fi
 
 current_release=$(wget "${MIRROR}/dists/stable/Release" -O - 2> /dev/null | head |awk '/^Codename: (.*)$/ { print $2; }')
 release=${release:-${current_release}}
-valid_releases=('wheezy' 'jessie' 'stretch' 'sid')
+valid_releases=('wheezy' 'jessie' 'stretch' 'buster' 'testing' 'sid' 'unstable')
 if [[ ! "${valid_releases[*]}" =~ (^|[^[:alpha:]])$release([^[:alpha:]]|$) ]]; then
     echo "Invalid release ${release}, valid ones are: ${valid_releases[*]}"
     exit 1

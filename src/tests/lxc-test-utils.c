@@ -27,47 +27,53 @@
 #include <fcntl.h>
 #include <inttypes.h>
 #include <limits.h>
+#include <pthread.h>
 #include <sched.h>
+#include <signal.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
-#include <unistd.h>
 #include <sys/mount.h>
 #include <sys/stat.h>
 #include <sys/types.h>
+#include <unistd.h>
 
 #include "lxctest.h"
 #include "utils.h"
 
 void test_lxc_deslashify(void)
 {
-	char *s = strdup("/A///B//C/D/E/");
-	if (!s)
-		exit(EXIT_FAILURE);
-	lxc_test_assert_abort(lxc_deslashify(&s));
-	lxc_test_assert_abort(strcmp(s, "/A/B/C/D/E") == 0);
-	free(s);
+	char *s = "/A///B//C/D/E/";
+	char *t;
 
-	s = strdup("/A");
-	if (!s)
+	t = lxc_deslashify(s);
+	if (!t)
 		exit(EXIT_FAILURE);
-	lxc_test_assert_abort(lxc_deslashify(&s));
-	lxc_test_assert_abort(strcmp(s, "/A") == 0);
-	free(s);
+	lxc_test_assert_abort(strcmp(t, "/A/B/C/D/E") == 0);
+	free(t);
 
-	s = strdup("");
-	if (!s)
-		exit(EXIT_FAILURE);
-	lxc_test_assert_abort(lxc_deslashify(&s));
-	lxc_test_assert_abort(strcmp(s, "") == 0);
-	free(s);
+	s = "/A";
 
-	s = strdup("//");
-	if (!s)
+	t = lxc_deslashify(s);
+	if (!t)
 		exit(EXIT_FAILURE);
-	lxc_test_assert_abort(lxc_deslashify(&s));
-	lxc_test_assert_abort(strcmp(s, "/") == 0);
-	free(s);
+	lxc_test_assert_abort(strcmp(t, "/A") == 0);
+	free(t);
+
+	s = "";
+	t = lxc_deslashify(s);
+	if (!t)
+		exit(EXIT_FAILURE);
+	lxc_test_assert_abort(strcmp(t, "") == 0);
+	free(t);
+
+	s = "//";
+
+	t = lxc_deslashify(s);
+	if (!t)
+		exit(EXIT_FAILURE);
+	lxc_test_assert_abort(strcmp(t, "/") == 0);
+	free(t);
 }
 
 /* /proc/int_as_str/ns/mnt\0 = (5 + 21 + 7 + 1) */
@@ -143,13 +149,13 @@ void test_detect_ramfs_rootfs(void)
 		goto non_test_error;
 	}
 
-	fd1 = mkstemp(tmpf1);
+	fd1 = lxc_make_tmpfile(tmpf1, false);
 	if (fd1 < 0) {
 		lxc_error("%s\n", "Could not create temporary file.");
 		goto non_test_error;
 	}
 
-	fd2 = mkstemp(tmpf2);
+	fd2 = lxc_make_tmpfile(tmpf2, false);
 	if (fd2 < 0) {
 		lxc_error("%s\n", "Could not create temporary file.");
 		goto non_test_error;
@@ -228,7 +234,22 @@ non_test_error:
 
 void test_lxc_safe_uint(void)
 {
+	int ret;
 	unsigned int n;
+	char numstr[LXC_NUMSTRLEN64];
+
+	lxc_test_assert_abort((-EINVAL == lxc_safe_uint("    -123", &n)));
+	lxc_test_assert_abort((-EINVAL == lxc_safe_uint("-123", &n)));
+
+	ret = snprintf(numstr, LXC_NUMSTRLEN64, "%" PRIu64, (uint64_t)UINT_MAX);
+	if (ret < 0 || ret >= LXC_NUMSTRLEN64)
+		exit(EXIT_FAILURE);
+	lxc_test_assert_abort((0 == lxc_safe_uint(numstr, &n)) && n == UINT_MAX);
+
+	ret = snprintf(numstr, LXC_NUMSTRLEN64, "%" PRIu64, (uint64_t)UINT_MAX + 1);
+	if (ret < 0 || ret >= LXC_NUMSTRLEN64)
+		exit(EXIT_FAILURE);
+	lxc_test_assert_abort((-ERANGE == lxc_safe_uint(numstr, &n)));
 
 	lxc_test_assert_abort((0 == lxc_safe_uint("1234345", &n)) && n == 1234345);
 	lxc_test_assert_abort((0 == lxc_safe_uint("   345", &n)) && n == 345);
@@ -247,7 +268,29 @@ void test_lxc_safe_uint(void)
 
 void test_lxc_safe_int(void)
 {
+	int ret;
 	signed int n;
+	char numstr[LXC_NUMSTRLEN64];
+
+	ret = snprintf(numstr, LXC_NUMSTRLEN64, "%" PRIu64, (uint64_t)INT_MAX);
+	if (ret < 0 || ret >= LXC_NUMSTRLEN64)
+		exit(EXIT_FAILURE);
+	lxc_test_assert_abort((0 == lxc_safe_int(numstr, &n)) && n == INT_MAX);
+
+	ret = snprintf(numstr, LXC_NUMSTRLEN64, "%" PRIu64, (uint64_t)INT_MAX + 1);
+	if (ret < 0 || ret >= LXC_NUMSTRLEN64)
+		exit(EXIT_FAILURE);
+	lxc_test_assert_abort((-ERANGE == lxc_safe_int(numstr, &n)));
+
+	ret = snprintf(numstr, LXC_NUMSTRLEN64, "%" PRId64, (int64_t)INT_MIN);
+	if (ret < 0 || ret >= LXC_NUMSTRLEN64)
+		exit(EXIT_FAILURE);
+	lxc_test_assert_abort((0 == lxc_safe_int(numstr, &n)) && n == INT_MIN);
+
+	ret = snprintf(numstr, LXC_NUMSTRLEN64, "%" PRId64, (int64_t)INT_MIN - 1);
+	if (ret < 0 || ret >= LXC_NUMSTRLEN64)
+		exit(EXIT_FAILURE);
+	lxc_test_assert_abort((-ERANGE == lxc_safe_int(numstr, &n)));
 
 	lxc_test_assert_abort((0 == lxc_safe_int("1234345", &n)) && n == 1234345);
 	lxc_test_assert_abort((0 == lxc_safe_int("   345", &n)) && n == 345);
@@ -339,6 +382,189 @@ void test_lxc_string_in_array(void)
 	lxc_test_assert_abort(lxc_string_in_array("XYZ", (const char *[]){"BERTA", "ARQWE(9", "C8Zhkd", "7U", "XYZ", "UOIZ9", "=)()", NULL}));
 }
 
+void test_parse_byte_size_string(void)
+{
+	int ret;
+	int64_t n;
+
+	ret = parse_byte_size_string("0", &n);
+	if (ret < 0) {
+		lxc_error("%s\n", "Failed to parse \"0\"");
+		exit(EXIT_FAILURE);
+	}
+	if (n != 0) {
+		lxc_error("%s\n", "Failed to parse \"0\"");
+		exit(EXIT_FAILURE);
+	}
+
+	ret = parse_byte_size_string("1", &n);
+	if (ret < 0) {
+		lxc_error("%s\n", "Failed to parse \"1\"");
+		exit(EXIT_FAILURE);
+	}
+	if (n != 1) {
+		lxc_error("%s\n", "Failed to parse \"1\"");
+		exit(EXIT_FAILURE);
+	}
+
+	ret = parse_byte_size_string("1 ", &n);
+	if (ret == 0) {
+		lxc_error("%s\n", "Failed to parse \"1 \"");
+		exit(EXIT_FAILURE);
+	}
+
+	ret = parse_byte_size_string("1B", &n);
+	if (ret < 0) {
+		lxc_error("%s\n", "Failed to parse \"1B\"");
+		exit(EXIT_FAILURE);
+	}
+	if (n != 1) {
+		lxc_error("%s\n", "Failed to parse \"1B\"");
+		exit(EXIT_FAILURE);
+	}
+
+	ret = parse_byte_size_string("1kB", &n);
+	if (ret < 0) {
+		lxc_error("%s\n", "Failed to parse \"1kB\"");
+		exit(EXIT_FAILURE);
+	}
+	if (n != 1024) {
+		lxc_error("%s\n", "Failed to parse \"1kB\"");
+		exit(EXIT_FAILURE);
+	}
+
+	ret = parse_byte_size_string("1MB", &n);
+	if (ret < 0) {
+		lxc_error("%s\n", "Failed to parse \"1MB\"");
+		exit(EXIT_FAILURE);
+	}
+	if (n != 1048576) {
+		lxc_error("%s\n", "Failed to parse \"1MB\"");
+		exit(EXIT_FAILURE);
+	}
+
+	ret = parse_byte_size_string("1GB", &n);
+	if (ret < 0)
+		exit(EXIT_FAILURE);
+	if (n != 1073741824)
+		exit(EXIT_FAILURE);
+
+	ret = parse_byte_size_string("1TB", &n);
+	if (ret == 0) {
+		lxc_error("%s\n", "Failed to parse \"1TB\"");
+		exit(EXIT_FAILURE);
+	}
+
+	ret = parse_byte_size_string("1 B", &n);
+	if (ret < 0) {
+		lxc_error("%s\n", "Failed to parse \"1 B\"");
+		exit(EXIT_FAILURE);
+	}
+	if (n != 1) {
+		lxc_error("%s\n", "Failed to parse \"1 B\"");
+		exit(EXIT_FAILURE);
+	}
+
+	ret = parse_byte_size_string("1 kB", &n);
+	if (ret < 0) {
+		lxc_error("%s\n", "Failed to parse \"1 kB\"");
+		exit(EXIT_FAILURE);
+	}
+	if (n != 1024) {
+		lxc_error("%s\n", "Failed to parse \"1 kB\"");
+		exit(EXIT_FAILURE);
+	}
+
+	ret = parse_byte_size_string("1 MB", &n);
+	if (ret < 0) {
+		lxc_error("%s\n", "Failed to parse \"1 MB\"");
+		exit(EXIT_FAILURE);
+	}
+	if (n != 1048576) {
+		lxc_error("%s\n", "Failed to parse \"1 MB\"");
+		exit(EXIT_FAILURE);
+	}
+
+	ret = parse_byte_size_string("1 GB", &n);
+	if (ret < 0)
+		exit(EXIT_FAILURE);
+	if (n != 1073741824)
+		exit(EXIT_FAILURE);
+
+	ret = parse_byte_size_string("1 TB", &n);
+	if (ret == 0) {
+		lxc_error("%s\n", "Failed to parse \"1 TB\"");
+		exit(EXIT_FAILURE);
+	}
+
+	ret = parse_byte_size_string("asdf", &n);
+	if (ret == 0) {
+		lxc_error("%s\n", "Failed to parse \"asdf\"");
+		exit(EXIT_FAILURE);
+	}
+}
+
+void test_task_blocks_signal(void)
+{
+	int ret;
+	pid_t pid;
+
+	pid = fork();
+	if (pid < 0)
+		_exit(EXIT_FAILURE);
+
+	if (pid == 0) {
+		int i;
+		sigset_t mask;
+		int signals[] = {SIGBUS,   SIGILL,       SIGSEGV,
+				 SIGWINCH, SIGQUIT,      SIGUSR1,
+				 SIGUSR2,  SIGRTMIN + 3, SIGRTMIN + 4};
+
+		sigemptyset(&mask);
+
+		for (i = 0; i < (sizeof(signals) / sizeof(signals[0])); i++) {
+			ret = sigaddset(&mask, signals[i]);
+			if (ret < 0)
+				_exit(EXIT_FAILURE);
+		}
+
+		ret = pthread_sigmask(SIG_BLOCK, &mask, NULL);
+		if (ret < 0) {
+			lxc_error("%s\n", "Failed to block signals");
+			_exit(EXIT_FAILURE);
+		}
+
+		for (i = 0; i < (sizeof(signals) / sizeof(signals[0])); i++) {
+			if (!task_blocks_signal(getpid(), signals[i])) {
+				lxc_error("Failed to detect blocked signal "
+					  "(idx = %d, signal number = %d)\n",
+					  i, signals[i]);
+				_exit(EXIT_FAILURE);
+			}
+		}
+
+		if (task_blocks_signal(getpid(), SIGKILL)) {
+			lxc_error("%s\n",
+				  "Falsely detected SIGKILL as blocked signal");
+			_exit(EXIT_FAILURE);
+		}
+
+		if (task_blocks_signal(getpid(), SIGSTOP)) {
+			lxc_error("%s\n",
+				  "Falsely detected SIGSTOP as blocked signal");
+			_exit(EXIT_FAILURE);
+		}
+
+		_exit(EXIT_SUCCESS);
+	}
+
+	ret = wait_for_pid(pid);
+	if (ret < 0)
+		_exit(EXIT_FAILURE);
+
+	return;
+}
+
 int main(int argc, char *argv[])
 {
 	test_lxc_string_replace();
@@ -348,6 +574,8 @@ int main(int argc, char *argv[])
 	test_lxc_safe_uint();
 	test_lxc_safe_int();
 	test_lxc_safe_long();
+	test_parse_byte_size_string();
+	test_task_blocks_signal();
 
 	exit(EXIT_SUCCESS);
 }

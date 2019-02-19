@@ -21,27 +21,28 @@
  * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA
  */
 #define _GNU_SOURCE
-#include <stdio.h>
-#include <stdlib.h>
 #include <errno.h>
 #include <libgen.h>
+#include <stdio.h>
+#include <stdlib.h>
 #include <string.h>
 #include <unistd.h>
-#include <sys/types.h>
-#include <sys/stat.h>
 #include <sys/param.h>
+#include <sys/stat.h>
+#include <sys/types.h>
+#include <sys/wait.h>
 
-#include "caps.h"
-#include "lxc.h"
-#include "log.h"
-#include "conf.h"
-#include "confile.h"
+#include <lxc/lxccontainer.h>
+
 #include "arguments.h"
+#include "caps.h"
+#include "conf.h"
 #include "config.h"
+#include "confile.h"
+#include "log.h"
+#include "lxc.h"
 #include "start.h"
 #include "utils.h"
-
-lxc_log_define(lxc_execute_ui, lxc);
 
 static struct lxc_list defines;
 
@@ -104,9 +105,10 @@ Options :\n\
 
 int main(int argc, char *argv[])
 {
-	char *rcfile;
-	struct lxc_conf *conf;
+	struct lxc_container *c;
+	struct lxc_log log;
 	int ret;
+	bool bret;
 
 	lxc_list_init(&defines);
 
@@ -116,55 +118,72 @@ int main(int argc, char *argv[])
 	if (lxc_arguments_parse(&my_args, argc, argv))
 		exit(EXIT_FAILURE);
 
-	if (lxc_log_init(my_args.name, my_args.log_file, my_args.log_priority,
-			 my_args.progname, my_args.quiet, my_args.lxcpath[0]))
+	log.name = my_args.name;
+	log.file = my_args.log_file;
+	log.level = my_args.log_priority;
+	log.prefix = my_args.progname;
+	log.quiet = my_args.quiet;
+	log.lxcpath = my_args.lxcpath[0];
+
+	if (lxc_log_init(&log))
 		exit(EXIT_FAILURE);
 	lxc_log_options_no_override();
 
-	/* rcfile is specified in the cli option */
-	if (my_args.rcfile)
-		rcfile = (char *)my_args.rcfile;
-	else {
-		int rc;
+	c = lxc_container_new(my_args.name, my_args.lxcpath[0]);
+	if (!c) {
+		fprintf(stderr, "Failed to create lxc_container\n");
+		exit(EXIT_FAILURE);
+	}
 
-		rc = asprintf(&rcfile, "%s/%s/config", my_args.lxcpath[0], my_args.name);
-		if (rc == -1) {
-			SYSERROR("failed to allocate memory");
+	if (my_args.rcfile) {
+		c->clear_config(c);
+		if (!c->load_config(c, my_args.rcfile)) {
+			fprintf(stderr, "Failed to load rcfile\n");
+			lxc_container_put(c);
 			exit(EXIT_FAILURE);
 		}
-
-		/* container configuration does not exist */
-		if (access(rcfile, F_OK)) {
-			free(rcfile);
-			rcfile = NULL;
+		c->configfile = strdup(my_args.rcfile);
+		if (!c->configfile) {
+			fprintf(stderr, "Out of memory setting new config filename\n");
+			lxc_container_put(c);
+			exit(EXIT_FAILURE);
 		}
 	}
 
-	conf = lxc_conf_init();
-	if (!conf) {
-		ERROR("failed to initialize configuration");
+	if (!c->lxc_conf) {
+		fprintf(stderr, "Executing a container with no configuration file may crash the host\n");
+		lxc_container_put(c);
 		exit(EXIT_FAILURE);
 	}
 
-	if (rcfile && lxc_config_read(rcfile, conf, NULL)) {
-		ERROR("failed to read configuration file");
+	ret = lxc_config_define_load(&defines, c->lxc_conf);
+	if (ret) {
+		lxc_container_put(c);
 		exit(EXIT_FAILURE);
 	}
-
-	if (lxc_config_define_load(&defines, conf))
-		exit(EXIT_FAILURE);
 
 	if (my_args.uid)
-		conf->init_uid = my_args.uid;
+		c->lxc_conf->init_uid = my_args.uid;
 
 	if (my_args.gid)
-		conf->init_gid = my_args.gid;
+		c->lxc_conf->init_gid = my_args.gid;
 
-	ret = lxc_execute(my_args.name, my_args.argv, my_args.quiet, conf, my_args.lxcpath[0], false);
-
-	lxc_conf_free(conf);
-
-	if (ret < 0)
+	c->daemonize = false;
+	bret = c->start(c, 1, my_args.argv);
+	lxc_container_put(c);
+	if (!bret) {
+		fprintf(stderr, "Failed run an application inside container\n");
 		exit(EXIT_FAILURE);
-	exit(ret);
+	}
+	if (c->daemonize)
+		exit(EXIT_SUCCESS);
+	else {
+		if (WIFEXITED(c->error_num)) {
+			exit(WEXITSTATUS(c->error_num));
+		} else {
+			/* Try to die with the same signal the task did. */
+			kill(0, WTERMSIG(c->error_num));
+			exit(EXIT_FAILURE);
+		}
+	}
 }

@@ -31,8 +31,8 @@
 #include <signal.h>
 #include <stdlib.h>
 #include <string.h>
+#include <sys/eventfd.h>
 #include <sys/socket.h>
-#include <sys/syscall.h>
 #include <sys/types.h>
 #include <sys/wait.h>
 #include <unistd.h>
@@ -44,21 +44,6 @@
 #include "namespace.h"
 #include "network.h"
 #include "utils.h"
-
-/* Define sethostname() if missing from the C library */
-#ifndef HAVE_SETHOSTNAME
-static int sethostname(const char * name, size_t len)
-{
-#ifdef __NR_sethostname
-return syscall(__NR_sethostname, name, len);
-#else
-errno = ENOSYS;
-return -1;
-#endif
-}
-#endif
-
-lxc_log_define(lxc_unshare_ui, lxc);
 
 struct my_iflist
 {
@@ -83,32 +68,55 @@ static void usage(char *cmd)
 static bool lookup_user(const char *optarg, uid_t *uid)
 {
 	char name[MAXPATHLEN];
-	struct passwd *pwent = NULL;
+	struct passwd pwent;
+	struct passwd *pwentp = NULL;
+	char *buf;
+	size_t bufsize;
+	int ret;
 
 	if (!optarg || (optarg[0] == '\0'))
 		return false;
 
+	bufsize = sysconf(_SC_GETPW_R_SIZE_MAX);
+	if (bufsize == -1)
+		bufsize = 1024;
+
+	buf = malloc(bufsize);
+	if (!buf)
+		return false;
+
 	if (sscanf(optarg, "%u", uid) < 1) {
 		/* not a uid -- perhaps a username */
-		if (sscanf(optarg, "%s", name) < 1)
-			return false;
-
-		pwent = getpwnam(name);
-		if (!pwent) {
-			ERROR("invalid username %s", name);
+		if (sscanf(optarg, "%s", name) < 1) {
+			free(buf);
 			return false;
 		}
-		*uid = pwent->pw_uid;
+
+		ret = getpwnam_r(name, &pwent, buf, bufsize, &pwentp);
+		if (!pwentp) {
+			if (ret == 0)
+				fprintf(stderr, "could not find matched password record\n");
+
+			fprintf(stderr, "invalid username %s\n", name);
+			free(buf);
+			return false;
+		}
+		*uid = pwent.pw_uid;
 	} else {
-		pwent = getpwuid(*uid);
-		if (!pwent) {
-			ERROR("invalid uid %u", *uid);
+		ret = getpwuid_r(*uid, &pwent, buf, bufsize, &pwentp);
+		if (!pwentp) {
+			if (ret == 0)
+				fprintf(stderr, "could not find matched password record\n");
+
+			fprintf(stderr, "invalid uid %u\n", *uid);
+			free(buf);
 			return false;
 		}
 	}
+
+	free(buf);
 	return true;
 }
-
 
 struct start_arg {
 	char ***args;
@@ -116,36 +124,81 @@ struct start_arg {
 	uid_t *uid;
 	bool setuid;
 	int want_default_mounts;
+	int wait_fd;
 	const char *want_hostname;
 };
 
+static int mount_fs(const char *source, const char *target, const char *type)
+{
+	/* the umount may fail */
+	if (umount(target) < 0)
+
+	if (mount(source, target, type, 0, NULL) < 0)
+		return -1;
+
+	return 0;
+}
+
+static void lxc_setup_fs(void)
+{
+	(void)mount_fs("proc", "/proc", "proc");
+
+	/* if /dev has been populated by us, /dev/shm does not exist */
+	if (access("/dev/shm", F_OK))
+		(void)mkdir("/dev/shm", 0777);
+
+	/* if we can't mount /dev/shm, continue anyway */
+	(void)mount_fs("shmfs", "/dev/shm", "tmpfs");
+
+	/* If we were able to mount /dev/shm, then /dev exists */
+	/* Sure, but it's read-only per config :) */
+	if (access("/dev/mqueue", F_OK))
+		(void)mkdir("/dev/mqueue", 0666);
+
+	/* continue even without posix message queue support */
+	(void)mount_fs("mqueue", "/dev/mqueue", "mqueue");
+}
+
 static int do_start(void *arg)
 {
+	int ret;
+	uint64_t wait_val;
 	struct start_arg *start_arg = arg;
 	char **args = *start_arg->args;
 	int flags = *start_arg->flags;
 	uid_t uid = *start_arg->uid;
 	int want_default_mounts = start_arg->want_default_mounts;
 	const char *want_hostname = start_arg->want_hostname;
+	int wait_fd = start_arg->wait_fd;
+
+	if (start_arg->setuid) {
+		/* waiting until uid maps is set */
+		ret = read(wait_fd, &wait_val, sizeof(wait_val));
+		if (ret == -1) {
+			close(wait_fd);
+			fprintf(stderr, "read eventfd failed\n");
+			exit(EXIT_FAILURE);
+		}
+	}
 
 	if ((flags & CLONE_NEWNS) && want_default_mounts)
 		lxc_setup_fs();
 
 	if ((flags & CLONE_NEWUTS) && want_hostname)
 		if (sethostname(want_hostname, strlen(want_hostname)) < 0) {
-			ERROR("failed to set hostname %s: %s", want_hostname, strerror(errno));
+			fprintf(stderr, "failed to set hostname %s: %s\n", want_hostname, strerror(errno));
 			exit(EXIT_FAILURE);
 		}
 
 	// Setuid is useful even without a new user id space
 	if (start_arg->setuid && setuid(uid)) {
-		ERROR("failed to set uid %d: %s", uid, strerror(errno));
+		fprintf(stderr, "failed to set uid %d: %s\n", uid, strerror(errno));
 		exit(EXIT_FAILURE);
 	}
 
 	execvp(args[0], args);
 
-	ERROR("failed to exec: '%s': %s", args[0], strerror(errno));
+	fprintf(stderr, "failed to exec: '%s': %s\n", args[0], strerror(errno));
 	return 1;
 }
 
@@ -159,6 +212,7 @@ int main(int argc, char *argv[])
 	int flags = 0, daemonize = 0;
 	uid_t uid = 0; /* valid only if (flags & CLONE_NEWUSER) */
 	pid_t pid;
+	uint64_t wait_val = 1;
 	struct my_iflist *tmpif, *my_iflist = NULL;
 	struct start_arg start_arg = {
 		.args = &args,
@@ -203,7 +257,7 @@ int main(int argc, char *argv[])
 	}
 
 	if (argv[optind] == NULL) {
-		ERROR("a command to execute in the new namespace is required");
+		fprintf(stderr, "a command to execute in the new namespace is required\n");
 		exit(EXIT_FAILURE);
 	}
 
@@ -228,6 +282,9 @@ int main(int argc, char *argv[])
 	 *	dest: del + 1 == OUNT|PID
 	 *	src:  del + 3 == NT|PID
 	 */
+	if (!namespaces)
+		usage(argv[0]);
+
 	while ((del = strstr(namespaces, "MOUNT")))
 		memmove(del + 1, del + 3, strlen(del) - 2);
 
@@ -240,24 +297,61 @@ int main(int argc, char *argv[])
 		usage(argv[0]);
 
 	if (!(flags & CLONE_NEWNET) && my_iflist) {
-		ERROR("-i <interfacename> needs -s NETWORK option");
+		fprintf(stderr, "-i <interfacename> needs -s NETWORK option\n");
 		exit(EXIT_FAILURE);
 	}
 
 	if (!(flags & CLONE_NEWUTS) && start_arg.want_hostname) {
-		ERROR("-H <hostname> needs -s UTSNAME option");
+		fprintf(stderr, "-H <hostname> needs -s UTSNAME option\n");
 		exit(EXIT_FAILURE);
 	}
 
 	if (!(flags & CLONE_NEWNS) && start_arg.want_default_mounts) {
-		ERROR("-M needs -s MOUNT option");
+		fprintf(stderr, "-M needs -s MOUNT option\n");
 		exit(EXIT_FAILURE);
+	}
+
+	if (start_arg.setuid) {
+		start_arg.wait_fd = eventfd(0, EFD_CLOEXEC);
+		if (start_arg.wait_fd < 0) {
+			fprintf(stderr, "failed to create eventfd\n");
+			exit(EXIT_FAILURE);
+		}
 	}
 
 	pid = lxc_clone(do_start, &start_arg, flags);
 	if (pid < 0) {
-		ERROR("failed to clone");
+		fprintf(stderr, "failed to clone\n");
 		exit(EXIT_FAILURE);
+	}
+
+	if (start_arg.setuid) {
+		/* enough space to accommodate uids */
+		char *umap = (char *)alloca(100);
+
+		/* create new uid mapping using current UID and the one
+		 * specified as parameter
+		 */
+		ret = snprintf(umap, 100, "%d %d 1\n" , *(start_arg.uid), getuid());
+		if (ret < 0 || ret >= 100) {
+			close(start_arg.wait_fd);
+			fprintf(stderr, "snprintf failed");
+			exit(EXIT_FAILURE);
+		}
+
+		ret = write_id_mapping(ID_TYPE_UID, pid, umap, strlen(umap));
+		if (ret < 0) {
+			close(start_arg.wait_fd);
+			fprintf(stderr, "uid mapping failed\n");
+			exit(EXIT_FAILURE);
+		}
+
+		ret = write(start_arg.wait_fd, &wait_val, sizeof(wait_val));
+		if (ret < 0) {
+			close(start_arg.wait_fd);
+			fprintf(stderr, "write to eventfd failed\n");
+			exit(EXIT_FAILURE);
+		}
 	}
 
 	if (my_iflist) {
@@ -271,7 +365,7 @@ int main(int argc, char *argv[])
 		exit(EXIT_SUCCESS);
 
 	if (waitpid(pid, &status, 0) < 0) {
-		ERROR("failed to wait for '%d'", pid);
+		fprintf(stderr, "failed to wait for '%d'\n", pid);
 		exit(EXIT_FAILURE);
 	}
 

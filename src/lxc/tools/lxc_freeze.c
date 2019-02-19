@@ -33,8 +33,6 @@
 
 #include "arguments.h"
 
-lxc_log_define(lxc_freeze_ui, lxc);
-
 static const struct option my_longopts[] = {
 	LXC_COMMON_OPTIONS
 };
@@ -57,6 +55,7 @@ Options :\n\
 int main(int argc, char *argv[])
 {
 	struct lxc_container *c;
+	struct lxc_log log;
 
 	if (lxc_arguments_parse(&my_args, argc, argv))
 		exit(EXIT_FAILURE);
@@ -64,40 +63,46 @@ int main(int argc, char *argv[])
 	if (!my_args.log_file)
 		my_args.log_file = "none";
 
-	if (lxc_log_init(my_args.name, my_args.log_file, my_args.log_priority,
-			 my_args.progname, my_args.quiet, my_args.lxcpath[0]))
+	log.name = my_args.name;
+	log.file = my_args.log_file;
+	log.level = my_args.log_priority;
+	log.prefix = my_args.progname;
+	log.quiet = my_args.quiet;
+	log.lxcpath = my_args.lxcpath[0];
+
+	if (lxc_log_init(&log))
 		exit(EXIT_FAILURE);
 	lxc_log_options_no_override();
 
 	c = lxc_container_new(my_args.name, my_args.lxcpath[0]);
 	if (!c) {
-		ERROR("No such container: %s:%s", my_args.lxcpath[0], my_args.name);
+		fprintf(stderr, "No such container: %s:%s\n", my_args.lxcpath[0], my_args.name);
 		exit(EXIT_FAILURE);
 	}
 
 	if (my_args.rcfile) {
 		c->clear_config(c);
 		if (!c->load_config(c, my_args.rcfile)) {
-			ERROR("Failed to load rcfile");
+			fprintf(stderr, "Failed to load rcfile\n");
 			lxc_container_put(c);
 			exit(EXIT_FAILURE);
 		}
 		c->configfile = strdup(my_args.rcfile);
 		if (!c->configfile) {
-			ERROR("Out of memory setting new config filename");
+			fprintf(stderr, "Out of memory setting new config filename\n");
 			lxc_container_put(c);
 			exit(EXIT_FAILURE);
 		}
 	}
 
 	if (!c->may_control(c)) {
-		ERROR("Insufficent privileges to control %s:%s", my_args.lxcpath[0], my_args.name);
+		fprintf(stderr, "Insufficent privileges to control %s:%s\n", my_args.lxcpath[0], my_args.name);
 		lxc_container_put(c);
 		exit(EXIT_FAILURE);
 	}
 
 	if (!c->freeze(c)) {
-		ERROR("Failed to freeze %s:%s", my_args.lxcpath[0], my_args.name);
+		fprintf(stderr, "Failed to freeze %s:%s\n", my_args.lxcpath[0], my_args.name);
 		lxc_container_put(c);
 		exit(EXIT_FAILURE);
 	}

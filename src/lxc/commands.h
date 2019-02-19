@@ -24,13 +24,24 @@
 #ifndef __LXC_COMMANDS_H
 #define __LXC_COMMANDS_H
 
+#include <stdio.h>
+#include <sys/types.h>
+#include <unistd.h>
+
+#include "lxccontainer.h"
+#include "macro.h"
 #include "state.h"
 
-#define LXC_CMD_DATA_MAX (MAXPATHLEN * 2)
+/* Length of abstract unix domain socket socket address. */
+#define LXC_AUDS_ADDR_LEN sizeof(((struct sockaddr_un *)0)->sun_path)
 
-/* https://developer.gnome.org/glib/2.28/glib-Type-Conversion-Macros.html */
-#define INT_TO_PTR(n) ((void *)(long)(n))
-#define PTR_TO_INT(p) ((int)(long)(p))
+/* pointer conversion macros */
+#define PTR_TO_INT(p) ((int)((intptr_t)(p)))
+#define INT_TO_PTR(u) ((void *)((intptr_t)(u)))
+
+#define PTR_TO_INTMAX(p) ((intmax_t)((intptr_t)(p)))
+#define INTMAX_TO_PTR(u) ((void *)((intptr_t)(u)))
+
 
 typedef enum {
 	LXC_CMD_CONSOLE,
@@ -43,6 +54,9 @@ typedef enum {
 	LXC_CMD_GET_CONFIG_ITEM,
 	LXC_CMD_GET_NAME,
 	LXC_CMD_GET_LXCPATH,
+	LXC_CMD_ADD_STATE_CLIENT,
+	LXC_CMD_CONSOLE_LOG,
+	LXC_CMD_SERVE_STATE_CLIENTS,
 	LXC_CMD_MAX,
 } lxc_cmd_t;
 
@@ -82,14 +96,32 @@ extern char *lxc_cmd_get_config_item(const char *name, const char *item, const c
 extern char *lxc_cmd_get_name(const char *hashed_sock);
 extern char *lxc_cmd_get_lxcpath(const char *hashed_sock);
 extern pid_t lxc_cmd_get_init_pid(const char *name, const char *lxcpath);
-extern lxc_state_t lxc_cmd_get_state(const char *name, const char *lxcpath);
+extern int lxc_cmd_get_state(const char *name, const char *lxcpath);
 extern int lxc_cmd_stop(const char *name, const char *lxcpath);
+
+/* lxc_cmd_add_state_client    Register a new state client fd in the container's
+ *                             in-memory handler.
+ *
+ * @param[in] name             Name of container to connect to.
+ * @param[in] lxcpath          The lxcpath in which the container is running.
+ * @param[in] states           The states to wait for.
+ * @param[out] state_client_fd The state client fd from which the state can be
+ *                             received.
+ * @return                     Return  < 0 on error
+ *                                    == MAX_STATE when state needs to retrieved
+ *                                                 via socket fd
+ *                                     < MAX_STATE current container state
+ */
+extern int lxc_cmd_add_state_client(const char *name, const char *lxcpath,
+				    lxc_state_t states[MAX_STATE],
+				    int *state_client_fd);
+extern int lxc_cmd_serve_state_clients(const char *name, const char *lxcpath,
+				       lxc_state_t state);
 
 struct lxc_epoll_descr;
 struct lxc_handler;
 
-extern int lxc_cmd_init(const char *name, struct lxc_handler *handler,
-			    const char *lxcpath);
+extern int lxc_cmd_init(const char *name, const char *lxcpath, const char *suffix);
 extern int lxc_cmd_mainloop_add(const char *name, struct lxc_epoll_descr *descr,
 				    struct lxc_handler *handler);
 extern int lxc_try_cmd(const char *name, const char *lxcpath);

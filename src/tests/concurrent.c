@@ -177,6 +177,9 @@ int main(int argc, char *argv[]) {
         case 'm': {
             char *mode_tok, *tok, *saveptr = NULL;
 
+	    if (!optarg)
+                continue;
+
             modes = NULL;
             for (i = 0, mode_tok = optarg;
                  (tok = strtok_r(mode_tok, ",", &saveptr));
@@ -188,7 +191,8 @@ int main(int argc, char *argv[]) {
                 }
                 modes[i] = tok;
             }
-            modes[i] = NULL;
+	    if (modes)
+		    modes[i] = NULL;
             break;
         }
         default: /* '?' */

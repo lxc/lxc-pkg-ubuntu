@@ -32,8 +32,6 @@
 #include "lxc.h"
 #include "utils.h"
 
-lxc_log_define(lxc_destroy_ui, lxc);
-
 static int my_parser(struct lxc_arguments* args, int c, char* arg);
 static bool quiet;
 
@@ -67,6 +65,7 @@ static bool do_destroy_with_snapshots(struct lxc_container *c);
 int main(int argc, char *argv[])
 {
 	struct lxc_container *c;
+	struct lxc_log log;
 	bool bret;
 
 	if (lxc_arguments_parse(&my_args, argc, argv))
@@ -75,8 +74,14 @@ int main(int argc, char *argv[])
 	if (!my_args.log_file)
 		my_args.log_file = "none";
 
-	if (lxc_log_init(my_args.name, my_args.log_file, my_args.log_priority,
-			 my_args.progname, my_args.quiet, my_args.lxcpath[0]))
+	log.name = my_args.name;
+	log.file = my_args.log_file;
+	log.level = my_args.log_priority;
+	log.prefix = my_args.progname;
+	log.quiet = my_args.quiet;
+	log.lxcpath = my_args.lxcpath[0];
+
+	if (lxc_log_init(&log))
 		exit(EXIT_FAILURE);
 	lxc_log_options_no_override();
 	if (my_args.quiet)
@@ -206,6 +211,7 @@ static bool do_destroy_with_snapshots(struct lxc_container *c)
 	int fd;
 	int ret;
 	int counter = 0;
+	ssize_t bytes;
 
 	/* Destroy clones. */
 	ret = snprintf(path, MAXPATHLEN, "%s/%s/lxc_snapshots", c->config_path, c->name);
@@ -223,15 +229,15 @@ static bool do_destroy_with_snapshots(struct lxc_container *c)
 		/* Make sure that the string is \0 terminated. */
 		buf = calloc(fbuf.st_size + 1, sizeof(char));
 		if (!buf) {
-			SYSERROR("failed to allocate memory");
+			fprintf(stderr, "failed to allocate memory\n");
 			close(fd);
 			return false;
 		}
 
-		ret = read(fd, buf, fbuf.st_size);
-		if (ret < 0) {
-			ERROR("could not read %s", path);
-			close(fd);
+		bytes = lxc_read_nointr(fd, buf, fbuf.st_size);
+		close(fd);
+		if (bytes != (ssize_t)fbuf.st_size) {
+			fprintf(stderr, "Could not read %s", path);
 			free(buf);
 			return false;
 		}

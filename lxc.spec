@@ -32,9 +32,9 @@
 # BuildRequires systemd-units on fedora and rhel
 %if 0%{?fedora} >= 14 || 0%{?rhel} >= 7
 BuildRequires: systemd-units
+%endif
 #
 # BuildRequires systemd on openSUSE and SUSE
-%endif
 %if 0%{?suse_version} >= 1210
 BuildRequires: systemd
 %endif
@@ -60,7 +60,7 @@ BuildRequires: systemd
 %endif
 
 Name: lxc
-Version: 2.0.8
+Version: 2.0.10
 Release: %{?beta_rel:0.1.%{beta_rel}}%{?!beta_rel:%{norm_rel}}%{?dist}
 URL: http://linuxcontainers.org
 Source: http://linuxcontainers.org/downloads/%{name}-%{version}%{?beta_dot}.tar.gz
@@ -184,7 +184,7 @@ then
 	cat >  /usr/local/etc/default/lxc-net <<EOF
 # Leave USE_LXC_BRIDGE as "true" if you want to use lxcbr0 for your
 # containers.  Set to "false" if you'll use virbr0 or another existing
-# bridge, or mavlan to your host's NIC.
+# bridge, or macvlan to your host's NIC.
 USE_LXC_BRIDGE="true"
 
 # If you change the LXC_BRIDGE to something other than lxcbr0, then

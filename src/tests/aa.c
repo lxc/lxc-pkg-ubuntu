@@ -94,7 +94,7 @@ static int do_test_file_open(struct lxc_container *c, char *fnam)
 		fret = 0;
 
 err2:
-	wait_for_pid(pid);
+	(void)wait_for_pid(pid);
 err1:
 	close(pipefd[0]);
 	close(pipefd[1]);
@@ -105,7 +105,7 @@ char *files_to_allow[] = { "/sys/class/net/lo/ifalias",
 		"/proc/sys/kernel/shmmax",
 		NULL };
 
-char *files_to_deny[] = { "/proc/mem", "/proc/kmem",
+char *files_to_deny[] = {
 		"/sys/kernel/uevent_helper",
 		"/proc/sys/fs/file-nr",
 		"/sys/kernel/mm/ksm/pages_to_scan",

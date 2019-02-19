@@ -54,18 +54,34 @@
 #define ATTR_UNUSED
 #endif
 
+struct lxc_log {
+	const char *name;
+	const char *lxcpath;
+	const char *file;
+	const char *level;
+	const char *prefix;
+	bool quiet;
+};
+
+/*!
+ *\brief Initialize the log
+ *
+ *\param log lxc log configuration.
+ */
+int lxc_log_init(struct lxc_log *log);
+
 /* predefined priorities. */
 enum lxc_loglevel {
-	LXC_LOG_PRIORITY_TRACE,
-	LXC_LOG_PRIORITY_DEBUG,
-	LXC_LOG_PRIORITY_INFO,
-	LXC_LOG_PRIORITY_NOTICE,
-	LXC_LOG_PRIORITY_WARN,
-	LXC_LOG_PRIORITY_ERROR,
-	LXC_LOG_PRIORITY_CRIT,
-	LXC_LOG_PRIORITY_ALERT,
-	LXC_LOG_PRIORITY_FATAL,
-	LXC_LOG_PRIORITY_NOTSET,
+	LXC_LOG_LEVEL_TRACE,
+	LXC_LOG_LEVEL_DEBUG,
+	LXC_LOG_LEVEL_INFO,
+	LXC_LOG_LEVEL_NOTICE,
+	LXC_LOG_LEVEL_WARN,
+	LXC_LOG_LEVEL_ERROR,
+	LXC_LOG_LEVEL_CRIT,
+	LXC_LOG_LEVEL_ALERT,
+	LXC_LOG_LEVEL_FATAL,
+	LXC_LOG_LEVEL_NOTSET,
 };
 
 /* location information of the logging event */
@@ -119,14 +135,14 @@ static inline int
 lxc_log_priority_is_enabled(const struct lxc_log_category* category,
 			   int priority)
 {
-	while (category->priority == LXC_LOG_PRIORITY_NOTSET &&
+	while (category->priority == LXC_LOG_LEVEL_NOTSET &&
 	       category->parent)
 		category = category->parent;
 
 	int cmp_prio = category->priority;
 #ifndef NO_LXC_CONF
 	if (!lxc_log_use_global_fd && current_config &&
-			current_config->loglevel != LXC_LOG_PRIORITY_NOTSET)
+			current_config->loglevel != LXC_LOG_LEVEL_NOTSET)
 		cmp_prio = current_config->loglevel;
 #endif
 
@@ -139,15 +155,15 @@ lxc_log_priority_is_enabled(const struct lxc_log_category* category,
 static inline const char* lxc_log_priority_to_string(int priority)
 {
 	switch (priority) {
-	case LXC_LOG_PRIORITY_TRACE:	return "TRACE";
-	case LXC_LOG_PRIORITY_DEBUG:	return "DEBUG";
-	case LXC_LOG_PRIORITY_INFO:	return "INFO";
-	case LXC_LOG_PRIORITY_NOTICE:	return "NOTICE";
-	case LXC_LOG_PRIORITY_WARN:	return "WARN";
-	case LXC_LOG_PRIORITY_ERROR:	return "ERROR";
-	case LXC_LOG_PRIORITY_CRIT:	return "CRIT";
-	case LXC_LOG_PRIORITY_ALERT:	return "ALERT";
-	case LXC_LOG_PRIORITY_FATAL:	return "FATAL";
+	case LXC_LOG_LEVEL_TRACE:	return "TRACE";
+	case LXC_LOG_LEVEL_DEBUG:	return "DEBUG";
+	case LXC_LOG_LEVEL_INFO:	return "INFO";
+	case LXC_LOG_LEVEL_NOTICE:	return "NOTICE";
+	case LXC_LOG_LEVEL_WARN:	return "WARN";
+	case LXC_LOG_LEVEL_ERROR:	return "ERROR";
+	case LXC_LOG_LEVEL_CRIT:	return "CRIT";
+	case LXC_LOG_LEVEL_ALERT:	return "ALERT";
+	case LXC_LOG_LEVEL_FATAL:	return "FATAL";
 	default:
 		return "NOTSET";
 	}
@@ -157,17 +173,17 @@ static inline const char* lxc_log_priority_to_string(int priority)
  */
 static inline int lxc_log_priority_to_int(const char* name)
 {
-	if (!strcasecmp("TRACE",  name)) return LXC_LOG_PRIORITY_TRACE;
-	if (!strcasecmp("DEBUG",  name)) return LXC_LOG_PRIORITY_DEBUG;
-	if (!strcasecmp("INFO",   name)) return LXC_LOG_PRIORITY_INFO;
-	if (!strcasecmp("NOTICE", name)) return LXC_LOG_PRIORITY_NOTICE;
-	if (!strcasecmp("WARN",   name)) return LXC_LOG_PRIORITY_WARN;
-	if (!strcasecmp("ERROR",  name)) return LXC_LOG_PRIORITY_ERROR;
-	if (!strcasecmp("CRIT",   name)) return LXC_LOG_PRIORITY_CRIT;
-	if (!strcasecmp("ALERT",  name)) return LXC_LOG_PRIORITY_ALERT;
-	if (!strcasecmp("FATAL",  name)) return LXC_LOG_PRIORITY_FATAL;
+	if (!strcasecmp("TRACE",  name)) return LXC_LOG_LEVEL_TRACE;
+	if (!strcasecmp("DEBUG",  name)) return LXC_LOG_LEVEL_DEBUG;
+	if (!strcasecmp("INFO",   name)) return LXC_LOG_LEVEL_INFO;
+	if (!strcasecmp("NOTICE", name)) return LXC_LOG_LEVEL_NOTICE;
+	if (!strcasecmp("WARN",   name)) return LXC_LOG_LEVEL_WARN;
+	if (!strcasecmp("ERROR",  name)) return LXC_LOG_LEVEL_ERROR;
+	if (!strcasecmp("CRIT",   name)) return LXC_LOG_LEVEL_CRIT;
+	if (!strcasecmp("ALERT",  name)) return LXC_LOG_LEVEL_ALERT;
+	if (!strcasecmp("FATAL",  name)) return LXC_LOG_LEVEL_FATAL;
 
-	return LXC_LOG_PRIORITY_NOTSET;
+	return LXC_LOG_LEVEL_NOTSET;
 }
 
 static inline void
@@ -199,19 +215,19 @@ __lxc_log(const struct lxc_log_category* category,
 /*
  * Helper macro to define log functions.
  */
-#define lxc_log_priority_define(acategory, PRIORITY)			\
+#define lxc_log_priority_define(acategory, LEVEL)			\
 									\
-ATTR_UNUSED static inline void LXC_##PRIORITY(struct lxc_log_locinfo *,		\
+ATTR_UNUSED static inline void LXC_##LEVEL(struct lxc_log_locinfo *,		\
 	const char *, ...) __attribute__ ((format (printf, 2, 3)));	\
 									\
-ATTR_UNUSED static inline void LXC_##PRIORITY(struct lxc_log_locinfo* locinfo,	\
+ATTR_UNUSED static inline void LXC_##LEVEL(struct lxc_log_locinfo* locinfo,	\
 				  const char* format, ...)		\
 {									\
 	if (lxc_log_priority_is_enabled(acategory, 			\
-					LXC_LOG_PRIORITY_##PRIORITY)) {	\
+					LXC_LOG_LEVEL_##LEVEL)) {	\
 		struct lxc_log_event evt = {				\
 			.category	= (acategory)->name,		\
-			.priority	= LXC_LOG_PRIORITY_##PRIORITY,	\
+			.priority	= LXC_LOG_LEVEL_##LEVEL,	\
 			.fmt		= format,			\
 			.locinfo	= locinfo			\
 		};							\
@@ -236,7 +252,7 @@ ATTR_UNUSED static inline void LXC_##PRIORITY(struct lxc_log_locinfo* locinfo,	\
 	extern struct lxc_log_category lxc_log_category_##parent;	\
 	struct lxc_log_category lxc_log_category_##name = {		\
 		#name,							\
-		LXC_LOG_PRIORITY_NOTSET,				\
+		LXC_LOG_LEVEL_NOTSET,				\
 		NULL,							\
 		&lxc_log_category_##parent				\
 	};
@@ -256,6 +272,49 @@ ATTR_UNUSED static inline void LXC_##PRIORITY(struct lxc_log_locinfo* locinfo,	\
 
 #define lxc_log_category_priority(name) 				\
 	(lxc_log_priority_to_string(lxc_log_category_##name.priority))
+
+/*
+ * Helper macro to define errno string.
+ */
+#if HAVE_STRERROR_R
+	#ifndef HAVE_DECL_STRERROR_R
+		#ifdef STRERROR_R_CHAR_P
+			char *strerror_r(int errnum, char *buf, size_t buflen);
+		#else
+			int strerror_r(int errnum, char *buf, size_t buflen);
+		#endif
+	#endif
+
+	#ifdef STRERROR_R_CHAR_P
+		#define lxc_log_strerror_r                                               \
+			char errno_buf[PATH_MAX / 2] = {"Failed to get errno string"};   \
+			char *ptr = NULL;                                                \
+			{                                                                \
+				int saved_errno = errno;				 \
+				ptr = strerror_r(errno, errno_buf, sizeof(errno_buf));   \
+				errno = saved_errno;					 \
+				if (!ptr)                                                \
+					ptr = errno_buf;                                 \
+			}
+	#else
+		#define lxc_log_strerror_r                                               \
+			char errno_buf[PATH_MAX / 2] = {"Failed to get errno string"};   \
+			char *ptr = errno_buf;                                           \
+			{                                                                \
+				int saved_errno = errno;				 \
+				(void)strerror_r(errno, errno_buf, sizeof(errno_buf));   \
+				errno = saved_errno;					 \
+			}
+	#endif
+#elif ENFORCE_THREAD_SAFETY
+	#error ENFORCE_THREAD_SAFETY was set but cannot be guaranteed
+#else
+	#define lxc_log_strerror_r							 \
+		char *ptr = NULL;              						 \
+		{                              						 \
+			ptr = strerror(errno); 						 \
+		}
+#endif
 
 /*
  * top categories
@@ -305,17 +364,43 @@ ATTR_UNUSED static inline void LXC_##PRIORITY(struct lxc_log_locinfo* locinfo,	\
 	LXC_FATAL(&locinfo, format, ##__VA_ARGS__);			\
 } while (0)
 
+#define SYSTRACE(format, ...)                              \
+	do {                                               \
+		lxc_log_strerror_r;                        \
+		TRACE("%s - " format, ptr, ##__VA_ARGS__); \
+	} while (0)
 
+#define SYSDEBUG(format, ...)                              \
+	do {                                               \
+		lxc_log_strerror_r;                        \
+		DEBUG("%s - " format, ptr, ##__VA_ARGS__); \
+	} while (0)
 
-#define SYSERROR(format, ...) do {				    	\
-	ERROR("%s - " format, strerror(errno), ##__VA_ARGS__);		\
-} while (0)
+#define SYSINFO(format, ...)                              \
+	do {                                              \
+		lxc_log_strerror_r;                       \
+		INFO("%s - " format, ptr, ##__VA_ARGS__); \
+	} while (0)
+
+#define SYSNOTICE(format, ...)                              \
+	do {                                                \
+		lxc_log_strerror_r;                         \
+		NOTICE("%s - " format, ptr, ##__VA_ARGS__); \
+	} while (0)
+
+#define SYSWARN(format, ...)                              \
+	do {                                              \
+		lxc_log_strerror_r;                       \
+		WARN("%s - " format, ptr, ##__VA_ARGS__); \
+	} while (0)
+
+#define SYSERROR(format, ...)                              \
+	do {                                               \
+		lxc_log_strerror_r;                        \
+		ERROR("%s - " format, ptr, ##__VA_ARGS__); \
+	} while (0)
 
 extern int lxc_log_fd;
-
-extern int lxc_log_init(const char *name, const char *file,
-			const char *priority, const char *prefix, int quiet,
-			const char *lxcpath);
 
 extern int lxc_log_set_file(int *fd, const char *fname);
 extern int lxc_log_set_level(int *dest, int level);

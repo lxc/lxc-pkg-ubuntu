@@ -41,6 +41,11 @@
 #include "log.h"
 #include "caps.h"
 #include "utils.h"
+#include "lxccontainer.h"
+
+#ifndef HAVE_STRLCPY
+#include "include/strlcpy.h"
+#endif
 
 /* We're logging in seconds and nanoseconds. Assuming that the underlying
  * datatype is currently at maximum a 64bit integer, we have a date string that
@@ -62,7 +67,7 @@ lxc_log_define(lxc_log, lxc);
 static int log_append_stderr(const struct lxc_log_appender *appender,
 			     struct lxc_log_event *event)
 {
-	if (event->priority < LXC_LOG_PRIORITY_ERROR)
+	if (event->priority < LXC_LOG_LEVEL_ERROR)
 		return 0;
 
 	fprintf(stderr, "%s: ", log_prefix);
@@ -154,7 +159,7 @@ int lxc_unix_epoch_to_utc(char *buf, size_t bufsize, const struct timespec *time
 	seconds = (time->tv_sec - d_in_s - h_in_s - (minutes * 60));
 
 	/* Make string from nanoseconds. */
-	ret = snprintf(nanosec, LXC_NUMSTRLEN64, "%ld", time->tv_nsec);
+	ret = snprintf(nanosec, LXC_NUMSTRLEN64, "%"PRId64, (int64_t)time->tv_nsec);
 	if (ret < 0 || ret >= LXC_NUMSTRLEN64)
 		return -1;
 
@@ -197,6 +202,7 @@ static int log_append_logfile(const struct lxc_log_appender *appender,
 	char buffer[LXC_LOG_BUFFER_SIZE];
 	char date_time[LXC_LOG_TIME_SIZE];
 	int n;
+	ssize_t ret;
 	int fd_to_use = -1;
 
 #ifndef NO_LXC_CONF
@@ -225,14 +231,25 @@ static int log_append_logfile(const struct lxc_log_appender *appender,
 	if (n < 0)
 		return n;
 
-	if ((size_t)n < (sizeof(buffer) - 1))
-		n += vsnprintf(buffer + n, sizeof(buffer) - n, event->fmt, *event->vap);
-	else
+	if ((size_t)n < (sizeof(buffer) - 1)) {
+		ret = vsnprintf(buffer + n, sizeof(buffer) - n, event->fmt, *event->vap);
+		if (ret < 0)
+			return 0;
+
+		n += ret;
+	}
+
+	if ((size_t)n >= sizeof(buffer))
 		n = sizeof(buffer) - 1;
 
 	buffer[n] = '\n';
 
-	return write(fd_to_use, buffer, n + 1);
+again:
+	ret = write(fd_to_use, buffer, n + 1);
+	if (ret < 0 && errno == EINTR)
+		goto again;
+
+	return ret;
 }
 
 static struct lxc_log_appender log_appender_stderr = {
@@ -249,14 +266,14 @@ static struct lxc_log_appender log_appender_logfile = {
 
 static struct lxc_log_category log_root = {
 	.name		= "root",
-	.priority	= LXC_LOG_PRIORITY_ERROR,
+	.priority	= LXC_LOG_LEVEL_ERROR,
 	.appender	= NULL,
 	.parent		= NULL,
 };
 
 struct lxc_log_category lxc_log_category_lxc = {
 	.name		= "lxc",
-	.priority	= LXC_LOG_PRIORITY_ERROR,
+	.priority	= LXC_LOG_LEVEL_ERROR,
 	.appender	= &log_appender_logfile,
 	.parent		= &log_root
 };
@@ -443,11 +460,9 @@ static int _lxc_log_set_file(const char *name, const char *lxcpath, int create_d
  * Called from lxc front-end programs (like lxc-create, lxc-start) to
  * initalize the log defaults.
  */
-extern int lxc_log_init(const char *name, const char *file,
-			const char *priority, const char *prefix, int quiet,
-			const char *lxcpath)
+extern int lxc_log_init(struct lxc_log *log)
 {
-	int lxc_priority = LXC_LOG_PRIORITY_ERROR;
+	int lxc_priority = LXC_LOG_LEVEL_ERROR;
 	int ret;
 
 	if (lxc_log_fd != -1) {
@@ -455,8 +470,8 @@ extern int lxc_log_init(const char *name, const char *file,
 		return 0;
 	}
 
-	if (priority)
-		lxc_priority = lxc_log_priority_to_int(priority);
+	if (log->level)
+		lxc_priority = lxc_log_priority_to_int(log->level);
 
 	if (!lxc_loglevel_specified) {
 		lxc_log_category_lxc.priority = lxc_priority;
@@ -464,46 +479,46 @@ extern int lxc_log_init(const char *name, const char *file,
 	}
 
 	if (!lxc_quiet_specified) {
-		if (!quiet)
+		if (!log->quiet)
 			lxc_log_category_lxc.appender->next = &log_appender_stderr;
 	}
 
-	if (prefix)
-		lxc_log_set_prefix(prefix);
+	if (log->prefix)
+		lxc_log_set_prefix(log->prefix);
 
-	if (file) {
-		if (strcmp(file, "none") == 0)
+	if (log->file) {
+		if (strcmp(log->file, "none") == 0)
 			return 0;
-		ret = __lxc_log_set_file(file, 1);
+		ret = __lxc_log_set_file(log->file, 1);
 		lxc_log_use_global_fd = 1;
 	} else {
 		/* if no name was specified, there nothing to do */
-		if (!name)
+		if (!log->name)
 			return 0;
 
 		ret = -1;
 
-		if (!lxcpath)
-			lxcpath = LOGPATH;
+		if (!log->lxcpath)
+			log->lxcpath = LOGPATH;
 
 		/* try LOGPATH if lxcpath is the default for the privileged containers */
-		if (!geteuid() && strcmp(LXCPATH, lxcpath) == 0)
-			ret = _lxc_log_set_file(name, NULL, 0);
+		if (!geteuid() && strcmp(LXCPATH, log->lxcpath) == 0)
+			ret = _lxc_log_set_file(log->name, NULL, 0);
 
 		/* try in lxcpath */
 		if (ret < 0)
-			ret = _lxc_log_set_file(name, lxcpath, 1);
+			ret = _lxc_log_set_file(log->name, log->lxcpath, 1);
 
 		/* try LOGPATH in case its writable by the caller */
 		if (ret < 0)
-			ret = _lxc_log_set_file(name, NULL, 0);
+			ret = _lxc_log_set_file(log->name, NULL, 0);
 	}
 
 	/*
 	 * If !file, that is, if the user did not request this logpath, then
 	 * ignore failures and continue logging to console
 	 */
-	if (!file && ret != 0) {
+	if (!log->file && ret != 0) {
 		INFO("Ignoring failure to open default logfile.");
 		ret = 0;
 	}
@@ -518,7 +533,7 @@ extern int lxc_log_init(const char *name, const char *file,
  */
 extern int lxc_log_set_level(int *dest, int level)
 {
-	if (level < 0 || level >= LXC_LOG_PRIORITY_NOTSET) {
+	if (level < 0 || level >= LXC_LOG_LEVEL_NOTSET) {
 		ERROR("invalid log priority %d", level);
 		return -1;
 	}
@@ -534,7 +549,7 @@ extern int lxc_log_get_level(void)
 extern bool lxc_log_has_valid_level(void)
 {
 	int log_level = lxc_log_get_level();
-	if (log_level < 0 || log_level >= LXC_LOG_PRIORITY_NOTSET)
+	if (log_level < 0 || log_level >= LXC_LOG_LEVEL_NOTSET)
 		return false;
 	return true;
 }
@@ -570,8 +585,8 @@ extern const char *lxc_log_get_file(void)
 
 extern void lxc_log_set_prefix(const char *prefix)
 {
-	strncpy(log_prefix, prefix, sizeof(log_prefix));
-	log_prefix[sizeof(log_prefix) - 1] = 0;
+	/* We don't care if thte prefix is truncated. */
+	(void)strlcpy(log_prefix, prefix, sizeof(log_prefix));
 }
 
 extern const char *lxc_log_get_prefix(void)
