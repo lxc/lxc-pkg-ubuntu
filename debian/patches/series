@@ -1,2 +1,1 @@
 0001-Allocate-new-lxcbr0-subnet-at-startup-time.patch
-0002-CVE-2017-5985-Ensure-target-netns-is-caller-owned.patch
