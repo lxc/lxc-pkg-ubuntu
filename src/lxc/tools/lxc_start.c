@@ -50,12 +50,6 @@
 #include "confile.h"
 #include "arguments.h"
 
-#define OPT_SHARE_NET OPT_USAGE + 1
-#define OPT_SHARE_IPC OPT_USAGE + 2
-#define OPT_SHARE_UTS OPT_USAGE + 3
-
-lxc_log_define(lxc_start_ui, lxc);
-
 static struct lxc_list defines;
 
 static int ensure_path(char **confpath, const char *path)
@@ -67,7 +61,7 @@ static int ensure_path(char **confpath, const char *path)
 		if (access(path, W_OK)) {
 			fd = creat(path, 0600);
 			if (fd < 0 && errno != EEXIST) {
-				SYSERROR("failed to create '%s'", path);
+				fprintf(stderr, "failed to create '%s'\n", path);
 				goto err;
 			}
 			if (fd >= 0)
@@ -76,20 +70,15 @@ static int ensure_path(char **confpath, const char *path)
 
 		fullpath = realpath(path, NULL);
 		if (!fullpath) {
-			SYSERROR("failed to get the real path of '%s'", path);
+			fprintf(stderr, "failed to get the real path of '%s'\n", path);
 			goto err;
 		}
 
-		*confpath = strdup(fullpath);
-		if (!*confpath) {
-			ERROR("failed to dup string '%s'", fullpath);
-			goto err;
-		}
+		*confpath = fullpath;
 	}
 	err = EXIT_SUCCESS;
 
 err:
-	free(fullpath);
 	return err;
 }
 
@@ -100,19 +89,19 @@ static int pid_from_lxcname(const char *lxcname_or_pid, const char *lxcpath) {
 		struct lxc_container *s;
 		s = lxc_container_new(lxcname_or_pid, lxcpath);
 		if (!s) {
-			SYSERROR("'%s' is not a valid pid nor a container name", lxcname_or_pid);
+			fprintf(stderr, "'%s' is not a valid pid nor a container name\n", lxcname_or_pid);
 			return -1;
 		}
 
 		if (!s->may_control(s)) {
-			SYSERROR("Insufficient privileges to control container '%s'", s->name);
+			fprintf(stderr, "Insufficient privileges to control container '%s'\n", s->name);
 			lxc_container_put(s);
 			return -1;
 		}
 
 		pid = s->init_pid(s);
 		if (pid < 1) {
-			SYSERROR("Is container '%s' running?", s->name);
+			fprintf(stderr, "Is container '%s' running?\n", s->name);
 			lxc_container_put(s);
 			return -1;
 		}
@@ -120,7 +109,7 @@ static int pid_from_lxcname(const char *lxcname_or_pid, const char *lxcpath) {
 		lxc_container_put(s);
 	}
 	if (kill(pid, 0) < 0) {
-		SYSERROR("Can't send signal to pid %d", pid);
+		fprintf(stderr, "Can't send signal to pid %d\n", pid);
 		return -1;
 	}
 
@@ -134,7 +123,7 @@ static int open_ns(int pid, const char *ns_proc_name) {
 
 	fd = open(path, O_RDONLY);
 	if (fd < 0) {
-		SYSERROR("failed to open %s", path);
+		fprintf(stderr, "failed to open %s\n", path);
 		return -1;
 	}
 	return fd;
@@ -203,8 +192,9 @@ Options :\n\
 
 int main(int argc, char *argv[])
 {
-	int err = EXIT_FAILURE;
+	int i, err = EXIT_FAILURE;
 	struct lxc_conf *conf;
+	struct lxc_log log;
 	char *const *args;
 	char *rcfile = NULL;
 	char *const default_args[] = {
@@ -226,8 +216,14 @@ int main(int argc, char *argv[])
 	else
 		args = my_args.argv;
 
-	if (lxc_log_init(my_args.name, my_args.log_file, my_args.log_priority,
-			 my_args.progname, my_args.quiet, my_args.lxcpath[0]))
+	log.name = my_args.name;
+	log.file = my_args.log_file;
+	log.level = my_args.log_priority;
+	log.prefix = my_args.progname;
+	log.quiet = my_args.quiet;
+	log.lxcpath = my_args.lxcpath[0];
+
+	if (lxc_log_init(&log))
 		exit(err);
 	lxc_log_options_no_override();
 
@@ -250,18 +246,18 @@ int main(int argc, char *argv[])
 		rcfile = (char *)my_args.rcfile;
 		c = lxc_container_new(my_args.name, lxcpath);
 		if (!c) {
-			ERROR("Failed to create lxc_container");
+			fprintf(stderr, "Failed to create lxc_container\n");
 			exit(err);
 		}
 		c->clear_config(c);
 		if (!c->load_config(c, rcfile)) {
-			ERROR("Failed to load rcfile");
+			fprintf(stderr, "Failed to load rcfile\n");
 			lxc_container_put(c);
 			exit(err);
 		}
 		c->configfile = strdup(my_args.rcfile);
 		if (!c->configfile) {
-			ERROR("Out of memory setting new config filename");
+			fprintf(stderr, "Out of memory setting new config filename\n");
 			goto out;
 		}
 	} else {
@@ -269,10 +265,9 @@ int main(int argc, char *argv[])
 
 		rc = asprintf(&rcfile, "%s/%s/config", lxcpath, my_args.name);
 		if (rc == -1) {
-			SYSERROR("failed to allocate memory");
+			fprintf(stderr, "failed to allocate memory\n");
 			exit(err);
 		}
-		INFO("using rcfile %s", rcfile);
 
 		/* container configuration does not exist */
 		if (access(rcfile, F_OK)) {
@@ -281,7 +276,7 @@ int main(int argc, char *argv[])
 		}
 		c = lxc_container_new(my_args.name, lxcpath);
 		if (!c) {
-			ERROR("Failed to create lxc_container");
+			fprintf(stderr, "Failed to create lxc_container\n");
 			exit(err);
 		}
 	}
@@ -298,7 +293,7 @@ int main(int argc, char *argv[])
 	}
 
 	if (c->is_running(c)) {
-		ERROR("Container is already running.");
+		fprintf(stderr, "Container is already running.\n");
 		err = EXIT_SUCCESS;
 		goto out;
 	}
@@ -314,28 +309,25 @@ int main(int argc, char *argv[])
 		goto out;
 
 	if (!rcfile && !strcmp("/sbin/init", args[0])) {
-		ERROR("Executing '/sbin/init' with no configuration file may crash the host");
-		goto out;
-	}
-
-	if (ensure_path(&conf->console.path, my_args.console) < 0) {
-		ERROR("failed to ensure console path '%s'", my_args.console);
-		goto out;
-	}
-
-	if (ensure_path(&conf->console.log_path, my_args.console_log) < 0) {
-		ERROR("failed to ensure console log '%s'", my_args.console_log);
+		fprintf(stderr, "Executing '/sbin/init' with no configuration file may crash the host\n");
 		goto out;
 	}
 
 	if (my_args.pidfile != NULL) {
 		if (ensure_path(&c->pidfile, my_args.pidfile) < 0) {
-			ERROR("failed to ensure pidfile '%s'", my_args.pidfile);
+			fprintf(stderr, "failed to ensure pidfile '%s'\n", my_args.pidfile);
 			goto out;
 		}
 	}
 
-	int i;
+	if (my_args.console)
+		if (!c->set_config_item(c, "lxc.console.path", my_args.console))
+			goto out;
+
+	if (my_args.console_log)
+		if (!c->set_config_item(c, "lxc.console.logfile", my_args.console_log))
+			goto out;
+
 	for (i = 0; i < LXC_NS_MAX; i++) {
 		if (my_args.share_ns[i] == NULL)
 			continue;
@@ -363,11 +355,11 @@ int main(int argc, char *argv[])
 		err = c->start(c, 0, args) ? EXIT_SUCCESS : EXIT_FAILURE;
 
 	if (err) {
-		ERROR("The container failed to start.");
+		fprintf(stderr, "The container failed to start.\n");
 		if (my_args.daemonize)
-			ERROR("To get more details, run the container in foreground mode.");
-		ERROR("Additional information can be obtained by setting the "
-		      "--logfile and --logpriority options.");
+			fprintf(stderr, "To get more details, run the container in foreground mode.\n");
+		fprintf(stderr, "Additional information can be obtained by setting the "
+		      "--logfile and --logpriority options.\n");
 		err = c->error_num;
 		lxc_container_put(c);
 		exit(err);

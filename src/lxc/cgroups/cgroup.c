@@ -26,6 +26,7 @@
 
 #include "cgroup.h"
 #include "conf.h"
+#include "initutils.h"
 #include "log.h"
 #include "start.h"
 
@@ -37,8 +38,7 @@ extern struct cgroup_ops *cgfs_ops_init(void);
 extern struct cgroup_ops *cgfsng_ops_init(void);
 extern struct cgroup_ops *cgm_ops_init(void);
 
-__attribute__((constructor))
-void cgroup_ops_init(void)
+__attribute__((constructor)) void cgroup_ops_init(void)
 {
 	if (ops) {
 		INFO("cgroup driver %s", ops->name);
@@ -46,9 +46,9 @@ void cgroup_ops_init(void)
 	}
 
 	DEBUG("cgroup_init");
-	#if HAVE_CGMANAGER
+#if HAVE_CGMANAGER
 	ops = cgm_ops_init();
-	#endif
+#endif
 	if (!ops)
 		ops = cgfsng_ops_init();
 	if (!ops)
@@ -60,14 +60,15 @@ void cgroup_ops_init(void)
 bool cgroup_init(struct lxc_handler *handler)
 {
 	if (handler->cgroup_data) {
-		ERROR("cgroup_init called on already inited handler");
+		ERROR("cgroup_init called on already initialized handler");
 		return true;
 	}
 
 	if (ops) {
 		INFO("cgroup driver %s initing for %s", ops->name, handler->name);
-		handler->cgroup_data = ops->init(handler->name);
+		handler->cgroup_data = ops->init(handler);
 	}
+
 	return handler->cgroup_data != NULL;
 }
 
@@ -79,22 +80,21 @@ void cgroup_destroy(struct lxc_handler *handler)
 	}
 }
 
-/* Create the container cgroups for all requested controllers */
+/* Create the container cgroups for all requested controllers. */
 bool cgroup_create(struct lxc_handler *handler)
 {
 	if (ops)
 		return ops->create(handler->cgroup_data);
+
 	return false;
 }
 
-/*
- * Enter the container init into its new cgroups for all
- * requested controllers
- */
+/* Enter the container init into its new cgroups for all requested controllers. */
 bool cgroup_enter(struct lxc_handler *handler)
 {
 	if (ops)
 		return ops->enter(handler->cgroup_data, handler->pid);
+
 	return false;
 }
 
@@ -102,13 +102,16 @@ bool cgroup_create_legacy(struct lxc_handler *handler)
 {
 	if (ops && ops->create_legacy)
 		return ops->create_legacy(handler->cgroup_data, handler->pid);
+
 	return true;
 }
 
-const char *cgroup_get_cgroup(struct lxc_handler *handler, const char *subsystem)
+const char *cgroup_get_cgroup(struct lxc_handler *handler,
+			      const char *subsystem)
 {
 	if (ops)
 		return ops->get_cgroup(handler->cgroup_data, subsystem);
+
 	return NULL;
 }
 
@@ -116,6 +119,7 @@ bool cgroup_escape(struct lxc_handler *handler)
 {
 	if (ops)
 		return ops->escape(handler->cgroup_data);
+
 	return false;
 }
 
@@ -139,6 +143,7 @@ bool cgroup_unfreeze(struct lxc_handler *handler)
 {
 	if (ops)
 		return ops->unfreeze(handler->cgroup_data);
+
 	return false;
 }
 
@@ -146,7 +151,8 @@ bool cgroup_setup_limits(struct lxc_handler *handler, bool with_devices)
 {
 	if (ops)
 		return ops->setup_limits(handler->cgroup_data,
-					 &handler->conf->cgroup, with_devices);
+					 handler->conf, with_devices);
+
 	return false;
 }
 
@@ -154,14 +160,15 @@ bool cgroup_chown(struct lxc_handler *handler)
 {
 	if (ops && ops->chown)
 		return ops->chown(handler->cgroup_data, handler->conf);
+
 	return true;
 }
 
 bool cgroup_mount(const char *root, struct lxc_handler *handler, int type)
 {
-	if (ops) {
-		return ops->mount_cgroup(handler->cgroup_data, root, type);
-	}
+	if (ops)
+		return ops->mount_cgroup(handler, root, type);
+
 	return false;
 }
 
@@ -171,8 +178,9 @@ int cgroup_nrtasks(struct lxc_handler *handler)
 		if (ops->nrtasks)
 			return ops->nrtasks(handler->cgroup_data);
 		else
-			WARN("CGROUP driver %s doesn't implement nrtasks", ops->name);
+			WARN("cgroup driver \"%s\" doesn't implement nrtasks", ops->name);
 	}
+
 	return -1;
 }
 
@@ -180,20 +188,25 @@ bool cgroup_attach(const char *name, const char *lxcpath, pid_t pid)
 {
 	if (ops)
 		return ops->attach(name, lxcpath, pid);
+
 	return false;
 }
 
-int lxc_cgroup_set(const char *filename, const char *value, const char *name, const char *lxcpath)
+int lxc_cgroup_set(const char *filename, const char *value, const char *name,
+		   const char *lxcpath)
 {
 	if (ops)
 		return ops->set(filename, value, name, lxcpath);
+
 	return -1;
 }
 
-int lxc_cgroup_get(const char *filename, char *value, size_t len, const char *name, const char *lxcpath)
+int lxc_cgroup_get(const char *filename, char *value, size_t len,
+		   const char *name, const char *lxcpath)
 {
 	if (ops)
 		return ops->get(filename, value, len, name, lxcpath);
+
 	return -1;
 }
 
@@ -219,30 +232,41 @@ void prune_init_scope(char *cg)
 	point = cg + strlen(cg) - strlen(INIT_SCOPE);
 	if (point < cg)
 		return;
+
 	if (strcmp(point, INIT_SCOPE) == 0) {
 		if (point == cg)
-			*(point+1) = '\0';
+			*(point + 1) = '\0';
 		else
 			*point = '\0';
 	}
 }
 
-/*
- * Return true if this is a subsystem which we cannot do
- * without.
+/* Return true if this is a subsystem which we cannot do without.
  *
- * systemd is questionable here.  The way callers currently
- * use this, if systemd is not mounted then it will be ignored.
- * But if systemd is mounted, then it must be setup so that lxc
- * can create cgroups in it, else containers will fail.
+ * systemd is questionable here. The way callers currently use this, if systemd
+ * is not mounted then it will be ignored. But if systemd is mounted, then it
+ * must be setup so that lxc can create cgroups in it, else containers will
+ * fail.
+ *
+ * cgroups listed in lxc.cgroup.use are also treated as crucial
+ *
  */
 bool is_crucial_cgroup_subsystem(const char *s)
 {
+	const char *cgroup_use;
+
 	if (strcmp(s, "systemd") == 0)
 		return true;
+
 	if (strcmp(s, "name=systemd") == 0)
 		return true;
+
 	if (strcmp(s, "freezer") == 0)
 		return true;
+
+	cgroup_use = lxc_global_config_value("lxc.cgroup.use");
+	if (cgroup_use && strstr(cgroup_use, s))
+		return true;
+
 	return false;
 }

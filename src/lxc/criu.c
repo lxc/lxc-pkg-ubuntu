@@ -34,7 +34,6 @@
 
 #include "config.h"
 
-#include "bdev.h"
 #include "cgroup.h"
 #include "conf.h"
 #include "commands.h"
@@ -43,12 +42,17 @@
 #include "lxc.h"
 #include "lxclock.h"
 #include "network.h"
+#include "storage.h"
 #include "utils.h"
 
 #if IS_BIONIC
 #include <../include/lxcmntent.h>
 #else
 #include <mntent.h>
+#endif
+
+#ifndef HAVE_STRLCPY
+#include "include/strlcpy.h"
 #endif
 
 #define CRIU_VERSION		"2.0"
@@ -124,6 +128,47 @@ static int load_tty_major_minor(char *directory, char *output, int len)
 
 	fclose(f);
 	return 0;
+}
+
+static int cmp_version(const char *v1, const char *v2)
+{
+	int ret;
+	int oct_v1[3], oct_v2[3];
+
+	memset(oct_v1, -1, sizeof(oct_v1));
+	memset(oct_v2, -1, sizeof(oct_v2));
+
+	ret = sscanf(v1, "%d.%d.%d", &oct_v1[0], &oct_v1[1], &oct_v1[2]);
+	if (ret < 1)
+		return -1;
+
+	ret = sscanf(v2, "%d.%d.%d", &oct_v2[0], &oct_v2[1], &oct_v2[2]);
+	if (ret < 1)
+		return -1;
+
+	/* Major version is greater. */
+	if (oct_v1[0] > oct_v2[0])
+		return 1;
+
+	if (oct_v1[0] < oct_v2[0])
+		return -1;
+
+	/* Minor number is greater.*/
+	if (oct_v1[1] > oct_v2[1])
+		return 1;
+
+	if (oct_v1[1] < oct_v2[1])
+		return -1;
+
+	/* Patch number is greater. */
+	if (oct_v1[2] > oct_v2[2])
+		return 1;
+
+	/* Patch numbers are equal. */
+	if (oct_v1[2] == oct_v2[2])
+		return 0;
+
+	return -1;
 }
 
 static void exec_criu(struct criu_opts *opts)
@@ -263,7 +308,7 @@ static void exec_criu(struct criu_opts *opts)
 
 	for (i = 0; i < cgroup_num_hierarchies(); i++) {
 		char **controllers = NULL, *fullname;
-		char *path;
+		char *path, *tmp;
 
 		if (!cgroup_get_hierarchies(i, &controllers)) {
 			ERROR("failed to get hierarchy %d", i);
@@ -296,11 +341,15 @@ static void exec_criu(struct criu_opts *opts)
 			}
 		}
 
-		if (!lxc_deslashify(&path)) {
-			ERROR("failed to deslashify %s", path);
+		tmp = lxc_deslashify(path);
+		if (!tmp) {
+			ERROR("Failed to remove extraneous slashes from \"%s\"",
+			      path);
 			free(path);
 			goto err;
 		}
+		free(path);
+		path = tmp;
 
 		fullname = lxc_string_join(",", (const char **) controllers, false);
 		if (!fullname) {
@@ -490,12 +539,13 @@ static void exec_criu(struct criu_opts *opts)
 		argv = m;
 
 		lxc_list_for_each(it, &opts->c->lxc_conf->network) {
+			size_t retlen;
 			char eth[128], *veth;
 			char *fmt;
 			struct lxc_netdev *n = it->elem;
 			bool external_not_veth;
 
-			if (strcmp(opts->criu_version, CRIU_EXTERNAL_NOT_VETH) >= 0) {
+			if (cmp_version(opts->criu_version, CRIU_EXTERNAL_NOT_VETH) >= 0) {
 				/* Since criu version 2.8 the usage of --veth-pair
 				 * has been deprecated:
 				 * git tag --contains f2037e6d3445fc400
@@ -505,10 +555,10 @@ static void exec_criu(struct criu_opts *opts)
 				external_not_veth = false;
 			}
 
-			if (n->name) {
-				if (strlen(n->name) >= sizeof(eth))
+			if (n->name[0] != '\0') {
+				retlen = strlcpy(eth, n->name, sizeof(eth));
+				if (retlen >= sizeof(eth))
 					goto err;
-				strncpy(eth, n->name, sizeof(eth));
 			} else {
 				ret = snprintf(eth, sizeof(eth), "eth%d", netnr);
 				if (ret < 0 || ret >= sizeof(eth))
@@ -518,8 +568,10 @@ static void exec_criu(struct criu_opts *opts)
 			switch (n->type) {
 			case LXC_NET_VETH:
 				veth = n->priv.veth_attr.pair;
+				if (veth[0] == '\0')
+					veth = n->priv.veth_attr.veth1;
 
-				if (n->link) {
+				if (n->link[0] != '\0') {
 					if (external_not_veth)
 						fmt = "veth[%s]:%s@%s";
 					else
@@ -538,7 +590,7 @@ static void exec_criu(struct criu_opts *opts)
 					goto err;
 				break;
 			case LXC_NET_MACVLAN:
-				if (!n->link) {
+				if (n->link[0] == '\0') {
 					ERROR("no host interface for macvlan %s", n->name);
 					goto err;
 				}
@@ -639,14 +691,14 @@ static bool criu_version_ok(char **version)
 
 		close(STDERR_FILENO);
 		if (dup2(pipes[1], STDOUT_FILENO) < 0)
-			exit(1);
+			_exit(EXIT_FAILURE);
 
 		path = on_path("criu", NULL);
 		if (!path)
-			exit(1);
+			_exit(EXIT_FAILURE);
 
 		execv(path, args);
-		exit(1);
+		_exit(EXIT_FAILURE);
 	} else {
 		FILE *f;
 		char *tmp;
@@ -717,13 +769,13 @@ static bool criu_ok(struct lxc_container *c, char **criu_version)
 {
 	struct lxc_list *it;
 
-	if (!criu_version_ok(criu_version))
-		return false;
-
 	if (geteuid()) {
 		ERROR("Must be root to checkpoint");
 		return false;
 	}
+
+	if (!criu_version_ok(criu_version))
+		return false;
 
 	/* We only know how to restore containers with veth networks. */
 	lxc_list_for_each(it, &c->lxc_conf->network) {
@@ -736,6 +788,10 @@ static bool criu_ok(struct lxc_container *c, char **criu_version)
 			break;
 		default:
 			ERROR("Found un-dumpable network: %s (%s)", lxc_net_type_to_str(n->type), n->name);
+			if (criu_version) {
+				free(*criu_version);
+				*criu_version = NULL;
+			}
 			return false;
 		}
 	}
@@ -745,6 +801,7 @@ static bool criu_ok(struct lxc_container *c, char **criu_version)
 
 static bool restore_net_info(struct lxc_container *c)
 {
+	int ret;
 	struct lxc_list *it;
 	bool has_error = true;
 
@@ -758,13 +815,17 @@ static bool restore_net_info(struct lxc_container *c)
 		if (netdev->type != LXC_NET_VETH)
 			continue;
 
-		snprintf(template, sizeof(template), "vethXXXXXX");
-
-		if (!netdev->priv.veth_attr.pair)
-			netdev->priv.veth_attr.pair = lxc_mkifname(template);
-
-		if (!netdev->priv.veth_attr.pair)
+		ret = snprintf(template, sizeof(template), "vethXXXXXX");
+		if (ret < 0 || ret >= sizeof(template))
 			goto out_unlock;
+
+		if (netdev->priv.veth_attr.pair[0] == '\0' &&
+		    netdev->priv.veth_attr.veth1[0] == '\0') {
+			if (!lxc_mkifname(template))
+				goto out_unlock;
+
+			(void)strlcpy(netdev->priv.veth_attr.veth1, template, IFNAMSIZ);
+		}
 	}
 
 	has_error = false;
@@ -774,13 +835,15 @@ out_unlock:
 	return !has_error;
 }
 
-// do_restore never returns, the calling process is used as the
-// monitor process. do_restore calls exit() if it fails.
+/* do_restore never returns, the calling process is used as the monitor process.
+ * do_restore calls _exit() if it fails.
+ */
 static void do_restore(struct lxc_container *c, int status_pipe, struct migrate_opts *opts, char *criu_version)
 {
+	int fd, ret;
 	pid_t pid;
 	struct lxc_handler *handler;
-	int status, fd;
+	int status = 0;
 	int pipes[2] = {-1, -1};
 
 	/* Try to detach from the current controlling tty if it exists.
@@ -796,8 +859,11 @@ static void do_restore(struct lxc_container *c, int status_pipe, struct migrate_
 		close(fd);
 	}
 
-	handler = lxc_init(c->name, c->lxc_conf, c->config_path);
+	handler = lxc_init_handler(c->name, c->lxc_conf, c->config_path, false);
 	if (!handler)
+		goto out;
+
+	if (lxc_init(c->name, handler) < 0)
 		goto out;
 
 	if (!cgroup_init(handler)) {
@@ -815,9 +881,13 @@ static void do_restore(struct lxc_container *c, int status_pipe, struct migrate_
 		goto out_fini_handler;
 	}
 
-	resolve_clone_flags(handler);
+	ret = resolve_clone_flags(handler);
+	if (ret < 0) {
+		ERROR("%s - Unsupported clone flag specified", strerror(errno));
+		goto out_fini_handler;
+	}
 
-	if (pipe(pipes) < 0) {
+	if (pipe2(pipes, O_CLOEXEC) < 0) {
 		SYSERROR("pipe() failed");
 		goto out_fini_handler;
 	}
@@ -913,7 +983,7 @@ static void do_restore(struct lxc_container *c, int status_pipe, struct migrate_
 			if (WEXITSTATUS(status)) {
 				int n;
 
-				n = read(pipes[0], buf, sizeof(buf));
+				n = lxc_read_nointr(pipes[0], buf, sizeof(buf));
 				if (n < 0) {
 					SYSERROR("failed reading from criu stderr");
 					goto out_fini_handler;
@@ -957,7 +1027,7 @@ static void do_restore(struct lxc_container *c, int status_pipe, struct migrate_
 
 		close(pipes[0]);
 
-		ret = write(status_pipe, &status, sizeof(status));
+		ret = lxc_write_nointr(status_pipe, &status, sizeof(status));
 		close(status_pipe);
 		status_pipe = -1;
 
@@ -972,13 +1042,18 @@ static void do_restore(struct lxc_container *c, int status_pipe, struct migrate_
 		 * assign the return here to silence potential.
 		 */
 		ret = snprintf(title, sizeof(title), "[lxc monitor] %s %s", c->config_path, c->name);
+		if (ret < 0 || (size_t)ret >= sizeof(title))
+			INFO("Setting truncated process name");
+
 		ret = setproctitle(title);
+		if (ret < 0)
+			INFO("Failed to set process name");
 
 		ret = lxc_poll(c->name, handler);
 		if (ret)
 			lxc_abort(c->name, handler);
 		lxc_fini(c->name, handler);
-		exit(ret);
+		_exit(ret);
 	}
 
 out_fini_handler:
@@ -997,13 +1072,13 @@ out:
 		 */
 		if (!status)
 			status = 1;
-		if (write(status_pipe, &status, sizeof(status)) != sizeof(status)) {
+
+		if (lxc_write_nointr(status_pipe, &status, sizeof(status)) != sizeof(status))
 			SYSERROR("writing status failed");
-		}
 		close(status_pipe);
 	}
 
-	exit(1);
+	_exit(EXIT_FAILURE);
 }
 
 static int save_tty_major_minor(char *directory, struct lxc_container *c, char *tty_id, int len)
@@ -1060,15 +1135,18 @@ static int save_tty_major_minor(char *directory, struct lxc_container *c, char *
 /* do one of either predump or a regular dump */
 static bool do_dump(struct lxc_container *c, char *mode, struct migrate_opts *opts)
 {
+	int ret;
 	pid_t pid;
-	char *criu_version = NULL;
 	int criuout[2];
+	char *criu_version = NULL;
 
 	if (!criu_ok(c, &criu_version))
 		return false;
 
-	if (pipe(criuout) < 0) {
+	ret = pipe(criuout);
+	if (ret < 0) {
 		SYSERROR("pipe() failed");
+		free(criu_version);
 		return false;
 	}
 
@@ -1087,10 +1165,12 @@ static bool do_dump(struct lxc_container *c, char *mode, struct migrate_opts *op
 
 		close(criuout[0]);
 
+		lxc_zero_handler(&h);
+
 		h.name = c->name;
 		if (!cgroup_init(&h)) {
 			ERROR("failed to cgroup_init()");
-			exit(1);
+			_exit(EXIT_FAILURE);
 		}
 
 		os.pipefd = criuout[1];
@@ -1100,12 +1180,16 @@ static bool do_dump(struct lxc_container *c, char *mode, struct migrate_opts *op
 		os.console_name = c->lxc_conf->console.path;
 		os.criu_version = criu_version;
 
-		if (save_tty_major_minor(opts->directory, c, os.tty_id, sizeof(os.tty_id)) < 0)
-			exit(1);
+		ret = save_tty_major_minor(opts->directory, c, os.tty_id, sizeof(os.tty_id));
+		if (ret < 0) {
+			free(criu_version);
+			_exit(EXIT_FAILURE);
+		}
 
 		/* exec_criu() returning is an error */
 		exec_criu(&os);
-		exit(1);
+		free(criu_version);
+		_exit(EXIT_FAILURE);
 	} else {
 		int status;
 		ssize_t n;
@@ -1118,16 +1202,21 @@ static bool do_dump(struct lxc_container *c, char *mode, struct migrate_opts *op
 		if (w == -1) {
 			SYSERROR("waitpid");
 			close(criuout[0]);
+			free(criu_version);
 			return false;
 		}
 
-		n = read(criuout[0], buf, sizeof(buf));
+		n = lxc_read_nointr(criuout[0], buf, sizeof(buf));
 		close(criuout[0]);
 		if (n < 0) {
 			SYSERROR("read");
 			n = 0;
 		}
-		buf[n] = 0;
+
+		if (n == sizeof(buf))
+			buf[n-1] = 0;
+		else
+			buf[n] = 0;
 
 		if (WIFEXITED(status)) {
 			if (WEXITSTATUS(status)) {
@@ -1146,12 +1235,15 @@ static bool do_dump(struct lxc_container *c, char *mode, struct migrate_opts *op
 
 		if (!ret)
 			ERROR("criu output: %s", buf);
+
+		free(criu_version);
 		return ret;
 	}
 fail:
 	close(criuout[0]);
 	close(criuout[1]);
 	rmdir(opts->directory);
+	free(criu_version);
 	return false;
 }
 
@@ -1184,9 +1276,6 @@ bool __criu_restore(struct lxc_container *c, struct migrate_opts *opts)
 	int pipefd[2];
 	char *criu_version = NULL;
 
-	if (!criu_ok(c, &criu_version))
-		return false;
-
 	if (geteuid()) {
 		ERROR("Must be root to restore");
 		return false;
@@ -1197,10 +1286,17 @@ bool __criu_restore(struct lxc_container *c, struct migrate_opts *opts)
 		return false;
 	}
 
+	if (!criu_ok(c, &criu_version)) {
+		close(pipefd[0]);
+		close(pipefd[1]);
+		return false;
+	}
+
 	pid = fork();
 	if (pid < 0) {
 		close(pipefd[0]);
 		close(pipefd[1]);
+		free(criu_version);
 		return false;
 	}
 
@@ -1211,8 +1307,9 @@ bool __criu_restore(struct lxc_container *c, struct migrate_opts *opts)
 	}
 
 	close(pipefd[1]);
+	free(criu_version);
 
-	nread = read(pipefd[0], &status, sizeof(status));
+	nread = lxc_read_nointr(pipefd[0], &status, sizeof(status));
 	close(pipefd[0]);
 	if (sizeof(status) != nread) {
 		ERROR("reading status from pipe failed");

@@ -34,16 +34,18 @@
 #include <stdbool.h>
 #include <unistd.h>
 #include <linux/loop.h>
+#include <linux/magic.h>
+#include <linux/types.h>
 #include <sys/syscall.h>
 #include <sys/types.h>
+#include <sys/vfs.h>
+
+#ifdef HAVE_LINUX_MEMFD_H
+#include <linux/memfd.h>
+#endif
 
 #include "initutils.h"
-
-/* Useful macros */
-/* Maximum number for 64 bit integer is a string with 21 digits: 2^64 - 1 = 21 */
-#define LXC_NUMSTRLEN64 21
-#define LXC_LINELEN 4096
-#define LXC_IDMAPLEN 4096
+#include "macro.h"
 
 /* returns 1 on success, 0 if there were any failures */
 extern int lxc_rmdir_onedev(char *path, const char *exclude);
@@ -58,6 +60,22 @@ extern char *get_rundir(void);
 #endif
 #endif
 
+#if !defined(__NR_setns) && !defined(__NR_set_ns)
+	#if defined(__x86_64__)
+		#define __NR_setns 308
+	#elif defined(__i386__)
+		#define __NR_setns 346
+	#elif defined(__arm__)
+		#define __NR_setns 375
+	#elif defined(__aarch64__)
+		#define __NR_setns 375
+	#elif defined(__powerpc__)
+		#define __NR_setns 350
+	#elif defined(__s390__)
+		#define __NR_setns 339
+	#endif
+#endif
+
 /* Define setns() if missing from the C library */
 #ifndef HAVE_SETNS
 static inline int setns(int fd, int nstype)
@@ -69,6 +87,19 @@ static inline int setns(int fd, int nstype)
 #else
 	errno = ENOSYS;
 	return -1;
+#endif
+}
+#endif
+
+/* Define sethostname() if missing from the C library */
+#ifndef HAVE_SETHOSTNAME
+static inline int sethostname(const char * name, size_t len)
+{
+#ifdef __NR_sethostname
+return syscall(__NR_sethostname, name, len);
+#else
+errno = ENOSYS;
+return -1;
 #endif
 }
 #endif
@@ -177,12 +208,85 @@ static inline int signalfd(int fd, const sigset_t *mask, int flags)
 #define LOOP_CTL_GET_FREE 0x4C82
 #endif
 
+/* memfd_create() */
+#ifndef MFD_CLOEXEC
+#define MFD_CLOEXEC 0x0001U
+#endif
+
+#ifndef MFD_ALLOW_SEALING
+#define MFD_ALLOW_SEALING 0x0002U
+#endif
+
+#ifndef F_LINUX_SPECIFIC_BASE
+#define F_LINUX_SPECIFIC_BASE 1024
+#endif
+#ifndef F_ADD_SEALS
+#define F_ADD_SEALS (F_LINUX_SPECIFIC_BASE + 9)
+#define F_GET_SEALS (F_LINUX_SPECIFIC_BASE + 10)
+#endif
+#ifndef F_SEAL_SEAL
+#define F_SEAL_SEAL 0x0001
+#define F_SEAL_SHRINK 0x0002
+#define F_SEAL_GROW 0x0004
+#define F_SEAL_WRITE 0x0008
+#endif
+
+#ifndef HAVE_MEMFD_CREATE
+static inline int memfd_create(const char *name, unsigned int flags) {
+	#ifndef __NR_memfd_create
+		#if defined __i386__
+			#define __NR_memfd_create 356
+		#elif defined __x86_64__
+			#define __NR_memfd_create 319
+		#elif defined __arm__
+			#define __NR_memfd_create 385
+		#elif defined __aarch64__
+			#define __NR_memfd_create 279
+		#elif defined __s390__
+			#define __NR_memfd_create 350
+		#elif defined __powerpc__
+			#define __NR_memfd_create 360
+		#elif defined __sparc__
+			#define __NR_memfd_create 348
+		#elif defined __blackfin__
+			#define __NR_memfd_create 390
+		#elif defined __ia64__
+			#define __NR_memfd_create 1340
+		#elif defined _MIPS_SIM
+			#if _MIPS_SIM == _MIPS_SIM_ABI32
+				#define __NR_memfd_create 4354
+			#endif
+			#if _MIPS_SIM == _MIPS_SIM_NABI32
+				#define __NR_memfd_create 6318
+			#endif
+			#if _MIPS_SIM == _MIPS_SIM_ABI64
+				#define __NR_memfd_create 5314
+			#endif
+		#endif
+	#endif
+	#ifdef __NR_memfd_create
+	return syscall(__NR_memfd_create, name, flags);
+	#else
+	errno = ENOSYS;
+	return -1;
+	#endif
+}
+#else
+extern int memfd_create(const char *name, unsigned int flags);
+#endif
+
+static inline int lxc_set_cloexec(int fd)
+{
+	return fcntl(fd, F_SETFD, FD_CLOEXEC);
+}
+
 /* Struct to carry child pid from lxc_popen() to lxc_pclose().
  * Not an opaque struct to allow direct access to the underlying FILE *
  * (i.e., struct lxc_popen_FILE *file; fgets(buf, sizeof(buf), file->f))
  * without additional wrappers.
  */
 struct lxc_popen_FILE {
+	int pipe;
 	FILE *f;
 	pid_t child_pid;
 };
@@ -202,32 +306,6 @@ extern struct lxc_popen_FILE *lxc_popen(const char *command);
  * frees resources, pointed to by struct lxc_popen_FILE *.
  */
 extern int lxc_pclose(struct lxc_popen_FILE *fp);
-
-/**
- * BUILD_BUG_ON - break compile if a condition is true.
- * @condition: the condition which the compiler should know is false.
- *
- * If you have some code which relies on certain constants being equal, or
- * other compile-time-evaluated condition, you should use BUILD_BUG_ON to
- * detect if someone changes it.
- *
- * The implementation uses gcc's reluctance to create a negative array, but
- * gcc (as of 4.4) only emits that error for obvious cases (eg. not arguments
- * to inline functions).  So as a fallback we use the optimizer; if it can't
- * prove the condition is false, it will cause a link error on the undefined
- * "__build_bug_on_failed".  This error message can be harder to track down
- * though, hence the two different methods.
- */
-#ifndef __OPTIMIZE__
-#define BUILD_BUG_ON(condition) ((void)sizeof(char[1 - 2*!!(condition)]))
-#else
-extern int __build_bug_on_failed;
-#define BUILD_BUG_ON(condition)					\
-	do {							\
-		((void)sizeof(char[1 - 2*!!(condition)]));	\
-		if (condition) __build_bug_on_failed = 1;	\
-	} while(0)
-#endif
 
 /*
  * wait on a child we forked
@@ -268,7 +346,7 @@ extern char *lxc_string_join(const char *sep, const char **parts, bool use_as_pr
  */
 extern char **lxc_normalize_path(const char *path);
 /* remove multiple slashes from the path, e.g. ///foo//bar -> /foo/bar */
-extern bool lxc_deslashify(char **path);
+extern char *lxc_deslashify(const char *path);
 extern char *lxc_append_paths(const char *first, const char *second);
 /* Note: the following two functions use strtok(), so they will never
  *       consider an empty element, even if two delimiters are next to
@@ -296,11 +374,41 @@ extern void *lxc_strmmap(void *addr, size_t length, int prot, int flags, int fd,
 /* munmap() wrapper. Use it to free memory mmap()ed with lxc_strmmap(). */
 extern int lxc_strmunmap(void *addr, size_t length);
 
-//initialize rand with urandom
+/* initialize rand with urandom */
 extern int randseed(bool);
 
-inline static bool am_unpriv(void) {
+/* are we unprivileged with respect to our namespaces */
+inline static bool am_guest_unpriv(void) {
 	return geteuid() != 0;
+}
+
+/* are we unprivileged with respect to init_user_ns */
+inline static bool am_host_unpriv(void)
+{
+	FILE *f;
+	uid_t user, host, count;
+	int ret;
+
+	if (geteuid() != 0)
+		return true;
+
+	/* Now: are we in a user namespace? Because then we're also
+	 * unprivileged.
+	 */
+	f = fopen("/proc/self/uid_map", "r");
+	if (!f) {
+		return false;
+	}
+
+	ret = fscanf(f, "%u %u %u", &user, &host, &count);
+	fclose(f);
+	if (ret != 3) {
+		return false;
+	}
+
+	if (user != 0 || host != 0 || count != UINT32_MAX)
+		return true;
+	return false;
 }
 
 /*
@@ -323,7 +431,6 @@ int print_to_file(const char *file, const char *content);
 bool switch_to_ns(pid_t pid, const char *ns);
 int is_dir(const char *path);
 char *get_template_path(const char *t);
-int setproctitle(char *title);
 int safe_mount(const char *src, const char *dest, const char *fstype,
 		unsigned long flags, const void *data, const char *rootfs);
 int lxc_mount_proc_if_needed(const char *rootfs);
@@ -334,12 +441,17 @@ int lxc_count_file_lines(const char *fn);
 int lxc_preserve_ns(const int pid, const char *ns);
 
 /* Check whether a signal is blocked by a process. */
-bool task_blocking_signal(pid_t pid, int signal);
+extern bool task_blocks_signal(pid_t pid, int signal);
 
 /* Helper functions to parse numbers. */
-int lxc_safe_uint(const char *numstr, unsigned int *converted);
-int lxc_safe_int(const char *numstr, int *converted);
-int lxc_safe_long(const char *numstr, long int *converted);
+extern int lxc_safe_uint(const char *numstr, unsigned int *converted);
+extern int lxc_safe_int(const char *numstr, int *converted);
+extern int lxc_safe_long(const char *numstr, long int *converted);
+extern int lxc_safe_long_long(const char *numstr, long long int *converted);
+extern int lxc_safe_ulong(const char *numstr, unsigned long *converted);
+extern int lxc_safe_uint64(const char *numstr, uint64_t *converted, int base);
+/* Handles B, kb, MB, GB. Detects overflows and reports -ERANGE. */
+extern int parse_byte_size_string(const char *s, int64_t *converted);
 
 /* Switch to a new uid and gid. */
 int lxc_switch_uid_gid(uid_t uid, gid_t gid);
@@ -354,5 +466,69 @@ int lxc_prepare_loop_dev(const char *source, char *loop_dev, int flags);
  * < 0  error umounting. Return -errno.
  */
 int lxc_unstack_mountpoint(const char *path, bool lazy);
+
+/*
+ * run_command runs a command and collect it's std{err,out} output in buf.
+ *
+ * @param[out] buf     The buffer where the commands std{err,out] output will be
+ *                     read into. If no output was produced, buf will be memset
+ *                     to 0.
+ * @param[in] buf_size The size of buf. This function will reserve one byte for
+ *                     \0-termination.
+ * @param[in] child_fn The function to be run in the child process. This
+ *                     function must exec.
+ * @param[in] args     Arguments to be passed to child_fn.
+ */
+int run_command(char *buf, size_t buf_size, int (*child_fn)(void *), void *args);
+
+/* Concatenate all passed-in strings into one path. Do not fail. If any piece
+ * is not prefixed with '/', add a '/'.
+ */
+__attribute__((sentinel)) extern char *must_make_path(const char *first, ...);
+__attribute__((sentinel)) extern char *must_append_path(char *first, ...);
+
+/* return copy of string @entry;  do not fail. */
+extern char *must_copy_string(const char *entry);
+
+/* Re-alllocate a pointer, do not fail */
+extern void *must_realloc(void *orig, size_t sz);
+
+/* __typeof__ should be safe to use with all compilers. */
+typedef __typeof__(((struct statfs *)NULL)->f_type) fs_type_magic;
+extern bool has_fs_type(const char *path, fs_type_magic magic_val);
+extern bool fhas_fs_type(int fd, fs_type_magic magic_val);
+extern bool is_fs_type(const struct statfs *fs, fs_type_magic magic_val);
+extern bool lxc_nic_exists(char *nic);
+extern int lxc_make_tmpfile(char *template, bool rm);
+
+static inline uint64_t lxc_getpagesize(void)
+{
+	int64_t pgsz;
+
+	pgsz = sysconf(_SC_PAGESIZE);
+	if (pgsz <= 0)
+		pgsz = 1 << 12;
+
+	return pgsz;
+}
+
+/* If n is not a power of 2 this function will return the next power of 2
+ * greater than that number. Note that this function always returns the *next*
+ * power of 2 *greater* that number not the *nearest*. For example, passing 1025
+ * as argument this function will return 2048 although the closest power of 2
+ * would be 1024.
+ * If the caller passes in 0 they will receive 0 in return since this is invalid
+ * input and 0 is not a power of 2.
+ */
+extern uint64_t lxc_find_next_power2(uint64_t n);
+
+static inline pid_t lxc_raw_gettid(void)
+{
+#ifdef SYS_gettid
+	return syscall(SYS_gettid);
+#else
+	return lxc_raw_getpid();
+#endif
+}
 
 #endif /* __LXC_UTILS_H */

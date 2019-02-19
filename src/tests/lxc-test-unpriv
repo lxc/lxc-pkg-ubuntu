@@ -39,8 +39,8 @@ if modprobe -q overlayfs; then
 
         mount -t tmpfs none ${MOUNTDIR}
 
-        mkdir "${MOUNTDIR}/lowerdir" "${MOUNTDIR}/upperdir" "${MOUNTDIR}/overlayfs"
-        mount -t overlayfs -o lowerdir="${MOUNTDIR}/lowerdir",upperdir="${MOUNTDIR}/upperdir" none "${MOUNTDIR}/overlayfs"
+        mkdir ${MOUNTDIR}/{lowerdir,upperdir,workdir,overlayfs}
+        mount -t overlayfs -o lowerdir="${MOUNTDIR}/lowerdir",upperdir="${MOUNTDIR}/upperdir",workdir="${MOUNTDIR}/workdir" none "${MOUNTDIR}/overlayfs"
 
         CORRECT_LINK_TARGET="${MOUNTDIR}/overlayfs/dummy_file"
         exec 9> "${CORRECT_LINK_TARGET}"
@@ -71,7 +71,7 @@ cleanup() {
 
 	run_cmd lxc-stop -n c2 -k || true
 	run_cmd lxc-stop -n c1 -k || true
-	pkill -u $(id -u $TUSER) -9
+	pkill -u $(id -u $TUSER) -9 || true
 
 	sed -i '/lxcunpriv/d' /run/lxc/nics /etc/lxc/lxc-usernet
 	sed -i '/^lxcunpriv:/d' /etc/subuid /etc/subgid
@@ -105,7 +105,7 @@ fi
 trap cleanup EXIT SIGHUP SIGINT SIGTERM
 set -eu
 
-deluser $TUSER && rm -Rf $HDIR || true
+id $TUSER &> /dev/null && deluser -q --remove-home $TUSER
 useradd $TUSER
 
 mkdir -p $HDIR

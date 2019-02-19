@@ -53,6 +53,8 @@
 #define MS_SLAVE (1 << 19)
 #endif
 
+extern int lxc_log_fd;
+
 int unshare(int flags);
 
 static void usage(const char *name)
@@ -71,17 +73,17 @@ static void usage(const char *name)
 	printf("  Note: This program uses newuidmap(2) and newgidmap(2).\n");
 	printf("        As such, /etc/subuid and /etc/subgid must grant the\n");
 	printf("        calling user permission to use the mapped ranges\n");
-	exit(EXIT_SUCCESS);
 }
 
-static void opentty(const char * tty, int which) {
+static void opentty(const char *tty, int which)
+{
 	int fd, flags;
 
 	if (tty[0] == '\0')
 		return;
 
 	fd = open(tty, O_RDWR | O_NONBLOCK);
-	if (fd == -1) {
+	if (fd < 0) {
 		printf("WARN: could not reopen tty: %s\n", strerror(errno));
 		return;
 	}
@@ -90,12 +92,13 @@ static void opentty(const char * tty, int which) {
 	flags &= ~O_NONBLOCK;
 	if (fcntl(fd, F_SETFL, flags) < 0) {
 		printf("WARN: could not set fd flags: %s\n", strerror(errno));
+		close(fd);
 		return;
 	}
 
 	close(which);
 	if (fd != which) {
-		dup2(fd, which);
+		(void)dup2(fd, which);
 		close(fd);
 	}
 }
@@ -124,7 +127,7 @@ static int do_child(void *vargv)
 	}
 	if (detect_shared_rootfs()) {
 		if (mount(NULL, "/", NULL, MS_SLAVE|MS_REC, NULL)) {
-			printf("Failed to make / rslave");
+			printf("Failed to make / rslave\n");
 			return -1;
 		}
 	}
@@ -252,14 +255,42 @@ static int read_default_map(char *fnam, int which, char *username)
 
 static int find_default_map(void)
 {
-	struct passwd *p = getpwuid(getuid());
-	if (!p)
+	struct passwd pwent;
+	struct passwd *pwentp = NULL;
+	char *buf;
+	size_t bufsize;
+	int ret;
+
+	bufsize = sysconf(_SC_GETPW_R_SIZE_MAX);
+	if (bufsize == -1)
+		bufsize = 1024;
+
+	buf = malloc(bufsize);
+	if (!buf)
 		return -1;
-	if (read_default_map(subuidfile, ID_TYPE_UID, p->pw_name) < 0)
+
+	ret = getpwuid_r(getuid(), &pwent, buf, bufsize, &pwentp);
+	if (!pwentp) {
+		if (ret == 0)
+			printf("WARN: could not find matched password record\n");
+
+		printf("Failed to get password record - %u\n", getuid());
+		free(buf);
 		return -1;
-	if (read_default_map(subgidfile, ID_TYPE_GID, p->pw_name) < 0)
+	}
+
+	if (read_default_map(subuidfile, ID_TYPE_UID, pwent.pw_name) < 0) {
+		free(buf);
 		return -1;
-    return 0;
+	}
+
+	if (read_default_map(subgidfile, ID_TYPE_GID, pwent.pw_name) < 0) {
+		free(buf);
+		return -1;
+	}
+
+	free(buf);
+	return 0;
 }
 
 int main(int argc, char *argv[])
@@ -272,8 +303,10 @@ int main(int argc, char *argv[])
 	int pid;
 	char *default_args[] = {"/bin/sh", NULL};
 	char buf[1];
-	int pipe1[2],  // child tells parent it has unshared
-	    pipe2[2];  // parent tells child it is mapped and may proceed
+	int pipe_fds1[2],  /* child tells parent it has unshared */
+	    pipe_fds2[2];  /* parent tells child it is mapped and may proceed */
+
+	lxc_log_fd = STDERR_FILENO;
 
 	memset(ttyname0, '\0', sizeof(ttyname0));
 	memset(ttyname1, '\0', sizeof(ttyname1));
@@ -286,12 +319,12 @@ int main(int argc, char *argv[])
 		}
 		ret = readlink("/proc/self/fd/1", ttyname1, sizeof(ttyname1));
 		if (ret < 0) {
-			printf("Warning: unable to open stdout, continuing.");
+			printf("Warning: unable to open stdout, continuing.\n");
 			memset(ttyname1, '\0', sizeof(ttyname1));
 		}
 		ret = readlink("/proc/self/fd/2", ttyname2, sizeof(ttyname2));
 		if (ret < 0) {
-			printf("Warning: unable to open stderr, continuing.");
+			printf("Warning: unable to open stderr, continuing.\n");
 			memset(ttyname2, '\0', sizeof(ttyname2));
 		}
 	}
@@ -300,10 +333,18 @@ int main(int argc, char *argv[])
 
 	while ((c = getopt(argc, argv, "m:h")) != EOF) {
 		switch (c) {
-			case 'm': if (parse_map(optarg)) usage(argv[0]); break;
+			case 'm':
+				if (parse_map(optarg)) {
+					usage(argv[0]);
+					exit(EXIT_FAILURE);
+				}
+				break;
 			case 'h':
+				  usage(argv[0]);
+				  exit(EXIT_SUCCESS);
 			default:
 				  usage(argv[0]);
+				  exit(EXIT_FAILURE);
 		}
 	};
 
@@ -316,20 +357,18 @@ int main(int argc, char *argv[])
 
 	argv = &argv[optind];
 	argc = argc - optind;
-	if (argc < 1) {
+	if (argc < 1)
 		argv = default_args;
-		argc = 1;
-	}
 
-	if (pipe(pipe1) < 0 || pipe(pipe2) < 0) {
+	if (pipe2(pipe_fds1, O_CLOEXEC) < 0 || pipe2(pipe_fds2, O_CLOEXEC) < 0) {
 		perror("pipe");
 		exit(EXIT_FAILURE);
 	}
 	if ((pid = fork()) == 0) {
 		// Child.
 
-		close(pipe1[0]);
-		close(pipe2[1]);
+		close(pipe_fds1[0]);
+		close(pipe_fds2[1]);
 		opentty(ttyname0, 0);
 		opentty(ttyname1, 1);
 		opentty(ttyname2, 2);
@@ -340,11 +379,11 @@ int main(int argc, char *argv[])
 			return 1;
 		}
 		buf[0] = '1';
-		if (write(pipe1[1], buf, 1) < 1) {
+		if (lxc_write_nointr(pipe_fds1[1], buf, 1) < 1) {
 			perror("write pipe");
 			exit(EXIT_FAILURE);
 		}
-		if (read(pipe2[0], buf, 1) < 1) {
+		if (lxc_read_nointr(pipe_fds2[0], buf, 1) < 1) {
 			perror("read pipe");
 			exit(EXIT_FAILURE);
 		}
@@ -353,25 +392,24 @@ int main(int argc, char *argv[])
 			exit(EXIT_FAILURE);
 		}
 
-		close(pipe1[1]);
-		close(pipe2[0]);
+		close(pipe_fds1[1]);
+		close(pipe_fds2[0]);
 		return do_child((void*)argv);
 	}
 
-	close(pipe1[1]);
-	close(pipe2[0]);
-	if (read(pipe1[0], buf, 1) < 1) {
+	close(pipe_fds1[1]);
+	close(pipe_fds2[0]);
+	if (lxc_read_nointr(pipe_fds1[0], buf, 1) < 1) {
 		perror("read pipe");
 		exit(EXIT_FAILURE);
 	}
 
 	buf[0] = '1';
 
-	if (lxc_map_ids(&active_map, pid)) {
+	if (lxc_map_ids(&active_map, pid))
 		fprintf(stderr, "error mapping child\n");
-		ret = 0;
-	}
-	if (write(pipe2[1], buf, 1) < 0) {
+
+	if (lxc_write_nointr(pipe_fds2[1], buf, 1) < 0) {
 		perror("write to pipe");
 		exit(EXIT_FAILURE);
 	}

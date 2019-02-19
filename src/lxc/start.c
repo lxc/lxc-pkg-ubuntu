@@ -5,6 +5,8 @@
  *
  * Authors:
  * Daniel Lezcano <daniel.lezcano at free.fr>
+ * Serge Hallyn <serge@hallyn.com>
+ * Christian Brauner <christian.brauner@ubuntu.com>
  *
  * This library is free software; you can redistribute it and/or
  * modify it under the terms of the GNU Lesser General Public
@@ -30,6 +32,7 @@
 #include <fcntl.h>
 #include <grp.h>
 #include <poll.h>
+#include <pthread.h>
 #include <signal.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -55,52 +58,71 @@
 #endif
 
 #include "af_unix.h"
-#include "bdev.h"
 #include "caps.h"
 #include "cgroup.h"
 #include "commands.h"
+#include "commands_utils.h"
 #include "conf.h"
+#include "confile_utils.h"
 #include "console.h"
 #include "error.h"
+#include "list.h"
 #include "log.h"
+#include "lxccontainer.h"
 #include "lxclock.h"
 #include "lxcseccomp.h"
 #include "lxcutmp.h"
 #include "mainloop.h"
 #include "monitor.h"
 #include "namespace.h"
+#include "network.h"
 #include "start.h"
 #include "sync.h"
 #include "utils.h"
 #include "lsm/lsm.h"
+#include "storage/storage.h"
+#include "storage/storage_utils.h"
+
+#ifndef HAVE_STRLCPY
+#include "include/strlcpy.h"
+#endif
 
 lxc_log_define(lxc_start, lxc);
 
 extern void mod_all_rdeps(struct lxc_container *c, bool inc);
-static bool do_destroy_container(struct lxc_conf *conf);
+static bool do_destroy_container(struct lxc_handler *handler);
 static int lxc_rmdir_onedev_wrapper(void *data);
 static void lxc_destroy_container_on_signal(struct lxc_handler *handler,
 					    const char *name);
 
 static void print_top_failing_dir(const char *path)
 {
-	size_t len = strlen(path);
-	char *copy = alloca(len + 1), *p, *e, saved;
-	strcpy(copy, path);
+	int ret;
+	size_t len;
+	char *copy, *e, *p, saved;
+
+	len = strlen(path);
+	copy = alloca(len + 1);
+	(void)strlcpy(copy, path, len + 1);
 
 	p = copy;
 	e = copy + len;
+
 	while (p < e) {
 		while (p < e && *p == '/')
 			p++;
+
 		while (p < e && *p != '/')
 			p++;
+
 		saved = *p;
 		*p = '\0';
-		if (access(copy, X_OK)) {
+
+		ret = access(copy, X_OK);
+		if (ret != 0) {
 			SYSERROR("Could not access %s. Please grant it x "
 				 "access, or add an ACL for the container "
-				 "root.", copy);
+				 "root", copy);
 			return;
 		}
 		*p = saved;
@@ -112,10 +134,11 @@ static void close_ns(int ns_fd[LXC_NS_MAX])
 	int i;
 
 	for (i = 0; i < LXC_NS_MAX; i++) {
-		if (ns_fd[i] > -1) {
-			close(ns_fd[i]);
-			ns_fd[i] = -1;
-		}
+		if (ns_fd[i] < 0)
+			continue;
+
+		close(ns_fd[i]);
+		ns_fd[i] = -EBADF;
 	}
 }
 
@@ -125,18 +148,10 @@ static void close_ns(int ns_fd[LXC_NS_MAX])
  */
 static bool preserve_ns(int ns_fd[LXC_NS_MAX], int clone_flags, pid_t pid)
 {
-	int i, ret;
+	int i;
 
 	for (i = 0; i < LXC_NS_MAX; i++)
-		ns_fd[i] = -1;
-
-	ret = lxc_preserve_ns(pid, "");
-	if (ret < 0) {
-		SYSERROR("Kernel does not support attaching to namespaces.");
-		return false;
-	} else {
-		close(ret);
-	}
+		ns_fd[i] = -EBADF;
 
 	for (i = 0; i < LXC_NS_MAX; i++) {
 		if ((clone_flags & ns_info[i].clone_flag) == 0)
@@ -150,9 +165,11 @@ static bool preserve_ns(int ns_fd[LXC_NS_MAX], int clone_flags, pid_t pid)
 
 error:
 	if (errno == ENOENT)
-		SYSERROR("Kernel does not support attaching to %s namespaces.", ns_info[i].proc_name);
+		SYSERROR("Kernel does not support attaching to %s namespaces",
+			 ns_info[i].proc_name);
 	else
-		SYSERROR("Failed to open file descriptor for %s namespace: %s.", ns_info[i].proc_name, strerror(errno));
+		SYSERROR("Failed to open file descriptor for %s namespace",
+			 ns_info[i].proc_name);
 	close_ns(ns_fd);
 	return false;
 }
@@ -179,19 +196,13 @@ static int match_fd(int fd)
 	return (fd == 0 || fd == 1 || fd == 2);
 }
 
-/* Check for any fds we need to close.
- * - If fd_to_ignore != -1, then if we find that fd open we will ignore it.
- * - By default we warn about open fds we find.
- * - If closeall is true, we will close open fds.
- * - If lxc-start was passed "-C", then conf->close_all_fds will be true, in
- *   which case we also close all open fds.
- * - A daemonized container will always pass closeall=true.
- */
-int lxc_check_inherited(struct lxc_conf *conf, bool closeall, int fd_to_ignore)
+int lxc_check_inherited(struct lxc_conf *conf, bool closeall,
+			int *fds_to_ignore, size_t len_fds)
 {
-	struct dirent *direntp;
 	int fd, fddir;
+	size_t i;
 	DIR *dir;
+	struct dirent *direntp;
 
 	if (conf && conf->close_all_fds)
 		closeall = true;
@@ -199,29 +210,43 @@ int lxc_check_inherited(struct lxc_conf *conf, bool closeall, int fd_to_ignore)
 restart:
 	dir = opendir("/proc/self/fd");
 	if (!dir) {
-		WARN("Failed to open directory: %m.");
+		WARN("%s - Failed to open directory", strerror(errno));
 		return -1;
 	}
 
 	fddir = dirfd(dir);
 
 	while ((direntp = readdir(dir))) {
-		if (!direntp)
-			break;
+		int ret;
 
-		if (!strcmp(direntp->d_name, "."))
+		if (strcmp(direntp->d_name, ".") == 0)
 			continue;
 
-		if (!strcmp(direntp->d_name, ".."))
+		if (strcmp(direntp->d_name, "..") == 0)
 			continue;
 
-		if (lxc_safe_int(direntp->d_name, &fd) < 0) {
-			INFO("Could not parse file descriptor for: %s", direntp->d_name);
+		ret = lxc_safe_int(direntp->d_name, &fd);
+		if (ret < 0) {
+			INFO("Could not parse file descriptor for \"%s\"", direntp->d_name);
 			continue;
 		}
 
-		if (fd == fddir || fd == lxc_log_fd || fd == fd_to_ignore)
+		for (i = 0; i < len_fds; i++)
+			if (fds_to_ignore[i] == fd)
+				break;
+
+		if (fd == fddir || fd == lxc_log_fd ||
+		    (i < len_fds && fd == fds_to_ignore[i]))
 			continue;
+
+		if (conf) {
+			for (i = 0; i < LXC_NS_MAX; i++)
+				if (conf->inherit_ns_fd[i] == fd)
+					break;
+
+			if (i < LXC_NS_MAX)
+				continue;
+		}
 
 		if (current_config && fd == current_config->logfd)
 			continue;
@@ -244,212 +269,538 @@ restart:
 
 static int setup_signal_fd(sigset_t *oldmask)
 {
+	int ret, sig;
 	sigset_t mask;
-	int fd;
+	int signals[] = {SIGBUS, SIGILL, SIGSEGV, SIGWINCH};
 
 	/* Block everything except serious error signals. */
-	if (sigfillset(&mask) ||
-	    sigdelset(&mask, SIGILL) ||
-	    sigdelset(&mask, SIGSEGV) ||
-	    sigdelset(&mask, SIGBUS) ||
-	    sigdelset(&mask, SIGWINCH) ||
-	    sigprocmask(SIG_BLOCK, &mask, oldmask)) {
-		SYSERROR("Failed to set signal mask.");
-		return -1;
+	ret = sigfillset(&mask);
+	if (ret < 0)
+		return -EBADF;
+
+	for (sig = 0; sig < (sizeof(signals) / sizeof(signals[0])); sig++) {
+		ret = sigdelset(&mask, signals[sig]);
+		if (ret < 0)
+			return -EBADF;
 	}
 
-	fd = signalfd(-1, &mask, 0);
-	if (fd < 0) {
-		SYSERROR("Failed to create signal file descriptor.");
-		return -1;
+	ret = pthread_sigmask(SIG_BLOCK, &mask, oldmask);
+	if (ret < 0) {
+		SYSERROR("Failed to set signal mask");
+		return -EBADF;
 	}
 
-	if (fcntl(fd, F_SETFD, FD_CLOEXEC)) {
-		SYSERROR("Failed to set FD_CLOEXEC on the signal file descriptor: %d.", fd);
-		close(fd);
-		return -1;
+	ret = signalfd(-1, &mask, SFD_CLOEXEC);
+	if (ret < 0) {
+		SYSERROR("Failed to create signal file descriptor");
+		return -EBADF;
 	}
 
-	DEBUG("Set SIGCHLD handler with file descriptor: %d.", fd);
+	TRACE("Created signal file descriptor %d", ret);
 
-	return fd;
+	return ret;
 }
 
 static int signal_handler(int fd, uint32_t events, void *data,
 			  struct lxc_epoll_descr *descr)
 {
-	struct signalfd_siginfo siginfo;
-	siginfo_t info;
 	int ret;
-	pid_t *pid = data;
-	bool init_died = false;
+	siginfo_t info;
+	struct signalfd_siginfo siginfo;
+	struct lxc_handler *hdlr = data;
 
-	ret = read(fd, &siginfo, sizeof(siginfo));
+	ret = lxc_read_nointr(fd, &siginfo, sizeof(siginfo));
 	if (ret < 0) {
-		ERROR("Failed to read signal info from signal file descriptor: %d.", fd);
+		ERROR("Failed to read signal info from signal file descriptor %d", fd);
 		return -1;
 	}
 
 	if (ret != sizeof(siginfo)) {
-		ERROR("Unexpected size for siginfo struct.");
-		return -1;
+		ERROR("Unexpected size for struct signalfd_siginfo");
+		return -EINVAL;
 	}
 
 	/* Check whether init is running. */
 	info.si_pid = 0;
-	ret = waitid(P_PID, *pid, &info, WEXITED | WNOWAIT | WNOHANG);
-	if (ret == 0 && info.si_pid == *pid)
-		init_died = true;
+	ret = waitid(P_PID, hdlr->pid, &info, WEXITED | WNOWAIT | WNOHANG);
+	if (ret == 0 && info.si_pid == hdlr->pid)
+		hdlr->init_died = true;
 
-	if (siginfo.ssi_signo != SIGCHLD) {
-		kill(*pid, siginfo.ssi_signo);
-		INFO("Forwarded signal %d to pid %d.", siginfo.ssi_signo, *pid);
-		return init_died ? 1 : 0;
+	/* Try to figure out a reasonable exit status to report. */
+	if (hdlr->init_died) {
+		switch (info.si_code) {
+		case CLD_EXITED:
+			hdlr->exit_status = info.si_status << 8;
+			break;
+		case CLD_KILLED:
+		case CLD_DUMPED:
+		case CLD_STOPPED:
+			hdlr->exit_status = info.si_status << 8 | 0x7f;
+			break;
+		case CLD_CONTINUED:
+			/* Huh? The waitid() told us it's dead *and* continued? */
+			WARN("Init %d dead and continued?", hdlr->pid);
+			hdlr->exit_status = 1;
+			break;
+		default:
+			ERROR("Unknown si_code: %d", info.si_code);
+			hdlr->exit_status = 1;
+		}
 	}
 
-	if (siginfo.ssi_code == CLD_STOPPED) {
-		INFO("Container init process was stopped.");
-		return init_died ? 1 : 0;
-	} else if (siginfo.ssi_code == CLD_CONTINUED) {
-		INFO("Container init process was continued.");
-		return init_died ? 1 : 0;
+	if (siginfo.ssi_signo == SIGHUP) {
+		kill(hdlr->pid, SIGTERM);
+		INFO("Killing %d since terminal hung up", hdlr->pid);
+		return hdlr->init_died ? LXC_MAINLOOP_CLOSE : 0;
+	}
+
+	if (siginfo.ssi_signo != SIGCHLD) {
+		kill(hdlr->pid, siginfo.ssi_signo);
+		INFO("Forwarded signal %d to pid %d", siginfo.ssi_signo, hdlr->pid);
+		return hdlr->init_died ? LXC_MAINLOOP_CLOSE : 0;
 	}
 
 	/* More robustness, protect ourself from a SIGCHLD sent
 	 * by a process different from the container init.
 	 */
-	if (siginfo.ssi_pid != *pid) {
-		NOTICE("Received SIGCHLD from pid %d instead of container init %d.", siginfo.ssi_pid, *pid);
-		return init_died ? 1 : 0;
+	if (siginfo.ssi_pid != hdlr->pid) {
+		NOTICE("Received %d from pid %d instead of container init %d",
+		       siginfo.ssi_signo, siginfo.ssi_pid, hdlr->pid);
+		return hdlr->init_died ? LXC_MAINLOOP_CLOSE : 0;
 	}
 
-	DEBUG("Container init process %d exited.", *pid);
-	return 1;
+	if (siginfo.ssi_code == CLD_STOPPED) {
+		INFO("Container init process was stopped");
+		return hdlr->init_died ? LXC_MAINLOOP_CLOSE : 0;
+	} else if (siginfo.ssi_code == CLD_CONTINUED) {
+		INFO("Container init process was continued");
+		return hdlr->init_died ? LXC_MAINLOOP_CLOSE : 0;
+	}
+
+	DEBUG("Container init process %d exited", hdlr->pid);
+	return LXC_MAINLOOP_CLOSE;
 }
 
-int lxc_set_state(const char *name, struct lxc_handler *handler, lxc_state_t state)
+int lxc_serve_state_clients(const char *name, struct lxc_handler *handler,
+			    lxc_state_t state)
 {
-	handler->state = state;
+	size_t retlen;
+	ssize_t ret;
+	struct lxc_list *cur, *next;
+	struct state_client *client;
+	struct lxc_msg msg = {.type = lxc_msg_state, .value = state};
+
+	if (state == THAWED)
+		handler->state = RUNNING;
+	else
+		handler->state = state;
+
+	TRACE("Set container state to %s", lxc_state2str(state));
+
+	if (lxc_list_empty(&handler->state_clients)) {
+		TRACE("No state clients registered");
+		return 0;
+	}
+
+	retlen = strlcpy(msg.name, name, sizeof(msg.name));
+	if (retlen >= sizeof(msg.name))
+		return -E2BIG;
+
+	lxc_list_for_each_safe(cur, &handler->state_clients, next) {
+		client = cur->elem;
+
+		if (!client->states[state]) {
+			TRACE("State %s not registered for state client %d",
+			      lxc_state2str(state), client->clientfd);
+			continue;
+		}
+
+		TRACE("Sending state %s to state client %d",
+		      lxc_state2str(state), client->clientfd);
+
+	again:
+		ret = send(client->clientfd, &msg, sizeof(msg), 0);
+		if (ret <= 0) {
+			if (errno == EINTR) {
+				TRACE("Caught EINTR; retrying");
+				goto again;
+			}
+
+			ERROR("%s - Failed to send message to client",
+			      strerror(errno));
+		}
+
+		/* kick client from list */
+		lxc_list_del(cur);
+		close(client->clientfd);
+		free(cur->elem);
+		free(cur);
+	}
+
+	return 0;
+}
+
+static int lxc_serve_state_socket_pair(const char *name,
+				       struct lxc_handler *handler,
+				       lxc_state_t state)
+{
+	ssize_t ret;
+
+	if (!handler->backgrounded ||
+            handler->state_socket_pair[1] < 0 ||
+	    state == STARTING)
+		return 0;
+
+	/* Close read end of the socket pair. */
+	close(handler->state_socket_pair[0]);
+	handler->state_socket_pair[0] = -1;
+
+again:
+	ret = lxc_abstract_unix_send_credential(handler->state_socket_pair[1],
+						&(int){state}, sizeof(int));
+	if (ret != sizeof(int)) {
+		if (errno == EINTR)
+			goto again;
+		SYSERROR("Failed to send state to %d",
+			 handler->state_socket_pair[1]);
+		return -1;
+	}
+
+	TRACE("Sent container state \"%s\" to %d", lxc_state2str(state),
+	      handler->state_socket_pair[1]);
+
+	/* Close write end of the socket pair. */
+	close(handler->state_socket_pair[1]);
+	handler->state_socket_pair[1] = -1;
+
+	return 0;
+}
+
+int lxc_set_state(const char *name, struct lxc_handler *handler,
+		  lxc_state_t state)
+{
+	int ret;
+
+	ret = lxc_serve_state_socket_pair(name, handler, state);
+	if (ret < 0) {
+		ERROR("Failed to synchronize via anonymous pair of unix sockets");
+		return -1;
+	}
+
+	ret = lxc_serve_state_clients(name, handler, state);
+	if (ret < 0)
+		return -1;
+
+	/* This function will try to connect to the legacy lxc-monitord state
+	 * server and only exists for backwards compatibility.
+	 */
 	lxc_monitor_send_state(name, state, handler->lxcpath);
+
 	return 0;
 }
 
 int lxc_poll(const char *name, struct lxc_handler *handler)
 {
-	int sigfd = handler->sigfd;
-	int pid = handler->pid;
-	struct lxc_epoll_descr descr;
+	int ret;
+	bool has_console = true;
+	struct lxc_epoll_descr descr, descr_console;
 
-	if (lxc_mainloop_open(&descr)) {
-		ERROR("Failed to create LXC mainloop.");
+	if (handler->conf->console.path &&
+	    strcmp(handler->conf->console.path, "none") == 0)
+		has_console = false;
+
+	ret = lxc_mainloop_open(&descr);
+	if (ret < 0) {
+		ERROR("Failed to create mainloop");
 		goto out_sigfd;
 	}
 
-	if (lxc_mainloop_add_handler(&descr, sigfd, signal_handler, &pid)) {
-		ERROR("Failed to add signal handler with file descriptor %d to LXC mainloop.", sigfd);
-		goto out_mainloop_open;
+	if (has_console) {
+		ret = lxc_mainloop_open(&descr_console);
+		if (ret < 0) {
+			ERROR("Failed to create console mainloop");
+			goto out_mainloop;
+		}
 	}
 
-	if (lxc_console_mainloop_add(&descr, handler->conf)) {
-		ERROR("Failed to add console handler to LXC mainloop.");
-		goto out_mainloop_open;
-	}
-
-	if (lxc_cmd_mainloop_add(name, &descr, handler)) {
-		ERROR("Failed to add command handler to LXC mainloop.");
-		goto out_mainloop_open;
+	ret = lxc_mainloop_add_handler(&descr, handler->sigfd, signal_handler, handler);
+	if (ret < 0) {
+		ERROR("Failed to add signal handler for %d to mainloop", handler->sigfd);
+		goto out_mainloop_console;
 	}
 
 	if (handler->conf->need_utmp_watch) {
 		#if HAVE_LIBCAP
 		if (lxc_utmp_mainloop_add(&descr, handler)) {
 			ERROR("Failed to add utmp handler to LXC mainloop.");
-			goto out_mainloop_open;
+			goto out_mainloop_console;
 		}
 		#else
 			DEBUG("Not starting utmp handler as CAP_SYS_BOOT cannot be dropped without capabilities support.");
 		#endif
 	}
 
-	return lxc_mainloop(&descr, -1);
+	if (has_console) {
+		struct lxc_console *console = &handler->conf->console;
 
-out_mainloop_open:
+		ret = lxc_console_mainloop_add(&descr, console);
+		if (ret < 0) {
+			ERROR("Failed to add console handlers to mainloop");
+			goto out_mainloop_console;
+		}
+
+		ret = lxc_console_mainloop_add(&descr_console, console);
+		if (ret < 0) {
+			ERROR("Failed to add console handlers to console mainloop");
+			goto out_mainloop_console;
+		}
+
+		handler->conf->console.descr = &descr;
+	}
+
+	ret = lxc_cmd_mainloop_add(name, &descr, handler);
+	if (ret < 0) {
+		ERROR("Failed to add command handler to mainloop");
+		goto out_mainloop_console;
+	}
+
+	TRACE("Mainloop is ready");
+
+	ret = lxc_mainloop(&descr, -1);
+	close(descr.epfd);
+	descr.epfd = -EBADF;
+	if (ret < 0 || !handler->init_died)
+		goto out_mainloop_console;
+
+	if (has_console)
+		ret = lxc_mainloop(&descr_console, 0);
+
+out_mainloop_console:
+	if (has_console) {
+		lxc_mainloop_close(&descr_console);
+		TRACE("Closed console mainloop");
+	}
+
+out_mainloop:
 	lxc_mainloop_close(&descr);
+	TRACE("Closed mainloop");
 
 out_sigfd:
-	close(sigfd);
+	close(handler->sigfd);
+	TRACE("Closed signal file descriptor %d", handler->sigfd);
+	handler->sigfd = -EBADF;
 
-	return -1;
+	return ret;
 }
 
-struct lxc_handler *lxc_init(const char *name, struct lxc_conf *conf, const char *lxcpath)
+void lxc_zero_handler(struct lxc_handler *handler)
 {
 	int i;
+
+	memset(handler, 0, sizeof(struct lxc_handler));
+
+	handler->clone_flags = -1;
+
+	handler->pinfd = -1;
+
+	handler->sigfd = -1;
+
+	for (i = 0; i < LXC_NS_MAX; i++)
+		handler->nsfd[i] = -1;
+
+	handler->data_sock[0] = -1;
+	handler->data_sock[1] = -1;
+
+	handler->state_socket_pair[0] = -1;
+	handler->state_socket_pair[1] = -1;
+
+	handler->sync_sock[0] = -1;
+	handler->sync_sock[1] = -1;
+}
+
+static void lxc_put_nsfds(struct lxc_handler *handler)
+{
+	int i;
+
+	for (i = 0; i < LXC_NS_MAX; i++) {
+		if (handler->nsfd[i] < 0)
+			continue;
+
+		close(handler->nsfd[i]);
+		handler->nsfd[i] = -EBADF;
+	}
+}
+
+void lxc_free_handler(struct lxc_handler *handler)
+{
+	if (handler->pinfd >= 0)
+		close(handler->pinfd);
+
+	if (handler->sigfd >= 0)
+		close(handler->sigfd);
+
+	lxc_put_nsfds(handler);
+
+	if (handler->conf && handler->conf->reboot == 0)
+		if (handler->conf->maincmd_fd >= 0)
+			close(handler->conf->maincmd_fd);
+
+	if (handler->state_socket_pair[0] >= 0)
+		close(handler->state_socket_pair[0]);
+
+	if (handler->state_socket_pair[1] >= 0)
+		close(handler->state_socket_pair[1]);
+
+	handler->conf = NULL;
+	free(handler);
+	handler = NULL;
+}
+
+struct lxc_handler *lxc_init_handler(const char *name, struct lxc_conf *conf,
+				     const char *lxcpath, bool daemonize)
+{
+	int i, ret;
 	struct lxc_handler *handler;
 
 	handler = malloc(sizeof(*handler));
 	if (!handler)
 		return NULL;
-
 	memset(handler, 0, sizeof(*handler));
 
-	handler->ttysock[0] = handler->ttysock[1] = -1;
+	/* Note that am_guest_unpriv() checks the effective uid. We
+	 * probably don't care if we are real root only if we are running
+	 * as root so this should be fine.
+	 */
+	handler->am_root = !am_guest_unpriv();
+	handler->data_sock[0] = handler->data_sock[1] = -1;
 	handler->conf = conf;
 	handler->lxcpath = lxcpath;
 	handler->pinfd = -1;
+	handler->sigfd = -EBADF;
+	handler->init_died = false;
+	handler->state_socket_pair[0] = handler->state_socket_pair[1] = -1;
+	lxc_list_init(&handler->state_clients);
 
 	for (i = 0; i < LXC_NS_MAX; i++)
 		handler->nsfd[i] = -1;
 
-	lsm_init();
+	handler->name = name;
 
-	handler->name = strdup(name);
-	if (!handler->name) {
-		ERROR("Failed to allocate memory.");
-		goto out_free;
+	if (daemonize && !handler->conf->reboot) {
+		/* Create socketpair() to synchronize on daemonized startup.
+		 * When the container reboots we don't need to synchronize
+		 * again currently so don't open another socketpair().
+		 */
+		ret = socketpair(AF_UNIX, SOCK_STREAM | SOCK_CLOEXEC, 0,
+				 handler->state_socket_pair);
+		if (ret < 0) {
+			ERROR("Failed to create anonymous pair of unix sockets");
+			goto on_error;
+		}
+		TRACE("Created anonymous pair {%d,%d} of unix sockets",
+		      handler->state_socket_pair[0],
+		      handler->state_socket_pair[1]);
 	}
 
-	if (lxc_cmd_init(name, handler, lxcpath))
-		goto out_free_name;
+	handler->conf->maincmd_fd = lxc_cmd_init(name, lxcpath, "command");
+	if (handler->conf->maincmd_fd < 0) {
+		ERROR("Failed to set up command socket");
+		goto on_error;
+	}
+	TRACE("Unix domain socket %d for command server is ready",
+	      handler->conf->maincmd_fd);
 
-	if (lxc_read_seccomp_config(conf) != 0) {
-		ERROR("Failed loading seccomp policy.");
+	return handler;
+
+on_error:
+	lxc_free_handler(handler);
+
+	return NULL;
+}
+
+int lxc_init(const char *name, struct lxc_handler *handler)
+{
+	int ret;
+	const char *loglevel;
+	struct lxc_conf *conf = handler->conf;
+
+	lsm_init();
+	TRACE("Initialized LSM");
+
+	ret = lxc_read_seccomp_config(conf);
+	if (ret < 0) {
+		ERROR("Failed loading seccomp policy");
 		goto out_close_maincmd_fd;
 	}
+	TRACE("Read seccomp policy");
 
 	/* Begin by setting the state to STARTING. */
-	if (lxc_set_state(name, handler, STARTING)) {
-		ERROR("Failed to set state for container \"%s\" to \"%s\".", name, lxc_state2str(STARTING));
+	ret = lxc_set_state(name, handler, STARTING);
+	if (ret < 0) {
+		ERROR("Failed to set state to \"%s\"", lxc_state2str(STARTING));
 		goto out_close_maincmd_fd;
 	}
+	TRACE("set container state to \"STARTING\"");
 
 	/* Start of environment variable setup for hooks. */
-	if (name && setenv("LXC_NAME", name, 1))
-		SYSERROR("Failed to set environment variable: LXC_NAME=%s.", name);
+	ret = setenv("LXC_NAME", name, 1);
+	if (ret < 0)
+		SYSERROR("Failed to set environment variable: LXC_NAME=%s", name);
 
-	if (conf->rcfile && setenv("LXC_CONFIG_FILE", conf->rcfile, 1))
-		SYSERROR("Failed to set environment variable: LXC_CONFIG_FILE=%s.", conf->rcfile);
+	if (conf->rcfile) {
+		ret = setenv("LXC_CONFIG_FILE", conf->rcfile, 1);
+		if (ret < 0)
+			SYSERROR("Failed to set environment variable: "
+				 "LXC_CONFIG_FILE=%s", conf->rcfile);
+	}
 
-	if (conf->rootfs.mount && setenv("LXC_ROOTFS_MOUNT", conf->rootfs.mount, 1))
-		SYSERROR("Failed to set environment variable: LXC_ROOTFS_MOUNT=%s.", conf->rootfs.mount);
+	if (conf->rootfs.mount) {
+		ret = setenv("LXC_ROOTFS_MOUNT", conf->rootfs.mount, 1);
+		if (ret < 0)
+			SYSERROR("Failed to set environment variable: "
+				 "LXC_ROOTFS_MOUNT=%s", conf->rootfs.mount);
+	}
 
-	if (conf->rootfs.path && setenv("LXC_ROOTFS_PATH", conf->rootfs.path, 1))
-		SYSERROR("Failed to set environment variable: LXC_ROOTFS_PATH=%s.", conf->rootfs.path);
+	if (conf->rootfs.path) {
+		ret = setenv("LXC_ROOTFS_PATH", conf->rootfs.path, 1);
+		if (ret < 0)
+			SYSERROR("Failed to set environment variable: "
+				 "LXC_ROOTFS_PATH=%s", conf->rootfs.path);
+	}
 
-	if (conf->console.path && setenv("LXC_CONSOLE", conf->console.path, 1))
-		SYSERROR("Failed to set environment variable: LXC_CONSOLE=%s.", conf->console.path);
+	if (conf->console.path) {
+		ret = setenv("LXC_CONSOLE", conf->console.path, 1);
+		if (ret < 0)
+			SYSERROR("Failed to set environment variable: "
+				 "LXC_CONSOLE=%s", conf->console.path);
+	}
 
-	if (conf->console.log_path && setenv("LXC_CONSOLE_LOGPATH", conf->console.log_path, 1))
-		SYSERROR("Failed to set environment variable: LXC_CONSOLE_LOGPATH=%s.", conf->console.log_path);
+	if (conf->console.log_path) {
+		ret = setenv("LXC_CONSOLE_LOGPATH", conf->console.log_path, 1);
+		if (ret < 0)
+			SYSERROR("Failed to set environment variable: "
+				 "LXC_CONSOLE_LOGPATH=%s", conf->console.log_path);
+	}
 
-	if (setenv("LXC_CGNS_AWARE", "1", 1))
-		SYSERROR("Failed to set environment variable LXC_CGNS_AWARE=1.");
-	/* End of environment variable setup for hooks. */
+	if (cgns_supported()) {
+		ret = setenv("LXC_CGNS_AWARE", "1", 1);
+		if (ret < 0)
+			SYSERROR("Failed to set environment variable "
+				 "LXC_CGNS_AWARE=1");
+	}
 
-	if (run_lxc_hooks(name, "pre-start", conf, handler->lxcpath, NULL)) {
-		ERROR("Failed to run lxc.hook.pre-start for container \"%s\".", name);
+	loglevel = lxc_log_priority_to_string(lxc_log_get_level());
+	if (setenv("LXC_LOG_LEVEL", loglevel, 1))
+		SYSERROR("Failed to set environment variable LXC_LOG_LEVEL=%s", loglevel);
+
+	TRACE("Set environment variables");
+
+	ret = run_lxc_hooks(name, "pre-start", conf, handler->lxcpath, NULL);
+	if (ret < 0) {
+		ERROR("Failed to run lxc.hook.pre-start for container \"%s\"", name);
 		goto out_aborting;
 	}
+	TRACE("Ran pre-start hooks");
 
 	/* The signal fd has to be created before forking otherwise if the child
 	 * process exits before we setup the signal fd, the event will be lost
@@ -460,43 +811,44 @@ struct lxc_handler *lxc_init(const char *name, struct lxc_conf *conf, const char
 		ERROR("Failed to setup SIGCHLD fd handler.");
 		goto out_delete_tty;
 	}
+	TRACE("Set up signal fd");
 
 	/* Do this after setting up signals since it might unblock SIGWINCH. */
-	if (lxc_console_create(conf)) {
-		ERROR("Failed to create console for container \"%s\".", name);
+	ret = lxc_console_create(conf);
+	if (ret < 0) {
+		ERROR("Failed to create console");
 		goto out_restore_sigmask;
 	}
+	TRACE("Created console");
 
-	if (ttys_shift_ids(conf) < 0) {
-		ERROR("Failed to shift tty into container.");
+	ret = lxc_pty_map_ids(conf, &conf->console);
+	if (ret < 0) {
+		ERROR("Failed to chown console");
 		goto out_restore_sigmask;
 	}
+	TRACE("Chowned console");
 
-	INFO("Container \"%s\" is initialized.", name);
-	return handler;
+	INFO("Container \"%s\" is initialized", name);
+	return 0;
 
 out_restore_sigmask:
-	sigprocmask(SIG_SETMASK, &handler->oldmask, NULL);
+	(void)pthread_sigmask(SIG_SETMASK, &handler->oldmask, NULL);
 out_delete_tty:
 	lxc_delete_tty(&conf->tty_info);
 out_aborting:
-	lxc_set_state(name, handler, ABORTING);
+	(void)lxc_set_state(name, handler, ABORTING);
 out_close_maincmd_fd:
 	close(conf->maincmd_fd);
 	conf->maincmd_fd = -1;
-out_free_name:
-	free(handler->name);
-	handler->name = NULL;
-out_free:
-	free(handler);
-	return NULL;
+	return -1;
 }
 
 void lxc_fini(const char *name, struct lxc_handler *handler)
 {
-	int i, rc;
-	pid_t self = getpid();
-	char *namespaces[LXC_NS_MAX+1];
+	int i, ret;
+	struct lxc_list *cur, *next;
+	pid_t self = lxc_raw_getpid();
+	char *namespaces[LXC_NS_MAX + 1];
 	size_t namespace_count = 0;
 
 	/* The STOPPING state is there for future cleanup code which can take
@@ -506,9 +858,9 @@ void lxc_fini(const char *name, struct lxc_handler *handler)
 
 	for (i = 0; i < LXC_NS_MAX; i++) {
 		if (handler->nsfd[i] != -1) {
-			rc = asprintf(&namespaces[namespace_count], "%s:/proc/%d/fd/%d",
+			ret = asprintf(&namespaces[namespace_count], "%s:/proc/%d/fd/%d",
 			              ns_info[i].proc_name, self, handler->nsfd[i]);
-			if (rc == -1) {
+			if (ret == -1) {
 				SYSERROR("Failed to allocate memory.");
 				break;
 			}
@@ -528,6 +880,7 @@ void lxc_fini(const char *name, struct lxc_handler *handler)
 
 	while (namespace_count--)
 		free(namespaces[namespace_count]);
+
 	for (i = 0; i < LXC_NS_MAX; i++) {
 		if (handler->nsfd[i] != -1) {
 			close(handler->nsfd[i]);
@@ -540,7 +893,28 @@ void lxc_fini(const char *name, struct lxc_handler *handler)
 		handler->netnsfd = -1;
 	}
 
-	lxc_set_state(name, handler, STOPPED);
+	cgroup_destroy(handler);
+
+	/* For all new state clients simply close the command socket.
+	* This will inform all state clients that the container is
+	* STOPPED and also prevents a race between a open()/close() on
+	* the command socket causing a new process to get ECONNREFUSED
+	* because we haven't yet closed the command socket.
+	 */
+	close(handler->conf->maincmd_fd);
+	handler->conf->maincmd_fd = -1;
+	TRACE("Closed command socket");
+
+	/* This function will try to connect to the legacy lxc-monitord
+	 * state server and only exists for backwards compatibility.
+	 */
+	lxc_monitor_send_state(name, STOPPED, handler->lxcpath);
+
+	/* The command socket is closed so no one can acces the command
+	 * socket anymore so there's no need to lock it.
+	 */
+	handler->state = STOPPED;
+	TRACE("Set container state to \"STOPPED\"");
 
 	if (run_lxc_hooks(name, "post-stop", handler->conf, handler->lxcpath, NULL)) {
 		ERROR("Failed to run lxc.hook.post-stop for container \"%s\".", name);
@@ -553,24 +927,29 @@ void lxc_fini(const char *name, struct lxc_handler *handler)
 	}
 
 	/* Reset mask set by setup_signal_fd. */
-	if (sigprocmask(SIG_SETMASK, &handler->oldmask, NULL))
-		WARN("Failed to restore signal mask.");
+	ret = pthread_sigmask(SIG_SETMASK, &handler->oldmask, NULL);
+	if (ret < 0)
+		WARN("%s - Failed to restore signal mask", strerror(errno));
 
 	lxc_console_delete(&handler->conf->console);
 	lxc_delete_tty(&handler->conf->tty_info);
-	close(handler->conf->maincmd_fd);
-	handler->conf->maincmd_fd = -1;
-	free(handler->name);
-	if (handler->ttysock[0] != -1) {
-		close(handler->ttysock[0]);
-		close(handler->ttysock[1]);
+
+	/* The command socket is now closed, no more state clients can register
+	 * themselves from now on. So free the list of state clients.
+	 */
+	lxc_list_for_each_safe(cur, &handler->state_clients, next) {
+		struct state_client *client = cur->elem;
+		/* close state client socket */
+		close(client->clientfd);
+		lxc_list_del(cur);
+		free(cur->elem);
+		free(cur);
 	}
 
 	if (handler->conf->ephemeral == 1 && handler->conf->reboot != 1)
 		lxc_destroy_container_on_signal(handler, name);
 
-	cgroup_destroy(handler);
-	free(handler);
+	lxc_free_handler(handler);
 }
 
 void lxc_abort(const char *name, struct lxc_handler *handler)
@@ -578,8 +957,13 @@ void lxc_abort(const char *name, struct lxc_handler *handler)
 	int ret, status;
 
 	lxc_set_state(name, handler, ABORTING);
-	if (handler->pid > 0)
-		kill(handler->pid, SIGKILL);
+
+	if (handler->pid > 0) {
+		ret = kill(handler->pid, SIGKILL);
+		if (ret < 0)
+			SYSERROR("Failed to send SIGKILL to %d", handler->pid);
+	}
+
 	while ((ret = waitpid(-1, &status, 0)) > 0) {
 		;
 	}
@@ -644,7 +1028,7 @@ static int must_drop_cap_sys_boot(struct lxc_conf *conf)
 		return -1;
 	}
 	if (wait(&status) < 0) {
-		SYSERROR("Unexpected wait error: %m.");
+		SYSERROR("Unexpected wait error: %s.", strerror(errno));
 		return -1;
 	}
 
@@ -654,62 +1038,44 @@ static int must_drop_cap_sys_boot(struct lxc_conf *conf)
 	return 0;
 }
 
-/* netpipe is used in the unprivileged case to transfer the ifindexes from
- * parent to child
- */
-static int netpipe = -1;
-
-static inline int count_veths(struct lxc_list *network)
+static int lxc_set_death_signal(int signal)
 {
-	struct lxc_list *iterator;
-	struct lxc_netdev *netdev;
-	int count = 0;
+	int ret;
+	pid_t ppid;
 
-	lxc_list_for_each(iterator, network) {
-		netdev = iterator->elem;
-		if (netdev->type != LXC_NET_VETH)
-			continue;
-		count++;
-	}
-	return count;
-}
+	ret = prctl(PR_SET_PDEATHSIG, signal, 0, 0, 0);
 
-static int read_unpriv_netifindex(struct lxc_list *network)
-{
-	struct lxc_list *iterator;
-	struct lxc_netdev *netdev;
+	/* Check whether we have been orphaned. */
+	ppid = (pid_t)syscall(SYS_getppid);
+	if (ppid == 1) {
+		pid_t self;
 
-	if (netpipe == -1)
-		return 0;
-	lxc_list_for_each(iterator, network) {
-		netdev = iterator->elem;
-		if (netdev->type != LXC_NET_VETH)
-			continue;
-		if (!(netdev->name = malloc(IFNAMSIZ))) {
-			ERROR("Out of memory.");
-			close(netpipe);
+		self = lxc_raw_getpid();
+		ret = kill(self, SIGKILL);
+		if (ret < 0)
 			return -1;
-		}
-		if (read(netpipe, netdev->name, IFNAMSIZ) != IFNAMSIZ) {
-			close(netpipe);
-			return -1;
-		}
 	}
-	close(netpipe);
+
+	if (ret < 0) {
+		SYSERROR("Failed to set PR_SET_PDEATHSIG to %d", signal);
+		return -1;
+	}
+
 	return 0;
 }
 
 static int do_start(void *data)
 {
+	int ret;
 	struct lxc_list *iterator;
-	struct lxc_handler *handler = data;
-	int devnull_fd = -1, ret;
 	char path[PATH_MAX];
+	bool have_cap_setgid;
+	uid_t new_uid;
+	gid_t new_gid;
+	int devnull_fd = -1;
+	struct lxc_handler *handler = data;
 
-	if (sigprocmask(SIG_SETMASK, &handler->oldmask, NULL)) {
-		SYSERROR("Failed to set signal mask.");
-		return -1;
-	}
+	lxc_sync_fini_parent(handler);
 
 	/* This prctl must be before the synchro, so if the parent dies before
 	 * we set the parent death signal, we will detect its death with the
@@ -717,20 +1083,32 @@ static int do_start(void *data)
 	 * exit before we set the pdeath signal leading to a unsupervized
 	 * container.
 	 */
-	if (prctl(PR_SET_PDEATHSIG, SIGKILL, 0, 0, 0)) {
-		SYSERROR("Failed to set PR_SET_PDEATHSIG to SIGKILL.");
-		return -1;
+	ret = lxc_set_death_signal(SIGKILL);
+	if (ret < 0) {
+		SYSERROR("Failed to set PR_SET_PDEATHSIG to SIGKILL");
+		goto out_warn_father;
 	}
 
-	lxc_sync_fini_parent(handler);
+	ret = lxc_ambient_caps_up();
+	if (ret < 0) {
+		ERROR("Failed to raise ambient capabilities");
+		goto out_warn_father;
+	}
+
+	ret = pthread_sigmask(SIG_SETMASK, &handler->oldmask, NULL);
+	if (ret < 0) {
+		SYSERROR("Failed to set signal mask");
+		goto out_warn_father;
+	}
 
 	/* Don't leak the pinfd to the container. */
 	if (handler->pinfd >= 0) {
 		close(handler->pinfd);
 	}
 
-	if (lxc_sync_wait_parent(handler, LXC_SYNC_STARTUP))
-		return -1;
+	ret = lxc_sync_wait_parent(handler, LXC_SYNC_STARTUP);
+	if (ret < 0)
+		goto out_warn_father;
 
 	/* Unshare CLONE_NEWNET after CLONE_NEWUSER. See
 	 * https://github.com/lxc/lxd/issues/1978.
@@ -748,24 +1126,47 @@ static int do_start(void *data)
 	/* Tell the parent task it can begin to configure the container and wait
 	 * for it to finish.
 	 */
-	if (lxc_sync_barrier_parent(handler, LXC_SYNC_CONFIGURE))
-		return -1;
-
-	if (read_unpriv_netifindex(&handler->conf->network) < 0)
+	ret = lxc_sync_barrier_parent(handler, LXC_SYNC_CONFIGURE);
+	if (ret < 0)
 		goto out_warn_father;
+
+	if (lxc_network_recv_veth_names_from_parent(handler) < 0) {
+		ERROR("Failed to receive veth names from parent");
+		goto out_warn_father;
+	}
 
 	/* If we are in a new user namespace, become root there to have
 	 * privilege over our namespace.
 	 */
 	if (!lxc_list_empty(&handler->conf->id_map)) {
-		if (lxc_switch_uid_gid(0, 0) < 0)
+		uid_t nsuid = (handler->conf->root_nsuid_map != NULL)
+				  ? 0
+				  : handler->conf->init_uid;
+		gid_t nsgid = (handler->conf->root_nsgid_map != NULL)
+				  ? 0
+				  : handler->conf->init_gid;
+
+		ret = lxc_switch_uid_gid(nsuid, nsgid);
+		if (ret < 0)
 			goto out_warn_father;
 
 		/* Drop groups only after we switched to a valid gid in the new
 		 * user namespace.
 		 */
-		if (lxc_setgroups(0, NULL) < 0)
+		ret = lxc_setgroups(0, NULL);
+		if (ret < 0 && (handler->am_root || errno != EPERM))
 			goto out_warn_father;
+
+		ret = prctl(PR_SET_DUMPABLE, 1, 0, 0, 0);
+		if (ret < 0)
+			goto out_warn_father;
+
+		/* set{g,u}id() clears deathsignal */
+		ret = lxc_set_death_signal(SIGKILL);
+		if (ret < 0) {
+			SYSERROR("Failed to set PR_SET_PDEATHSIG to SIGKILL");
+			goto out_warn_father;
+		}
 	}
 
 	if (access(handler->lxcpath, X_OK)) {
@@ -806,12 +1207,6 @@ static int do_start(void *data)
 		     "standard file descriptors. Migration will not work.");
 	}
 
-	/* Setup the container, ip, names, utsname, ... */
-	if (lxc_setup(handler)) {
-		ERROR("Failed to setup container \"%s\".", handler->name);
-		goto out_warn_father;
-	}
-
 	/* Ask father to setup cgroups and wait for him to finish. */
 	if (lxc_sync_barrier_parent(handler, LXC_SYNC_CGROUP))
 		goto out_error;
@@ -828,12 +1223,32 @@ static int do_start(void *data)
 	 *
 	 *	8:cpuset:/
 	 */
-	if (cgns_supported()) {
+	if (handler->clone_flags & CLONE_NEWCGROUP) {
 		if (unshare(CLONE_NEWCGROUP) < 0) {
 			INFO("Failed to unshare CLONE_NEWCGROUP.");
 			goto out_warn_father;
 		}
 		INFO("Unshared CLONE_NEWCGROUP.");
+	}
+
+	/* Add the requested environment variables to the current environment to
+	 * allow them to be used by the various hooks, such as the start hook
+	 * above.
+	 */
+	lxc_list_for_each(iterator, &handler->conf->environment) {
+		if (putenv((char *)iterator->elem)) {
+			SYSERROR("Failed to set environment variable: %s.", (char *)iterator->elem);
+			goto out_warn_father;
+		}
+	}
+
+	/* Setup the container, ip, names, utsname, ... */
+	ret = lxc_setup(handler);
+	close(handler->data_sock[1]);
+	close(handler->data_sock[0]);
+	if (ret < 0) {
+		ERROR("Failed to setup container \"%s\".", handler->name);
+		goto out_warn_father;
 	}
 
 	/* Set the label to change to when we exec(2) the container's init. */
@@ -846,8 +1261,18 @@ static int do_start(void *data)
 	 * setup on its console ie. the pty allocated in lxc_console_create() so
 	 * make sure that that pty is stdin,stdout,stderr.
 	 */
-	if (lxc_console_set_stdfds(handler->conf->console.slave) < 0)
-		goto out_warn_father;
+	 if (handler->conf->console.slave >= 0) {
+		 if (handler->backgrounded || handler->conf->is_execute == 0)
+			 ret = set_stdfds(handler->conf->console.slave);
+		 else
+			 ret = lxc_console_set_stdfds(handler->conf->console.slave);
+		 if (ret < 0) {
+			ERROR("Failed to redirect std{in,out,err} to pty file "
+			      "descriptor %d",
+			      handler->conf->console.slave);
+			goto out_warn_father;
+		 }
+	 }
 
 	/* If we mounted a temporary proc, then unmount it now. */
 	tmp_proc_unmount(handler->conf);
@@ -860,37 +1285,29 @@ static int do_start(void *data)
 		goto out_warn_father;
 	}
 
-	/* The container has been setup. We can now switch to an unprivileged
-	 * uid/gid.
-	 */
-	if (handler->conf->is_execute) {
-		bool have_cap_setgid;
-		uid_t new_uid = handler->conf->init_uid;
-		gid_t new_gid = handler->conf->init_gid;
+	close(handler->sigfd);
 
-		/* If we are in a new user namespace we already dropped all
-		 * groups when we switched to root in the new user namespace
-		 * further above. Only drop groups if we can, so ensure that we
-		 * have necessary privilege.
-		 */
-		#if HAVE_LIBCAP
-		have_cap_setgid = lxc_proc_cap_is_set(CAP_SETGID, CAP_EFFECTIVE);
-		#else
-		have_cap_setgid = false;
-		#endif
-		if (lxc_list_empty(&handler->conf->id_map) && have_cap_setgid) {
-			if (lxc_setgroups(0, NULL) < 0)
+	if (handler->conf->console.slave < 0 && handler->backgrounded) {
+		if (devnull_fd < 0) {
+			devnull_fd = open_devnull();
+			if (devnull_fd < 0)
 				goto out_warn_father;
 		}
 
-		if (lxc_switch_uid_gid(new_uid, new_gid) < 0)
+		ret = set_stdfds(devnull_fd);
+		if (ret < 0) {
+			ERROR("Failed to redirect std{in,out,err} to \"/dev/null\"");
 			goto out_warn_father;
+		}
 	}
 
-	/* The clearenv() and putenv() calls have been moved here to allow us to
-	 * use environment variables passed to the various hooks, such as the
-	 * start hook above. Not all of the variables like CONFIG_PATH or ROOTFS
-	 * are valid in this context but others are.
+	setsid();
+
+	if (lxc_sync_barrier_parent(handler, LXC_SYNC_CGROUP_LIMITS))
+		goto out_warn_father;
+
+	/* Reset the environment variables the user requested in a clear
+	 * environment.
 	 */
 	if (clearenv()) {
 		SYSERROR("Failed to clear environment.");
@@ -916,24 +1333,35 @@ static int do_start(void *data)
 		}
 	}
 
-	close(handler->sigfd);
+	/* The container has been setup. We can now switch to an unprivileged
+	 * uid/gid.
+	 */
+	new_uid = handler->conf->init_uid;
+	new_gid = handler->conf->init_gid;
 
-	if (devnull_fd < 0) {
-		devnull_fd = open_devnull();
-
-		if (devnull_fd < 0)
+	/* If we are in a new user namespace we already dropped all
+	 * groups when we switched to root in the new user namespace
+	 * further above. Only drop groups if we can, so ensure that we
+	 * have necessary privilege.
+	 */
+	#if HAVE_LIBCAP
+	have_cap_setgid = lxc_proc_cap_is_set(CAP_SETGID, CAP_EFFECTIVE);
+	#else
+	have_cap_setgid = false;
+	#endif
+	if (lxc_list_empty(&handler->conf->id_map) && have_cap_setgid) {
+		if (lxc_setgroups(0, NULL) < 0)
 			goto out_warn_father;
 	}
 
-	if (handler->backgrounded && set_stdfds(devnull_fd))
+	if (lxc_switch_uid_gid(new_uid, new_gid) < 0)
 		goto out_warn_father;
 
-	if (devnull_fd >= 0) {
-		close(devnull_fd);
-		devnull_fd = -1;
+	ret = lxc_ambient_caps_down();
+	if (ret < 0) {
+		ERROR("Failed to clear ambient capabilities");
+		goto out_warn_father;
 	}
-
-	setsid();
 
 	/* After this call, we are in error because this ops should not return
 	 * as it execs.
@@ -953,51 +1381,13 @@ out_error:
 	return -1;
 }
 
-static int save_phys_nics(struct lxc_conf *conf)
+static int lxc_recv_ttys_from_child(struct lxc_handler *handler)
 {
-	struct lxc_list *iterator;
-	int am_root = (getuid() == 0);
-
-	if (!am_root)
-		return 0;
-
-	lxc_list_for_each(iterator, &conf->network) {
-		struct lxc_netdev *netdev = iterator->elem;
-
-		if (netdev->type != LXC_NET_PHYS)
-			continue;
-		conf->saved_nics = realloc(conf->saved_nics,
-				(conf->num_savednics+1)*sizeof(struct saved_nic));
-		if (!conf->saved_nics)
-			return -1;
-		conf->saved_nics[conf->num_savednics].ifindex = netdev->ifindex;
-		conf->saved_nics[conf->num_savednics].orig_name = strdup(netdev->link);
-		if (!conf->saved_nics[conf->num_savednics].orig_name)
-			return -1;
-		INFO("Stored saved_nic #%d idx %d name %s.", conf->num_savednics,
-			conf->saved_nics[conf->num_savednics].ifindex,
-			conf->saved_nics[conf->num_savednics].orig_name);
-		conf->num_savednics++;
-	}
-
-	return 0;
-}
-
-static int recv_fd(int sock, int *fd)
-{
-	if (lxc_abstract_unix_recv_fd(sock, fd, NULL, 0) < 0) {
-		SYSERROR("Error receiving tty file descriptor from child process.");
-		return -1;
-	}
-	if (*fd == -1)
-		return -1;
-	return 0;
-}
-
-static int recv_ttys_from_child(struct lxc_handler *handler)
-{
+	int i;
+	struct lxc_pty_info *pty_info;
+	int ret = -1;
+	int sock = handler->data_sock[1];
 	struct lxc_conf *conf = handler->conf;
-	int i, sock = handler->ttysock[1];
 	struct lxc_tty_info *tty_info = &conf->tty_info;
 
 	if (!conf->tty)
@@ -1008,20 +1398,31 @@ static int recv_ttys_from_child(struct lxc_handler *handler)
 		return -1;
 
 	for (i = 0; i < conf->tty; i++) {
-		struct lxc_pty_info *pty_info = &tty_info->pty_info[i];
+		int ttyfds[2];
+
+		ret = lxc_abstract_unix_recv_fds(sock, ttyfds, 2, NULL, 0);
+		if (ret < 0)
+			break;
+
+		pty_info = &tty_info->pty_info[i];
 		pty_info->busy = 0;
-		if (recv_fd(sock, &pty_info->slave) < 0 ||
-		    recv_fd(sock, &pty_info->master) < 0) {
-			ERROR("Error receiving tty info from child process.");
-			return -1;
-		}
+		pty_info->master = ttyfds[0];
+		pty_info->slave = ttyfds[1];
+		TRACE("Received pty with master fd %d and slave fd %d from "
+		      "parent", pty_info->master, pty_info->slave);
 	}
+	if (ret < 0)
+		ERROR("Failed to receive %d ttys from child: %s", conf->tty,
+		      strerror(errno));
+	else
+		TRACE("Received %d ttys from child", conf->tty);
+
 	tty_info->nbtty = conf->tty;
 
-	return 0;
+	return ret;
 }
 
-void resolve_clone_flags(struct lxc_handler *handler)
+int resolve_clone_flags(struct lxc_handler *handler)
 {
 	handler->clone_flags = CLONE_NEWPID | CLONE_NEWNS;
 
@@ -1032,18 +1433,34 @@ void resolve_clone_flags(struct lxc_handler *handler)
 		if (!lxc_requests_empty_network(handler))
 			handler->clone_flags |= CLONE_NEWNET;
 	} else {
-		INFO("Inheriting a NET namespace.");
+		INFO("Inheriting a net namespace.");
 	}
 
 	if (handler->conf->inherit_ns_fd[LXC_NS_IPC] == -1)
 		handler->clone_flags |= CLONE_NEWIPC;
 	else
-		INFO("Inheriting an IPC namespace.");
+		INFO("Inheriting an ipc namespace.");
 
 	if (handler->conf->inherit_ns_fd[LXC_NS_UTS] == -1)
 		handler->clone_flags |= CLONE_NEWUTS;
 	else
-		INFO("Inheriting a UTS namespace.");
+		INFO("Inheriting a uts namespace.");
+
+	if (handler->conf->inherit_ns_fd[LXC_NS_PID] == -1)
+		handler->clone_flags |= CLONE_NEWPID;
+	else
+		INFO("Inheriting pid namespace");
+
+	if (cgns_supported()) {
+		if (handler->conf->inherit_ns_fd[LXC_NS_CGROUP] == -1)
+			handler->clone_flags |= CLONE_NEWCGROUP;
+		else
+			INFO("Inheriting cgroup namespace");
+	} else if (handler->conf->inherit_ns_fd[LXC_NS_CGROUP] >= 0) {
+			return -EINVAL;
+	}
+
+	return 0;
 }
 
 /* lxc_spawn() performs crucial setup tasks and clone()s the new process which
@@ -1055,18 +1472,17 @@ void resolve_clone_flags(struct lxc_handler *handler)
  */
 static int lxc_spawn(struct lxc_handler *handler)
 {
-	int failed_before_rename = 0;
+	int i, flags, ret;
+	bool wants_to_map_ids;
+	int saved_ns_fd[LXC_NS_MAX];
+	struct lxc_list *id_map;
+	int preserve_mask = 0;
 	const char *name = handler->name;
 	bool cgroups_connected = false;
-	int saved_ns_fd[LXC_NS_MAX];
-	int preserve_mask = 0, i, flags;
-	int netpipepair[2], nveths;
-	bool wants_to_map_ids;
-	struct lxc_list *id_map;
 
-	netpipe = -1;
 	id_map = &handler->conf->id_map;
 	wants_to_map_ids = !lxc_list_empty(id_map);
+	memset(saved_ns_fd, -1, sizeof(int) * LXC_NS_MAX);
 
 	for (i = 0; i < LXC_NS_MAX; i++)
 		if (handler->conf->inherit_ns_fd[i] != -1)
@@ -1075,12 +1491,18 @@ static int lxc_spawn(struct lxc_handler *handler)
 	if (lxc_sync_init(handler))
 		return -1;
 
-	if (socketpair(AF_UNIX, SOCK_DGRAM, 0, handler->ttysock) < 0) {
+	ret = socketpair(AF_UNIX, SOCK_STREAM | SOCK_CLOEXEC, 0,
+			 handler->data_sock);
+	if (ret < 0) {
 		lxc_sync_fini(handler);
 		return -1;
 	}
 
-	resolve_clone_flags(handler);
+	ret = resolve_clone_flags(handler);
+	if (ret < 0) {
+		lxc_sync_fini(handler);
+		return -1;
+	}
 
 	if (handler->clone_flags & CLONE_NEWNET) {
 		if (!lxc_list_empty(&handler->conf->network)) {
@@ -1099,16 +1521,11 @@ static int lxc_spawn(struct lxc_handler *handler)
 			/* That should be done before the clone because we will
 			 * fill the netdev index and use them in the child.
 			 */
-			if (lxc_create_network(handler)) {
+			if (lxc_create_network_priv(handler)) {
 				ERROR("Failed to create the network.");
 				lxc_sync_fini(handler);
 				return -1;
 			}
-		}
-
-		if (save_phys_nics(handler->conf)) {
-			ERROR("Failed to save physical nic info.");
-			goto out_abort;
 		}
 	}
 
@@ -1134,20 +1551,11 @@ static int lxc_spawn(struct lxc_handler *handler)
 			INFO("Failed to pin the rootfs for container \"%s\".", handler->name);
 	}
 
-	if (!preserve_ns(saved_ns_fd, preserve_mask, getpid()))
+	if (!preserve_ns(saved_ns_fd, preserve_mask, lxc_raw_getpid()))
 		goto out_delete_net;
 
 	if (attach_ns(handler->conf->inherit_ns_fd) < 0)
 		goto out_delete_net;
-
-	if (am_unpriv() && (nveths = count_veths(&handler->conf->network))) {
-		if (pipe(netpipepair) < 0) {
-			SYSERROR("Failed to create pipe.");
-			goto out_delete_net;
-		}
-		/* Store netpipe in the global var for do_start's use. */
-		netpipe = netpipepair[0];
-	}
 
 	/* Create a process in a new set of namespaces. */
 	flags = handler->clone_flags;
@@ -1159,11 +1567,14 @@ static int lxc_spawn(struct lxc_handler *handler)
 		 */
 		flags &= ~CLONE_NEWNET;
 	}
-	handler->pid = lxc_clone(do_start, handler, flags);
+
+	handler->pid = lxc_raw_clone_cb(do_start, handler, flags);
 	if (handler->pid < 0) {
 		SYSERROR("Failed to clone a new set of namespaces.");
 		goto out_delete_net;
 	}
+	TRACE("Cloned child process %d", handler->pid);
+
 	for (i = 0; i < LXC_NS_MAX; i++)
 		if (flags & ns_info[i].clone_flag)
 			INFO("Cloned %s.", ns_info[i].flag_name);
@@ -1187,15 +1598,11 @@ static int lxc_spawn(struct lxc_handler *handler)
 		goto out_delete_net;
 	}
 
-	if (lxc_sync_wake_child(handler, LXC_SYNC_STARTUP)) {
-		failed_before_rename = 1;
+	if (lxc_sync_wake_child(handler, LXC_SYNC_STARTUP))
 		goto out_delete_net;
-	}
 
-	if (lxc_sync_wait_child(handler, LXC_SYNC_CONFIGURE)) {
-		failed_before_rename = 1;
+	if (lxc_sync_wait_child(handler, LXC_SYNC_CONFIGURE))
 		goto out_delete_net;
-	}
 
 	if (!cgroup_create_legacy(handler)) {
 		ERROR("Failed to setup legacy cgroups for container \"%s\".", name);
@@ -1212,33 +1619,33 @@ static int lxc_spawn(struct lxc_handler *handler)
 	if (!cgroup_chown(handler))
 		goto out_delete_net;
 
-	if (failed_before_rename)
+	handler->netnsfd = lxc_preserve_ns(handler->pid, "net");
+	if (handler->netnsfd < 0) {
+		ERROR("Failed to preserve network namespace");
 		goto out_delete_net;
+	}
 
 	/* Create the network configuration. */
 	if (handler->clone_flags & CLONE_NEWNET) {
-		if (lxc_assign_network(handler->lxcpath, handler->name,
-				       &handler->conf->network, handler->pid)) {
+		if (lxc_network_move_created_netdev_priv(handler->lxcpath,
+							 handler->name,
+							 &handler->conf->network,
+							 handler->pid)) {
+			ERROR("Failed to create the configured network.");
+			goto out_delete_net;
+		}
+
+		if (lxc_create_network_unpriv(handler->lxcpath, handler->name,
+					      &handler->conf->network,
+					      handler->pid)) {
 			ERROR("Failed to create the configured network.");
 			goto out_delete_net;
 		}
 	}
 
-	if (netpipe != -1) {
-		struct lxc_list *iterator;
-		struct lxc_netdev *netdev;
-
-		close(netpipe);
-		lxc_list_for_each(iterator, &handler->conf->network) {
-			netdev = iterator->elem;
-			if (netdev->type != LXC_NET_VETH)
-				continue;
-			if (write(netpipepair[1], netdev->name, IFNAMSIZ) != IFNAMSIZ) {
-				ERROR("Error writing veth name to container.");
-				goto out_delete_net;
-			}
-		}
-		close(netpipepair[1]);
+	if (lxc_network_send_veth_names_to_child(handler) < 0) {
+		ERROR("Failed to send veth names to child");
+		goto out_delete_net;
 	}
 
 	/* Tell the child to continue its initialization. We'll get
@@ -1247,18 +1654,27 @@ static int lxc_spawn(struct lxc_handler *handler)
 	if (lxc_sync_barrier_child(handler, LXC_SYNC_POST_CONFIGURE))
 		goto out_delete_net;
 
+	if (lxc_sync_barrier_child(handler, LXC_SYNC_CGROUP_UNSHARE))
+		goto out_delete_net;
+
 	if (!cgroup_setup_limits(handler, true)) {
 		ERROR("Failed to setup the devices cgroup for container \"%s\".", name);
 		goto out_delete_net;
 	}
+	TRACE("Set up cgroup device limits");
 
 	cgroup_disconnect();
 	cgroups_connected = false;
 
-	/* Read tty fds allocated by child. */
-	if (recv_ttys_from_child(handler) < 0) {
-		ERROR("Failed to receive tty info from child process.");
-		goto out_delete_net;
+	if (handler->clone_flags & CLONE_NEWCGROUP) {
+		/* Now we're ready to preserve the cgroup namespace */
+		ret = lxc_preserve_ns(handler->pid, "cgroup");
+		if (ret < 0) {
+			ERROR("%s - Failed to preserve cgroup namespace", strerror(errno));
+			goto out_delete_net;
+		}
+		handler->nsfd[LXC_NS_CGROUP] = ret;
+		DEBUG("Preserved cgroup namespace via fd %d", ret);
 	}
 
 	/* Tell the child to complete its initialization and wait for it to exec
@@ -1270,6 +1686,25 @@ static int lxc_spawn(struct lxc_handler *handler)
 	if (lxc_sync_barrier_child(handler, LXC_SYNC_POST_CGROUP))
 		return -1;
 
+	if (lxc_network_recv_name_and_ifindex_from_child(handler) < 0) {
+		ERROR("Failed to receive names and ifindices for network "
+		      "devices from child");
+		goto out_delete_net;
+	}
+
+	/* Now all networks are created, network devices are moved into place,
+	 * and the correct names and ifindeces in the respective namespaces have
+	 * been recorded. The corresponding structs have now all been filled. So
+	 * log them for debugging purposes.
+	 */
+	lxc_log_configured_netdevs(handler->conf);
+
+	/* Read tty fds allocated by child. */
+	if (lxc_recv_ttys_from_child(handler) < 0) {
+		ERROR("Failed to receive tty info from child process.");
+		goto out_delete_net;
+	}
+
 	if (handler->ops->post_start(handler, handler->data))
 		goto out_abort;
 
@@ -1280,15 +1715,24 @@ static int lxc_spawn(struct lxc_handler *handler)
 	}
 
 	lxc_sync_fini(handler);
-	handler->netnsfd = lxc_preserve_ns(handler->pid, "net");
+
+	for (i = 0; i < LXC_NS_MAX; i++)
+		if (saved_ns_fd[i] != -1)
+			close(saved_ns_fd[i]);
 
 	return 0;
 
 out_delete_net:
+	for (i = 0; i < LXC_NS_MAX; i++)
+		if (saved_ns_fd[i] != -1)
+			close(saved_ns_fd[i]);
+
 	if (cgroups_connected)
 		cgroup_disconnect();
+
 	if (handler->clone_flags & CLONE_NEWNET)
 		lxc_delete_network(handler);
+
 out_abort:
 	lxc_abort(name, handler);
 	lxc_sync_fini(handler);
@@ -1297,20 +1741,23 @@ out_abort:
 		handler->pinfd = -1;
 	}
 
+	if (handler->netnsfd >= 0) {
+		close(handler->netnsfd);
+		handler->netnsfd = -1;
+	}
+
 	return -1;
 }
 
-int __lxc_start(const char *name, struct lxc_conf *conf,
+int __lxc_start(const char *name, struct lxc_handler *handler,
 		struct lxc_operations* ops, void *data, const char *lxcpath,
-		bool backgrounded)
+		bool backgrounded, int *error_num)
 {
-	struct lxc_handler *handler;
-	int err = -1;
 	int status;
-	bool removed_all_netdevs = true;
+	int err = -1;
+	struct lxc_conf *conf = handler->conf;
 
-	handler = lxc_init(name, conf, lxcpath);
-	if (!handler) {
+	if (lxc_init(name, handler) < 0) {
 		ERROR("Failed to initialize container \"%s\".", name);
 		return -1;
 	}
@@ -1358,21 +1805,28 @@ int __lxc_start(const char *name, struct lxc_conf *conf,
 		ERROR("Failed to spawn container \"%s\".", name);
 		goto out_detach_blockdev;
 	}
+	/* close parent side of data socket */
+	close(handler->data_sock[0]);
+	handler->data_sock[0] = -1;
+	close(handler->data_sock[1]);
+	handler->data_sock[1] = -1;
 
 	handler->conf->reboot = 0;
 
 	err = lxc_poll(name, handler);
 	if (err) {
 		ERROR("LXC mainloop exited with error: %d.", err);
-		if (handler->netnsfd >= 0) {
-			close(handler->netnsfd);
-			handler->netnsfd = -1;
-		}
 		goto out_abort;
 	}
 
-	while (waitpid(handler->pid, &status, 0) < 0 && errno == EINTR)
-		continue;
+	if (!handler->init_died && handler->pid > 0) {
+		ERROR("Child process is not killed");
+		goto out_abort;
+	}
+
+	status = lxc_wait_for_pid_status(handler->pid);
+	if (status < 0)
+		SYSERROR("Failed to retrieve status for %d", handler->pid);
 
 	/* If the child process exited but was not signaled, it didn't call
 	 * reboot. This should mean it was an lxc-execute which simply exited.
@@ -1396,11 +1850,10 @@ int __lxc_start(const char *name, struct lxc_conf *conf,
 		}
 	}
 
-	DEBUG("Pushing physical nics back to host namespace");
-	lxc_restore_phys_nics_to_netns(handler->netnsfd, handler->conf);
-
-	DEBUG("Tearing down virtual network devices used by container \"%s\".", name);
-	removed_all_netdevs = lxc_delete_network(handler);
+	err = lxc_restore_phys_nics_to_netns(handler);
+	if (err < 0)
+		ERROR("Failed to move physical network devices back to parent "
+		      "network namespace");
 
 	if (handler->pinfd >= 0) {
 		close(handler->pinfd);
@@ -1408,14 +1861,12 @@ int __lxc_start(const char *name, struct lxc_conf *conf,
 	}
 
 	lxc_monitor_send_exit_code(name, status, handler->lxcpath);
-	err =  lxc_error_set_and_log(handler->pid, status);
+	lxc_error_set_and_log(handler->pid, status);
+	if (error_num)
+		*error_num = handler->exit_status;
+
 out_fini:
-	if (!removed_all_netdevs) {
-		DEBUG("Failed tearing down network devices used by container. Trying again!");
-		removed_all_netdevs = lxc_delete_network(handler);
-		if (!removed_all_netdevs)
-			DEBUG("Failed tearing down network devices used by container. Not trying again!");
-	}
+	lxc_delete_network(handler);
 
 out_detach_blockdev:
 	detach_block_device(handler->conf);
@@ -1437,10 +1888,10 @@ static int start(struct lxc_handler *handler, void* data)
 {
 	struct start_args *arg = data;
 
-	NOTICE("Exec'ing \"%s\".", arg->argv[0]);
+	NOTICE("Exec'ing \"%s\"", arg->argv[0]);
 
 	execvp(arg->argv[0], arg->argv);
-	SYSERROR("Failed to exec \"%s\".", arg->argv[0]);
+	SYSERROR("Failed to exec \"%s\"", arg->argv[0]);
 	return 0;
 }
 
@@ -1448,7 +1899,7 @@ static int post_start(struct lxc_handler *handler, void* data)
 {
 	struct start_args *arg = data;
 
-	NOTICE("Started \"%s\" with pid \"%d\".", arg->argv[0], handler->pid);
+	NOTICE("Started \"%s\" with pid \"%d\"", arg->argv[0], handler->pid);
 	return 0;
 }
 
@@ -1457,43 +1908,44 @@ static struct lxc_operations start_ops = {
 	.post_start = post_start
 };
 
-int lxc_start(const char *name, char *const argv[], struct lxc_conf *conf,
-	      const char *lxcpath, bool backgrounded)
+int lxc_start(const char *name, char *const argv[], struct lxc_handler *handler,
+	      const char *lxcpath, bool backgrounded, int *error_num)
 {
 	struct start_args start_arg = {
 		.argv = argv,
 	};
 
-	conf->need_utmp_watch = 1;
-	return __lxc_start(name, conf, &start_ops, &start_arg, lxcpath, backgrounded);
+	handler->conf->need_utmp_watch = 1;
+	return __lxc_start(name, handler, &start_ops, &start_arg, lxcpath, backgrounded, error_num);
 }
 
 static void lxc_destroy_container_on_signal(struct lxc_handler *handler,
 					    const char *name)
 {
 	char destroy[MAXPATHLEN];
-	bool bret = true;
-	int ret = 0;
 	struct lxc_container *c;
+	int ret = 0;
+	bool bret = true;
+
 	if (handler->conf->rootfs.path && handler->conf->rootfs.mount) {
-		bret = do_destroy_container(handler->conf);
+		bret = do_destroy_container(handler);
 		if (!bret) {
-			ERROR("Error destroying rootfs for container \"%s\".", name);
+			ERROR("Error destroying rootfs for container \"%s\"", name);
 			return;
 		}
 	}
-	INFO("Destroyed rootfs for container \"%s\".", name);
+	INFO("Destroyed rootfs for container \"%s\"", name);
 
 	ret = snprintf(destroy, MAXPATHLEN, "%s/%s", handler->lxcpath, name);
 	if (ret < 0 || ret >= MAXPATHLEN) {
-		ERROR("Error destroying directory for container \"%s\".", name);
+		ERROR("Error destroying directory for container \"%s\"", name);
 		return;
 	}
 
 	c = lxc_container_new(name, handler->lxcpath);
 	if (c) {
 		if (container_disk_lock(c)) {
-			INFO("Could not update lxc_snapshots file.");
+			INFO("Could not update lxc_snapshots file");
 			lxc_container_put(c);
 		} else {
 			mod_all_rdeps(c, false);
@@ -1502,16 +1954,17 @@ static void lxc_destroy_container_on_signal(struct lxc_handler *handler,
 		}
 	}
 
-	if (am_unpriv())
-		ret = userns_exec_1(handler->conf, lxc_rmdir_onedev_wrapper, destroy);
+	if (!handler->am_root)
+		ret = userns_exec_full(handler->conf, lxc_rmdir_onedev_wrapper,
+				       destroy, "lxc_rmdir_onedev_wrapper");
 	else
 		ret = lxc_rmdir_onedev(destroy, NULL);
 
 	if (ret < 0) {
-		ERROR("Error destroying directory for container \"%s\".", name);
+		ERROR("Error destroying directory for container \"%s\"", name);
 		return;
 	}
-	INFO("Destroyed directory for container \"%s\".", name);
+	INFO("Destroyed directory for container \"%s\"", name);
 }
 
 static int lxc_rmdir_onedev_wrapper(void *data)
@@ -1520,11 +1973,18 @@ static int lxc_rmdir_onedev_wrapper(void *data)
 	return lxc_rmdir_onedev(arg, NULL);
 }
 
-static bool do_destroy_container(struct lxc_conf *conf) {
-	if (am_unpriv()) {
-		if (userns_exec_1(conf, bdev_destroy_wrapper, conf) < 0)
+static bool do_destroy_container(struct lxc_handler *handler)
+{
+	int ret;
+
+	if (!handler->am_root) {
+		ret = userns_exec_full(handler->conf, storage_destroy_wrapper,
+				       handler->conf, "storage_destroy_wrapper");
+		if (ret < 0)
 			return false;
+
 		return true;
 	}
-	return bdev_destroy(conf);
+
+	return storage_destroy(handler->conf);
 }

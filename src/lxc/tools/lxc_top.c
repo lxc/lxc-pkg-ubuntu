@@ -38,8 +38,6 @@
 #include "mainloop.h"
 #include "utils.h"
 
-lxc_log_define(lxc_top_ui, lxc);
-
 #define USER_HZ   100
 #define ESC       "\033"
 #define TERMCLEAR ESC "[H" ESC "[J"
@@ -120,7 +118,7 @@ Options :\n\
 
 static void stdin_tios_restore(void)
 {
-	tcsetattr(0, TCSAFLUSH, &oldtios);
+	(void)tcsetattr(0, TCSAFLUSH, &oldtios);
 	fprintf(stderr, "\n");
 }
 
@@ -129,12 +127,12 @@ static int stdin_tios_setup(void)
 	struct termios newtios;
 
 	if (!isatty(0)) {
-		ERROR("stdin is not a tty");
+		fprintf(stderr, "stdin is not a tty\n");
 		return -1;
 	}
 
 	if (tcgetattr(0, &oldtios)) {
-		SYSERROR("failed to get current terminal settings");
+		fprintf(stderr, "failed to get current terminal settings\n");
 		return -1;
 	}
 
@@ -148,7 +146,7 @@ static int stdin_tios_setup(void)
 	newtios.c_cc[VTIME] = 0;
 
 	if (tcsetattr(0, TCSAFLUSH, &newtios)) {
-		ERROR("failed to set new terminal settings");
+		fprintf(stderr, "failed to set new terminal settings\n");
 		return -1;
 	}
 
@@ -188,21 +186,26 @@ static void sig_handler(int sig)
 
 static void size_humanize(unsigned long long val, char *buf, size_t bufsz)
 {
+	int ret;
+
 	if (val > 1 << 30) {
-		snprintf(buf, bufsz, "%u.%2.2u GB",
-			    (int)(val >> 30),
-			    (int)(val & ((1 << 30) - 1)) / 10737419);
+		ret = snprintf(buf, bufsz, "%u.%2.2u GiB",
+			    (unsigned int)(val >> 30),
+			    (unsigned int)(val & ((1 << 30) - 1)) / 10737419);
 	} else if (val > 1 << 20) {
-		int x = val + 5243;  /* for rounding */
-		snprintf(buf, bufsz, "%u.%2.2u MB",
+		unsigned int x = val + 5243;  /* for rounding */
+		ret = snprintf(buf, bufsz, "%u.%2.2u MiB",
 			    x >> 20, ((x & ((1 << 20) - 1)) * 100) >> 20);
 	} else if (val > 1 << 10) {
-		int x = val + 5;  /* for rounding */
-		snprintf(buf, bufsz, "%u.%2.2u KB",
+		unsigned int x = val + 5;  /* for rounding */
+		ret = snprintf(buf, bufsz, "%u.%2.2u KiB",
 			    x >> 10, ((x & ((1 << 10) - 1)) * 100) >> 10);
 	} else {
-		snprintf(buf, bufsz, "%3u.00   ", (int)val);
+		ret = snprintf(buf, bufsz, "%3u.00   ", (unsigned int)val);
 	}
+
+	if (ret < 0 || (size_t)ret >= bufsz)
+		fprintf(stderr, "Failed to create string\n");
 }
 
 static uint64_t stat_get_int(struct lxc_container *c, const char *item)
@@ -213,7 +216,7 @@ static uint64_t stat_get_int(struct lxc_container *c, const char *item)
 
 	len = c->get_cgroup_item(c, item, buf, sizeof(buf));
 	if (len <= 0) {
-		ERROR("unable to read cgroup item %s", item);
+		fprintf(stderr, "unable to read cgroup item %s\n", item);
 		return 0;
 	}
 
@@ -232,7 +235,7 @@ static uint64_t stat_match_get_int(struct lxc_container *c, const char *item,
 
 	len = c->get_cgroup_item(c, item, buf, sizeof(buf));
 	if (len <= 0) {
-		ERROR("unable to read cgroup item %s", item);
+		fprintf(stderr, "unable to read cgroup item %s\n", item);
 		goto out;
 	}
 
@@ -411,13 +414,13 @@ static void ct_realloc(int active_cnt)
 		ct_free();
 		ct = realloc(ct, sizeof(*ct) * active_cnt);
 		if (!ct) {
-			ERROR("cannot alloc mem");
+			fprintf(stderr, "cannot alloc mem\n");
 			exit(EXIT_FAILURE);
 		}
 		for (i = 0; i < active_cnt; i++) {
 			ct[i].stats = malloc(sizeof(*ct[0].stats));
 			if (!ct[i].stats) {
-				ERROR("cannot alloc mem");
+				fprintf(stderr, "cannot alloc mem\n");
 				exit(EXIT_FAILURE);
 			}
 		}
@@ -437,7 +440,7 @@ int main(int argc, char *argv[])
 
 	ct_print_cnt = stdin_tios_rows() - 3; /* 3 -> header and total */
 	if (stdin_tios_setup() < 0) {
-		ERROR("failed to setup terminal");
+		fprintf(stderr, "failed to setup terminal\n");
 		goto out;
 	}
 
@@ -447,13 +450,13 @@ int main(int argc, char *argv[])
 	signal(SIGQUIT, sig_handler);
 
 	if (lxc_mainloop_open(&descr)) {
-		ERROR("failed to create mainloop");
+		fprintf(stderr, "failed to create mainloop\n");
 		goto out;
 	}
 
 	ret = lxc_mainloop_add_handler(&descr, 0, stdin_handler, &in_char);
 	if (ret) {
-		ERROR("failed to add stdin handler");
+		fprintf(stderr, "failed to add stdin handler\n");
 		ret = EXIT_FAILURE;
 		goto err1;
 	}

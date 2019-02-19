@@ -39,7 +39,6 @@
 #include <netinet/in.h>
 #include <net/if.h>
 
-#include "bdev.h"
 #include "error.h"
 #include "commands.h"
 #include "list.h"
@@ -49,6 +48,7 @@
 #include "cgroup.h"
 #include "start.h"
 #include "state.h"
+#include "storage.h"
 
 #if IS_BIONIC
 #include <../include/lxcmntent.h>
@@ -165,7 +165,7 @@ static int cgroup_rmdir(char *dirname)
 
 	dir = opendir(dirname);
 	if (!dir) {
-		ERROR("%s: failed to open %s", __func__, dirname);
+		ERROR("Failed to open %s", dirname);
 		return -1;
 	}
 
@@ -190,7 +190,7 @@ static int cgroup_rmdir(char *dirname)
 		}
 		ret = lstat(pathname, &mystat);
 		if (ret) {
-			SYSERROR("%s: failed to stat %s", __func__, pathname);
+			SYSERROR("Failed to stat %s", pathname);
 			failed=1;
 			if (!saved_errno)
 				saved_errno = errno;
@@ -206,7 +206,7 @@ static int cgroup_rmdir(char *dirname)
 	}
 
 	if (rmdir(dirname) < 0) {
-		SYSERROR("%s: failed to delete %s", __func__, dirname);
+		SYSERROR("Failed to delete %s", dirname);
 		if (!saved_errno)
 			saved_errno = errno;
 		failed=1;
@@ -214,7 +214,7 @@ static int cgroup_rmdir(char *dirname)
 
 	ret = closedir(dir);
 	if (ret) {
-		SYSERROR("%s: failed to close directory %s", __func__, dirname);
+		SYSERROR("Failed to close directory %s", dirname);
 		if (!saved_errno)
 			saved_errno = errno;
 		failed=1;
@@ -523,6 +523,8 @@ static bool find_hierarchy_mountpts( struct cgroup_meta_data *meta_data, char **
 			}
 		}
 		lxc_free_array((void **)subsystems, free);
+		if (!h)
+			goto out;
 
 		r = lxc_grow_array((void ***)&meta_data->mount_points, &mount_point_capacity, mount_point_count + 1, 12);
 		if (r < 0)
@@ -555,7 +557,10 @@ static bool find_hierarchy_mountpts( struct cgroup_meta_data *meta_data, char **
 			}
 		}
 
-		k = lxc_array_len((void **)h->all_mount_points);
+		if (h)
+			k = lxc_array_len((void **)h->all_mount_points);
+		else
+			k = 0;
 		r = lxc_grow_array((void ***)&h->all_mount_points, &h->all_mount_point_capacity, k + 1, 4);
 		if (r < 0)
 			goto out;
@@ -761,7 +766,7 @@ static struct cgroup_process_info *lxc_cgroup_process_info_get_self(struct cgrou
 	struct cgroup_process_info *i;
 	i = lxc_cgroup_process_info_getx("/proc/self/cgroup", meta);
 	if (!i)
-		i = lxc_cgroup_process_info_get(getpid(), meta);
+		i = lxc_cgroup_process_info_get(lxc_raw_getpid(), meta);
 	return i;
 }
 
@@ -791,7 +796,7 @@ static char *cgroup_rename_nsgroup(const char *mountpath, const char *oldname, p
 
 	len = strlen(oldname) + strlen(mountpath) + 22;
 	fulloldpath = alloca(len);
-	ret = snprintf(fulloldpath, len, "%s/%s/%ld", mountpath, oldname, (unsigned long)pid);
+	ret = snprintf(fulloldpath, len, "%s/%s/%lu", mountpath, oldname, (unsigned long)pid);
 	if (ret < 0 || ret >= len)
 		return NULL;
 
@@ -1418,11 +1423,12 @@ static bool cgroupfs_mount_cgroup(void *hdata, const char *root, int type)
 	struct cgfs_data *cgfs_d;
 	struct cgroup_process_info *info, *base_info;
 	int r, saved_errno = 0;
+	struct lxc_handler *handler = hdata;
 
 	if (cgns_supported())
 		return true;
 
-	cgfs_d = hdata;
+	cgfs_d = handler->cgroup_data;
 	if (!cgfs_d)
 		return false;
 	base_info = cgfs_d->info;
@@ -1800,7 +1806,9 @@ static char **subsystems_from_mount_options(const char *mount_options,
 			goto out_free;
 		result[result_count + 1] = NULL;
 		if (strncmp(token, "name=", 5) && !lxc_string_in_array(token, (const char **)kernel_list)) {
-			// this is eg 'systemd' but the mount will be 'name=systemd'
+			/* this is eg 'systemd' but the mount will be
+			 * 'name=systemd'
+			 */
 			result[result_count] = malloc(strlen(token) + 6);
 			if (result[result_count])
 				sprintf(result[result_count], "name=%s", token);
@@ -1874,7 +1882,8 @@ static int create_or_remove_cgroup(bool do_remove,
 			return 0;
 		if (recurse) {
 			if (conf && !lxc_list_empty(&conf->id_map))
-				r = userns_exec_1(conf, rmdir_wrapper, buf);
+				r = userns_exec_1(conf, rmdir_wrapper, buf,
+						  "rmdir_wrapper");
 			else
 				r = cgroup_rmdir(buf);
 		} else
@@ -2067,9 +2076,10 @@ static bool cgroup_devices_has_allow_or_deny(struct cgfs_data *d,
 		NULL
 	};
 
-	// XXX FIXME if users could use something other than 'lxc.devices.deny = a'.
-	// not sure they ever do, but they *could*
-	// right now, I'm assuming they do NOT
+	/* XXX FIXME if users could use something other than 'lxc.devices.deny =
+	 * a'.  not sure they ever do, but they *could* right now, I'm assuming
+	 * they do NOT
+	 */
 	if (!for_allow && strcmp(v, "a") != 0 && strcmp(v, "a *:* rwm") != 0)
 		return false;
 
@@ -2228,7 +2238,7 @@ static int cgroup_read_from_file(const char *fn, char buf[], size_t bufsize)
 			return ret;
 		}
 		/* Callers don't do this, but regression/sanity check */
-		ERROR("%s: was not expecting 0 bufsize", __func__);
+		ERROR("was not expecting 0 bufsize");
 		return -1;
 	}
 	buf[ret] = '\0';
@@ -2339,7 +2349,7 @@ struct cgroup_ops *cgfs_ops_init(void)
 	return &cgfs_ops;
 }
 
-static void *cgfs_init(const char *name)
+static void *cgfs_init(struct lxc_handler *handler)
 {
 	struct cgfs_data *d;
 
@@ -2348,7 +2358,7 @@ static void *cgfs_init(const char *name)
 		return NULL;
 
 	memset(d, 0, sizeof(*d));
-	d->name = strdup(name);
+	d->name = strdup(handler->name);
 	if (!d->name)
 		goto err1;
 
@@ -2472,7 +2482,7 @@ static bool cgfs_escape(void *hdata)
 		if (!f)
 			goto out;
 
-		written = fprintf(f, "%d\n", getpid());
+		written = fprintf(f, "%d\n", lxc_raw_getpid());
 		fclose(f);
 		if (written < 0) {
 			SYSERROR("writing tasks failed\n");
@@ -2517,14 +2527,14 @@ static bool cgfs_unfreeze(void *hdata)
 	return ret == 0;
 }
 
-static bool cgroupfs_setup_limits(void *hdata, struct lxc_list *cgroup_conf,
+static bool cgroupfs_setup_limits(void *hdata, struct lxc_conf *conf,
 				  bool with_devices)
 {
 	struct cgfs_data *d = hdata;
 
 	if (!d)
 		return false;
-	return do_setup_cgroup_limits(d, cgroup_conf, with_devices) == 0;
+	return do_setup_cgroup_limits(d, &conf->cgroup, with_devices) == 0;
 }
 
 static bool lxc_cgroupfs_attach(const char *name, const char *lxcpath, pid_t pid)
@@ -2616,7 +2626,8 @@ static bool do_cgfs_chown(char *cgroup_path, struct lxc_conf *conf)
 	/* Unpriv users can't chown it themselves, so chown from
 	 * a child namespace mapping both our own and the target uid
 	 */
-	if (userns_exec_1(conf, chown_cgroup_wrapper, &data) < 0) {
+	if (userns_exec_1(conf, chown_cgroup_wrapper, &data,
+			  "chown_cgroup_wrapper") < 0) {
 		ERROR("Error requesting cgroup chown in new namespace");
 		return false;
 	}

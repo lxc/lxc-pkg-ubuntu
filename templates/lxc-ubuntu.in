@@ -92,7 +92,15 @@ configure_ubuntu()
     password=$5
 
     # configure the network using the dhcp
-    cat <<EOF > $rootfs/etc/network/interfaces
+    if chroot $rootfs which netplan >/dev/null 2>&1; then
+        cat <<EOF > $rootfs/etc/netplan/10-lxc.yaml
+network:
+  ethernets:
+    eth0: {dhcp4: true}
+  version: 2
+EOF
+    else
+        cat <<EOF > $rootfs/etc/network/interfaces
 # This file describes the network interfaces available on your system
 # and how to activate them. For more information, see interfaces(5).
 
@@ -103,6 +111,7 @@ iface lo inet loopback
 auto eth0
 iface eth0 inet dhcp
 EOF
+    fi
 
     # set the hostname
     cat <<EOF > $rootfs/etc/hostname
@@ -152,12 +161,19 @@ exit 101
 EOF
         chmod +x $rootfs/usr/sbin/policy-rc.d
 
+        if [ -f "$rootfs/etc/init/ssh.conf" ]; then
+            mv "$rootfs/etc/init/ssh.conf" "$rootfs/etc/init/ssh.conf.disabled"
+        fi
+
         rm -f $rootfs/etc/ssh/ssh_host_*key*
-        mv $rootfs/etc/init/ssh.conf $rootfs/etc/init/ssh.conf.disabled
+
         DPKG_MAINTSCRIPT_PACKAGE=openssh DPKG_MAINTSCRIPT_NAME=postinst chroot $rootfs /var/lib/dpkg/info/openssh-server.postinst configure
-        mv $rootfs/etc/init/ssh.conf.disabled $rootfs/etc/init/ssh.conf
 
         sed -i "s/root@$(hostname)/root@$hostname/g" $rootfs/etc/ssh/ssh_host_*.pub
+
+        if [ -f "$rootfs/etc/init/ssh.conf.disabled" ]; then
+            mv "$rootfs/etc/init/ssh.conf.disabled" "$rootfs/etc/init/ssh.conf"
+        fi
 
         rm -f $rootfs/usr/sbin/policy-rc.d
     fi
@@ -359,7 +375,13 @@ download_ubuntu()
         debootstrap_parameters="$debootstrap_parameters --variant=$variant"
     fi
     if [ "$variant" = 'minbase' ]; then
-        packages_template="${packages_template},sudo,ifupdown,isc-dhcp-client"
+        packages_template="${packages_template},sudo"
+        # Newer releases use netplan, EOL releases not supported
+        case $release in
+          trusty|xenial|zesty)
+                packages_template="${packages_template},ifupdown,isc-dhcp-client"
+                ;;
+        esac
     fi
 
     echo "Installing packages in template: ${packages_template}"
@@ -439,7 +461,7 @@ copy_ubuntu()
       btrfs subvolume snapshot $cache/rootfs-$arch $realrootfs || return 1
       [ "$rootfs" = "$realrootfs" ] || mount --bind $realrootfs $rootfs || return 1
     else
-      rsync -Ha $cache/rootfs-$arch/ $rootfs/ || return 1
+      rsync -SHaAX $cache/rootfs-$arch/ $rootfs/ || return 1
     fi
     return 0
 }

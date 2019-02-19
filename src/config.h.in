@@ -6,6 +6,9 @@
 /* Python3 is available */
 #undef ENABLE_PYTHON
 
+/* Rexec liblxc as memfd */
+#undef ENFORCE_MEMFD_REXEC
+
 /* Have cgmanager_get_pid_cgroup_abs_sync */
 #undef HAVE_CGMANAGER_GET_PID_CGROUP_ABS_SYNC
 
@@ -23,6 +26,10 @@
    `seccomp_syscall_resolve_name_arch', and to 0 if you don't. */
 #undef HAVE_DECL_SECCOMP_SYSCALL_RESOLVE_NAME_ARCH
 
+/* Define to 1 if you have the declaration of `strerror_r', and to 0 if you
+   don't. */
+#undef HAVE_DECL_STRERROR_R
+
 /* Define to 1 if you have the <dlfcn.h> header file. */
 #undef HAVE_DLFCN_H
 
@@ -34,6 +41,9 @@
 
 /* Define to 1 if you have the `fgetln' function. */
 #undef HAVE_FGETLN
+
+/* Define to 1 if you have the `getgrgid_r' function. */
+#undef HAVE_GETGRGID_R
 
 /* Define to 1 if you have the `getline' function. */
 #undef HAVE_GETLINE
@@ -52,9 +62,6 @@
 
 /* Define to 1 if you have the <inttypes.h> header file. */
 #undef HAVE_INTTYPES_H
-
-/* Define to 1 if you have the `apparmor' library (-lapparmor). */
-#undef HAVE_LIBAPPARMOR
 
 /* Define to 1 if you have the `cap' library (-lcap). */
 #undef HAVE_LIBCAP
@@ -92,8 +99,17 @@
 /* Define to 1 if you have the `pivot_root' function. */
 #undef HAVE_PIVOT_ROOT
 
+/* Define if you have POSIX threads libraries and header files. */
+#undef HAVE_PTHREAD
+
 /* Define to 1 if you have the `pthread_atfork' function. */
 #undef HAVE_PTHREAD_ATFORK
+
+/* Have PTHREAD_PRIO_INHERIT. */
+#undef HAVE_PTHREAD_PRIO_INHERIT
+
+/* Define to 1 if you have the `pthread_setcancelstate' function. */
+#undef HAVE_PTHREAD_SETCANCELSTATE
 
 /* Define to 1 if you have the <pty.h> header file. */
 #undef HAVE_PTY_H
@@ -125,11 +141,20 @@
 /* Define to 1 if you have the <stdlib.h> header file. */
 #undef HAVE_STDLIB_H
 
+/* Define to 1 if you have the `strerror_r' function. */
+#undef HAVE_STRERROR_R
+
 /* Define to 1 if you have the <strings.h> header file. */
 #undef HAVE_STRINGS_H
 
 /* Define to 1 if you have the <string.h> header file. */
 #undef HAVE_STRING_H
+
+/* Define to 1 if you have the `strlcat' function. */
+#undef HAVE_STRLCAT
+
+/* Define to 1 if you have the `strlcpy' function. */
+#undef HAVE_STRLCPY
 
 /* Define to 1 if you have the <sys/memfd.h> header file. */
 #undef HAVE_SYS_MEMFD_H
@@ -205,8 +230,15 @@
 /* Define to the version of this package. */
 #undef PACKAGE_VERSION
 
+/* Define to necessary symbol if this constant uses a non-standard name on
+   your system. */
+#undef PTHREAD_CREATE_JOINABLE
+
 /* Define to 1 if you have the ANSI C header files. */
 #undef STDC_HEADERS
+
+/* Define to 1 if strerror_r returns char *. */
+#undef STRERROR_R_CHAR_P
 
 /* Enable extensions on AIX 3, Interix.  */
 #ifndef _ALL_SOURCE

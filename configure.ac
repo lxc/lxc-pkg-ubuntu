@@ -4,7 +4,7 @@
 m4_define([lxc_devel], 0)
 m4_define([lxc_version_major], 2)
 m4_define([lxc_version_minor], 0)
-m4_define([lxc_version_micro], 8)
+m4_define([lxc_version_micro], 10)
 m4_define([lxc_version_beta], [])
 
 m4_define([lxc_abi_major], 1)
@@ -14,7 +14,9 @@ m4_define([lxc_abi], [lxc_abi_major.lxc_abi_minor.lxc_abi_micro])
 
 m4_define([lxc_version_base], [lxc_version_major.lxc_version_minor.lxc_version_micro])
 m4_define([lxc_version],
-	  [ifelse(lxc_version_beta, [], [lxc_version_base], [lxc_version_base.lxc_version_beta])])
+	  [ifelse(lxc_devel, 1,
+        ifelse(lxc_version_beta, [], [lxc_version_base], [lxc_version_base.lxc_version_beta])-devel,
+        ifelse(lxc_version_beta, [], [lxc_version_base], [lxc_version_base.lxc_version_beta]))])
 
 AC_INIT([lxc], [lxc_version])
 
@@ -252,11 +254,6 @@ if test "$enable_apparmor" = "auto" ; then
 fi
 AM_CONDITIONAL([ENABLE_APPARMOR], [test "x$enable_apparmor" = "xyes"])
 
-AM_COND_IF([ENABLE_APPARMOR],
-	[AC_CHECK_HEADER([sys/apparmor.h],[],[AC_MSG_ERROR([You must install the AppArmor development package in order to compile lxc])])
-	AC_CHECK_LIB([apparmor], [aa_change_profile],[],[AC_MSG_ERROR([You must install the AppArmor development package in order to compile lxc])])
-	AC_SUBST([APPARMOR_LIBS], [-lapparmor])])
-
 # GnuTLS
 AC_ARG_ENABLE([gnutls],
 	[AC_HELP_STRING([--enable-gnutls], [enable GnuTLS support [default=auto]])],
@@ -343,16 +340,32 @@ else
 	AC_MSG_RESULT([no])
 fi
 
+AC_MSG_CHECKING(for static libcap)
 # Check for static libcap, make sure the function checked for differs from the
 # the one checked below so the cache doesn't give a wrong answer
 OLD_CFLAGS="$CFLAGS"
-CFLAGS="$CFLAGS -static"
-AC_CHECK_LIB([cap],[cap_init],[have_static_libcap=yes],[have_static_libcap=no])
+OLD_CPPFLAGS="$CPPFLAGS"
+OLD_LDFLAGS="$LDFLAGS"
+OLD_LIBS="$LIBS"
+CFLAGS=""
+CPPFLAGS=""
+LDFLAGS="-static"
+LIBS="-lcap"
+AC_LINK_IFELSE([
+  AC_LANG_SOURCE(
+    [[int main() { return 0; }]]
+  )],[have_static_libcap=yes],[have_static_libcap=no])
 AM_CONDITIONAL([HAVE_STATIC_LIBCAP], [test "x$have_static_libcap" = "xyes"])
 if test "x$have_static_libcap" = "xyes"; then
 	AC_DEFINE([HAVE_STATIC_LIBCAP], 1, [Have static libcap])
+	AC_MSG_RESULT([yes])
+else
+	AC_MSG_RESULT([no])
 fi
+CPPFLAGS="$OLD_CPPFLAGS"
 CFLAGS="$OLD_CFLAGS"
+LDFLAGS="$OLD_LDFLAGS"
+LIBS="$OLD_LIBS"
 
 
 # Linux capabilities
@@ -641,12 +654,22 @@ AC_HEADER_MAJOR
 # Check for some syscalls functions
 AC_CHECK_FUNCS([setns pivot_root sethostname unshare rand_r confstr faccessat gettid memfd_create])
 
+# Check for strerror_r() support. Defines:
+# - HAVE_STRERROR_R if available
+# - HAVE_DECL_STRERROR_R if defined
+# - STRERROR_R_CHAR_P if it returns char *
+AC_FUNC_STRERROR_R
+
 # Check for some functions
 AC_CHECK_LIB(pthread, main)
 AC_CHECK_FUNCS(pthread_atfork)
 AC_CHECK_FUNCS(statvfs)
 AC_CHECK_LIB(util, openpty)
 AC_CHECK_FUNCS([openpty hasmntopt setmntent endmntent utmpxname])
+AC_CHECK_FUNCS([getgrgid_r],
+	AM_CONDITIONAL(HAVE_GETGRGID_R, true)
+	AC_DEFINE(HAVE_GETGRGID_R,1,[Have getgrgid_r]),
+	AM_CONDITIONAL(HAVE_GETGRGID_R, false))
 AC_CHECK_FUNCS([getline],
 	AM_CONDITIONAL(HAVE_GETLINE, true)
 	AC_DEFINE(HAVE_GETLINE,1,[Have getline]),
@@ -659,9 +682,21 @@ AC_CHECK_FUNCS([fgetln],
 	AM_CONDITIONAL(HAVE_FGETLN, true)
 	AC_DEFINE(HAVE_FGETLN,1,[Have fgetln]),
 	AM_CONDITIONAL(HAVE_FGETLN, false))
+AC_CHECK_FUNCS([pthread_setcancelstate],
+	AM_CONDITIONAL(HAVE_PTHREAD_SETCANCELSTATE, true)
+	AC_DEFINE(HAVE_PTHREAD_SETCANCELSTATE,1,[Have pthread_setcancelstate]),
+	AM_CONDITIONAL(HAVE_PTHREAD_SETCANCELSTATE, false))
+AC_CHECK_FUNCS([strlcpy],
+	AM_CONDITIONAL(HAVE_STRLCPY, true)
+	AC_DEFINE(HAVE_STRLCPY,1,[Have strlcpy]),
+	AM_CONDITIONAL(HAVE_STRLCPY, false))
+AC_CHECK_FUNCS([strlcat],
+	AM_CONDITIONAL(HAVE_STRLCAT, true)
+	AC_DEFINE(HAVE_STRLCAT,1,[Have strlcat]),
+	AM_CONDITIONAL(HAVE_STRLCAT, false))
 
 # Check for some libraries
-AC_SEARCH_LIBS(sem_open, [rt pthread])
+AX_PTHREAD
 AC_SEARCH_LIBS(clock_gettime, [rt])
 
 # Check for some standard binaries
@@ -676,6 +711,23 @@ if test "x$GCC" = "xyes"; then
 	if test "x$enable_werror" = "xyes"; then
 		CFLAGS="$CFLAGS -Werror"
 	fi
+fi
+
+AC_ARG_ENABLE([thread-safety],
+	[AC_HELP_STRING([--enable-thread-safety], [enforce thread-safety otherwise fail the build [default=yes]])],
+	[], [enable_thread_safety=yes])
+AM_CONDITIONAL([ENFORCE_THREAD_SAFETY], [test "x$enable_thread_safety" = "xyes"])
+
+
+AC_ARG_ENABLE([memfd-rexec],
+	[AC_HELP_STRING([--enable-memfd-rexec], [enforce liblxc as a memfd to protect against certain symlink attacks [default=yes]])],
+	[], [enable_memfd_rexec=yes])
+AM_CONDITIONAL([ENFORCE_MEMFD_REXEC], [test "x$enable_memfd_rexec" = "xyes"])
+if test "x$enable_memfd_rexec" = "xyes"; then
+	AC_DEFINE([ENFORCE_MEMFD_REXEC], 1, [Rexec liblxc as memfd])
+	AC_MSG_RESULT([yes])
+else
+	AC_MSG_RESULT([no])
 fi
 
 # Files requiring some variable expansion
@@ -924,6 +976,7 @@ Security features:
  - seccomp: $enable_seccomp
  - SELinux: $enable_selinux
  - cgmanager: $enable_cgmanager
+ - memfd rexec: $enable_memfd_rexec
 
 Bindings:
  - lua: $enable_lua
@@ -940,6 +993,9 @@ Debugging:
 
 Paths:
  - Logs in configpath: $enable_configpath_log
+
+Thread-safety:
+ - enforce: $enable_thread_safety
 EOF
 
 if test "x$ac_cv_func_pthread_atfork" = "xno" ; then

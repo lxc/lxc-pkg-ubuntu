@@ -2,13 +2,12 @@
 lxc.cgroup.devices.deny =
 lxc.cgroup.devices.allow =
 
+# Start with a full set of capabilities in user namespaces.
+lxc.cap.drop =
+lxc.cap.keep =
+
 # We can't move bind-mounts, so don't use /dev/lxc/
 lxc.devttydir =
 
-# Extra bind-mounts for userns
-lxc.mount.entry = /dev/full dev/full none bind,create=file 0 0
-lxc.mount.entry = /dev/null dev/null none bind,create=file 0 0
-lxc.mount.entry = /dev/random dev/random none bind,create=file 0 0
-lxc.mount.entry = /dev/tty dev/tty none bind,create=file 0 0
-lxc.mount.entry = /dev/urandom dev/urandom none bind,create=file 0 0
-lxc.mount.entry = /dev/zero dev/zero none bind,create=file 0 0
+# Setup the default mounts
+lxc.mount.auto = sys:rw

@@ -37,20 +37,18 @@
 #include <lxc/lxccontainer.h>
 
 #include "attach.h"
-#include "bdev.h"
 #include "log.h"
 #include "confile.h"
 #include "arguments.h"
 #include "lxc.h"
 #include "conf.h"
 #include "state.h"
+#include "storage.h"
 #include "utils.h"
 
 #ifndef HAVE_GETSUBOPT
 #include <../include/getsubopt.h>
 #endif
-
-lxc_log_define(lxc_copy_ui, lxc);
 
 enum mnttype {
 	LXC_MNT_BIND,
@@ -158,6 +156,7 @@ static int parse_ovl_mnt(char *mntstring, enum mnttype type);
 int main(int argc, char *argv[])
 {
 	struct lxc_container *c;
+	struct lxc_log log;
 	int flags = 0;
 	int ret = EXIT_FAILURE;
 
@@ -167,8 +166,14 @@ int main(int argc, char *argv[])
 	if (!my_args.log_file)
 		my_args.log_file = "none";
 
-	if (lxc_log_init(my_args.name, my_args.log_file, my_args.log_priority,
-			 my_args.progname, my_args.quiet, my_args.lxcpath[0]))
+	log.name = my_args.name;
+	log.file = my_args.log_file;
+	log.level = my_args.log_priority;
+	log.prefix = my_args.progname;
+	log.quiet = my_args.quiet;
+	log.lxcpath = my_args.lxcpath[0];
+
+	if (lxc_log_init(&log))
 		exit(ret);
 	lxc_log_options_no_override();
 
@@ -373,8 +378,6 @@ static int do_clone(struct lxc_container *c, char *newname, char *newpath,
 		return -1;
 	}
 
-	INFO("Created %s as %s of %s\n", newname, task ? "snapshot" : "copy", c->name);
-
 	lxc_container_put(clone);
 
 	return 0;
@@ -399,7 +402,7 @@ static int do_clone_ephemeral(struct lxc_container *c,
 		if (!mkdtemp(randname))
 			return -1;
 		if (chmod(randname, 0770) < 0) {
-			remove(randname);
+			(void)remove(randname);
 			return -1;
 		}
 		arg->newname = randname + strlen(arg->newpath) + 1;
@@ -472,11 +475,9 @@ destroy_and_put:
 static int do_clone_rename(struct lxc_container *c, char *newname)
 {
 	if (!c->rename(c, newname)) {
-		ERROR("Error: Renaming container %s to %s failed\n", c->name, newname);
+		fprintf(stderr, "Error: Renaming container %s to %s failed\n", c->name, newname);
 		return -1;
 	}
-
-	INFO("Renamed container %s to %s\n", c->name, newname);
 
 	return 0;
 }
@@ -633,7 +634,7 @@ static int parse_aufs_mnt(char *mntstring, enum mnttype type)
 	else if (len == 2) /* aufs=src:dest */
 		m->dest = construct_path(mntarray[1], false);
 	else
-		INFO("Excess elements in mount specification");
+		printf("Excess elements in mount specification\n");
 
 	if (!m->dest)
 		goto err;
@@ -687,7 +688,7 @@ static int parse_bind_mnt(char *mntstring, enum mnttype type)
 			m->dest = construct_path(mntarray[1], false);
 			m->options = strdup(mntarray[2]);
 	} else {
-		INFO("Excess elements in mount specification");
+		printf("Excess elements in mount specification\n");
 	}
 
 	if (!m->dest)
@@ -756,7 +757,7 @@ static int parse_ovl_mnt(char *mntstring, enum mnttype type)
 	else if (len == 2) /* overlay=src:dest */
 		m->dest = construct_path(mntarray[1], false);
 	else
-		INFO("Excess elements in mount specification");
+		printf("Excess elements in mount specification\n");
 
 	if (!m->dest)
 		goto err;

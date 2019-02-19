@@ -22,26 +22,31 @@
  */
 #include "config.h"
 
+#include <errno.h>
+#include <fcntl.h>
 #include <stddef.h>
+#include <stdio.h>
+#include <stdlib.h>
 #include <string.h>
 #include <unistd.h>
-#include <fcntl.h>
-#include <errno.h>
 #include <sys/socket.h>
+#include <sys/syscall.h>
 #include <sys/un.h>
 
 #include "log.h"
+#include "utils.h"
+
+#ifndef HAVE_STRLCPY
+#include "include/strlcpy.h"
+#endif
 
 lxc_log_define(lxc_af_unix, lxc);
 
 int lxc_abstract_unix_open(const char *path, int type, int flags)
 {
-	int fd;
+	int fd, ret;
 	size_t len;
 	struct sockaddr_un addr;
-
-	if (flags & O_TRUNC)
-		unlink(path);
 
 	fd = socket(PF_UNIX, type, 0);
 	if (fd < 0)
@@ -62,21 +67,28 @@ int lxc_abstract_unix_open(const char *path, int type, int flags)
 		errno = ENAMETOOLONG;
 		return -1;
 	}
-	/* addr.sun_path[0] has already been set to 0 by memset() */
-	strncpy(&addr.sun_path[1], &path[1], strlen(&path[1]));
 
-	if (bind(fd, (struct sockaddr *)&addr, offsetof(struct sockaddr_un, sun_path) + len + 1)) {
+	/* do not enforce \0-termination */
+	memcpy(&addr.sun_path[1], &path[1], len);
+
+	ret = bind(fd, (struct sockaddr *)&addr,
+		   offsetof(struct sockaddr_un, sun_path) + len + 1);
+	if (ret < 0) {
 		int tmp = errno;
 		close(fd);
 		errno = tmp;
 		return -1;
 	}
 
-	if (type == SOCK_STREAM && listen(fd, 100)) {
-		int tmp = errno;
-		close(fd);
-		errno = tmp;
-		return -1;
+	if (type == SOCK_STREAM) {
+		ret = listen(fd, 100);
+		if (ret < 0) {
+			int tmp = errno;
+			close(fd);
+			errno = tmp;
+			return -1;
+		}
+
 	}
 
 	return fd;
@@ -84,21 +96,13 @@ int lxc_abstract_unix_open(const char *path, int type, int flags)
 
 int lxc_abstract_unix_close(int fd)
 {
-	struct sockaddr_un addr;
-	socklen_t addrlen = sizeof(addr);
-
-	if (!getsockname(fd, (struct sockaddr *)&addr, &addrlen) &&
-			addr.sun_path[0])
-		unlink(addr.sun_path);
-
 	close(fd);
-
 	return 0;
 }
 
 int lxc_abstract_unix_connect(const char *path)
 {
-	int fd;
+	int fd, ret;
 	size_t len;
 	struct sockaddr_un addr;
 
@@ -117,65 +121,80 @@ int lxc_abstract_unix_connect(const char *path)
 		errno = ENAMETOOLONG;
 		return -1;
 	}
-	/* addr.sun_path[0] has already been set to 0 by memset() */
-	strncpy(&addr.sun_path[1], &path[1], strlen(&path[1]));
 
-	if (connect(fd, (struct sockaddr *)&addr, offsetof(struct sockaddr_un, sun_path) + len + 1)) {
-		int tmp = errno;
-		/* special case to connect to older containers */
-		if (connect(fd, (struct sockaddr *)&addr, sizeof(addr)) == 0)
-			return fd;
+	/* do not enforce \0-termination */
+	memcpy(&addr.sun_path[1], &path[1], len);
+
+	ret = connect(fd, (struct sockaddr *)&addr,
+		      offsetof(struct sockaddr_un, sun_path) + len + 1);
+	if (ret < 0) {
 		close(fd);
-		errno = tmp;
 		return -1;
 	}
 
 	return fd;
 }
 
-int lxc_abstract_unix_send_fd(int fd, int sendfd, void *data, size_t size)
+int lxc_abstract_unix_send_fds(int fd, int *sendfds, int num_sendfds,
+			       void *data, size_t size)
 {
-	struct msghdr msg = { 0 };
+	int ret;
+	struct msghdr msg;
 	struct iovec iov;
-	struct cmsghdr *cmsg;
-	char cmsgbuf[CMSG_SPACE(sizeof(int))] = {0};
+	struct cmsghdr *cmsg = NULL;
 	char buf[1] = {0};
-	int *val;
+	char *cmsgbuf;
+	size_t cmsgbufsize = CMSG_SPACE(num_sendfds * sizeof(int));
+
+	memset(&msg, 0, sizeof(msg));
+	memset(&iov, 0, sizeof(iov));
+
+	cmsgbuf = malloc(cmsgbufsize);
+	if (!cmsgbuf)
+		return -1;
 
 	msg.msg_control = cmsgbuf;
-	msg.msg_controllen = sizeof(cmsgbuf);
+	msg.msg_controllen = cmsgbufsize;
 
 	cmsg = CMSG_FIRSTHDR(&msg);
-	cmsg->cmsg_len = CMSG_LEN(sizeof(int));
 	cmsg->cmsg_level = SOL_SOCKET;
 	cmsg->cmsg_type = SCM_RIGHTS;
-	val = (int *)(CMSG_DATA(cmsg));
-	*val = sendfd;
+	cmsg->cmsg_len = CMSG_LEN(num_sendfds * sizeof(int));
 
-	msg.msg_name = NULL;
-	msg.msg_namelen = 0;
+	msg.msg_controllen = cmsg->cmsg_len;
+
+	memcpy(CMSG_DATA(cmsg), sendfds, num_sendfds * sizeof(int));
 
 	iov.iov_base = data ? data : buf;
 	iov.iov_len = data ? size : sizeof(buf);
 	msg.msg_iov = &iov;
 	msg.msg_iovlen = 1;
 
-	return sendmsg(fd, &msg, MSG_NOSIGNAL);
+	ret = sendmsg(fd, &msg, MSG_NOSIGNAL);
+	free(cmsgbuf);
+	return ret;
 }
 
-int lxc_abstract_unix_recv_fd(int fd, int *recvfd, void *data, size_t size)
+int lxc_abstract_unix_recv_fds(int fd, int *recvfds, int num_recvfds,
+			       void *data, size_t size)
 {
-	struct msghdr msg = { 0 };
+	int ret;
+	struct msghdr msg;
 	struct iovec iov;
-	struct cmsghdr *cmsg;
-	int ret, *val;
-	char cmsgbuf[CMSG_SPACE(sizeof(int))] = {0};
+	struct cmsghdr *cmsg = NULL;
 	char buf[1] = {0};
+	char *cmsgbuf;
+	size_t cmsgbufsize = CMSG_SPACE(num_recvfds * sizeof(int));
 
-	msg.msg_name = NULL;
-	msg.msg_namelen = 0;
+	memset(&msg, 0, sizeof(msg));
+	memset(&iov, 0, sizeof(iov));
+
+	cmsgbuf = malloc(cmsgbufsize);
+	if (!cmsgbuf)
+		return -1;
+
 	msg.msg_control = cmsgbuf;
-	msg.msg_controllen = sizeof(cmsgbuf);
+	msg.msg_controllen = cmsgbufsize;
 
 	iov.iov_base = data ? data : buf;
 	iov.iov_len = data ? size : sizeof(buf);
@@ -188,29 +207,24 @@ int lxc_abstract_unix_recv_fd(int fd, int *recvfd, void *data, size_t size)
 
 	cmsg = CMSG_FIRSTHDR(&msg);
 
-	/* if the message is wrong the variable will not be
-	 * filled and the peer will notified about a problem */
-	*recvfd = -1;
-
-	if (cmsg && cmsg->cmsg_len == CMSG_LEN(sizeof(int)) &&
-			cmsg->cmsg_level == SOL_SOCKET &&
-			cmsg->cmsg_type == SCM_RIGHTS) {
-		val = (int *) CMSG_DATA(cmsg);
-		*recvfd = *val;
+	memset(recvfds, -1, num_recvfds * sizeof(int));
+	if (cmsg && cmsg->cmsg_len == CMSG_LEN(num_recvfds * sizeof(int)) &&
+	    cmsg->cmsg_level == SOL_SOCKET && cmsg->cmsg_type == SCM_RIGHTS) {
+		memcpy(recvfds, CMSG_DATA(cmsg), num_recvfds * sizeof(int));
 	}
+
 out:
+	free(cmsgbuf);
 	return ret;
 }
 
 int lxc_abstract_unix_send_credential(int fd, void *data, size_t size)
 {
-	struct msghdr msg = { 0 };
+	struct msghdr msg = {0};
 	struct iovec iov;
 	struct cmsghdr *cmsg;
 	struct ucred cred = {
-		.pid = getpid(),
-		.uid = getuid(),
-		.gid = getgid(),
+	    .pid = lxc_raw_getpid(), .uid = getuid(), .gid = getgid(),
 	};
 	char cmsgbuf[CMSG_SPACE(sizeof(cred))] = {0};
 	char buf[1] = {0};
@@ -237,7 +251,7 @@ int lxc_abstract_unix_send_credential(int fd, void *data, size_t size)
 
 int lxc_abstract_unix_rcv_credential(int fd, void *data, size_t size)
 {
-	struct msghdr msg = { 0 };
+	struct msghdr msg = {0};
 	struct iovec iov;
 	struct cmsghdr *cmsg;
 	struct ucred cred;
@@ -262,10 +276,11 @@ int lxc_abstract_unix_rcv_credential(int fd, void *data, size_t size)
 	cmsg = CMSG_FIRSTHDR(&msg);
 
 	if (cmsg && cmsg->cmsg_len == CMSG_LEN(sizeof(struct ucred)) &&
-			cmsg->cmsg_level == SOL_SOCKET &&
-			cmsg->cmsg_type == SCM_CREDENTIALS) {
+	    cmsg->cmsg_level == SOL_SOCKET &&
+	    cmsg->cmsg_type == SCM_CREDENTIALS) {
 		memcpy(&cred, CMSG_DATA(cmsg), sizeof(cred));
-		if (cred.uid && (cred.uid != getuid() || cred.gid != getgid())) {
+		if (cred.uid &&
+		    (cred.uid != getuid() || cred.gid != getgid())) {
 			INFO("message denied for '%d/%d'", cred.uid, cred.gid);
 			return -EACCES;
 		}
