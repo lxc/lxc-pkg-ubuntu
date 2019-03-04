@@ -4,7 +4,7 @@
 m4_define([lxc_devel], 0)
 m4_define([lxc_version_major], 2)
 m4_define([lxc_version_minor], 0)
-m4_define([lxc_version_micro], 10)
+m4_define([lxc_version_micro], 11)
 m4_define([lxc_version_beta], [])
 
 m4_define([lxc_abi_major], 1)
@@ -665,11 +665,7 @@ AC_CHECK_LIB(pthread, main)
 AC_CHECK_FUNCS(pthread_atfork)
 AC_CHECK_FUNCS(statvfs)
 AC_CHECK_LIB(util, openpty)
-AC_CHECK_FUNCS([openpty hasmntopt setmntent endmntent utmpxname])
-AC_CHECK_FUNCS([getgrgid_r],
-	AM_CONDITIONAL(HAVE_GETGRGID_R, true)
-	AC_DEFINE(HAVE_GETGRGID_R,1,[Have getgrgid_r]),
-	AM_CONDITIONAL(HAVE_GETGRGID_R, false))
+AC_CHECK_FUNCS([getgrgid_r openpty hasmntopt setmntent endmntent utmpxname])
 AC_CHECK_FUNCS([getline],
 	AM_CONDITIONAL(HAVE_GETLINE, true)
 	AC_DEFINE(HAVE_GETLINE,1,[Have getline]),
