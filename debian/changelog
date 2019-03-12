@@ -1,3 +1,14 @@
+lxc (2.0.11-0ubuntu1~16.04.1) xenial; urgency=medium
+
+  * New upstream bugfix release (2.0.11) (LP: #1816642)
+    - Security fix for CVE-2018-6556 (affecting 2.0.9+)
+    - Mitigation for CVE-2019-5736
+
+    - Full changelog available at:
+      https://discuss.linuxcontainers.org/t/lxc-2-0-11-has-been-released/4238
+
+ -- Stéphane Graber <stgraber@ubuntu.com>  Mon, 04 Mar 2019 15:07:19 -0500
+
 lxc (2.0.8-0ubuntu1~16.04.2) xenial; urgency=medium
 
   * Cherry-pick upstream workaround for ppc64el failure:
