@@ -1,0 +1,200 @@
+From 2a029bbeea944c77b8fe0878ac5db8e135112389 Mon Sep 17 00:00:00 2001
+From: Christian Brauner <christian.brauner@ubuntu.com>
+Date: Tue, 9 Apr 2019 19:42:43 +0200
+Subject: attach: improve id switching
+
+Signed-off-by: Christian Brauner <christian.brauner@ubuntu.com>
+---
+ src/lxc/attach.c | 51 ++++++++++++++++++++++++++++++++++++------------
+ src/lxc/utils.c  | 51 +++++++++++++++++++++++++++++++++++++++++-------
+ src/lxc/utils.h  |  1 +
+ 3 files changed, 84 insertions(+), 19 deletions(-)
+
+diff --git a/src/lxc/attach.c b/src/lxc/attach.c
+index 08bb48aff..d4590468c 100644
+--- a/src/lxc/attach.c
++++ b/src/lxc/attach.c
+@@ -726,6 +726,8 @@ static int attach_child_main(struct attach_clone_payload *payload)
+ 	int fd, lsm_fd, ret;
+ 	uid_t new_uid;
+ 	gid_t new_gid;
++	uid_t ns_root_uid = 0;
++	gid_t ns_root_gid = 0;
+ 	lxc_attach_options_t* options = payload->options;
+ 	struct lxc_proc_context_info* init_ctx = payload->init_ctx;
+ 	bool needs_lsm = (options->namespaces & CLONE_NEWNS) &&
+@@ -809,25 +811,40 @@ static int attach_child_main(struct attach_clone_payload *payload)
+ 	/* Ignore errors, we will fall back to root in that case (/proc was not
+ 	 * mounted etc.).
+ 	 */
+-	if (options->namespaces & CLONE_NEWUSER)
+-		lxc_attach_get_init_uidgid(&new_uid, &new_gid);
++	if (options->namespaces & CLONE_NEWUSER) {
++		/* Check whether nsuid 0 has a mapping. */
++		ns_root_uid = get_ns_uid(0);
+ 
+-	if (options->uid != (uid_t)-1)
+-		new_uid = options->uid;
+-	if (options->gid != (gid_t)-1)
+-		new_gid = options->gid;
++		/* Check whether nsgid 0 has a mapping. */
++		ns_root_gid = get_ns_gid(0);
+ 
+-	/* Try to set the {u,g}id combination. */
+-	if (new_uid != 0 || new_gid != 0 || options->namespaces & CLONE_NEWUSER) {
+-		ret = lxc_switch_uid_gid(new_uid, new_gid);
+-		if (ret < 0)
++		/* If there's no mapping for nsuid 0 try to retrieve the nsuid
++		 * init was started with.
++		 */
++		if (ns_root_uid == LXC_INVALID_UID)
++			lxc_attach_get_init_uidgid(&ns_root_uid, &ns_root_gid);
++
++		if (ns_root_uid == LXC_INVALID_UID)
+ 			goto on_error;
+ 
+-		ret = lxc_setgroups(0, NULL);
+-		if (ret < 0)
++		if (!lxc_switch_uid_gid(ns_root_uid, ns_root_gid))
+ 			goto on_error;
+ 	}
+ 
++	if (!lxc_setgroups(0, NULL) && errno != EPERM)
++		goto on_error;
++
++	/* Set {u,g}id. */
++	if (options->uid != LXC_INVALID_UID)
++		new_uid = options->uid;
++	else
++		new_uid = ns_root_uid;
++
++	if (options->gid != LXC_INVALID_GID)
++		new_gid = options->gid;
++	else
++		new_gid = ns_root_gid;
++
+ 	if (needs_lsm) {
+ 		bool on_exec;
+ 
+@@ -909,6 +926,16 @@ static int attach_child_main(struct attach_clone_payload *payload)
+ 		TRACE("Prepared pty file descriptor %d", payload->pty_fd);
+ 	}
+ 
++	/* Avoid unnecessary syscalls. */
++	if (new_uid == ns_root_uid)
++		new_uid = LXC_INVALID_UID;
++
++	if (new_gid == ns_root_gid)
++		new_gid = LXC_INVALID_GID;
++
++	if (!lxc_switch_uid_gid(new_uid, new_gid))
++		goto on_error;
++
+ 	/* We're done, so we can now do whatever the user intended us to do. */
+ 	rexit(payload->exec_function(payload->exec_payload));
+ 
+diff --git a/src/lxc/utils.c b/src/lxc/utils.c
+index 8d315038e..e0f49bcb6 100644
+--- a/src/lxc/utils.c
++++ b/src/lxc/utils.c
+@@ -1001,17 +1001,18 @@ void **lxc_append_null_to_array(void **array, size_t count)
+ 
+ int randseed(bool srand_it)
+ {
++	FILE *f;
+ 	/*
+-	   srand pre-seed function based on /dev/urandom
+-	   */
++	 * srand pre-seed function based on /dev/urandom
++	 */
+ 	unsigned int seed = time(NULL) + getpid();
+ 
+-	FILE *f;
+ 	f = fopen("/dev/urandom", "r");
+ 	if (f) {
+ 		int ret = fread(&seed, sizeof(seed), 1, f);
+ 		if (ret != 1)
+-			DEBUG("unable to fread /dev/urandom, %s, fallback to time+pid rand seed", strerror(errno));
++			SYSDEBUG("Unable to fread /dev/urandom, fallback to time+pid rand seed");
++
+ 		fclose(f);
+ 	}
+ 
+@@ -1026,26 +1027,62 @@ uid_t get_ns_uid(uid_t orig)
+ 	char *line = NULL;
+ 	size_t sz = 0;
+ 	uid_t nsid, hostid, range;
+-	FILE *f = fopen("/proc/self/uid_map", "r");
+-	if (!f)
++	FILE *f;
++
++	f = fopen("/proc/self/uid_map", "r");
++	if (!f) {
++		SYSERROR("Failed to open uid_map");
+ 		return 0;
++	}
+ 
+ 	while (getline(&line, &sz, f) != -1) {
+ 		if (sscanf(line, "%u %u %u", &nsid, &hostid, &range) != 3)
+ 			continue;
++
+ 		if (hostid <= orig && hostid + range > orig) {
+ 			nsid += orig - hostid;
+ 			goto found;
+ 		}
+ 	}
+ 
+-	nsid = 0;
++	nsid = LXC_INVALID_UID;
++
+ found:
+ 	fclose(f);
+ 	free(line);
+ 	return nsid;
+ }
+ 
++gid_t get_ns_gid(gid_t orig)
++{
++	char *line = NULL;
++	size_t sz = 0;
++	gid_t nsid, hostid, range;
++	FILE *f;
++
++	f = fopen("/proc/self/gid_map", "r");
++	if (!f) {
++		SYSERROR("Failed to open gid_map");
++		return 0;
++	}
++
++	while (getline(&line, &sz, f) != -1) {
++		if (sscanf(line, "%u %u %u", &nsid, &hostid, &range) != 3)
++			continue;
++
++		if (hostid <= orig && hostid + range > orig) {
++			nsid += orig - hostid;
++			goto found;
++		}
++	}
++
++	nsid = LXC_INVALID_GID;
++
++found:
++	fclose(f);
++	free(line);
++	return nsid;
++}
+ bool dir_exists(const char *path)
+ {
+ 	struct stat sb;
+diff --git a/src/lxc/utils.h b/src/lxc/utils.h
+index 61e4d9962..2af0bfd41 100644
+--- a/src/lxc/utils.h
++++ b/src/lxc/utils.h
+@@ -415,6 +415,7 @@ inline static bool am_host_unpriv(void)
+  * parse /proc/self/uid_map to find what @orig maps to
+  */
+ extern uid_t get_ns_uid(uid_t orig);
++extern gid_t get_ns_gid(gid_t orig);
+ 
+ extern bool dir_exists(const char *path);
+ 
