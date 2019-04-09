@@ -1,0 +1,127 @@
+From 3851855f7162e1ae1ddb92ca4ad346bd94afc37c Mon Sep 17 00:00:00 2001
+From: Christian Brauner <christian.brauner@ubuntu.com>
+Date: Tue, 9 Apr 2019 19:59:01 +0200
+Subject: utils: make id switching functions return bool
+
+Signed-off-by: Christian Brauner <christian.brauner@ubuntu.com>
+---
+ src/lxc/start.c | 13 +++++--------
+ src/lxc/utils.c | 40 ++++++++++++++++++++++++----------------
+ src/lxc/utils.h |  4 ++--
+ 3 files changed, 31 insertions(+), 26 deletions(-)
+
+diff --git a/src/lxc/start.c b/src/lxc/start.c
+index 33585df7d..ee9149570 100644
+--- a/src/lxc/start.c
++++ b/src/lxc/start.c
+@@ -1146,15 +1146,13 @@ static int do_start(void *data)
+ 				  ? 0
+ 				  : handler->conf->init_gid;
+ 
+-		ret = lxc_switch_uid_gid(nsuid, nsgid);
+-		if (ret < 0)
++		if (!lxc_switch_uid_gid(nsuid, nsgid))
+ 			goto out_warn_father;
+ 
+ 		/* Drop groups only after we switched to a valid gid in the new
+ 		 * user namespace.
+ 		 */
+-		ret = lxc_setgroups(0, NULL);
+-		if (ret < 0 && (handler->am_root || errno != EPERM))
++		if (!lxc_setgroups(0, NULL) && (handler->am_root || errno != EPERM))
+ 			goto out_warn_father;
+ 
+ 		ret = prctl(PR_SET_DUMPABLE, 1, 0, 0, 0);
+@@ -1349,12 +1347,11 @@ static int do_start(void *data)
+ 	#else
+ 	have_cap_setgid = false;
+ 	#endif
+-	if (lxc_list_empty(&handler->conf->id_map) && have_cap_setgid) {
+-		if (lxc_setgroups(0, NULL) < 0)
++	if (lxc_list_empty(&handler->conf->id_map) && have_cap_setgid)
++		if (!lxc_setgroups(0, NULL))
+ 			goto out_warn_father;
+-	}
+ 
+-	if (lxc_switch_uid_gid(new_uid, new_gid) < 0)
++	if (!lxc_switch_uid_gid(new_uid, new_gid))
+ 		goto out_warn_father;
+ 
+ 	ret = lxc_ambient_caps_down();
+diff --git a/src/lxc/utils.c b/src/lxc/utils.c
+index e0f49bcb6..c0eb5e000 100644
+--- a/src/lxc/utils.c
++++ b/src/lxc/utils.c
+@@ -2059,33 +2059,41 @@ int lxc_safe_long_long(const char *numstr, long long int *converted)
+ 	return 0;
+ }
+ 
+-int lxc_switch_uid_gid(uid_t uid, gid_t gid)
++bool lxc_switch_uid_gid(uid_t uid, gid_t gid)
+ {
+-	if (setgid(gid) < 0) {
+-		SYSERROR("Failed to switch to gid %d.", gid);
+-		return -errno;
++	int ret = 0;
++
++	if (gid != LXC_INVALID_GID) {
++		ret = setgid(gid);
++		if (ret < 0) {
++			SYSERROR("Failed to switch to gid %d", gid);
++			return false;
++		}
++		NOTICE("Switched to gid %d", gid);
+ 	}
+-	NOTICE("Switched to gid %d.", gid);
+ 
+-	if (setuid(uid) < 0) {
+-		SYSERROR("Failed to switch to uid %d.", uid);
+-		return -errno;
++	if (uid != LXC_INVALID_UID) {
++		ret = setuid(uid);
++		if (ret < 0) {
++			SYSERROR("Failed to switch to uid %d", uid);
++			return false;
++		}
++		NOTICE("Switched to uid %d", uid);
+ 	}
+-	NOTICE("Switched to uid %d.", uid);
+ 
+-	return 0;
++	return true;
+ }
+ 
+-/* Simple covenience function which enables uniform logging. */
+-int lxc_setgroups(int size, gid_t list[])
++/* Simple convenience function which enables uniform logging. */
++bool lxc_setgroups(int size, gid_t list[])
+ {
+ 	if (setgroups(size, list) < 0) {
+-		SYSERROR("Failed to setgroups().");
+-		return -errno;
++		SYSERROR("Failed to setgroups()");
++		return false;
+ 	}
+-	NOTICE("Dropped additional groups.");
++	NOTICE("Dropped additional groups");
+ 
+-	return 0;
++	return true;
+ }
+ 
+ static int lxc_get_unused_loop_dev_legacy(char *loop_name)
+diff --git a/src/lxc/utils.h b/src/lxc/utils.h
+index 2af0bfd41..074a2d522 100644
+--- a/src/lxc/utils.h
++++ b/src/lxc/utils.h
+@@ -455,8 +455,8 @@ extern int lxc_safe_uint64(const char *numstr, uint64_t *converted, int base);
+ extern int parse_byte_size_string(const char *s, int64_t *converted);
+ 
+ /* Switch to a new uid and gid. */
+-int lxc_switch_uid_gid(uid_t uid, gid_t gid);
+-int lxc_setgroups(int size, gid_t list[]);
++bool lxc_switch_uid_gid(uid_t uid, gid_t gid);
++bool lxc_setgroups(int size, gid_t list[]);
+ 
+ /* Find an unused loop device and associate it with source. */
+ int lxc_prepare_loop_dev(const char *source, char *loop_dev, int flags);
