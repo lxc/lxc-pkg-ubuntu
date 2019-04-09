@@ -1,3 +1,10 @@
+lxc (2.0.11-0ubuntu1~16.04.2) xenial; urgency=medium
+
+  * Use clean LDFLAGS when building the static init.lxc, otherwise we
+    end up with broken binaries on some architectures.
+
+ -- Stéphane Graber <stgraber@ubuntu.com>  Tue, 09 Apr 2019 12:36:36 -0400
+
 lxc (2.0.11-0ubuntu1~16.04.1) xenial; urgency=medium
 
   * New upstream bugfix release (2.0.11) (LP: #1816642)
