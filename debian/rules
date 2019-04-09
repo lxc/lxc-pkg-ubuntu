@@ -27,6 +27,10 @@ override_dh_auto_build:
 	  CFLAGS="$$(python$$pv-config --includes) -I ../../src -L../../src/lxc/" python$$pv setup.py build; \
 	done
 
+	# Re-build static binary without pie/fpie (causes broken binary)
+	rm src/lxc/init.lxc.static
+	make LDFLAGS="" init.lxc.static -C src/lxc/
+
 override_dh_auto_install:
 	dh_auto_install
 	set -e; cd src/python-lxc && for pv in $(PY3V); do \
