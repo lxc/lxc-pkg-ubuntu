@@ -2752,7 +2752,7 @@ __cgfsng_ops static bool cgfsng_data_init(struct cgroup_ops *ops)
 
 struct cgroup_ops *cgfsng_ops_init(struct lxc_conf *conf)
 {
-	struct cgroup_ops *cgfsng_ops;
+	__do_free struct cgroup_ops *cgfsng_ops = NULL;
 
 	cgfsng_ops = malloc(sizeof(struct cgroup_ops));
 	if (!cgfsng_ops)
@@ -2761,10 +2761,8 @@ struct cgroup_ops *cgfsng_ops_init(struct lxc_conf *conf)
 	memset(cgfsng_ops, 0, sizeof(struct cgroup_ops));
 	cgfsng_ops->cgroup_layout = CGROUP_LAYOUT_UNKNOWN;
 
-	if (!cg_init(cgfsng_ops, conf)) {
-		free(cgfsng_ops);
+	if (!cg_init(cgfsng_ops, conf))
 		return NULL;
-	}
 
 	cgfsng_ops->data_init = cgfsng_data_init;
 	cgfsng_ops->payload_destroy = cgfsng_payload_destroy;
@@ -2788,5 +2786,5 @@ struct cgroup_ops *cgfsng_ops_init(struct lxc_conf *conf)
 	cgfsng_ops->mount = cgfsng_mount;
 	cgfsng_ops->nrtasks = cgfsng_nrtasks;
 
-	return cgfsng_ops;
+	return move_ptr(cgfsng_ops);
 }
