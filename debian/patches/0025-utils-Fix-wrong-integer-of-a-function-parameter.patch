@@ -1,4 +1,4 @@
-From dc808f39a1363fc6c2234d111f2f633504e8caad Mon Sep 17 00:00:00 2001
+From 27d415e073cf4e316fc447bae0adc18ed9992730 Mon Sep 17 00:00:00 2001
 From: Julio Faracco <jcfaracco@gmail.com>
 Date: Sat, 3 Aug 2019 02:16:13 -0300
 Subject: utils: Fix wrong integer of a function parameter.

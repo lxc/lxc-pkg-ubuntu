@@ -1,4 +1,4 @@
-From 12c40a5d2e9235a489f8c48a23c2d99f067add3c Mon Sep 17 00:00:00 2001
+From 32c0c13748b1bbfd031d3818d309322397af1fad Mon Sep 17 00:00:00 2001
 From: Thomas Parrott <thomas.parrott@canonical.com>
 Date: Fri, 26 Jul 2019 16:14:18 +0100
 Subject: lxccontainer: do_lxcapi_detach_interface to support detaching wlan
