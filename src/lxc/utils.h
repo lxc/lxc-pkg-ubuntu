@@ -26,6 +26,10 @@
 /* Properly support loop devices on 32bit systems. */
 #define _FILE_OFFSET_BITS 64
 
+#ifndef MAX_GRBUF_SIZE
+#define MAX_GRBUF_SIZE 65536
+#endif
+
 #include <errno.h>
 #include <linux/loop.h>
 #include <linux/types.h>
@@ -61,10 +65,10 @@ static inline int lxc_set_cloexec(int fd)
 	return fcntl(fd, F_SETFD, FD_CLOEXEC);
 }
 
-/* Struct to carry child pid from lxc_popen() to lxc_pclose().
- * Not an opaque struct to allow direct access to the underlying FILE *
- * (i.e., struct lxc_popen_FILE *file; fgets(buf, sizeof(buf), file->f))
- * without additional wrappers.
+/*
+ * Struct to carry child pid from lxc_popen() to lxc_pclose(). Not an opaque
+ * struct to allow direct access to the underlying FILE without additional
+ * wrappers.
  */
 struct lxc_popen_FILE {
 	int pipe;
@@ -94,9 +98,8 @@ extern int lxc_pclose(struct lxc_popen_FILE *fp);
 extern int wait_for_pid(pid_t pid);
 extern int lxc_wait_for_pid_status(pid_t pid);
 
-#if HAVE_LIBGNUTLS
-#define SHA_DIGEST_LENGTH 20
-extern int sha1sum_file(char *fnam, unsigned char *md_value);
+#if HAVE_OPENSSL
+extern int sha1sum_file(char *fnam, unsigned char *md_value, int *md_len);
 #endif
 
 /* initialize rand with urandom */
@@ -198,6 +201,21 @@ extern int lxc_unstack_mountpoint(const char *path, bool lazy);
  * @param[in] args     Arguments to be passed to child_fn.
  */
 extern int run_command(char *buf, size_t buf_size, int (*child_fn)(void *),
+		       void *args);
+
+/*
+ * run_command runs a command and collect it's std{err,out} output in buf, returns exit status.
+ *
+ * @param[out] buf     The buffer where the commands std{err,out] output will be
+ *                     read into. If no output was produced, buf will be memset
+ *                     to 0.
+ * @param[in] buf_size The size of buf. This function will reserve one byte for
+ *                     \0-termination.
+ * @param[in] child_fn The function to be run in the child process. This
+ *                     function must exec.
+ * @param[in] args     Arguments to be passed to child_fn.
+ */
+extern int run_command_status(char *buf, size_t buf_size, int (*child_fn)(void *),
 		       void *args);
 
 /* Concatenate all passed-in strings into one path. Do not fail. If any piece

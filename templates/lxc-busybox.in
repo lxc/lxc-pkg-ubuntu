@@ -23,6 +23,8 @@
 LXC_MAPPED_UID=
 LXC_MAPPED_GID=
 
+BUSYBOX_EXE=`which busybox`
+
 # Make sure the usual locations are in PATH
 export PATH=$PATH:/usr/sbin:/usr/bin:/sbin:/bin
 
@@ -67,6 +69,7 @@ ${rootfs}/sys \
 ${rootfs}/mnt \
 ${rootfs}/tmp \
 ${rootfs}/var/log \
+${rootfs}/var/run \
 ${rootfs}/usr/share/udhcpc \
 ${rootfs}/dev/pts \
 ${rootfs}/dev/shm \
@@ -86,16 +89,19 @@ ${rootfs}/usr/lib64"
       echo "lxc.mount.entry = /dev/${dev} dev/${dev} none bind,optional,create=file 0 0" >> "${path}/config"
     done
   else
-    mknod -m 666 "${rootfs}/tty" c 5 0       || res=1
-    mknod -m 666 "${rootfs}/console" c 5 1   || res=1
-    mknod -m 666 "${rootfs}/tty0" c 4 0      || res=1
-    mknod -m 666 "${rootfs}/tty1" c 4 0      || res=1
-    mknod -m 666 "${rootfs}/tty5" c 4 0      || res=1
-    mknod -m 600 "${rootfs}/ram0" b 1 0      || res=1
-    mknod -m 666 "${rootfs}/null" c 1 3      || res=1
-    mknod -m 666 "${rootfs}/zero" c 1 5      || res=1
-    mknod -m 666 "${rootfs}/urandom" c 1 9   || res=1
+    mknod -m 666 "${rootfs}/dev/tty" c 5 0       || res=1
+    mknod -m 666 "${rootfs}/dev/console" c 5 1   || res=1
+    mknod -m 666 "${rootfs}/dev/tty0" c 4 0      || res=1
+    mknod -m 666 "${rootfs}/dev/tty1" c 4 0      || res=1
+    mknod -m 666 "${rootfs}/dev/tty5" c 4 0      || res=1
+    mknod -m 600 "${rootfs}/dev/ram0" b 1 0      || res=1
+    mknod -m 666 "${rootfs}/dev/null" c 1 3      || res=1
+    mknod -m 666 "${rootfs}/dev/zero" c 1 5      || res=1
+    mknod -m 666 "${rootfs}/dev/urandom" c 1 9   || res=1
   fi
+  
+  # make /tmp accessible to any user (with sticky bit)
+  chmod 1777 "${rootfs}/tmp" || return 1
 
   # root user defined
   cat <<EOF >> "${rootfs}/etc/passwd"
@@ -128,7 +134,13 @@ EOF
   # writable and readable for other
   chmod 644 "${rootfs}/etc/inittab" || return 1
 
-  cat <<EOF >> "${rootfs}/usr/share/udhcpc/default.script"
+  # Look for the pathname of "default.script" from the help of udhcpc
+  DEF_SCRIPT=`${BUSYBOX_EXE} udhcpc -h 2>&1 | grep -- '-s,--script PROG' | cut -d'/' -f2- | cut -d')' -f1`
+  DEF_SCRIPT_DIR=`dirname /${DEF_SCRIPT}`
+  mkdir -p ${rootfs}/${DEF_SCRIPT_DIR}
+  chmod 644 ${rootfs}/${DEF_SCRIPT_DIR} || return 1
+
+  cat <<EOF >> ${rootfs}/${DEF_SCRIPT}
 #!/bin/sh
 case "\$1" in
   deconfig)
@@ -155,14 +167,17 @@ case "\$1" in
 
     [ -n "\$domain" ] && echo search \$domain > /etc/resolv.conf
     for i in \$dns ; do
-      echo nameserver \$i >> /etc/resolv.conf
+      grep "nameserver \$i" /etc/resolv.conf > /dev/null 2>&1
+      if [ \$? -ne 0 ]; then
+        echo nameserver \$i >> /etc/resolv.conf
+      fi
     done
     ;;
 esac
 exit 0
 EOF
 
- chmod 744 "${rootfs}/usr/share/udhcpc/default.script"
+ chmod 744 ${rootfs}/${DEF_SCRIPT}
 
  return "${res}"
 }
@@ -171,14 +186,9 @@ configure_busybox()
 {
   rootfs="${1}"
 
-  if ! which busybox > /dev/null 2>&1; then
-    echo "ERROR: Failed to find busybox binary"
-    return 1
-  fi
-
   # copy busybox in the rootfs
-  if ! cp "$(which busybox)" "${rootfs}/bin"; then
-    echo "ERROR: Failed to copy busybox binary"
+  if ! cp "${BUSYBOX_EXE}" "${rootfs}/bin"; then
+    echo "ERROR: Failed to copy busybox binary" 1>&2
     return 1
   fi
 
@@ -259,19 +269,26 @@ usage() {
 LXC busybox image builder
 
 Special arguments:
-[ -h | --help ]: Print this help message and exit.
 
-LXC internal arguments (do not pass manually!):
-[ --name <name> ]: The container name
-[ --path <path> ]: The path to the container
-[ --rootfs <rootfs> ]: The path to the container's rootfs
-[ --mapped-uid <map> ]: A uid map (user namespaces)
-[ --mapped-gid <map> ]: A gid map (user namespaces)
+  [ -h | --help ]: Print this help message and exit.
+
+LXC internal arguments:
+
+  [ --name <name> ]: The container name
+  [ --path <path> ]: The path to the container
+  [ --rootfs <rootfs> ]: The path to the container's rootfs (default: config or <path>/rootfs)
+  [ --mapped-uid <map> ]: A uid map (user namespaces)
+  [ --mapped-gid <map> ]: A gid map (user namespaces)
+
+BUSYBOX template specific arguments:
+
+  [ --busybox-path <path> ]: busybox pathname (default: ${BUSYBOX_EXE})
+
 EOF
   return 0
 }
 
-if ! options=$(getopt -o hp:n: -l help,rootfs:,path:,name:,mapped-uid:,mapped-gid: -- "$@"); then
+if ! options=$(getopt -o hp:n: -l help,rootfs:,path:,name:,mapped-uid:,mapped-gid:,busybox-path: -- "$@"); then
   usage
   exit 1
 fi
@@ -280,20 +297,31 @@ eval set -- "$options"
 while true
 do
   case "$1" in
-    -h|--help)    usage && exit 1;;
+    -h|--help)    usage && exit 0;;
     -n|--name)    name=$2; shift 2;;
     -p|--path)    path=$2; shift 2;;
     --rootfs)     rootfs=$2; shift 2;;
     --mapped-uid) LXC_MAPPED_UID=$2; shift 2;;
     --mapped-gid) LXC_MAPPED_GID=$2; shift 2;;
+    --busybox-path) BUSYBOX_EXE=$2; shift 2;;
     --)           shift 1; break ;;
     *)            break ;;
   esac
 done
 
 # Check that we have all variables we need
-if [ -z "${name}" ] || [ -z "${path}" ] || [ -z "${rootfs}" ]; then
-    echo "ERROR: Please pass the name, path, and rootfs for the container" 1>&2
+if [ -z "${name}" ] || [ -z "${path}" ]; then
+    echo "ERROR: Please pass the name and path for the container" 1>&2
+    exit 1
+fi
+
+# Make sure busybox is present
+if [ -z "${BUSYBOX_EXE}" ]; then
+    echo "ERROR: Please pass a pathname for busybox binary" 1>&2
+    exit 1
+fi
+if [ ! -x "${BUSYBOX_EXE}" ]; then
+    echo "ERROR: Failed to find busybox binary (${BUSYBOX_EXE})" 1>&2
     exit 1
 fi
 
@@ -308,21 +336,21 @@ if [ -z "$rootfs" ]; then
 fi
 
 if ! install_busybox "${rootfs}" "${name}"; then
-  echo "ERROR: Failed to install rootfs"
+  echo "ERROR: Failed to install rootfs" 1>&2
   exit 1
 fi
 
 if ! configure_busybox "${rootfs}"; then
-  echo "ERROR: Failed to configure busybox"
+  echo "ERROR: Failed to configure busybox" 1>&2
   exit 1
 fi
 
 if ! copy_configuration "${path}" "${rootfs}" "${name}"; then
-  echo "ERROR: Failed to write config file"
+  echo "ERROR: Failed to write config file" 1>&2
   exit 1
 fi
 
 if ! remap_userns "${path}"; then
-  echo "ERROR: Failed to change idmappings"
+  echo "ERROR: Failed to change idmappings" 1>&2
   exit 1
 fi

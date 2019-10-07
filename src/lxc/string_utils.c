@@ -1,20 +1,21 @@
 /* liblxcapi
  *
- * Copyright © 2018 Christian Brauner <christian.brauner@ubuntu.com>.
- * Copyright © 2018 Canonical Ltd.
+ * Copyright © 2019 Christian Brauner <christian.brauner@ubuntu.com>.
+ * Copyright © 2019 Canonical Ltd.
  *
- * This program is free software; you can redistribute it and/or modify
- * it under the terms of the GNU General Public License version 2, as
- * published by the Free Software Foundation.
- *
- * This program is distributed in the hope that it will be useful,
+ * This library is free software; you can redistribute it and/or
+ * modify it under the terms of the GNU Lesser General Public
+ * License as published by the Free Software Foundation; either
+ * version 2.1 of the License, or (at your option) any later version.
+
+ * This library is distributed in the hope that it will be useful,
  * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
- * GNU General Public License for more details.
- *
- * You should have received a copy of the GNU General Public License along
- * with this program; if not, write to the Free Software Foundation, Inc.,
- * 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
+ * Lesser General Public License for more details.
+
+ * You should have received a copy of the GNU Lesser General Public License
+ * along with this library; if not, write to the Free Software Foundation,
+ * Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301  USA
  */
 
 #ifndef _GNU_SOURCE
@@ -46,6 +47,7 @@
 #include "config.h"
 #include "lxclock.h"
 #include "macro.h"
+#include "memory_utils.h"
 #include "namespace.h"
 #include "parse.h"
 #include "string_utils.h"
@@ -68,7 +70,7 @@ char **lxc_va_arg_list_to_argv(va_list ap, size_t skip, int do_strdup)
 	 * constantly...
 	 */
 	va_copy(ap2, ap);
-	while (1) {
+	for (;;) {
 		char *arg = va_arg(ap2, char *);
 		if (!arg)
 			break;
@@ -81,7 +83,7 @@ char **lxc_va_arg_list_to_argv(va_list ap, size_t skip, int do_strdup)
 		return NULL;
 
 	count = skip;
-	while (1) {
+	for (;;) {
 		char *arg = va_arg(ap, char *);
 		if (!arg)
 			break;
@@ -295,19 +297,22 @@ char *lxc_append_paths(const char *first, const char *second)
 	int ret;
 	size_t len;
 	char *result = NULL;
-	const char *pattern = "%s%s";
+	int pattern_type = 0;
 
 	len = strlen(first) + strlen(second) + 1;
 	if (second[0] != '/') {
 		len += 1;
-		pattern = "%s/%s";
+		pattern_type = 1;
 	}
 
 	result = calloc(1, len);
 	if (!result)
 		return NULL;
 
-	ret = snprintf(result, len, pattern, first, second);
+	if (pattern_type == 0)
+		ret = snprintf(result, len, "%s%s", first, second);
+	else
+		ret = snprintf(result, len, "%s/%s", first, second);
 	if (ret < 0 || (size_t)ret >= len) {
 		free(result);
 		return NULL;
@@ -318,17 +323,14 @@ char *lxc_append_paths(const char *first, const char *second)
 
 bool lxc_string_in_list(const char *needle, const char *haystack, char _sep)
 {
-	char *token, *str;
+	__do_free char *str = NULL;
+	char *token;
 	char sep[2] = { _sep, '\0' };
-	size_t len;
 
 	if (!haystack || !needle)
 		return 0;
 
-	len = strlen(haystack);
-	str = alloca(len + 1);
-	(void)strlcpy(str, haystack, len + 1);
-
+	str = must_copy_string(haystack);
 	lxc_iterate_parts(token, str, sep)
 		if (strcmp(needle, token) == 0)
 			return 1;
@@ -338,21 +340,18 @@ bool lxc_string_in_list(const char *needle, const char *haystack, char _sep)
 
 char **lxc_string_split(const char *string, char _sep)
 {
-	char *token, *str;
+	__do_free char *str = NULL;
+	char *token;
 	char sep[2] = {_sep, '\0'};
 	char **tmp = NULL, **result = NULL;
 	size_t result_capacity = 0;
 	size_t result_count = 0;
 	int r, saved_errno;
-	size_t len;
 
 	if (!string)
 		return calloc(1, sizeof(char *));
 
-	len = strlen(string);
-	str = alloca(len + 1);
-	(void)strlcpy(str, string, len + 1);
-
+	str = must_copy_string(string);
 	lxc_iterate_parts(token, str, sep) {
 		r = lxc_grow_array((void ***)&result, &result_capacity, result_count + 1, 16);
 		if (r < 0)
@@ -458,22 +457,19 @@ char **lxc_string_split_quoted(char *string)
 
 char **lxc_string_split_and_trim(const char *string, char _sep)
 {
-	char *token, *str;
+	__do_free char *str = NULL;
+	char *token;
 	char sep[2] = { _sep, '\0' };
 	char **result = NULL;
 	size_t result_capacity = 0;
 	size_t result_count = 0;
 	int r, saved_errno;
 	size_t i = 0;
-	size_t len;
 
 	if (!string)
 		return calloc(1, sizeof(char *));
 
-	len = strlen(string);
-	str = alloca(len + 1);
-	(void)strlcpy(str, string, len + 1);
-
+	str = must_copy_string(string);
 	lxc_iterate_parts(token, str, sep) {
 		while (token[0] == ' ' || token[0] == '\t')
 			token++;

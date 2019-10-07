@@ -104,6 +104,7 @@ host_triplet = @host@
 @ENABLE_TESTS_TRUE@	lxc-test-containertests$(EXEEXT) \
 @ENABLE_TESTS_TRUE@	lxc-test-createtest$(EXEEXT) \
 @ENABLE_TESTS_TRUE@	lxc-test-criu-check-feature$(EXEEXT) \
+@ENABLE_TESTS_TRUE@	lxc-test-cve-2019-5736$(EXEEXT) \
 @ENABLE_TESTS_TRUE@	lxc-test-destroytest$(EXEEXT) \
 @ENABLE_TESTS_TRUE@	lxc-test-device-add-remove$(EXEEXT) \
 @ENABLE_TESTS_TRUE@	lxc-test-getkeys$(EXEEXT) \
@@ -247,6 +248,13 @@ lxc_test_criu_check_feature_OBJECTS =  \
 	$(am_lxc_test_criu_check_feature_OBJECTS)
 lxc_test_criu_check_feature_LDADD = $(LDADD)
 @ENABLE_TESTS_TRUE@lxc_test_criu_check_feature_DEPENDENCIES =  \
+@ENABLE_TESTS_TRUE@	../lxc/liblxc.la
+am__lxc_test_cve_2019_5736_SOURCES_DIST = cve-2019-5736.c lxctest.h
+@ENABLE_TESTS_TRUE@am_lxc_test_cve_2019_5736_OBJECTS =  \
+@ENABLE_TESTS_TRUE@	cve-2019-5736.$(OBJEXT)
+lxc_test_cve_2019_5736_OBJECTS = $(am_lxc_test_cve_2019_5736_OBJECTS)
+lxc_test_cve_2019_5736_LDADD = $(LDADD)
+@ENABLE_TESTS_TRUE@lxc_test_cve_2019_5736_DEPENDENCIES =  \
 @ENABLE_TESTS_TRUE@	../lxc/liblxc.la
 am__lxc_test_destroytest_SOURCES_DIST = destroytest.c
 @ENABLE_TESTS_TRUE@am_lxc_test_destroytest_OBJECTS =  \
@@ -421,16 +429,16 @@ am__depfiles_remade = ../lxc/$(DEPDIR)/namespace.Po \
 	./$(DEPDIR)/config_jump_table.Po ./$(DEPDIR)/console.Po \
 	./$(DEPDIR)/console_log.Po ./$(DEPDIR)/containertests.Po \
 	./$(DEPDIR)/createtest.Po ./$(DEPDIR)/criu_check_feature.Po \
-	./$(DEPDIR)/destroytest.Po ./$(DEPDIR)/device_add_remove.Po \
-	./$(DEPDIR)/get_item.Po ./$(DEPDIR)/getkeys.Po \
-	./$(DEPDIR)/list.Po ./$(DEPDIR)/locktests.Po \
-	./$(DEPDIR)/lxc-test-utils.Po ./$(DEPDIR)/lxc_raw_clone.Po \
-	./$(DEPDIR)/lxcpath.Po ./$(DEPDIR)/may_control.Po \
-	./$(DEPDIR)/parse_config_file.Po ./$(DEPDIR)/reboot.Po \
-	./$(DEPDIR)/saveconfig.Po ./$(DEPDIR)/share_ns.Po \
-	./$(DEPDIR)/shortlived.Po ./$(DEPDIR)/shutdowntest.Po \
-	./$(DEPDIR)/snapshot.Po ./$(DEPDIR)/startone.Po \
-	./$(DEPDIR)/state_server.Po
+	./$(DEPDIR)/cve-2019-5736.Po ./$(DEPDIR)/destroytest.Po \
+	./$(DEPDIR)/device_add_remove.Po ./$(DEPDIR)/get_item.Po \
+	./$(DEPDIR)/getkeys.Po ./$(DEPDIR)/list.Po \
+	./$(DEPDIR)/locktests.Po ./$(DEPDIR)/lxc-test-utils.Po \
+	./$(DEPDIR)/lxc_raw_clone.Po ./$(DEPDIR)/lxcpath.Po \
+	./$(DEPDIR)/may_control.Po ./$(DEPDIR)/parse_config_file.Po \
+	./$(DEPDIR)/reboot.Po ./$(DEPDIR)/saveconfig.Po \
+	./$(DEPDIR)/share_ns.Po ./$(DEPDIR)/shortlived.Po \
+	./$(DEPDIR)/shutdowntest.Po ./$(DEPDIR)/snapshot.Po \
+	./$(DEPDIR)/startone.Po ./$(DEPDIR)/state_server.Po
 am__mv = mv -f
 COMPILE = $(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) \
 	$(CPPFLAGS) $(AM_CFLAGS) $(CFLAGS)
@@ -459,6 +467,7 @@ SOURCES = $(lxc_test_api_reboot_SOURCES) $(lxc_test_apparmor_SOURCES) \
 	$(lxc_test_containertests_SOURCES) \
 	$(lxc_test_createtest_SOURCES) \
 	$(lxc_test_criu_check_feature_SOURCES) \
+	$(lxc_test_cve_2019_5736_SOURCES) \
 	$(lxc_test_destroytest_SOURCES) \
 	$(lxc_test_device_add_remove_SOURCES) \
 	$(lxc_test_get_item_SOURCES) $(lxc_test_getkeys_SOURCES) \
@@ -484,6 +493,7 @@ DIST_SOURCES = $(am__lxc_test_api_reboot_SOURCES_DIST) \
 	$(am__lxc_test_containertests_SOURCES_DIST) \
 	$(am__lxc_test_createtest_SOURCES_DIST) \
 	$(am__lxc_test_criu_check_feature_SOURCES_DIST) \
+	$(am__lxc_test_cve_2019_5736_SOURCES_DIST) \
 	$(am__lxc_test_destroytest_SOURCES_DIST) \
 	$(am__lxc_test_device_add_remove_SOURCES_DIST) \
 	$(am__lxc_test_get_item_SOURCES_DIST) \
@@ -560,7 +570,6 @@ ECHO_T = @ECHO_T@
 EGREP = @EGREP@
 EXEEXT = @EXEEXT@
 FGREP = @FGREP@
-GNUTLS_LIBS = @GNUTLS_LIBS@
 GREP = @GREP@
 HAVE_DOXYGEN = @HAVE_DOXYGEN@
 INCLUDEDIR = @INCLUDEDIR@
@@ -614,6 +623,7 @@ NM = @NM@
 NMEDIT = @NMEDIT@
 OBJDUMP = @OBJDUMP@
 OBJEXT = @OBJEXT@
+OPENSSL_LIBS = @OPENSSL_LIBS@
 OTOOL = @OTOOL@
 OTOOL64 = @OTOOL64@
 PACKAGE = @PACKAGE@
@@ -718,6 +728,7 @@ top_srcdir = @top_srcdir@
 @ENABLE_TESTS_TRUE@lxc_test_containertests_SOURCES = containertests.c
 @ENABLE_TESTS_TRUE@lxc_test_createtest_SOURCES = createtest.c
 @ENABLE_TESTS_TRUE@lxc_test_criu_check_feature_SOURCES = criu_check_feature.c lxctest.h
+@ENABLE_TESTS_TRUE@lxc_test_cve_2019_5736_SOURCES = cve-2019-5736.c lxctest.h
 @ENABLE_TESTS_TRUE@lxc_test_destroytest_SOURCES = destroytest.c
 @ENABLE_TESTS_TRUE@lxc_test_device_add_remove_SOURCES = device_add_remove.c
 @ENABLE_TESTS_TRUE@lxc_test_getkeys_SOURCES = getkeys.c
@@ -748,8 +759,7 @@ top_srcdir = @top_srcdir@
 @ENABLE_TESTS_TRUE@	-DLXC_DEFAULT_CONFIG=\"$(LXC_DEFAULT_CONFIG)\" \
 @ENABLE_TESTS_TRUE@	-DRUNTIME_PATH=\"$(RUNTIME_PATH)\" -I \
 @ENABLE_TESTS_TRUE@	$(top_srcdir)/src -I $(top_srcdir)/src/lxc \
-@ENABLE_TESTS_TRUE@	-I $(top_srcdir)/src/lxc/bdev -I \
-@ENABLE_TESTS_TRUE@	$(top_srcdir)/src/lxc/cgroups -I \
+@ENABLE_TESTS_TRUE@	-I $(top_srcdir)/src/lxc/cgroups -I \
 @ENABLE_TESTS_TRUE@	$(top_srcdir)/src/lxc/tools -pthread \
 @ENABLE_TESTS_TRUE@	$(am__append_1) $(am__append_2)
 @ENABLE_TESTS_TRUE@bin_SCRIPTS = $(am__append_3) $(am__append_4)
@@ -763,6 +773,7 @@ EXTRA_DIST = basic.c \
 	     containertests.c \
 	     createtest.c \
 	     criu_check_feature.c \
+	     cve-2019-5736.c \
 	     destroytest.c \
 	     device_add_remove.c \
 	     get_item.c \
@@ -931,6 +942,10 @@ lxc-test-criu-check-feature$(EXEEXT): $(lxc_test_criu_check_feature_OBJECTS) $(l
 	@rm -f lxc-test-criu-check-feature$(EXEEXT)
 	$(AM_V_CCLD)$(LINK) $(lxc_test_criu_check_feature_OBJECTS) $(lxc_test_criu_check_feature_LDADD) $(LIBS)
 
+lxc-test-cve-2019-5736$(EXEEXT): $(lxc_test_cve_2019_5736_OBJECTS) $(lxc_test_cve_2019_5736_DEPENDENCIES) $(EXTRA_lxc_test_cve_2019_5736_DEPENDENCIES) 
+	@rm -f lxc-test-cve-2019-5736$(EXEEXT)
+	$(AM_V_CCLD)$(LINK) $(lxc_test_cve_2019_5736_OBJECTS) $(lxc_test_cve_2019_5736_LDADD) $(LIBS)
+
 lxc-test-destroytest$(EXEEXT): $(lxc_test_destroytest_OBJECTS) $(lxc_test_destroytest_DEPENDENCIES) $(EXTRA_lxc_test_destroytest_DEPENDENCIES) 
 	@rm -f lxc-test-destroytest$(EXEEXT)
 	$(AM_V_CCLD)$(LINK) $(lxc_test_destroytest_OBJECTS) $(lxc_test_destroytest_LDADD) $(LIBS)
@@ -1074,6 +1089,7 @@ distclean-compile:
 @AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/containertests.Po@am__quote@ # am--include-marker
 @AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/createtest.Po@am__quote@ # am--include-marker
 @AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/criu_check_feature.Po@am__quote@ # am--include-marker
+@AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/cve-2019-5736.Po@am__quote@ # am--include-marker
 @AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/destroytest.Po@am__quote@ # am--include-marker
 @AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/device_add_remove.Po@am__quote@ # am--include-marker
 @AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/get_item.Po@am__quote@ # am--include-marker
@@ -1275,6 +1291,7 @@ distclean: distclean-am
 	-rm -f ./$(DEPDIR)/containertests.Po
 	-rm -f ./$(DEPDIR)/createtest.Po
 	-rm -f ./$(DEPDIR)/criu_check_feature.Po
+	-rm -f ./$(DEPDIR)/cve-2019-5736.Po
 	-rm -f ./$(DEPDIR)/destroytest.Po
 	-rm -f ./$(DEPDIR)/device_add_remove.Po
 	-rm -f ./$(DEPDIR)/get_item.Po
@@ -1354,6 +1371,7 @@ maintainer-clean: maintainer-clean-am
 	-rm -f ./$(DEPDIR)/containertests.Po
 	-rm -f ./$(DEPDIR)/createtest.Po
 	-rm -f ./$(DEPDIR)/criu_check_feature.Po
+	-rm -f ./$(DEPDIR)/cve-2019-5736.Po
 	-rm -f ./$(DEPDIR)/destroytest.Po
 	-rm -f ./$(DEPDIR)/device_add_remove.Po
 	-rm -f ./$(DEPDIR)/get_item.Po

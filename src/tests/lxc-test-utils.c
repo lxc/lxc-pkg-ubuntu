@@ -38,6 +38,7 @@
 #include <sys/types.h>
 #include <unistd.h>
 
+#include "confile_utils.h"
 #include "lxctest.h"
 #include "macro.h"
 #include "utils.h"
@@ -517,20 +518,18 @@ void test_parse_byte_size_string(void)
 	}
 }
 
-void test_lxc_config_net_hwaddr(void)
+void test_lxc_config_net_is_hwaddr(void)
 {
-	bool lxc_config_net_hwaddr(const char *line);
-
-	if (!lxc_config_net_hwaddr("lxc.net.0.hwaddr = 00:16:3e:04:65:b8\n"))
+	if (!lxc_config_net_is_hwaddr("lxc.net.0.hwaddr = 00:16:3e:04:65:b8\n"))
 		exit(EXIT_FAILURE);
 
-	if (lxc_config_net_hwaddr("lxc.net"))
+	if (lxc_config_net_is_hwaddr("lxc.net"))
 		exit(EXIT_FAILURE);
 
-	if (lxc_config_net_hwaddr("lxc.net."))
+	if (lxc_config_net_is_hwaddr("lxc.net."))
 		exit(EXIT_FAILURE);
 
-	if (lxc_config_net_hwaddr("lxc.net.0."))
+	if (lxc_config_net_is_hwaddr("lxc.net.0."))
 		exit(EXIT_FAILURE);
 }
 
@@ -605,7 +604,7 @@ int main(int argc, char *argv[])
 	test_lxc_safe_int();
 	test_lxc_safe_long();
 	test_parse_byte_size_string();
-	test_lxc_config_net_hwaddr();
+	test_lxc_config_net_is_hwaddr();
 	test_task_blocks_signal();
 
 	exit(EXIT_SUCCESS);

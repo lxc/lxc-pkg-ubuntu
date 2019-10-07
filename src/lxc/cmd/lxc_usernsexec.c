@@ -47,6 +47,7 @@
 #include "list.h"
 #include "log.h"
 #include "macro.h"
+#include "memory_utils.h"
 #include "file_utils.h"
 #include "string_utils.h"
 #include "syscall_wrappers.h"
@@ -198,12 +199,13 @@ static int parse_map(char *map)
  */
 static int read_default_map(char *fnam, int which, char *user)
 {
+	__do_free char *line = NULL;
+	__do_fclose FILE *fin = NULL;
 	size_t len;
 	char *p1, *p2;
-	FILE *fin;
+	unsigned long ul1, ul2;
 	int ret = -1;
 	size_t sz = 0;
-	char *line = NULL;
 	struct lxc_list *tmp = NULL;
 	struct id_map *newmap = NULL;
 
@@ -224,45 +226,47 @@ static int read_default_map(char *fnam, int which, char *user)
 		if (!p2)
 			continue;
 
+		line[strlen(line) - 1] = '\0';
+		*p2 = '\0';
+
+		ret = lxc_safe_ulong(p1 + 1, &ul1);
+		if (ret < 0)
+			break;
+
+		ret = lxc_safe_ulong(p2 + 1, &ul2);
+		if (ret < 0)
+			break;
+
+		ret = -1;
 		newmap = malloc(sizeof(*newmap));
 		if (!newmap)
-			goto on_error;
-
-		ret = lxc_safe_ulong(p1 + 1, &newmap->hostid);
-		if (ret < 0)
-			goto on_error;
-
-		ret = lxc_safe_ulong(p2 + 1, &newmap->range);
-		if (ret < 0)
-			goto on_error;
+			break;
 
 		newmap->nsid = 0;
 		newmap->idtype = which;
+		newmap->hostid = ul1;
+		newmap->range = ul2;
 
-		ret = -1;
 		tmp = malloc(sizeof(*tmp));
-		if (!tmp)
-			goto on_error;
+		if (!tmp) {
+			free(newmap);
+			break;
+		}
 
 		tmp->elem = newmap;
 		lxc_list_add_tail(&active_map, tmp);
+
+		ret = 0;
 		break;
 	}
-
-	ret = 0;
-
-on_error:
-	fclose(fin);
-	free(line);
-	free(newmap);
 
 	return ret;
 }
 
 static int find_default_map(void)
 {
+	__do_free char *buf = NULL;
 	size_t bufsize;
-	char *buf;
 	struct passwd pwent;
 	int ret = -1;
 	struct passwd *pwentp = NULL;
@@ -281,24 +285,18 @@ static int find_default_map(void)
 			CMD_SYSERROR("Failed to find matched password record");
 
 		CMD_SYSERROR("Failed to get password record for uid %d", getuid());
-		ret = -1;
-		goto out;
+		return -1;
 	}
 
 	ret = read_default_map(subuidfile, ID_TYPE_UID, pwent.pw_name);
 	if (ret < 0)
-		goto out;
+		return -1;
 
 	ret = read_default_map(subgidfile, ID_TYPE_GID, pwent.pw_name);
 	if (ret < 0)
-		goto out;
+		return -1;
 
-	ret = 0;
-
-out:
-	free(buf);
-
-	return ret;
+	return 0;
 }
 
 int main(int argc, char *argv[])
@@ -443,8 +441,10 @@ int main(int argc, char *argv[])
 	close(pipe_fds2[0]);
 
 	ret = lxc_read_nointr(pipe_fds1[0], buf, 1);
-	if (ret <= 0)
+	if (ret <= 0) {
 		CMD_SYSERROR("Failed to read from pipe file descriptor %d", pipe_fds1[0]);
+		_exit(EXIT_FAILURE);
+	}
 
 	buf[0] = '1';
 

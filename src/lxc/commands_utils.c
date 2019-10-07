@@ -1,20 +1,21 @@
 /* liblxcapi
  *
- * Copyright © 2017 Christian Brauner <christian.brauner@ubuntu.com>.
- * Copyright © 2017 Canonical Ltd.
+ * Copyright © 2019 Christian Brauner <christian.brauner@ubuntu.com>.
+ * Copyright © 2019 Canonical Ltd.
  *
- * This program is free software; you can redistribute it and/or modify
- * it under the terms of the GNU General Public License version 2, as
- * published by the Free Software Foundation.
- *
- * This program is distributed in the hope that it will be useful,
+ * This library is free software; you can redistribute it and/or
+ * modify it under the terms of the GNU Lesser General Public
+ * License as published by the Free Software Foundation; either
+ * version 2.1 of the License, or (at your option) any later version.
+
+ * This library is distributed in the hope that it will be useful,
  * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
- * GNU General Public License for more details.
- *
- * You should have received a copy of the GNU General Public License along
- * with this program; if not, write to the Free Software Foundation, Inc.,
- * 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
+ * Lesser General Public License for more details.
+
+ * You should have received a copy of the GNU Lesser General Public License
+ * along with this library; if not, write to the Free Software Foundation,
+ * Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301  USA
  */
 
 #ifndef _GNU_SOURCE
@@ -38,6 +39,7 @@
 #include "initutils.h"
 #include "log.h"
 #include "lxclock.h"
+#include "memory_utils.h"
 #include "monitor.h"
 #include "state.h"
 #include "utils.h"
@@ -81,8 +83,8 @@ int lxc_cmd_sock_rcv_state(int state_client_fd, int timeout)
 int lxc_cmd_sock_get_state(const char *name, const char *lxcpath,
 			   lxc_state_t states[MAX_STATE], int timeout)
 {
+	__do_close_prot_errno int state_client_fd = -EBADF;
 	int ret;
-	int state_client_fd;
 
 	ret = lxc_cmd_add_state_client(name, lxcpath, states, &state_client_fd);
 	if (ret < 0)
@@ -91,9 +93,7 @@ int lxc_cmd_sock_get_state(const char *name, const char *lxcpath,
 	if (ret < MAX_STATE)
 		return ret;
 
-	ret = lxc_cmd_sock_rcv_state(state_client_fd, timeout);
-	close(state_client_fd);
-	return ret;
+	return lxc_cmd_sock_rcv_state(state_client_fd, timeout);
 }
 
 int lxc_make_abstract_socket_name(char *path, size_t pathlen,
@@ -102,9 +102,9 @@ int lxc_make_abstract_socket_name(char *path, size_t pathlen,
 				  const char *hashed_sock_name,
 				  const char *suffix)
 {
+	__do_free char *tmppath = NULL;
 	const char *name;
 	char *offset;
-	char *tmppath;
 	size_t len;
 	size_t tmplen;
 	uint64_t hash;
@@ -153,7 +153,7 @@ int lxc_make_abstract_socket_name(char *path, size_t pathlen,
 
 	/* ret >= len; lxcpath or name is too long.  hash both */
 	tmplen = strlen(name) + strlen(lxcpath) + 2;
-	tmppath = alloca(tmplen);
+	tmppath = must_realloc(NULL, tmplen);
 	ret = snprintf(tmppath, tmplen, "%s/%s", lxcpath, name);
 	if (ret < 0 || (size_t)ret >= tmplen) {
 		ERROR("Failed to create abstract socket name");
@@ -192,9 +192,9 @@ int lxc_cmd_connect(const char *name, const char *lxcpath,
 int lxc_add_state_client(int state_client_fd, struct lxc_handler *handler,
 			 lxc_state_t states[MAX_STATE])
 {
+	__do_free struct lxc_state_client *newclient = NULL;
+	__do_free struct lxc_list *tmplist = NULL;
 	int state;
-	struct lxc_state_client *newclient;
-	struct lxc_list *tmplist;
 
 	newclient = malloc(sizeof(*newclient));
 	if (!newclient)
@@ -205,21 +205,19 @@ int lxc_add_state_client(int state_client_fd, struct lxc_handler *handler,
 	newclient->clientfd = state_client_fd;
 
 	tmplist = malloc(sizeof(*tmplist));
-	if (!tmplist) {
-		free(newclient);
+	if (!tmplist)
 		return -ENOMEM;
-	}
 
 	state = handler->state;
 	if (states[state] != 1) {
 		lxc_list_add_elem(tmplist, newclient);
 		lxc_list_add_tail(&handler->conf->state_clients, tmplist);
 	} else {
-		free(newclient);
-		free(tmplist);
 		return state;
 	}
 
 	TRACE("Added state client %d to state client list", state_client_fd);
+	move_ptr(newclient);
+	move_ptr(tmplist);
 	return MAX_STATE;
 }

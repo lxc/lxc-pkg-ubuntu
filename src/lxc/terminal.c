@@ -44,6 +44,7 @@
 #include "log.h"
 #include "lxclock.h"
 #include "mainloop.h"
+#include "memory_utils.h"
 #include "start.h"
 #include "syscall_wrappers.h"
 #include "terminal.h"
@@ -58,15 +59,6 @@
 #define LXC_TERMINAL_BUFFER_SIZE 1024
 
 lxc_log_define(terminal, lxc);
-
-static struct lxc_list lxc_ttys;
-
-typedef void (*sighandler_t)(int);
-
-__attribute__((constructor)) void lxc_terminal_init_global(void)
-{
-	lxc_list_init(&lxc_ttys);
-}
 
 void lxc_terminal_winsz(int srcfd, int dstfd)
 {
@@ -95,20 +87,6 @@ void lxc_terminal_winsz(int srcfd, int dstfd)
 static void lxc_terminal_winch(struct lxc_terminal_state *ts)
 {
 	lxc_terminal_winsz(ts->stdinfd, ts->masterfd);
-
-	if (ts->winch_proxy)
-		lxc_cmd_terminal_winch(ts->winch_proxy, ts->winch_proxy_lxcpath);
-}
-
-void lxc_terminal_sigwinch(int sig)
-{
-	struct lxc_list *it;
-	struct lxc_terminal_state *ts;
-
-	lxc_list_for_each(it, &lxc_ttys) {
-		ts = it->elem;
-		lxc_terminal_winch(ts);
-	}
 }
 
 int lxc_terminal_signalfd_cb(int fd, uint32_t events, void *cbdata,
@@ -161,9 +139,6 @@ struct lxc_terminal_state *lxc_terminal_signal_init(int srcfd, int dstfd)
 	if (!istty) {
 		INFO("fd %d does not refer to a tty device", srcfd);
 	} else {
-		/* Add tty to list to be scanned at SIGWINCH time. */
-		lxc_list_add_elem(&ts->node, ts);
-		lxc_list_add_tail(&lxc_ttys, &ts->node);
 		ret = sigaddset(&mask, SIGWINCH);
 		if (ret < 0)
 			SYSNOTICE("Failed to add SIGWINCH to signal set");
@@ -199,9 +174,6 @@ on_error:
 		ts->sigfd = -1;
 	}
 
-	if (istty)
-		lxc_list_del(&ts->node);
-
 	return ts;
 }
 
@@ -213,9 +185,6 @@ void lxc_terminal_signal_fini(struct lxc_terminal_state *ts)
 		if (pthread_sigmask(SIG_SETMASK, &ts->oldmask, NULL) < 0)
 			SYSWARN("Failed to restore signal mask");
 	}
-
-	if (isatty(ts->stdinfd))
-		lxc_list_del(&ts->node);
 
 	free(ts);
 }
@@ -231,9 +200,9 @@ static int lxc_terminal_truncate_log_file(struct lxc_terminal *terminal)
 
 static int lxc_terminal_rotate_log_file(struct lxc_terminal *terminal)
 {
+	__do_free char *tmp = NULL;
 	int ret;
 	size_t len;
-	char *tmp;
 
 	if (!terminal->log_path || terminal->log_rotate == 0)
 		return -EOPNOTSUPP;
@@ -243,7 +212,7 @@ static int lxc_terminal_rotate_log_file(struct lxc_terminal *terminal)
 		return -EBADF;
 
 	len = strlen(terminal->log_path) + sizeof(".1");
-	tmp = alloca(len);
+	tmp = must_realloc(NULL, len);
 
 	ret = snprintf(tmp, len, "%s.1", terminal->log_path);
 	if (ret < 0 || (size_t)ret >= len)
@@ -1065,14 +1034,12 @@ int lxc_console(struct lxc_container *c, int ttynum,
 		goto close_fds;
 	}
 	ts->escape = escape;
-	ts->winch_proxy = c->name;
-	ts->winch_proxy_lxcpath = c->config_path;
 	ts->stdoutfd = stdoutfd;
 
 	istty = isatty(stdinfd);
 	if (istty) {
 		lxc_terminal_winsz(stdinfd, masterfd);
-		lxc_cmd_terminal_winch(ts->winch_proxy, ts->winch_proxy_lxcpath);
+		lxc_terminal_winsz(ts->stdinfd, ts->masterfd);
 	} else {
 		INFO("File descriptor %d does not refer to a terminal", stdinfd);
 	}

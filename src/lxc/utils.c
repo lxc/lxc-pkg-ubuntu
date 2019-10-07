@@ -49,6 +49,7 @@
 #include "config.h"
 #include "log.h"
 #include "lxclock.h"
+#include "memory_utils.h"
 #include "namespace.h"
 #include "parse.h"
 #include "raw_syscalls.h"
@@ -329,17 +330,30 @@ again:
 	return status;
 }
 
-#if HAVE_LIBGNUTLS
-#include <gnutls/gnutls.h>
-#include <gnutls/crypto.h>
+#ifdef HAVE_OPENSSL
+#include <openssl/evp.h>
 
-__attribute__((constructor))
-static void gnutls_lxc_init(void)
+static int do_sha1_hash(const char *buf, int buflen, unsigned char *md_value, int *md_len)
 {
-	gnutls_global_init();
+	EVP_MD_CTX *mdctx;
+	const EVP_MD *md;
+
+	md = EVP_get_digestbyname("sha1");
+	if(!md) {
+		printf("Unknown message digest: sha1\n");
+		return -1;
+	}
+
+	mdctx = EVP_MD_CTX_new();
+	EVP_DigestInit_ex(mdctx, md, NULL);
+	EVP_DigestUpdate(mdctx, buf, buflen);
+	EVP_DigestFinal_ex(mdctx, md_value, md_len);
+	EVP_MD_CTX_free(mdctx);
+
+	return 0;
 }
 
-int sha1sum_file(char *fnam, unsigned char *digest)
+int sha1sum_file(char *fnam, unsigned char *digest, int *md_len)
 {
 	char *buf;
 	int ret;
@@ -393,7 +407,7 @@ int sha1sum_file(char *fnam, unsigned char *digest)
 	}
 
 	buf[flen] = '\0';
-	ret = gnutls_hash_fast(GNUTLS_DIG_SHA1, buf, flen, (void *)digest);
+	ret = do_sha1_hash(buf, flen, (void *)digest, md_len);
 	free(buf);
 	return ret;
 }
@@ -447,7 +461,12 @@ struct lxc_popen_FILE *lxc_popen(const char *command)
 		if (ret < 0)
 			_exit(EXIT_FAILURE);
 
-		execl("/bin/sh", "sh", "-c", command, (char *)NULL);
+		/* check if /bin/sh exist, otherwise try Android location /system/bin/sh */
+		if (file_exists("/bin/sh"))
+			execl("/bin/sh", "sh", "-c", command, (char *)NULL);
+		else
+			execl("/system/bin/sh", "sh", "-c", command, (char *)NULL);
+
 		_exit(127);
 	}
 
@@ -679,15 +698,18 @@ int detect_shared_rootfs(void)
 
 bool switch_to_ns(pid_t pid, const char *ns)
 {
-	int fd, ret;
-	char nspath[PATH_MAX];
+	__do_close_prot_errno int fd = -EBADF;
+	int ret;
+	char nspath[STRLITERALLEN("/proc//ns/")
+		    + INTTYPE_TO_STRLEN(pid_t)
+		    + LXC_NAMESPACE_NAME_MAX];
 
 	/* Switch to new ns */
-	ret = snprintf(nspath, PATH_MAX, "/proc/%d/ns/%s", pid, ns);
-	if (ret < 0 || ret >= PATH_MAX)
+	ret = snprintf(nspath, sizeof(nspath), "/proc/%d/ns/%s", pid, ns);
+	if (ret < 0 || ret >= sizeof(nspath))
 		return false;
 
-	fd = open(nspath, O_RDONLY);
+	fd = open(nspath, O_RDONLY | O_CLOEXEC);
 	if (fd < 0) {
 		SYSERROR("Failed to open \"%s\"", nspath);
 		return false;
@@ -695,12 +717,11 @@ bool switch_to_ns(pid_t pid, const char *ns)
 
 	ret = setns(fd, 0);
 	if (ret) {
-		SYSERROR("Failed to set process %d to \"%s\" of %d.", pid, ns, fd);
-		close(fd);
+		SYSERROR("Failed to set process %d to \"%s\" of %d.", pid, ns,
+			 fd);
 		return false;
 	}
 
-	close(fd);
 	return true;
 }
 
@@ -897,9 +918,13 @@ char *get_template_path(const char *t)
 	int ret, len;
 	char *tpath;
 
-	if (t[0] == '/' && access(t, X_OK) == 0) {
-		tpath = strdup(t);
-		return tpath;
+	if (t[0] == '/') {
+		if (access(t, X_OK) == 0) {
+			return strdup(t);
+		} else {
+			SYSERROR("Bad template pathname: %s", t);
+			return NULL;
+		}
 	}
 
 	len = strlen(LXCTEMPLATEDIR) + strlen(t) + strlen("/lxc-") + 1;
@@ -1084,7 +1109,7 @@ static int open_without_symlink(const char *target, const char *prefix_skip)
 		goto out;
 	}
 
-	while (1) {
+	for (;;) {
 		int newfd, saved_errno;
 		char *nextpath;
 
@@ -1477,8 +1502,16 @@ static int lxc_get_unused_loop_dev(char *name_loop)
 		goto on_error;
 
 	fd_tmp = open(name_loop, O_RDWR | O_CLOEXEC);
-	if (fd_tmp < 0)
-		SYSERROR("Failed to open loop \"%s\"", name_loop);
+	if (fd_tmp < 0) {
+		/* on Android loop devices are moved under /dev/block, give it a shot */
+		ret = snprintf(name_loop, LO_NAME_SIZE, "/dev/block/loop%d", loop_nr);
+                if (ret < 0 || ret >= LO_NAME_SIZE)
+                        goto on_error;
+
+		fd_tmp = open(name_loop, O_RDWR | O_CLOEXEC);
+		if (fd_tmp < 0)
+			SYSERROR("Failed to open loop \"%s\"", name_loop);
+	}
 
 on_error:
 	close(fd_ctl);
@@ -1568,7 +1601,7 @@ pop_stack:
 	return umounts;
 }
 
-int run_command(char *buf, size_t buf_size, int (*child_fn)(void *), void *args)
+int run_command_internal(char *buf, size_t buf_size, int (*child_fn)(void *), void *args, bool wait_status)
 {
 	pid_t child;
 	int ret, fret, pipefd[2];
@@ -1583,7 +1616,7 @@ int run_command(char *buf, size_t buf_size, int (*child_fn)(void *), void *args)
 		return -1;
 	}
 
-	child = lxc_raw_clone(0);
+	child = lxc_raw_clone(0, NULL);
 	if (child < 0) {
 		close(pipefd[0]);
 		close(pipefd[1]);
@@ -1625,11 +1658,25 @@ int run_command(char *buf, size_t buf_size, int (*child_fn)(void *), void *args)
 			buf[bytes - 1] = '\0';
 	}
 
-	fret = wait_for_pid(child);
+	if (wait_status)
+		fret = lxc_wait_for_pid_status(child);
+	else
+		fret = wait_for_pid(child);
+
 	/* close the read-end of the pipe */
 	close(pipefd[0]);
 
 	return fret;
+}
+
+int run_command(char *buf, size_t buf_size, int (*child_fn)(void *), void *args)
+{
+    return run_command_internal(buf, buf_size, child_fn, args, false);
+}
+
+int run_command_status(char *buf, size_t buf_size, int (*child_fn)(void *), void *args)
+{
+    return run_command_internal(buf, buf_size, child_fn, args, true);
 }
 
 bool lxc_nic_exists(char *nic)
@@ -1679,9 +1726,9 @@ int lxc_set_death_signal(int signal, pid_t parent)
 	ret = prctl(PR_SET_PDEATHSIG, prctl_arg(signal), prctl_arg(0),
 		    prctl_arg(0), prctl_arg(0));
 
-	/* Check whether we have been orphaned. */
+	/* If not in a PID namespace, check whether we have been orphaned. */
 	ppid = (pid_t)syscall(SYS_getppid);
-	if (ppid != parent) {
+	if (ppid && ppid != parent) {
 		ret = raise(SIGKILL);
 		if (ret < 0)
 			return -1;

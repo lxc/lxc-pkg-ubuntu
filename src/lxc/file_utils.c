@@ -1,20 +1,21 @@
 /* liblxcapi
  *
- * Copyright © 2018 Christian Brauner <christian.brauner@ubuntu.com>.
- * Copyright © 2018 Canonical Ltd.
+ * Copyright © 2019 Christian Brauner <christian.brauner@ubuntu.com>.
+ * Copyright © 2019 Canonical Ltd.
  *
- * This program is free software; you can redistribute it and/or modify
- * it under the terms of the GNU General Public License version 2, as
- * published by the Free Software Foundation.
- *
- * This program is distributed in the hope that it will be useful,
+ * This library is free software; you can redistribute it and/or
+ * modify it under the terms of the GNU Lesser General Public
+ * License as published by the Free Software Foundation; either
+ * version 2.1 of the License, or (at your option) any later version.
+
+ * This library is distributed in the hope that it will be useful,
  * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
- * GNU General Public License for more details.
- *
- * You should have received a copy of the GNU General Public License along
- * with this program; if not, write to the Free Software Foundation, Inc.,
- * 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
+ * Lesser General Public License for more details.
+
+ * You should have received a copy of the GNU Lesser General Public License
+ * along with this library; if not, write to the Free Software Foundation,
+ * Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301  USA
  */
 
 #ifndef _GNU_SOURCE
@@ -31,7 +32,9 @@
 #include "config.h"
 #include "file_utils.h"
 #include "macro.h"
-#include "string.h"
+#include "memory_utils.h"
+#include "string_utils.h"
+#include "utils.h"
 
 int lxc_write_to_file(const char *filename, const void *buf, size_t count,
 		      bool add_newline, mode_t mode)
@@ -218,7 +221,8 @@ int lxc_count_file_lines(const char *fn)
 
 int lxc_make_tmpfile(char *template, bool rm)
 {
-	int fd, ret;
+	__do_close_prot_errno int fd = -EBADF;
+	int ret;
 	mode_t msk;
 
 	msk = umask(0022);
@@ -227,16 +231,17 @@ int lxc_make_tmpfile(char *template, bool rm)
 	if (fd < 0)
 		return -1;
 
+	if (lxc_set_cloexec(fd))
+		return -1;
+
 	if (!rm)
-		return fd;
+		return move_fd(fd);
 
 	ret = unlink(template);
-	if (ret < 0) {
-		close(fd);
+	if (ret < 0)
 		return -1;
-	}
 
-	return fd;
+	return move_fd(fd);
 }
 
 bool is_fs_type(const struct statfs *fs, fs_type_magic magic_val)
@@ -326,4 +331,73 @@ again:
 	}
 
 	return ret;
+}
+
+char *file_to_buf(char *path, size_t *length)
+{
+	int fd;
+	char buf[PATH_MAX];
+	char *copy = NULL;
+
+	if (!length)
+		return NULL;
+
+	fd = open(path, O_RDONLY | O_CLOEXEC);
+	if (fd < 0)
+		return NULL;
+
+	*length = 0;
+	for (;;) {
+		int n;
+		char *old = copy;
+
+		n = lxc_read_nointr(fd, buf, sizeof(buf));
+		if (n < 0)
+			goto on_error;
+		if (!n)
+			break;
+
+		copy = must_realloc(old, (*length + n) * sizeof(*old));
+		memcpy(copy + *length, buf, n);
+		*length += n;
+	}
+
+	close(fd);
+	return copy;
+
+on_error:
+	close(fd);
+	free(copy);
+
+	return NULL;
+}
+
+int fd_to_fd(int from, int to)
+{
+	for (;;) {
+		uint8_t buf[PATH_MAX];
+		uint8_t *p = buf;
+		ssize_t bytes_to_write;
+		ssize_t bytes_read;
+
+		bytes_read = lxc_read_nointr(from, buf, sizeof buf);
+		if (bytes_read < 0)
+			return -1;
+		if (bytes_read == 0)
+			break;
+
+		bytes_to_write = (size_t)bytes_read;
+		do {
+			ssize_t bytes_written;
+
+			bytes_written = lxc_write_nointr(to, p, bytes_to_write);
+			if (bytes_written < 0)
+				return -1;
+
+			bytes_to_write -= bytes_written;
+			p += bytes_written;
+		} while (bytes_to_write > 0);
+	}
+
+	return 0;
 }

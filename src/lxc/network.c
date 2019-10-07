@@ -54,6 +54,7 @@
 #include "file_utils.h"
 #include "log.h"
 #include "macro.h"
+#include "memory_utils.h"
 #include "network.h"
 #include "nl.h"
 #include "raw_syscalls.h"
@@ -212,6 +213,7 @@ static int instantiate_macvlan(struct lxc_handler *handler, struct lxc_netdev *n
 {
 	char peerbuf[IFNAMSIZ], *peer;
 	int err;
+	unsigned int mtu = 0;
 
 	if (netdev->link[0] == '\0') {
 		ERROR("No link for macvlan network device specified");
@@ -239,6 +241,22 @@ static int instantiate_macvlan(struct lxc_handler *handler, struct lxc_netdev *n
 	if (!netdev->ifindex) {
 		ERROR("Failed to retrieve ifindex for \"%s\"", peer);
 		goto on_error;
+	}
+
+	if (netdev->mtu) {
+		err = lxc_safe_uint(netdev->mtu, &mtu);
+		if (err < 0) {
+			errno = -err;
+			SYSERROR("Failed to parse mtu \"%s\" for interface \"%s\"", netdev->mtu, peer);
+			goto on_error;
+		}
+
+		err = lxc_netdev_set_mtu(peer, mtu);
+		if (err < 0) {
+			errno = -err;
+			SYSERROR("Failed to set mtu \"%s\" for interface \"%s\"", netdev->mtu, peer);
+			goto on_error;
+		}
 	}
 
 	if (netdev->upscript) {
@@ -296,7 +314,23 @@ static int instantiate_vlan(struct lxc_handler *handler, struct lxc_netdev *netd
 		return -1;
 	}
 
-	DEBUG("Instantiated vlan \"%s\" with ifindex is \"%d\" (vlan1000)",
+	if (netdev->upscript) {
+		char *argv[] = {
+		    "vlan",
+		    netdev->link,
+		    NULL,
+		};
+
+		err = run_script_argv(handler->name,
+				handler->conf->hooks_version, "net",
+				netdev->upscript, "up", argv);
+		if (err < 0) {
+			lxc_netdev_delete_by_name(peer);
+			return -1;
+		}
+	}
+
+	DEBUG("Instantiated vlan \"%s\" with ifindex is \"%d\"",
 	      peer, netdev->ifindex);
 	if (netdev->mtu) {
 		if (lxc_safe_uint(netdev->mtu, &mtu) < 0) {
@@ -321,12 +355,8 @@ static int instantiate_vlan(struct lxc_handler *handler, struct lxc_netdev *netd
 
 static int instantiate_phys(struct lxc_handler *handler, struct lxc_netdev *netdev)
 {
-	int ret;
-	char *argv[] = {
-		"phys",
-		netdev->link,
-		NULL,
-	};
+	int err, mtu_orig = 0;
+	unsigned int mtu = 0;
 
 	if (netdev->link[0] == '\0') {
 		ERROR("No link for physical interface specified");
@@ -351,13 +381,47 @@ static int instantiate_phys(struct lxc_handler *handler, struct lxc_netdev *netd
 	 */
 	netdev->priv.phys_attr.ifindex = netdev->ifindex;
 
-	if (!netdev->upscript)
-		return 0;
+	/* Get original device MTU setting and store for restoration after container shutdown. */
+	mtu_orig = netdev_get_mtu(netdev->ifindex);
+	if (mtu_orig < 0) {
+		SYSERROR("Failed to get original mtu for interface \"%s\"", netdev->link);
+		return minus_one_set_errno(-mtu_orig);
+	}
 
-	ret = run_script_argv(handler->name, handler->conf->hooks_version,
-			      "net", netdev->upscript, "up", argv);
-	if (ret < 0)
-		return -1;
+	netdev->priv.phys_attr.mtu = mtu_orig;
+
+	if (netdev->mtu) {
+		err = lxc_safe_uint(netdev->mtu, &mtu);
+		if (err < 0) {
+			errno = -err;
+			SYSERROR("Failed to parse mtu \"%s\" for interface \"%s\"", netdev->mtu, netdev->link);
+			return -1;
+		}
+
+		err = lxc_netdev_set_mtu(netdev->link, mtu);
+		if (err < 0) {
+			errno = -err;
+			SYSERROR("Failed to set mtu \"%s\" for interface \"%s\"", netdev->mtu, netdev->link);
+			return -1;
+		}
+	}
+
+	if (netdev->upscript) {
+		char *argv[] = {
+		    "phys",
+		    netdev->link,
+		    NULL,
+		};
+
+		err = run_script_argv(handler->name,
+				handler->conf->hooks_version, "net",
+				netdev->upscript, "up", argv);
+		if (err < 0) {
+			return -1;
+		}
+	}
+
+	DEBUG("Instantiated phys \"%s\" with ifindex is \"%d\"", netdev->link, netdev->ifindex);
 
 	return 0;
 }
@@ -446,6 +510,21 @@ static int shutdown_macvlan(struct lxc_handler *handler, struct lxc_netdev *netd
 
 static int shutdown_vlan(struct lxc_handler *handler, struct lxc_netdev *netdev)
 {
+	int ret;
+	char *argv[] = {
+	    "vlan",
+	    netdev->link,
+	    NULL,
+	};
+
+	if (!netdev->downscript)
+		return 0;
+
+	ret = run_script_argv(handler->name, handler->conf->hooks_version,
+			      "net", netdev->downscript, "down", argv);
+	if (ret < 0)
+		return -1;
+
 	return 0;
 }
 
@@ -502,6 +581,46 @@ static  instantiate_cb netdev_deconf[LXC_NET_MAXCONFTYPE + 1] = {
 	[LXC_NET_NONE]    = shutdown_none,
 };
 
+static int lxc_netdev_move_by_index_fd(int ifindex, int fd, const char *ifname)
+{
+	int err;
+	struct nl_handler nlh;
+	struct ifinfomsg *ifi;
+	struct nlmsg *nlmsg = NULL;
+
+	err = netlink_open(&nlh, NETLINK_ROUTE);
+	if (err)
+		return err;
+
+	err = -ENOMEM;
+	nlmsg = nlmsg_alloc(NLMSG_GOOD_SIZE);
+	if (!nlmsg)
+		goto out;
+
+	nlmsg->nlmsghdr->nlmsg_flags = NLM_F_REQUEST | NLM_F_ACK;
+	nlmsg->nlmsghdr->nlmsg_type = RTM_NEWLINK;
+
+	ifi = nlmsg_reserve(nlmsg, sizeof(struct ifinfomsg));
+	if (!ifi)
+		goto out;
+	ifi->ifi_family = AF_UNSPEC;
+	ifi->ifi_index = ifindex;
+
+	if (nla_put_u32(nlmsg, IFLA_NET_NS_FD, fd))
+		goto out;
+
+	if (ifname != NULL) {
+		if (nla_put_string(nlmsg, IFLA_IFNAME, ifname))
+			goto out;
+	}
+
+	err = netlink_transaction(&nlh, nlmsg, nlmsg);
+out:
+	netlink_close(&nlh);
+	nlmsg_free(nlmsg);
+	return err;
+}
+
 int lxc_netdev_move_by_index(int ifindex, pid_t pid, const char *ifname)
 {
 	int err;
@@ -549,15 +668,15 @@ out:
 #define PHYSNAME "/sys/class/net/%s/phy80211/name"
 static char *is_wlan(const char *ifname)
 {
+	__do_free char *path = NULL;
 	int i, ret;
 	long physlen;
 	size_t len;
-	char *path;
 	FILE *f;
 	char *physname = NULL;
 
 	len = strlen(ifname) + strlen(PHYSNAME) - 1;
-	path = alloca(len + 1);
+	path = must_realloc(NULL, len + 1);
 	ret = snprintf(path, len, PHYSNAME, ifname);
 	if (ret < 0 || (size_t)ret >= len)
 		goto bad;
@@ -739,8 +858,10 @@ int lxc_netdev_rename_by_index(int ifindex, const char *newname)
 		return err;
 
 	len = strlen(newname);
-	if (len == 1 || len >= IFNAMSIZ)
+	if (len == 1 || len >= IFNAMSIZ) {
+		err = -EINVAL;
 		goto out;
+	}
 
 	err = -ENOMEM;
 	nlmsg = nlmsg_alloc(NLMSG_GOOD_SIZE);
@@ -1907,7 +2028,7 @@ int lxc_bridge_attach(const char *bridge, const char *ifname)
 	if (is_ovs_bridge(bridge))
 		return lxc_ovs_attach_bridge(bridge, ifname);
 
-	fd = socket(AF_INET, SOCK_STREAM, 0);
+	fd = socket(AF_INET, SOCK_STREAM | SOCK_CLOEXEC, 0);
 	if (fd < 0)
 		return -errno;
 
@@ -1973,7 +2094,7 @@ char *lxc_mkifname(char *template)
 	}
 
 	/* Generate random names until we find one that doesn't exist. */
-	while (true) {
+	for (;;) {
 		name[0] = '\0';
 		(void)strlcpy(name, template, IFNAMSIZ);
 
@@ -1982,9 +2103,9 @@ char *lxc_mkifname(char *template)
 		for (i = 0; i < strlen(name); i++) {
 			if (name[i] == 'X') {
 #ifdef HAVE_RAND_R
-				name[i] = padchar[rand_r(&seed) % (strlen(padchar) - 1)];
+				name[i] = padchar[rand_r(&seed) % strlen(padchar)];
 #else
-				name[i] = padchar[rand() % (strlen(padchar) - 1)];
+				name[i] = padchar[rand() % strlen(padchar)];
 #endif
 			}
 		}
@@ -2011,7 +2132,7 @@ int setup_private_host_hw_addr(char *veth1)
 	int err, sockfd;
 	struct ifreq ifr;
 
-	sockfd = socket(AF_INET, SOCK_DGRAM, 0);
+	sockfd = socket(AF_INET, SOCK_DGRAM | SOCK_CLOEXEC, 0);
 	if (sockfd < 0)
 		return -errno;
 
@@ -2116,8 +2237,6 @@ static int lxc_create_network_unpriv_exec(const char *lxcpath, const char *lxcna
 	}
 
 	if (child == 0) {
-		int ret;
-		size_t retlen;
 		char pidstr[INTTYPE_TO_STRLEN(pid_t)];
 
 		close(pipefd[0]);
@@ -2280,7 +2399,6 @@ static int lxc_delete_network_unpriv_exec(const char *lxcpath, const char *lxcna
 
 	if (child == 0) {
 		char *hostveth;
-		int ret;
 
 		close(pipefd[0]);
 
@@ -2389,6 +2507,8 @@ bool lxc_delete_network_unpriv(struct lxc_handler *handler)
 				TRACE("Renamed interface with index %d to its "
 				      "initial name \"%s\"",
 				      netdev->ifindex, netdev->link);
+
+			ret = netdev_deconf[netdev->type](handler, netdev);
 			goto clear_ifindices;
 		}
 
@@ -2559,11 +2679,24 @@ bool lxc_delete_network_priv(struct lxc_handler *handler)
 				WARN("Failed to rename interface with index %d "
 				     "from \"%s\" to its initial name \"%s\"",
 				     netdev->ifindex, netdev->name, netdev->link);
-			else
+			else {
 				TRACE("Renamed interface with index %d from "
 				      "\"%s\" to its initial name \"%s\"",
 				      netdev->ifindex, netdev->name,
 				      netdev->link);
+
+				/* Restore original MTU */
+				ret = lxc_netdev_set_mtu(netdev->link, netdev->priv.phys_attr.mtu);
+				if (ret < 0) {
+					WARN("Failed to set interface \"%s\" to its initial mtu \"%d\"",
+						netdev->link, netdev->priv.phys_attr.mtu);
+				} else {
+					TRACE("Restored interface \"%s\" to its initial mtu \"%d\"",
+						netdev->link, netdev->priv.phys_attr.mtu);
+				}
+			}
+
+			ret = netdev_deconf[netdev->type](handler, netdev);
 			goto clear_ifindices;
 		}
 
@@ -2576,18 +2709,16 @@ bool lxc_delete_network_priv(struct lxc_handler *handler)
 		 * interface to the network namespace, we have to destroy it.
 		 */
 		ret = lxc_netdev_delete_by_index(netdev->ifindex);
-		if (-ret == ENODEV) {
-			INFO("Interface \"%s\" with index %d already "
-			     "deleted or existing in different network "
-			     "namespace",
+		if (ret < 0) {
+			if (errno != ENODEV) {
+				WARN("Failed to remove interface \"%s\" with index %d",
+				     netdev->name[0] != '\0' ? netdev->name : "(null)",
+				     netdev->ifindex);
+				goto clear_ifindices;
+			}
+			INFO("Interface \"%s\" with index %d already deleted or existing in different network namespace",
 			     netdev->name[0] != '\0' ? netdev->name : "(null)",
 			     netdev->ifindex);
-		} else if (ret < 0) {
-			errno = -ret;
-			SYSWARN("Failed to remove interface \"%s\" with index %d",
-			        netdev->name[0] != '\0' ? netdev->name : "(null)",
-			        netdev->ifindex);
-			goto clear_ifindices;
 		}
 		INFO("Removed interface \"%s\" with index %d",
 		     netdev->name[0] != '\0' ? netdev->name : "(null)",
@@ -2608,9 +2739,8 @@ bool lxc_delete_network_priv(struct lxc_handler *handler)
 
 		ret = lxc_netdev_delete_by_name(hostveth);
 		if (ret < 0) {
-			errno = -ret;
-			SYSWARN("Failed to remove interface \"%s\" from \"%s\"",
-			        hostveth, netdev->link);
+			WARN("Failed to remove interface \"%s\" from \"%s\"",
+			     hostveth, netdev->link);
 			goto clear_ifindices;
 		}
 		INFO("Removed interface \"%s\" from \"%s\"", hostveth, netdev->link);
@@ -2689,7 +2819,7 @@ int lxc_restore_phys_nics_to_netns(struct lxc_handler *handler)
 
 	TRACE("Moving physical network devices back to parent network namespace");
 
-	oldfd = lxc_preserve_ns(lxc_raw_getpid(), "net");
+	oldfd = lxc_preserve_ns(handler->monitor_pid, "net");
 	if (oldfd < 0) {
 		SYSERROR("Failed to preserve network namespace");
 		return -1;
@@ -2717,7 +2847,7 @@ int lxc_restore_phys_nics_to_netns(struct lxc_handler *handler)
 			continue;
 		}
 
-		ret = lxc_netdev_move_by_name(ifname, 1, netdev->link);
+		ret = lxc_netdev_move_by_index_fd(netdev->ifindex, oldfd, netdev->link);
 		if (ret < 0)
 			WARN("Error moving network device \"%s\" back to "
 			     "network namespace", ifname);
@@ -2753,7 +2883,7 @@ static int setup_hw_addr(char *hwaddr, const char *ifname)
 	ifr.ifr_name[IFNAMSIZ-1] = '\0';
 	memcpy((char *) &ifr.ifr_hwaddr, (char *) &sockaddr, sizeof(sockaddr));
 
-	fd = socket(AF_INET, SOCK_DGRAM, 0);
+	fd = socket(AF_INET, SOCK_DGRAM | SOCK_CLOEXEC, 0);
 	if (fd < 0)
 		return -1;
 
@@ -2925,8 +3055,6 @@ static int lxc_setup_netdev_in_child_namespaces(struct lxc_netdev *netdev)
 
 	/* set the network device up */
 	if (netdev->flags & IFF_UP) {
-		int err;
-
 		err = lxc_netdev_up(current_ifname);
 		if (err) {
 			errno = -err;
@@ -2981,7 +3109,7 @@ static int lxc_setup_netdev_in_child_namespaces(struct lxc_netdev *netdev)
 				if (netdev->ipv4_gateway_auto) {
 					char buf[INET_ADDRSTRLEN];
 					inet_ntop(AF_INET, netdev->ipv4_gateway, buf, sizeof(buf));
-					ERROR("Fried to set autodetected ipv4 gateway \"%s\"", buf);
+					ERROR("Tried to set autodetected ipv4 gateway \"%s\"", buf);
 				}
 				return -1;
 			}
