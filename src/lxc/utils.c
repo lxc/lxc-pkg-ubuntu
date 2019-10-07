@@ -333,7 +333,7 @@ again:
 #ifdef HAVE_OPENSSL
 #include <openssl/evp.h>
 
-static int do_sha1_hash(const char *buf, int buflen, unsigned char *md_value, int *md_len)
+static int do_sha1_hash(const char *buf, int buflen, unsigned char *md_value, unsigned int *md_len)
 {
 	EVP_MD_CTX *mdctx;
 	const EVP_MD *md;
@@ -353,7 +353,7 @@ static int do_sha1_hash(const char *buf, int buflen, unsigned char *md_value, in
 	return 0;
 }
 
-int sha1sum_file(char *fnam, unsigned char *digest, int *md_len)
+int sha1sum_file(char *fnam, unsigned char *digest, unsigned int *md_len)
 {
 	char *buf;
 	int ret;
@@ -1163,8 +1163,8 @@ int safe_mount(const char *src, const char *dest, const char *fstype,
 		if (srcfd < 0)
 			return srcfd;
 
-		ret = snprintf(srcbuf, 50, "/proc/self/fd/%d", srcfd);
-		if (ret < 0 || ret > 50) {
+		ret = snprintf(srcbuf, sizeof(srcbuf), "/proc/self/fd/%d", srcfd);
+		if (ret < 0 || ret >= (int)sizeof(srcbuf)) {
 			close(srcfd);
 			ERROR("Out of memory");
 			return -EINVAL;
@@ -1183,8 +1183,8 @@ int safe_mount(const char *src, const char *dest, const char *fstype,
 		return destfd;
 	}
 
-	ret = snprintf(destbuf, 50, "/proc/self/fd/%d", destfd);
-	if (ret < 0 || ret > 50) {
+	ret = snprintf(destbuf, sizeof(destbuf), "/proc/self/fd/%d", destfd);
+	if (ret < 0 || ret >= (int)sizeof(destbuf)) {
 		if (srcfd != -1)
 			close(srcfd);
 

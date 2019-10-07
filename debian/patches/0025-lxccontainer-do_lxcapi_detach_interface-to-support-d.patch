@@ -1,0 +1,122 @@
+From 12c40a5d2e9235a489f8c48a23c2d99f067add3c Mon Sep 17 00:00:00 2001
+From: Thomas Parrott <thomas.parrott@canonical.com>
+Date: Fri, 26 Jul 2019 16:14:18 +0100
+Subject: lxccontainer: do_lxcapi_detach_interface to support detaching wlan
+ devices
+
+Signed-off-by: Thomas Parrott <thomas.parrott@canonical.com>
+---
+ src/lxc/attach.c       |  2 +-
+ src/lxc/attach.h       |  2 ++
+ src/lxc/lxccontainer.c | 23 ++++++++++++++++++++++-
+ src/lxc/network.c      |  4 ++--
+ src/lxc/network.h      |  4 ++++
+ 5 files changed, 31 insertions(+), 4 deletions(-)
+
+diff --git a/src/lxc/attach.c b/src/lxc/attach.c
+index d22e6bd77..b36653ff0 100644
+--- a/src/lxc/attach.c
++++ b/src/lxc/attach.c
+@@ -213,7 +213,7 @@ static int lxc_attach_to_ns(pid_t pid, struct lxc_proc_context_info *ctx)
+ 	return 0;
+ }
+ 
+-static int lxc_attach_remount_sys_proc(void)
++int lxc_attach_remount_sys_proc(void)
+ {
+ 	int ret;
+ 
+diff --git a/src/lxc/attach.h b/src/lxc/attach.h
+index c576aa9fc..ce7c461b3 100644
+--- a/src/lxc/attach.h
++++ b/src/lxc/attach.h
+@@ -45,4 +45,6 @@ extern int lxc_attach(struct lxc_container *container,
+ 		      lxc_attach_exec_t exec_function, void *exec_payload,
+ 		      lxc_attach_options_t *options, pid_t *attached_process);
+ 
++extern int lxc_attach_remount_sys_proc(void);
++
+ #endif /* __LXC_ATTACH_H */
+diff --git a/src/lxc/lxccontainer.c b/src/lxc/lxccontainer.c
+index 3d864fd1c..519226daa 100644
+--- a/src/lxc/lxccontainer.c
++++ b/src/lxc/lxccontainer.c
+@@ -4752,6 +4752,7 @@ static bool do_lxcapi_detach_interface(struct lxc_container *c,
+ {
+ 	int ret;
+ 	pid_t pid, pid_outside;
++	__do_free char *physname = NULL;
+ 
+ 	/*
+ 	 * TODO - if this is a physical device, then we need am_host_unpriv.
+@@ -4787,6 +4788,19 @@ static bool do_lxcapi_detach_interface(struct lxc_container *c,
+ 			_exit(EXIT_FAILURE);
+ 		}
+ 
++		/* create new mount namespace for use with remounting /sys and is_wlan() below. */
++		ret = unshare(CLONE_NEWNS);
++		if (ret < 0) {
++			ERROR("Failed to unshare mount namespace");
++			_exit(EXIT_FAILURE);
++		}
++
++		/* set / recursively as private so that mount propagation doesn't affect us.  */
++		if (mount(NULL, "/", NULL, MS_REC | MS_PRIVATE, 0) < 0) {
++			ERROR("Failed to recursively set / as private in mount namespace");
++			_exit(EXIT_FAILURE);
++		}
++
+ 		ret = lxc_netdev_isup(ifname);
+ 		if (ret < 0) {
+ 			ERROR("Failed to determine whether network device \"%s\" is up", ifname);
+@@ -4802,7 +4816,14 @@ static bool do_lxcapi_detach_interface(struct lxc_container *c,
+ 			}
+ 		}
+ 
+-		ret = lxc_netdev_move_by_name(ifname, pid_outside, dst_ifname);
++		/* remount /sys so is_wlan() can check if this device is a wlan device. */
++		lxc_attach_remount_sys_proc();
++		physname = is_wlan(ifname);
++		if (physname)
++			ret = lxc_netdev_move_wlan(physname, ifname, pid_outside, dst_ifname);
++		else
++			ret = lxc_netdev_move_by_name(ifname, pid_outside, dst_ifname);
++
+ 		/* -EINVAL means there is no netdev named as ifname. */
+ 		if (ret < 0) {
+ 			if (ret == -EINVAL)
+diff --git a/src/lxc/network.c b/src/lxc/network.c
+index fb8260cff..d81407cfb 100644
+--- a/src/lxc/network.c
++++ b/src/lxc/network.c
+@@ -666,7 +666,7 @@ out:
+  * will be passed to lxc_netdev_move_wlan() which will free it when done.
+  */
+ #define PHYSNAME "/sys/class/net/%s/phy80211/name"
+-static char *is_wlan(const char *ifname)
++char *is_wlan(const char *ifname)
+ {
+ 	__do_free char *path = NULL;
+ 	int i, ret;
+@@ -739,7 +739,7 @@ static int lxc_netdev_rename_by_name_in_netns(pid_t pid, const char *old,
+ 	_exit(lxc_netdev_rename_by_name(old, new));
+ }
+ 
+-static int lxc_netdev_move_wlan(char *physname, const char *ifname, pid_t pid,
++int lxc_netdev_move_wlan(char *physname, const char *ifname, pid_t pid,
+ 				const char *newname)
+ {
+ 	char *cmd;
+diff --git a/src/lxc/network.h b/src/lxc/network.h
+index 45d31867e..b7e3c42fd 100644
+--- a/src/lxc/network.h
++++ b/src/lxc/network.h
+@@ -277,4 +277,8 @@ extern int lxc_network_recv_name_and_ifindex_from_child(struct lxc_handler *hand
+ extern int lxc_netns_set_nsid(int netns_fd);
+ extern int lxc_netns_get_nsid(__s32 fd);
+ 
++extern char *is_wlan(const char *ifname);
++extern int lxc_netdev_move_wlan(char *physname, const char *ifname, pid_t pid,
++				const char *newname);
++
+ #endif /* __LXC_NETWORK_H */

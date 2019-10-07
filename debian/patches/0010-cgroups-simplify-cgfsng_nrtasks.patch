@@ -1,0 +1,30 @@
+From 92637a0e574ac53b7e75d53f55bd2b8a0f94f5d3 Mon Sep 17 00:00:00 2001
+From: Christian Brauner <christian.brauner@ubuntu.com>
+Date: Thu, 27 Jun 2019 14:43:36 +0200
+Subject: cgroups: simplify cgfsng_nrtasks()
+
+Signed-off-by: Christian Brauner <christian.brauner@ubuntu.com>
+---
+ src/lxc/cgroups/cgfsng.c | 4 +---
+ 1 file changed, 1 insertion(+), 3 deletions(-)
+
+diff --git a/src/lxc/cgroups/cgfsng.c b/src/lxc/cgroups/cgfsng.c
+index 473d108d9..91e8d2610 100644
+--- a/src/lxc/cgroups/cgfsng.c
++++ b/src/lxc/cgroups/cgfsng.c
+@@ -1896,14 +1896,12 @@ static int recursive_count_nrtasks(char *dirname)
+ __cgfsng_ops static int cgfsng_nrtasks(struct cgroup_ops *ops)
+ {
+ 	__do_free char *path = NULL;
+-	int count;
+ 
+ 	if (!ops->container_cgroup || !ops->hierarchies)
+ 		return -1;
+ 
+ 	path = must_make_path(ops->hierarchies[0]->container_full_path, NULL);
+-	count = recursive_count_nrtasks(path);
+-	return count;
++	return recursive_count_nrtasks(path);
+ }
+ 
+ /* Only root needs to escape to the cgroup of its init. */

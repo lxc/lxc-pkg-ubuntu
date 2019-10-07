@@ -1282,6 +1282,7 @@ static struct lxc_storage *do_storage_create(struct lxc_container *c,
 
 	if (!c->set_config_item(c, "lxc.rootfs.path", bdev->src)) {
 		ERROR("Failed to set \"lxc.rootfs.path = %s\"", bdev->src);
+		storage_put(bdev);
 		return NULL;
 	}
 
@@ -1637,7 +1638,8 @@ static bool prepend_lxc_header(char *path, const char *t, char *const argv[])
 	FILE *f;
 	int ret = -1;
 #if HAVE_OPENSSL
-	int i, md_len = 0;
+	int i;
+	unsigned int md_len = 0;
 	unsigned char md_value[EVP_MAX_MD_SIZE];
 	char *tpath;
 #endif
@@ -4751,6 +4753,7 @@ static bool do_lxcapi_detach_interface(struct lxc_container *c,
 {
 	int ret;
 	pid_t pid, pid_outside;
+	__do_free char *physname = NULL;
 
 	/*
 	 * TODO - if this is a physical device, then we need am_host_unpriv.
@@ -4786,6 +4789,19 @@ static bool do_lxcapi_detach_interface(struct lxc_container *c,
 			_exit(EXIT_FAILURE);
 		}
 
+		/* create new mount namespace for use with remounting /sys and is_wlan() below. */
+		ret = unshare(CLONE_NEWNS);
+		if (ret < 0) {
+			ERROR("Failed to unshare mount namespace");
+			_exit(EXIT_FAILURE);
+		}
+
+		/* set / recursively as private so that mount propagation doesn't affect us.  */
+		if (mount(NULL, "/", NULL, MS_REC | MS_PRIVATE, 0) < 0) {
+			ERROR("Failed to recursively set / as private in mount namespace");
+			_exit(EXIT_FAILURE);
+		}
+
 		ret = lxc_netdev_isup(ifname);
 		if (ret < 0) {
 			ERROR("Failed to determine whether network device \"%s\" is up", ifname);
@@ -4801,7 +4817,14 @@ static bool do_lxcapi_detach_interface(struct lxc_container *c,
 			}
 		}
 
-		ret = lxc_netdev_move_by_name(ifname, pid_outside, dst_ifname);
+		/* remount /sys so is_wlan() can check if this device is a wlan device. */
+		lxc_attach_remount_sys_proc();
+		physname = is_wlan(ifname);
+		if (physname)
+			ret = lxc_netdev_move_wlan(physname, ifname, pid_outside, dst_ifname);
+		else
+			ret = lxc_netdev_move_by_name(ifname, pid_outside, dst_ifname);
+
 		/* -EINVAL means there is no netdev named as ifname. */
 		if (ret < 0) {
 			if (ret == -EINVAL)

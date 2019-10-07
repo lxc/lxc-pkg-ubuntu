@@ -1,0 +1,32 @@
+From 33e55620a1eab1d6ee8538520ca4e4d5dabd49be Mon Sep 17 00:00:00 2001
+From: Christian Brauner <christian.brauner@ubuntu.com>
+Date: Thu, 27 Jun 2019 14:27:58 +0200
+Subject: cgroups: move variable into tighter scope
+
+Signed-off-by: Christian Brauner <christian.brauner@ubuntu.com>
+---
+ src/lxc/cgroups/cgfsng.c | 4 ++--
+ 1 file changed, 2 insertions(+), 2 deletions(-)
+
+diff --git a/src/lxc/cgroups/cgfsng.c b/src/lxc/cgroups/cgfsng.c
+index cb6b53c60..ba0851601 100644
+--- a/src/lxc/cgroups/cgfsng.c
++++ b/src/lxc/cgroups/cgfsng.c
+@@ -2084,7 +2084,7 @@ on_error:
+ __cgfsng_ops static bool cgfsng_attach(struct cgroup_ops *ops, const char *name,
+ 					 const char *lxcpath, pid_t pid)
+ {
+-	int i, len, ret;
++	int len, ret;
+ 	char pidstr[INTTYPE_TO_STRLEN(pid_t)];
+ 
+ 	if (!ops->hierarchies)
+@@ -2094,7 +2094,7 @@ __cgfsng_ops static bool cgfsng_attach(struct cgroup_ops *ops, const char *name,
+ 	if (len < 0 || (size_t)len >= sizeof(pidstr))
+ 		return false;
+ 
+-	for (i = 0; ops->hierarchies[i]; i++) {
++	for (int i = 0; ops->hierarchies[i]; i++) {
+ 		__do_free char *fullpath = NULL, *path = NULL;
+ 		struct hierarchy *h = ops->hierarchies[i];
+ 

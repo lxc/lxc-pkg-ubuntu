@@ -1,0 +1,31 @@
+From c0f668e21a7d511305551901f519cbe374fc1065 Mon Sep 17 00:00:00 2001
+From: Christian Brauner <christian.brauner@ubuntu.com>
+Date: Thu, 27 Jun 2019 14:26:38 +0200
+Subject: cgroups: simplify cgfsng_setup_limits()
+
+Signed-off-by: Christian Brauner <christian.brauner@ubuntu.com>
+---
+ src/lxc/cgroups/cgfsng.c | 9 +++------
+ 1 file changed, 3 insertions(+), 6 deletions(-)
+
+diff --git a/src/lxc/cgroups/cgfsng.c b/src/lxc/cgroups/cgfsng.c
+index 9cffae9e9..018548622 100644
+--- a/src/lxc/cgroups/cgfsng.c
++++ b/src/lxc/cgroups/cgfsng.c
+@@ -2394,13 +2394,10 @@ static bool __cg_unified_setup_limits(struct cgroup_ops *ops,
+ }
+ 
+ __cgfsng_ops static bool cgfsng_setup_limits(struct cgroup_ops *ops,
+-					       struct lxc_conf *conf,
+-					       bool do_devices)
++					     struct lxc_conf *conf,
++					     bool do_devices)
+ {
+-	bool bret;
+-
+-	bret = __cg_legacy_setup_limits(ops, &conf->cgroup, do_devices);
+-	if (!bret)
++	if (!__cg_legacy_setup_limits(ops, &conf->cgroup, do_devices))
+ 		return false;
+ 
+ 	return __cg_unified_setup_limits(ops, &conf->cgroup2);

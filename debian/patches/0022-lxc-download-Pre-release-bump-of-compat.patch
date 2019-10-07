@@ -1,0 +1,26 @@
+From 6708933b1c4e484fed2726613e087d25488aceec Mon Sep 17 00:00:00 2001
+From: =?UTF-8?q?St=C3=A9phane=20Graber?= <stgraber@ubuntu.com>
+Date: Mon, 22 Jul 2019 18:23:48 -0400
+Subject: lxc-download: Pre-release bump of compat
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+Signed-off-by: Stéphane Graber <stgraber@ubuntu.com>
+---
+ templates/lxc-download.in | 2 +-
+ 1 file changed, 1 insertion(+), 1 deletion(-)
+
+diff --git a/templates/lxc-download.in b/templates/lxc-download.in
+index 413b85f35..c3b0b2a05 100644
+--- a/templates/lxc-download.in
++++ b/templates/lxc-download.in
+@@ -28,7 +28,7 @@ LXC_TEMPLATE_CONFIG="@LXCTEMPLATECONFIG@"
+ # Defaults
+ DOWNLOAD_ARCH=
+ DOWNLOAD_BUILD=
+-DOWNLOAD_COMPAT_LEVEL=5
++DOWNLOAD_COMPAT_LEVEL=6
+ DOWNLOAD_DIST=
+ DOWNLOAD_FLUSH_CACHE="false"
+ DOWNLOAD_FORCE_CACHE="false"

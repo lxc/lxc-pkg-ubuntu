@@ -1,0 +1,34 @@
+From 46966676542c4887c9e08774b4428bd790577ea1 Mon Sep 17 00:00:00 2001
+From: LiFeng <lifeng68@huawei.com>
+Date: Wed, 26 Jun 2019 23:54:27 -0400
+Subject: cgfsng: fix memory leak in lxc_cpumask_to_cpulist
+
+Signed-off-by: LiFeng <lifeng68@huawei.com>
+---
+ src/lxc/cgroups/cgfsng.c | 6 +++++-
+ 1 file changed, 5 insertions(+), 1 deletion(-)
+
+diff --git a/src/lxc/cgroups/cgfsng.c b/src/lxc/cgroups/cgfsng.c
+index 349bd7e58..fa96eef2f 100644
+--- a/src/lxc/cgroups/cgfsng.c
++++ b/src/lxc/cgroups/cgfsng.c
+@@ -320,6 +320,7 @@ static char *lxc_cpumask_to_cpulist(uint32_t *bitarr, size_t nbits)
+ {
+ 	int ret;
+ 	size_t i;
++	char *tmp = NULL;
+ 	char **cpulist = NULL;
+ 	char numstr[INTTYPE_TO_STRLEN(size_t)] = {0};
+ 
+@@ -343,7 +344,10 @@ static char *lxc_cpumask_to_cpulist(uint32_t *bitarr, size_t nbits)
+ 	if (!cpulist)
+ 		return NULL;
+ 
+-	return lxc_string_join(",", (const char **)cpulist, false);
++	tmp = lxc_string_join(",", (const char **)cpulist, false);
++	lxc_free_array((void **)cpulist, free);
++
++	return tmp;
+ }
+ 
+ static ssize_t get_max_cpus(char *cpulist)

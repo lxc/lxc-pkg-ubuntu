@@ -1,0 +1,37 @@
+From fd313e82806cdf098df0d9d3b5eeb073fa24ad4f Mon Sep 17 00:00:00 2001
+From: Thomas Parrott <thomas.parrott@canonical.com>
+Date: Tue, 21 May 2019 17:25:52 +0100
+Subject: lxc/log: Adds error_log_errno macro
+
+Suggested usage:
+
+	return error_log_errno(err, "Failed: %s", "some error");
+
+It sets errno to the value of err, then calls SYSERROR with the format and remaining args.
+
+It always returns -1.
+
+Suggested-by: Christian Brauner <christian.brauner@ubuntu.com>
+Signed-off-by: Thomas Parrott <thomas.parrott@canonical.com>
+---
+ src/lxc/log.h | 7 +++++++
+ 1 file changed, 7 insertions(+)
+
+diff --git a/src/lxc/log.h b/src/lxc/log.h
+index 5afe4e093..8b093de90 100644
+--- a/src/lxc/log.h
++++ b/src/lxc/log.h
+@@ -505,6 +505,13 @@ ATTR_UNUSED static inline void LXC_##LEVEL(struct lxc_log_locinfo* locinfo,	\
+ 	} while (0)
+ #endif
+ 
++#define error_log_errno(__errno__, format, ...) 	\
++	({						\
++		errno = __errno__;			\
++		SYSERROR(format, ##__VA_ARGS__);	\
++		-1;					\
++	})
++
+ extern int lxc_log_fd;
+ 
+ extern int lxc_log_syslog(int facility);

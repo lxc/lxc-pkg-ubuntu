@@ -1113,7 +1113,6 @@ static int do_start(void *data)
 	ATTR_UNUSED __do_close_prot_errno int data_sock0 = handler->data_sock[0],
 					      data_sock1 = handler->data_sock[1];
 	int ret;
-	char path[PATH_MAX];
 	uid_t new_uid;
 	gid_t new_gid;
 	struct lxc_list *iterator;
@@ -1220,11 +1219,6 @@ static int do_start(void *data)
 		goto out_warn_father;
 	}
 
-	ret = snprintf(path, sizeof(path), "%s/dev/null",
-		       handler->conf->rootfs.mount);
-	if (ret < 0 || ret >= sizeof(path))
-		goto out_warn_father;
-
 	/* In order to checkpoint restore, we need to have everything in the
 	 * same mount namespace. However, some containers may not have a
 	 * reasonable /dev (in particular, they may not have /dev/null), so we
@@ -1236,6 +1230,13 @@ static int do_start(void *data)
 	 * where it isn't wanted.
 	 */
 	if (handler->daemonize && !handler->conf->autodev) {
+		char path[PATH_MAX];
+		
+		ret = snprintf(path, sizeof(path), "%s/dev/null",
+			       handler->conf->rootfs.mount);
+		if (ret < 0 || ret >= sizeof(path))
+			goto out_warn_father;
+		
 		ret = access(path, F_OK);
 		if (ret != 0) {
 			devnull_fd = open_devnull();
@@ -1604,7 +1605,10 @@ static int proc_pidfd_open(pid_t pid)
 
 	/* Test whether we can send signals. */
 	if (lxc_raw_pidfd_send_signal(proc_pidfd, 0, NULL, 0)) {
-		SYSERROR("Failed to send signal through pidfd");
+		if (errno != ENOSYS)
+			SYSERROR("Failed to send signal through pidfd");
+		else
+			INFO("Sending signals through pidfds not supported on this kernel");
 		return -1;
 	}
 
@@ -1745,6 +1749,14 @@ static int lxc_spawn(struct lxc_handler *handler)
 			goto out_delete_net;
 	}
 
+	ret = snprintf(pidstr, 20, "%d", handler->pid);
+	if (ret < 0 || ret >= 20)
+		goto out_delete_net;
+
+	ret = setenv("LXC_PID", pidstr, 1);
+	if (ret < 0)
+		SYSERROR("Failed to set environment variable: LXC_PID=%s", pidstr);
+
 	for (i = 0; i < LXC_NS_MAX; i++)
 		if (handler->ns_on_clone_flags & ns_info[i].clone_flag)
 			INFO("Cloned %s", ns_info[i].flag_name);
@@ -1880,14 +1892,6 @@ static int lxc_spawn(struct lxc_handler *handler)
 			DEBUG("Preserved cgroup namespace via fd %d", ret);
 		}
 	}
-
-	ret = snprintf(pidstr, 20, "%d", handler->pid);
-	if (ret < 0 || ret >= 20)
-		goto out_delete_net;
-
-	ret = setenv("LXC_PID", pidstr, 1);
-	if (ret < 0)
-		SYSERROR("Failed to set environment variable: LXC_PID=%s", pidstr);
 
 	/* Run any host-side start hooks */
 	ret = run_lxc_hooks(name, "start-host", conf, NULL);

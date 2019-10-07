@@ -1,0 +1,26 @@
+From d609e194df4d5ccb2ad4994a2a62f7497b96bdda Mon Sep 17 00:00:00 2001
+From: Christian Brauner <christian.brauner@ubuntu.com>
+Date: Wed, 10 Jul 2019 16:34:29 +0200
+Subject: cgroup: check for non-empty conf
+
+Signed-off-by: Christian Brauner <christian.brauner@ubuntu.com>
+---
+ src/lxc/cgroups/cgroup.c | 5 +++++
+ 1 file changed, 5 insertions(+)
+
+diff --git a/src/lxc/cgroups/cgroup.c b/src/lxc/cgroups/cgroup.c
+index bf92bf298..5443bd961 100644
+--- a/src/lxc/cgroups/cgroup.c
++++ b/src/lxc/cgroups/cgroup.c
+@@ -44,6 +44,11 @@ struct cgroup_ops *cgroup_init(struct lxc_conf *conf)
+ {
+ 	struct cgroup_ops *cgroup_ops;
+ 
++	if (!conf) {
++		ERROR("No valid conf given");
++		return NULL;
++	}
++
+ 	cgroup_ops = cgfsng_ops_init(conf);
+ 	if (!cgroup_ops) {
+ 		ERROR("Failed to initialize cgroup driver");

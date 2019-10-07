@@ -1,0 +1,39 @@
+From bdb2aec57bffdfb66ffc2869e9659aa8d6a2c357 Mon Sep 17 00:00:00 2001
+From: Rachid Koucha <47061324+Rachid-Koucha@users.noreply.github.com>
+Date: Thu, 11 Jul 2019 10:01:36 +0200
+Subject: Suppress hardcoded table sizes
+
+. Use sizeof() instead of hardcoded values
+. snprintf(..., size, ""...) is in error if the return code is >= size (not sufficient to set only ">")
+
+Signed-off-by: Rachid Koucha <rachid.koucha@gmail.com>
+---
+ src/lxc/utils.c | 8 ++++----
+ 1 file changed, 4 insertions(+), 4 deletions(-)
+
+diff --git a/src/lxc/utils.c b/src/lxc/utils.c
+index 21c1ae8e3..63c0b7a04 100644
+--- a/src/lxc/utils.c
++++ b/src/lxc/utils.c
+@@ -1163,8 +1163,8 @@ int safe_mount(const char *src, const char *dest, const char *fstype,
+ 		if (srcfd < 0)
+ 			return srcfd;
+ 
+-		ret = snprintf(srcbuf, 50, "/proc/self/fd/%d", srcfd);
+-		if (ret < 0 || ret > 50) {
++		ret = snprintf(srcbuf, sizeof(srcbuf), "/proc/self/fd/%d", srcfd);
++		if (ret < 0 || ret >= (int)sizeof(srcbuf)) {
+ 			close(srcfd);
+ 			ERROR("Out of memory");
+ 			return -EINVAL;
+@@ -1183,8 +1183,8 @@ int safe_mount(const char *src, const char *dest, const char *fstype,
+ 		return destfd;
+ 	}
+ 
+-	ret = snprintf(destbuf, 50, "/proc/self/fd/%d", destfd);
+-	if (ret < 0 || ret > 50) {
++	ret = snprintf(destbuf, sizeof(destbuf), "/proc/self/fd/%d", destfd);
++	if (ret < 0 || ret >= (int)sizeof(destbuf)) {
+ 		if (srcfd != -1)
+ 			close(srcfd);
+ 
