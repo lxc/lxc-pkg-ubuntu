@@ -59,6 +59,7 @@
 #include "lxcseccomp.h"
 #include "macro.h"
 #include "mainloop.h"
+#include "memory_utils.h"
 #include "namespace.h"
 #include "raw_syscalls.h"
 #include "syscall_wrappers.h"
@@ -76,31 +77,28 @@ static lxc_attach_options_t attach_static_default_options = LXC_ATTACH_OPTIONS_D
 
 static struct lxc_proc_context_info *lxc_proc_get_context_info(pid_t pid)
 {
+	__do_free char *line = NULL;
+	__do_fclose FILE *proc_file = NULL;
 	int ret;
 	bool found;
-	FILE *proc_file;
 	char proc_fn[LXC_PROC_STATUS_LEN];
+	struct lxc_proc_context_info *info;
 	size_t line_bufsz = 0;
-	char *line = NULL;
-	struct lxc_proc_context_info *info = NULL;
 
 	/* Read capabilities. */
 	ret = snprintf(proc_fn, LXC_PROC_STATUS_LEN, "/proc/%d/status", pid);
 	if (ret < 0 || ret >= LXC_PROC_STATUS_LEN)
-		goto on_error;
+		return NULL;
 
 	proc_file = fopen(proc_fn, "r");
 	if (!proc_file) {
-		SYSERROR("Could not open %s", proc_fn);
-		goto on_error;
+		SYSERROR("Failed to open %s", proc_fn);
+		return NULL;
 	}
 
 	info = calloc(1, sizeof(*info));
-	if (!info) {
-		SYSERROR("Could not allocate memory");
-		fclose(proc_file);
+	if (!info)
 		return NULL;
-	}
 
 	found = false;
 
@@ -112,13 +110,10 @@ static struct lxc_proc_context_info *lxc_proc_get_context_info(pid_t pid)
 		}
 	}
 
-	free(line);
-	fclose(proc_file);
-
 	if (!found) {
-		ERROR("Could not read capability bounding set from %s",
-		      proc_fn);
-		goto on_error;
+		ERROR("Could not read capability bounding set from %s", proc_fn);
+		free(info);
+		return NULL;
 	}
 
 	info->lsm_label = lsm_process_label_get(pid);
@@ -126,22 +121,12 @@ static struct lxc_proc_context_info *lxc_proc_get_context_info(pid_t pid)
 	memset(info->ns_fd, -1, sizeof(int) * LXC_NS_MAX);
 
 	return info;
-
-on_error:
-	free(info);
-	return NULL;
 }
 
 static inline void lxc_proc_close_ns_fd(struct lxc_proc_context_info *ctx)
 {
-	int i;
-
-	for (i = 0; i < LXC_NS_MAX; i++) {
-		if (ctx->ns_fd[i] < 0)
-			continue;
-
-		close(ctx->ns_fd[i]);
-		ctx->ns_fd[i] = -EBADF;
+	for (int i = 0; i < LXC_NS_MAX; i++) {
+		__do_close_prot_errno int fd ATTR_UNUSED = move_fd(ctx->ns_fd[i]);
 	}
 }
 
@@ -172,8 +157,8 @@ static void lxc_proc_put_context_info(struct lxc_proc_context_info *ctx)
  */
 static int in_same_namespace(pid_t pid1, pid_t pid2, const char *ns)
 {
-	int ns_fd1 = -1, ns_fd2 = -1, ret = -1;
-	int saved_errno;
+	__do_close_prot_errno int ns_fd1 = -1, ns_fd2 = -1;
+	int ret = -1;
 	struct stat ns_st1, ns_st2;
 
 	ns_fd1 = lxc_preserve_ns(pid1, ns);
@@ -184,42 +169,27 @@ static int in_same_namespace(pid_t pid1, pid_t pid2, const char *ns)
 		if (errno == ENOENT)
 			return -EINVAL;
 
-		goto out;
+		return -1;
 	}
 
 	ns_fd2 = lxc_preserve_ns(pid2, ns);
 	if (ns_fd2 < 0)
-		goto out;
+		return -1;
 
 	ret = fstat(ns_fd1, &ns_st1);
 	if (ret < 0)
-		goto out;
+		return -1;
 
 	ret = fstat(ns_fd2, &ns_st2);
 	if (ret < 0)
-		goto out;
+		return -1;
 
 	/* processes are in the same namespace */
-	if ((ns_st1.st_dev == ns_st2.st_dev ) && (ns_st1.st_ino == ns_st2.st_ino)) {
-		ret = -EINVAL;
-		goto out;
-	}
+	if ((ns_st1.st_dev == ns_st2.st_dev) && (ns_st1.st_ino == ns_st2.st_ino))
+		return -EINVAL;
 
 	/* processes are in different namespaces */
-	ret = ns_fd2;
-	ns_fd2 = -1;
-
-out:
-	saved_errno = errno;
-
-	if (ns_fd1 >= 0)
-		close(ns_fd1);
-
-	if (ns_fd2 >= 0)
-		close(ns_fd2);
-
-	errno = saved_errno;
-	return ret;
+	return move_fd(ns_fd2);
 }
 
 static int lxc_attach_to_ns(pid_t pid, struct lxc_proc_context_info *ctx)
@@ -440,13 +410,14 @@ static int lxc_attach_set_environment(struct lxc_proc_context_info *init_ctx,
 
 static char *lxc_attach_getpwshell(uid_t uid)
 {
+	__do_free char *line = NULL;
+	__do_fclose FILE *pipe_f = NULL;
 	int fd, ret;
 	pid_t pid;
 	int pipes[2];
-	FILE *pipe_f;
 	bool found = false;
 	size_t line_bufsz = 0;
-	char *line = NULL, *result = NULL;
+	char *result = NULL;
 
 	/* We need to fork off a process that runs the getent program, and we
 	 * need to capture its output, so we use a pipe for that purpose.
@@ -567,9 +538,6 @@ static char *lxc_attach_getpwshell(uid_t uid)
 		found = true;
 	}
 
-	free(line);
-	fclose(pipe_f);
-
 	ret = wait_for_pid(pid);
 	if (ret < 0) {
 		free(result);
@@ -586,10 +554,10 @@ static char *lxc_attach_getpwshell(uid_t uid)
 
 static void lxc_attach_get_init_uidgid(uid_t *init_uid, gid_t *init_gid)
 {
-	FILE *proc_file;
+	__do_free char *line = NULL;
+	__do_fclose FILE *proc_file = NULL;
 	char proc_fn[LXC_PROC_STATUS_LEN];
 	int ret;
-	char *line = NULL;
 	size_t line_bufsz = 0;
 	long value = -1;
 	uid_t uid = (uid_t)-1;
@@ -620,9 +588,6 @@ static void lxc_attach_get_init_uidgid(uid_t *init_uid, gid_t *init_gid)
 			break;
 	}
 
-	fclose(proc_file);
-	free(line);
-
 	/* Only override arguments if we found something. */
 	if (uid != (uid_t)-1)
 		*init_uid = uid;
@@ -637,9 +602,9 @@ static void lxc_attach_get_init_uidgid(uid_t *init_uid, gid_t *init_gid)
 
 static bool fetch_seccomp(struct lxc_container *c, lxc_attach_options_t *options)
 {
+	__do_free char *path = NULL;
 	int ret;
 	bool bret;
-	char *path;
 
 	if (!(options->namespaces & CLONE_NEWNS) ||
 	    !(options->attach_flags & LXC_ATTACH_LSM)) {
@@ -667,7 +632,6 @@ static bool fetch_seccomp(struct lxc_container *c, lxc_attach_options_t *options
 
 	/* Copy the value into the new lxc_conf. */
 	bret = c->set_config_item(c, "lxc.seccomp.profile", path);
-	free(path);
 	if (!bret)
 		return false;
 
@@ -684,8 +648,7 @@ static bool fetch_seccomp(struct lxc_container *c, lxc_attach_options_t *options
 
 static bool no_new_privs(struct lxc_container *c, lxc_attach_options_t *options)
 {
-	bool bret;
-	char *val;
+	__do_free char *val = NULL;
 
 	/* Remove current setting. */
 	if (!c->set_config_item(c, "lxc.no_new_privs", "")) {
@@ -701,24 +664,18 @@ static bool no_new_privs(struct lxc_container *c, lxc_attach_options_t *options)
 	}
 
 	/* Set currently active setting. */
-	bret = c->set_config_item(c, "lxc.no_new_privs", val);
-	free(val);
-	return bret;
+	return c->set_config_item(c, "lxc.no_new_privs", val);
 }
 
 static signed long get_personality(const char *name, const char *lxcpath)
 {
-	char *p;
-	signed long ret;
+	__do_free char *p = NULL;
 
 	p = lxc_cmd_get_config_item(name, "lxc.arch", lxcpath);
 	if (!p)
 		return -1;
 
-	ret = lxc_config_parse_arch(p);
-	free(p);
-
-	return ret;
+	return lxc_config_parse_arch(p);
 }
 
 struct attach_clone_payload {
@@ -732,15 +689,8 @@ struct attach_clone_payload {
 
 static void lxc_put_attach_clone_payload(struct attach_clone_payload *p)
 {
-	if (p->ipc_socket >= 0) {
-		close(p->ipc_socket);
-		p->ipc_socket = -EBADF;
-	}
-
-	if (p->terminal_slave_fd >= 0) {
-		close(p->terminal_slave_fd);
-		p->terminal_slave_fd = -EBADF;
-	}
+	__do_close_prot_errno int ipc_socket ATTR_UNUSED = p->ipc_socket;
+	__do_close_prot_errno int terminal_slave_fd ATTR_UNUSED = p->terminal_slave_fd;
 
 	if (p->init_ctx) {
 		lxc_proc_put_context_info(p->init_ctx);
@@ -750,7 +700,7 @@ static void lxc_put_attach_clone_payload(struct attach_clone_payload *p)
 
 static int attach_child_main(struct attach_clone_payload *payload)
 {
-	int fd, lsm_fd, ret;
+	int lsm_fd, ret;
 	uid_t new_uid;
 	gid_t new_gid;
 	uid_t ns_root_uid = 0;
@@ -903,7 +853,9 @@ static int attach_child_main(struct attach_clone_payload *payload)
 
 	if (init_ctx->container && init_ctx->container->lxc_conf &&
 	    init_ctx->container->lxc_conf->seccomp) {
-		ret = lxc_seccomp_load(init_ctx->container->lxc_conf);
+		struct lxc_conf *conf = init_ctx->container->lxc_conf;
+
+		ret = lxc_seccomp_load(conf);
 		if (ret < 0)
 			goto on_error;
 
@@ -943,10 +895,11 @@ static int attach_child_main(struct attach_clone_payload *payload)
 	if (options->stderr_fd > STDERR_FILENO)
 		close(options->stderr_fd);
 
-	/* Try to remove FD_CLOEXEC flag from stdin/stdout/stderr, but also
+	/*
+	 * Try to remove FD_CLOEXEC flag from stdin/stdout/stderr, but also
 	 * here, ignore errors.
 	 */
-	for (fd = STDIN_FILENO; fd <= STDERR_FILENO; fd++) {
+	for (int fd = STDIN_FILENO; fd <= STDERR_FILENO; fd++) {
 		ret = fd_cloexec(fd, false);
 		if (ret < 0) {
 			SYSERROR("Failed to clear FD_CLOEXEC from file descriptor %d", fd);
@@ -1033,43 +986,27 @@ static int lxc_attach_terminal_mainloop_init(struct lxc_terminal *terminal,
 
 static inline void lxc_attach_terminal_close_master(struct lxc_terminal *terminal)
 {
-	if (terminal->master < 0)
-		return;
-
-	close(terminal->master);
-	terminal->master = -EBADF;
+	close_prot_errno_disarm(terminal->master);
 }
 
 static inline void lxc_attach_terminal_close_slave(struct lxc_terminal *terminal)
 {
-	if (terminal->slave < 0)
-		return;
-
-	close(terminal->slave);
-	terminal->slave = -EBADF;
+	close_prot_errno_disarm(terminal->slave);
 }
 
 static inline void lxc_attach_terminal_close_peer(struct lxc_terminal *terminal)
 {
-	if (terminal->peer < 0)
-		return;
-
-	close(terminal->peer);
-	terminal->peer = -EBADF;
+	close_prot_errno_disarm(terminal->peer);
 }
 
 static inline void lxc_attach_terminal_close_log(struct lxc_terminal *terminal)
 {
-	if (terminal->log_fd < 0)
-		return;
-
-	close(terminal->log_fd);
-	terminal->log_fd = -EBADF;
+	close_prot_errno_disarm(terminal->log_fd);
 }
 
-int lxc_attach(const char *name, const char *lxcpath,
-	       lxc_attach_exec_t exec_function, void *exec_payload,
-	       lxc_attach_options_t *options, pid_t *attached_process)
+int lxc_attach(struct lxc_container *container, lxc_attach_exec_t exec_function,
+	       void *exec_payload, lxc_attach_options_t *options,
+	       pid_t *attached_process)
 {
 	int i, ret, status;
 	int ipc_sockets[2];
@@ -1079,6 +1016,7 @@ int lxc_attach(const char *name, const char *lxcpath,
 	struct lxc_proc_context_info *init_ctx;
 	struct lxc_terminal terminal;
 	struct lxc_conf *conf;
+	char *name, *lxcpath;
 	struct attach_clone_payload payload = {0};
 
 	ret = access("/proc/self/ns", X_OK);
@@ -1087,20 +1025,33 @@ int lxc_attach(const char *name, const char *lxcpath,
 		return -1;
 	}
 
+	if (!container)
+		return minus_one_set_errno(EINVAL);
+
+	if (!lxc_container_get(container))
+		return minus_one_set_errno(EINVAL);
+
+	name = container->name;
+	lxcpath = container->config_path;
+
 	if (!options)
 		options = &attach_static_default_options;
 
 	init_pid = lxc_cmd_get_init_pid(name, lxcpath);
 	if (init_pid < 0) {
 		ERROR("Failed to get init pid");
+		lxc_container_put(container);
 		return -1;
 	}
 
 	init_ctx = lxc_proc_get_context_info(init_pid);
 	if (!init_ctx) {
 		ERROR("Failed to get context of init process: %ld", (long)init_pid);
+		lxc_container_put(container);
 		return -1;
 	}
+
+	init_ctx->container = container;
 
 	personality = get_personality(name, lxcpath);
 	if (init_ctx->personality < 0) {
@@ -1109,12 +1060,6 @@ int lxc_attach(const char *name, const char *lxcpath,
 		return -1;
 	}
 	init_ctx->personality = personality;
-
-	init_ctx->container = lxc_container_new(name, lxcpath);
-	if (!init_ctx->container) {
-		lxc_proc_put_context_info(init_ctx);
-		return -1;
-	}
 
 	if (!init_ctx->container->lxc_conf) {
 		init_ctx->container->lxc_conf = lxc_conf_init();
@@ -1283,7 +1228,7 @@ int lxc_attach(const char *name, const char *lxcpath,
 		if (options->attach_flags & LXC_ATTACH_MOVE_TO_CGROUP) {
 			struct cgroup_ops *cgroup_ops;
 
-			cgroup_ops = cgroup_init(NULL);
+			cgroup_ops = cgroup_init(conf);
 			if (!cgroup_ops)
 				goto on_error;
 
@@ -1351,10 +1296,10 @@ int lxc_attach(const char *name, const char *lxcpath,
 		if ((options->namespaces & CLONE_NEWNS) &&
 		    (options->attach_flags & LXC_ATTACH_LSM) &&
 		    init_ctx->lsm_label) {
-			int ret = -1;
 			int labelfd;
 			bool on_exec;
 
+			ret = -1;
 			on_exec = options->attach_flags & LXC_ATTACH_LSM_EXEC ? true : false;
 			labelfd = lsm_process_label_fd_get(attached_pid, on_exec);
 			if (labelfd < 0)
@@ -1475,7 +1420,7 @@ int lxc_attach(const char *name, const char *lxcpath,
 	payload.exec_function = exec_function;
 	payload.exec_payload = exec_payload;
 
-	pid = lxc_raw_clone(CLONE_PARENT);
+	pid = lxc_raw_clone(CLONE_PARENT, NULL);
 	if (pid < 0) {
 		SYSERROR("Failed to clone attached process");
 		shutdown(ipc_sockets[1], SHUT_RDWR);
@@ -1521,7 +1466,7 @@ int lxc_attach(const char *name, const char *lxcpath,
 
 	/* The rest is in the hands of the initial and the attached process. */
 	lxc_proc_put_context_info(init_ctx);
-	_exit(0);
+	_exit(EXIT_SUCCESS);
 }
 
 int lxc_attach_run_command(void *payload)
@@ -1547,11 +1492,11 @@ int lxc_attach_run_command(void *payload)
 
 int lxc_attach_run_shell(void* payload)
 {
+	__do_free char *buf = NULL;
 	uid_t uid;
 	struct passwd pwent;
 	struct passwd *pwentp = NULL;
 	char *user_shell;
-	char *buf;
 	size_t bufsize;
 	int ret;
 
@@ -1598,6 +1543,5 @@ int lxc_attach_run_shell(void* payload)
 	if (!pwentp)
 		free(user_shell);
 
-	free(buf);
 	return -1;
 }

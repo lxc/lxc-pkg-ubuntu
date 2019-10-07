@@ -20,9 +20,11 @@ noinst_HEADERS = attach.h \
 		 lxc.h \
 		 lxclock.h \
 		 macro.h \
+		 memory_utils.h \
 		 monitor.h \
 		 namespace.h \
 		 raw_syscalls.h \
+		 rexec.h \
 		 start.h \
 		 state.h \
 		 storage/btrfs.h \
@@ -42,10 +44,12 @@ noinst_HEADERS = attach.h \
 		 ../tests/lxctest.h \
 		 tools/arguments.h \
 		 storage/storage_utils.h \
-		 utils.h
+		 utils.h \
+		 uuid.h
 
 if IS_BIONIC
-noinst_HEADERS += ../include/lxcmntent.h \
+noinst_HEADERS += ../include/fexecve.h \
+		  ../include/lxcmntent.h \
 		  ../include/openpty.h
 endif
 
@@ -110,6 +114,7 @@ liblxc_la_SOURCES = af_unix.c af_unix.h \
 		    lxclock.c lxclock.h \
 		    lxcseccomp.h \
 		    macro.h \
+		    memory_utils.h \
 		    mainloop.c mainloop.h \
 		    namespace.c namespace.h \
 		    nl.c nl.h \
@@ -137,11 +142,13 @@ liblxc_la_SOURCES = af_unix.c af_unix.h \
 		    syscall_wrappers.h \
 		    terminal.c \
 		    utils.c utils.h \
+		    uuid.c uuid.h \
 		    version.h \
 		    $(LSM_SOURCES)
 
 if IS_BIONIC
-liblxc_la_SOURCES += ../include/lxcmntent.c ../include/lxcmntent.h \
+liblxc_la_SOURCES += ../include/fexecve.c ../include/fexecve.h \
+		     ../include/lxcmntent.c ../include/lxcmntent.h \
 		     ../include/openpty.c ../include/openpty.h
 endif
 
@@ -173,6 +180,10 @@ if !HAVE_STRLCAT
 liblxc_la_SOURCES += ../include/strlcat.c ../include/strlcat.h
 endif
 
+if ENFORCE_MEMFD_REXEC
+liblxc_la_SOURCES += rexec.c rexec.h
+endif
+
 AM_CFLAGS = -DLXCROOTFSMOUNT=\"$(LXCROOTFSMOUNT)\" \
 	    -DLXCPATH=\"$(LXCPATH)\" \
 	    -DLXC_GLOBAL_CONF=\"$(LXC_GLOBAL_CONF)\" \
@@ -196,8 +207,8 @@ if ENABLE_APPARMOR
 AM_CFLAGS += -DHAVE_APPARMOR
 endif
 
-if ENABLE_GNUTLS
-AM_CFLAGS += -DHAVE_LIBGNUTLS
+if ENABLE_OPENSSL
+AM_CFLAGS += -DHAVE_OPENSSL
 endif
 
 if ENABLE_SECCOMP
@@ -218,6 +229,10 @@ liblxc_la_CFLAGS = -fPIC \
 		   -DPIC \
 		   $(AM_CFLAGS) \
 		   -pthread
+if ENABLE_ASAN
+liblxc_la_CFLAGS += -fsanitize=address \
+		    -fno-omit-frame-pointer
+endif
 
 liblxc_la_LDFLAGS = -pthread \
 		    -Wl,-no-undefined \
@@ -225,7 +240,7 @@ liblxc_la_LDFLAGS = -pthread \
 		    -version-info @LXC_ABI_MAJOR@
 
 liblxc_la_LIBADD = $(CAP_LIBS) \
-		   $(GNUTLS_LIBS) \
+		   $(OPENSSL_LIBS) \
 		   $(SELINUX_LIBS) \
 		   $(SECCOMP_LIBS)
 
@@ -283,12 +298,13 @@ endif
 
 LDADD = liblxc.la \
 	@CAP_LIBS@ \
-	@GNUTLS_LIBS@ \
+	@OPENSSL_LIBS@ \
 	@SECCOMP_LIBS@ \
 	@SELINUX_LIBS@
 
 if ENABLE_TOOLS
 lxc_attach_SOURCES = tools/lxc_attach.c \
+		     rexec.c rexec.h \
 		     tools/arguments.c tools/arguments.h
 lxc_autostart_SOURCES = tools/lxc_autostart.c \
 			tools/arguments.c tools/arguments.h
@@ -343,6 +359,7 @@ init_lxc_SOURCES = cmd/lxc_init.c \
 		   compiler.h \
 		   error.h \
 		   initutils.c initutils.h \
+		   memory_utils.h \
 		   parse.c parse.h \
 		   raw_syscalls.c raw_syscalls.h \
 		   string_utils.c string_utils.h
@@ -356,16 +373,19 @@ lxc_monitord_SOURCES = cmd/lxc_monitord.c \
 lxc_user_nic_SOURCES = cmd/lxc_user_nic.c \
 		       ../include/netns_ifaddrs.c ../include/netns_ifaddrs.h \
 		       log.c log.h \
+		       memory_utils.h \
 		       network.c network.h \
 		       parse.c parse.h \
 		       raw_syscalls.c raw_syscalls.h \
+		       string_utils.c string_utils.h \
 		       syscall_wrappers.h
 lxc_usernsexec_SOURCES = cmd/lxc_usernsexec.c \
 			 conf.c conf.h \
+			 file_utils.c file_utils.h \
 			 list.h \
 			 log.c log.h \
 			 macro.h \
-			 file_utils.c file_utils.h \
+			 memory_utils.h \
 			 string_utils.c string_utils.h \
 			 syscall_wrappers.h \
 			 utils.c utils.h
@@ -389,6 +409,7 @@ init_lxc_static_SOURCES = cmd/lxc_init.c \
 			  file_utils.c file_utils.h \
 			  log.c log.h \
 			  macro.h \
+			  memory_utils.h \
 			  namespace.c namespace.h \
 			  string_utils.c string_utils.h
 
@@ -419,6 +440,7 @@ pam_LTLIBRARIES = pam_cgfs.la
 pam_cgfs_la_SOURCES = pam/pam_cgfs.c \
 		      file_utils.c file_utils.h \
 		      macro.h \
+		      memory_utils.h \
 		      string_utils.c string_utils.h
 
 if !HAVE_STRLCAT
@@ -452,8 +474,10 @@ install-exec-local: install-libLTLIBRARIES
 	ln -sf liblxc.so.@LXC_ABI@ liblxc.so.$(firstword $(subst ., ,@LXC_ABI@)); \
 	ln -sf liblxc.so.$(firstword $(subst ., ,@LXC_ABI@)) liblxc.so
 
+if ENABLE_COMMANDS
 install-exec-hook:
 	chmod u+s $(DESTDIR)$(libexecdir)/lxc/lxc-user-nic
+endif
 
 uninstall-local:
 	$(RM) $(DESTDIR)$(libdir)/liblxc.so*

@@ -194,7 +194,7 @@ static void exec_criu(struct cgroup_ops *cgroup_ops, struct lxc_conf *conf,
 	 * /actual/ root cgroup so that lxcfs thinks criu has enough rights to
 	 * see all cgroups.
 	 */
-	if (!cgroup_ops->escape(cgroup_ops)) {
+	if (!cgroup_ops->escape(cgroup_ops, conf)) {
 		ERROR("failed to escape cgroups");
 		return;
 	}
@@ -375,7 +375,7 @@ static void exec_criu(struct cgroup_ops *cgroup_ops, struct lxc_conf *conf,
 	}
 
 	if (opts->user->verbose)
-		DECLARE_ARG("-vvvvvv");
+		DECLARE_ARG("-v4");
 
 	if (opts->user->action_script) {
 		DECLARE_ARG("--action-script");
@@ -387,7 +387,7 @@ static void exec_criu(struct cgroup_ops *cgroup_ops, struct lxc_conf *conf,
 		goto err;
 
 	while (getmntent_r(mnts, &mntent, buf, sizeof(buf))) {
-		char *fmt, *key, *val, *mntdata;
+		char *mntdata;
 		char arg[2 * PATH_MAX + 2];
 		unsigned long flags;
 
@@ -400,17 +400,12 @@ static void exec_criu(struct cgroup_ops *cgroup_ops, struct lxc_conf *conf,
 		if (!(flags & MS_BIND))
 			continue;
 
-		if (strcmp(opts->action, "dump") == 0) {
-			fmt = "/%s:%s";
-			key = mntent.mnt_dir;
-			val = mntent.mnt_dir;
-		} else {
-			fmt = "%s:%s";
-			key = mntent.mnt_dir;
-			val = mntent.mnt_fsname;
-		}
-
-		ret = snprintf(arg, sizeof(arg), fmt, key, val);
+		if (strcmp(opts->action, "dump") == 0)
+			ret = snprintf(arg, sizeof(arg), "/%s:%s",
+				       mntent.mnt_dir, mntent.mnt_dir);
+		else
+			ret = snprintf(arg, sizeof(arg), "%s:%s",
+				       mntent.mnt_dir, mntent.mnt_fsname);
 		if (ret < 0 || ret >= sizeof(arg)) {
 			fclose(mnts);
 			ERROR("snprintf failed");
@@ -546,7 +541,6 @@ static void exec_criu(struct cgroup_ops *cgroup_ops, struct lxc_conf *conf,
 		lxc_list_for_each(it, &opts->c->lxc_conf->network) {
 			size_t retlen;
 			char eth[128], *veth;
-			char *fmt;
 			struct lxc_netdev *n = it->elem;
 			bool external_not_veth;
 
@@ -578,18 +572,23 @@ static void exec_criu(struct cgroup_ops *cgroup_ops, struct lxc_conf *conf,
 
 				if (n->link[0] != '\0') {
 					if (external_not_veth)
-						fmt = "veth[%s]:%s@%s";
+						ret = snprintf(buf, sizeof(buf),
+							       "veth[%s]:%s@%s",
+							       eth, veth,
+							       n->link);
 					else
-						fmt = "%s=%s@%s";
-
-					ret = snprintf(buf, sizeof(buf), fmt, eth, veth, n->link);
+						ret = snprintf(buf, sizeof(buf),
+							       "%s=%s@%s", eth,
+							       veth, n->link);
 				} else {
 					if (external_not_veth)
-						fmt = "veth[%s]:%s";
+						ret = snprintf(buf, sizeof(buf),
+							       "veth[%s]:%s",
+							       eth, veth);
 					else
-						fmt = "%s=%s";
-
-					ret = snprintf(buf, sizeof(buf), fmt, eth, veth);
+						ret = snprintf(buf, sizeof(buf),
+							       "%s=%s", eth,
+							       veth);
 				}
 				if (ret < 0 || ret >= sizeof(buf))
 					goto err;
@@ -970,7 +969,7 @@ static void do_restore(struct lxc_container *c, int status_pipe, struct migrate_
 	if (lxc_init(c->name, handler) < 0)
 		goto out;
 
-	cgroup_ops = cgroup_init(NULL);
+	cgroup_ops = cgroup_init(c->lxc_conf);
 	if (!cgroup_ops)
 		goto out_fini_handler;
 	handler->cgroup_ops = cgroup_ops;
@@ -1070,7 +1069,6 @@ static void do_restore(struct lxc_container *c, int status_pipe, struct migrate_
 		rmdir(rootfs->mount);
 		goto out_fini_handler;
 	} else {
-		int ret;
 		char title[2048];
 
 		close(pipes[1]);
@@ -1270,11 +1268,10 @@ static bool do_dump(struct lxc_container *c, char *mode, struct migrate_opts *op
 
 		close(criuout[0]);
 
-		cgroup_ops = cgroup_init(NULL);
+		cgroup_ops = cgroup_init(c->lxc_conf);
 		if (!cgroup_ops) {
 			ERROR("failed to cgroup_init()");
 			_exit(EXIT_FAILURE);
-			return -1;
 		}
 
 		os.pipefd = criuout[1];
@@ -1299,7 +1296,6 @@ static bool do_dump(struct lxc_container *c, char *mode, struct migrate_opts *op
 		int status;
 		ssize_t n;
 		char buf[4096];
-		bool ret;
 
 		close(criuout[1]);
 

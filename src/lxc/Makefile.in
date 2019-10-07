@@ -91,7 +91,8 @@ PRE_UNINSTALL = :
 POST_UNINSTALL = :
 build_triplet = @build@
 host_triplet = @host@
-@IS_BIONIC_TRUE@am__append_1 = ../include/lxcmntent.h \
+@IS_BIONIC_TRUE@am__append_1 = ../include/fexecve.h \
+@IS_BIONIC_TRUE@		  ../include/lxcmntent.h \
 @IS_BIONIC_TRUE@		  ../include/openpty.h
 
 @HAVE_PRLIMIT64_TRUE@@HAVE_PRLIMIT_FALSE@am__append_2 = ../include/prlimit.h
@@ -100,7 +101,8 @@ host_triplet = @host@
 @HAVE_GETGRGID_R_FALSE@am__append_5 = ../include/getgrgid_r.h
 @ENABLE_APPARMOR_TRUE@am__append_6 = lsm/apparmor.c
 @ENABLE_SELINUX_TRUE@am__append_7 = lsm/selinux.c
-@IS_BIONIC_TRUE@am__append_8 = ../include/lxcmntent.c ../include/lxcmntent.h \
+@IS_BIONIC_TRUE@am__append_8 = ../include/fexecve.c ../include/fexecve.h \
+@IS_BIONIC_TRUE@		     ../include/lxcmntent.c ../include/lxcmntent.h \
 @IS_BIONIC_TRUE@		     ../include/openpty.c ../include/openpty.h
 
 @HAVE_GETGRGID_R_FALSE@am__append_9 = ../include/getgrgid_r.c ../include/getgrgid_r.h
@@ -109,14 +111,18 @@ host_triplet = @host@
 @ENABLE_SECCOMP_TRUE@am__append_12 = seccomp.c
 @HAVE_STRLCPY_FALSE@am__append_13 = ../include/strlcpy.c ../include/strlcpy.h
 @HAVE_STRLCAT_FALSE@am__append_14 = ../include/strlcat.c ../include/strlcat.h
-@ENABLE_APPARMOR_TRUE@am__append_15 = -DHAVE_APPARMOR
-@ENABLE_GNUTLS_TRUE@am__append_16 = -DHAVE_LIBGNUTLS
-@ENABLE_SECCOMP_TRUE@am__append_17 = -DHAVE_SECCOMP \
+@ENFORCE_MEMFD_REXEC_TRUE@am__append_15 = rexec.c rexec.h
+@ENABLE_APPARMOR_TRUE@am__append_16 = -DHAVE_APPARMOR
+@ENABLE_OPENSSL_TRUE@am__append_17 = -DHAVE_OPENSSL
+@ENABLE_SECCOMP_TRUE@am__append_18 = -DHAVE_SECCOMP \
 @ENABLE_SECCOMP_TRUE@	     $(SECCOMP_CFLAGS)
 
-@ENABLE_SELINUX_TRUE@am__append_18 = -DHAVE_SELINUX
-@USE_CONFIGPATH_LOGS_TRUE@am__append_19 = -DUSE_CONFIGPATH_LOGS
-@ENABLE_COMMANDS_TRUE@am__append_20 = cmd/lxc-checkconfig \
+@ENABLE_SELINUX_TRUE@am__append_19 = -DHAVE_SELINUX
+@USE_CONFIGPATH_LOGS_TRUE@am__append_20 = -DUSE_CONFIGPATH_LOGS
+@ENABLE_ASAN_TRUE@am__append_21 = -fsanitize=address \
+@ENABLE_ASAN_TRUE@		    -fno-omit-frame-pointer
+
+@ENABLE_COMMANDS_TRUE@am__append_22 = cmd/lxc-checkconfig \
 @ENABLE_COMMANDS_TRUE@	       cmd/lxc-update-config
 
 @ENABLE_COMMANDS_TRUE@@ENABLE_TOOLS_FALSE@bin_PROGRAMS = lxc-usernsexec$(EXEEXT)
@@ -132,19 +138,19 @@ host_triplet = @host@
 @ENABLE_TOOLS_TRUE@	lxc-stop$(EXEEXT) lxc-top$(EXEEXT) \
 @ENABLE_TOOLS_TRUE@	lxc-unfreeze$(EXEEXT) lxc-unshare$(EXEEXT) \
 @ENABLE_TOOLS_TRUE@	lxc-wait$(EXEEXT) $(am__EXEEXT_1)
-@ENABLE_COMMANDS_TRUE@@ENABLE_TOOLS_TRUE@am__append_21 = lxc-usernsexec
+@ENABLE_COMMANDS_TRUE@@ENABLE_TOOLS_TRUE@am__append_23 = lxc-usernsexec
 @ENABLE_COMMANDS_TRUE@sbin_PROGRAMS = init.lxc$(EXEEXT) \
 @ENABLE_COMMANDS_TRUE@	$(am__EXEEXT_2)
 @ENABLE_COMMANDS_TRUE@pkglibexec_PROGRAMS = lxc-monitord$(EXEEXT) \
 @ENABLE_COMMANDS_TRUE@	lxc-user-nic$(EXEEXT)
-@ENABLE_RPATH_TRUE@am__append_22 = -Wl,-rpath -Wl,$(libdir)
-@ENABLE_TOOLS_TRUE@@HAVE_GETSUBOPT_FALSE@am__append_23 = tools/include/getsubopt.c tools/include/getsubopt.h
-@ENABLE_COMMANDS_TRUE@@HAVE_STATIC_LIBCAP_TRUE@am__append_24 = init.lxc.static
-@ENABLE_COMMANDS_TRUE@@HAVE_FGETLN_TRUE@@HAVE_GETLINE_FALSE@@HAVE_STATIC_LIBCAP_TRUE@am__append_25 = ../include/getline.c ../include/getline.h
-@ENABLE_COMMANDS_TRUE@@HAVE_STATIC_LIBCAP_TRUE@@HAVE_STRLCPY_FALSE@am__append_26 = ../include/strlcpy.c ../include/strlcpy.h
-@ENABLE_COMMANDS_TRUE@@HAVE_STATIC_LIBCAP_TRUE@@HAVE_STRLCAT_FALSE@am__append_27 = ../include/strlcat.c ../include/strlcat.h
-@ENABLE_PAM_TRUE@@HAVE_PAM_TRUE@@HAVE_STRLCAT_FALSE@am__append_28 = ../include/strlcat.c ../include/strlcat.h
-@ENABLE_PAM_TRUE@@HAVE_PAM_TRUE@@HAVE_STRLCPY_FALSE@am__append_29 = ../include/strlcpy.c ../include/strlcpy.h
+@ENABLE_RPATH_TRUE@am__append_24 = -Wl,-rpath -Wl,$(libdir)
+@ENABLE_TOOLS_TRUE@@HAVE_GETSUBOPT_FALSE@am__append_25 = tools/include/getsubopt.c tools/include/getsubopt.h
+@ENABLE_COMMANDS_TRUE@@HAVE_STATIC_LIBCAP_TRUE@am__append_26 = init.lxc.static
+@ENABLE_COMMANDS_TRUE@@HAVE_FGETLN_TRUE@@HAVE_GETLINE_FALSE@@HAVE_STATIC_LIBCAP_TRUE@am__append_27 = ../include/getline.c ../include/getline.h
+@ENABLE_COMMANDS_TRUE@@HAVE_STATIC_LIBCAP_TRUE@@HAVE_STRLCPY_FALSE@am__append_28 = ../include/strlcpy.c ../include/strlcpy.h
+@ENABLE_COMMANDS_TRUE@@HAVE_STATIC_LIBCAP_TRUE@@HAVE_STRLCAT_FALSE@am__append_29 = ../include/strlcat.c ../include/strlcat.h
+@ENABLE_PAM_TRUE@@HAVE_PAM_TRUE@@HAVE_STRLCAT_FALSE@am__append_30 = ../include/strlcat.c ../include/strlcat.h
+@ENABLE_PAM_TRUE@@HAVE_PAM_TRUE@@HAVE_STRLCPY_FALSE@am__append_31 = ../include/strlcpy.c ../include/strlcpy.h
 subdir = src/lxc
 ACLOCAL_M4 = $(top_srcdir)/aclocal.m4
 am__aclocal_m4_deps = $(top_srcdir)/config/acinclude.m4 \
@@ -213,31 +219,34 @@ am__liblxc_la_SOURCES_DIST = af_unix.c af_unix.h attach.c attach.h \
 	../include/netns_ifaddrs.c ../include/netns_ifaddrs.h \
 	initutils.c initutils.h list.h log.c log.h lxc.h \
 	lxccontainer.c lxccontainer.h lxclock.c lxclock.h lxcseccomp.h \
-	macro.h mainloop.c mainloop.h namespace.c namespace.h nl.c \
-	nl.h network.c network.h monitor.c monitor.h parse.c parse.h \
-	raw_syscalls.c raw_syscalls.h ringbuf.c ringbuf.h rtnl.c \
-	rtnl.h state.c state.h start.c start.h storage/btrfs.c \
-	storage/btrfs.h storage/dir.c storage/dir.h storage/loop.c \
-	storage/loop.h storage/lvm.c storage/lvm.h storage/nbd.c \
-	storage/nbd.h storage/overlay.c storage/overlay.h \
-	storage/rbd.c storage/rbd.h storage/rsync.c storage/rsync.h \
-	storage/storage.c storage/storage.h storage/storage_utils.c \
-	storage/storage_utils.h storage/zfs.c storage/zfs.h \
-	string_utils.c string_utils.h sync.c sync.h syscall_wrappers.h \
-	terminal.c utils.c utils.h version.h lsm/lsm.c lsm/lsm.h \
-	lsm/nop.c lsm/apparmor.c lsm/selinux.c ../include/lxcmntent.c \
-	../include/lxcmntent.h ../include/openpty.c \
-	../include/openpty.h ../include/getgrgid_r.c \
-	../include/getgrgid_r.h ../include/getline.c \
-	../include/getline.h ../include/prlimit.c ../include/prlimit.h \
-	seccomp.c ../include/strlcpy.c ../include/strlcpy.h \
-	../include/strlcat.c ../include/strlcat.h
+	macro.h memory_utils.h mainloop.c mainloop.h namespace.c \
+	namespace.h nl.c nl.h network.c network.h monitor.c monitor.h \
+	parse.c parse.h raw_syscalls.c raw_syscalls.h ringbuf.c \
+	ringbuf.h rtnl.c rtnl.h state.c state.h start.c start.h \
+	storage/btrfs.c storage/btrfs.h storage/dir.c storage/dir.h \
+	storage/loop.c storage/loop.h storage/lvm.c storage/lvm.h \
+	storage/nbd.c storage/nbd.h storage/overlay.c \
+	storage/overlay.h storage/rbd.c storage/rbd.h storage/rsync.c \
+	storage/rsync.h storage/storage.c storage/storage.h \
+	storage/storage_utils.c storage/storage_utils.h storage/zfs.c \
+	storage/zfs.h string_utils.c string_utils.h sync.c sync.h \
+	syscall_wrappers.h terminal.c utils.c utils.h uuid.c uuid.h \
+	version.h lsm/lsm.c lsm/lsm.h lsm/nop.c lsm/apparmor.c \
+	lsm/selinux.c ../include/fexecve.c ../include/fexecve.h \
+	../include/lxcmntent.c ../include/lxcmntent.h \
+	../include/openpty.c ../include/openpty.h \
+	../include/getgrgid_r.c ../include/getgrgid_r.h \
+	../include/getline.c ../include/getline.h ../include/prlimit.c \
+	../include/prlimit.h seccomp.c ../include/strlcpy.c \
+	../include/strlcpy.h ../include/strlcat.c ../include/strlcat.h \
+	rexec.c rexec.h
 am__dirstamp = $(am__leading_dot)dirstamp
 @ENABLE_APPARMOR_TRUE@am__objects_1 = lsm/liblxc_la-apparmor.lo
 @ENABLE_SELINUX_TRUE@am__objects_2 = lsm/liblxc_la-selinux.lo
 am__objects_3 = lsm/liblxc_la-lsm.lo lsm/liblxc_la-nop.lo \
 	$(am__objects_1) $(am__objects_2)
-@IS_BIONIC_TRUE@am__objects_4 = ../include/liblxc_la-lxcmntent.lo \
+@IS_BIONIC_TRUE@am__objects_4 = ../include/liblxc_la-fexecve.lo \
+@IS_BIONIC_TRUE@	../include/liblxc_la-lxcmntent.lo \
 @IS_BIONIC_TRUE@	../include/liblxc_la-openpty.lo
 @HAVE_GETGRGID_R_FALSE@am__objects_5 =  \
 @HAVE_GETGRGID_R_FALSE@	../include/liblxc_la-getgrgid_r.lo
@@ -246,6 +255,7 @@ am__objects_3 = lsm/liblxc_la-lsm.lo lsm/liblxc_la-nop.lo \
 @ENABLE_SECCOMP_TRUE@am__objects_8 = liblxc_la-seccomp.lo
 @HAVE_STRLCPY_FALSE@am__objects_9 = ../include/liblxc_la-strlcpy.lo
 @HAVE_STRLCAT_FALSE@am__objects_10 = ../include/liblxc_la-strlcat.lo
+@ENFORCE_MEMFD_REXEC_TRUE@am__objects_11 = liblxc_la-rexec.lo
 am_liblxc_la_OBJECTS = liblxc_la-af_unix.lo liblxc_la-attach.lo \
 	liblxc_la-caps.lo cgroups/liblxc_la-cgfsng.lo \
 	cgroups/liblxc_la-cgroup.lo cgroups/liblxc_la-cgroup_utils.lo \
@@ -267,10 +277,10 @@ am_liblxc_la_OBJECTS = liblxc_la-af_unix.lo liblxc_la-attach.lo \
 	storage/liblxc_la-storage.lo \
 	storage/liblxc_la-storage_utils.lo storage/liblxc_la-zfs.lo \
 	liblxc_la-string_utils.lo liblxc_la-sync.lo \
-	liblxc_la-terminal.lo liblxc_la-utils.lo $(am__objects_3) \
-	$(am__objects_4) $(am__objects_5) $(am__objects_6) \
-	$(am__objects_7) $(am__objects_8) $(am__objects_9) \
-	$(am__objects_10)
+	liblxc_la-terminal.lo liblxc_la-utils.lo liblxc_la-uuid.lo \
+	$(am__objects_3) $(am__objects_4) $(am__objects_5) \
+	$(am__objects_6) $(am__objects_7) $(am__objects_8) \
+	$(am__objects_9) $(am__objects_10) $(am__objects_11)
 liblxc_la_OBJECTS = $(am_liblxc_la_OBJECTS)
 AM_V_lt = $(am__v_lt_@AM_V@)
 am__v_lt_ = $(am__v_lt_@AM_DEFAULT_V@)
@@ -282,17 +292,17 @@ liblxc_la_LINK = $(LIBTOOL) $(AM_V_lt) --tag=CC $(AM_LIBTOOLFLAGS) \
 @ENABLE_PAM_TRUE@@HAVE_PAM_TRUE@pam_cgfs_la_DEPENDENCIES =  \
 @ENABLE_PAM_TRUE@@HAVE_PAM_TRUE@	$(am__DEPENDENCIES_1)
 am__pam_cgfs_la_SOURCES_DIST = pam/pam_cgfs.c file_utils.c \
-	file_utils.h macro.h string_utils.c string_utils.h \
-	../include/strlcat.c ../include/strlcat.h ../include/strlcpy.c \
-	../include/strlcpy.h
-@ENABLE_PAM_TRUE@@HAVE_PAM_TRUE@@HAVE_STRLCAT_FALSE@am__objects_11 = ../include/pam_cgfs_la-strlcat.lo
-@ENABLE_PAM_TRUE@@HAVE_PAM_TRUE@@HAVE_STRLCPY_FALSE@am__objects_12 = ../include/pam_cgfs_la-strlcpy.lo
+	file_utils.h macro.h memory_utils.h string_utils.c \
+	string_utils.h ../include/strlcat.c ../include/strlcat.h \
+	../include/strlcpy.c ../include/strlcpy.h
+@ENABLE_PAM_TRUE@@HAVE_PAM_TRUE@@HAVE_STRLCAT_FALSE@am__objects_12 = ../include/pam_cgfs_la-strlcat.lo
+@ENABLE_PAM_TRUE@@HAVE_PAM_TRUE@@HAVE_STRLCPY_FALSE@am__objects_13 = ../include/pam_cgfs_la-strlcpy.lo
 @ENABLE_PAM_TRUE@@HAVE_PAM_TRUE@am_pam_cgfs_la_OBJECTS =  \
 @ENABLE_PAM_TRUE@@HAVE_PAM_TRUE@	pam/cgfs_la-pam_cgfs.lo \
 @ENABLE_PAM_TRUE@@HAVE_PAM_TRUE@	pam_cgfs_la-file_utils.lo \
 @ENABLE_PAM_TRUE@@HAVE_PAM_TRUE@	pam_cgfs_la-string_utils.lo \
-@ENABLE_PAM_TRUE@@HAVE_PAM_TRUE@	$(am__objects_11) \
-@ENABLE_PAM_TRUE@@HAVE_PAM_TRUE@	$(am__objects_12)
+@ENABLE_PAM_TRUE@@HAVE_PAM_TRUE@	$(am__objects_12) \
+@ENABLE_PAM_TRUE@@HAVE_PAM_TRUE@	$(am__objects_13)
 pam_cgfs_la_OBJECTS = $(am_pam_cgfs_la_OBJECTS)
 pam_cgfs_la_LINK = $(LIBTOOL) $(AM_V_lt) --tag=CC $(AM_LIBTOOLFLAGS) \
 	$(LIBTOOLFLAGS) --mode=link $(CCLD) $(pam_cgfs_la_CFLAGS) \
@@ -300,8 +310,8 @@ pam_cgfs_la_LINK = $(LIBTOOL) $(AM_V_lt) --tag=CC $(AM_LIBTOOLFLAGS) \
 @ENABLE_PAM_TRUE@@HAVE_PAM_TRUE@am_pam_cgfs_la_rpath = -rpath \
 @ENABLE_PAM_TRUE@@HAVE_PAM_TRUE@	$(pamdir)
 am__init_lxc_SOURCES_DIST = cmd/lxc_init.c compiler.h error.h \
-	initutils.c initutils.h parse.c parse.h raw_syscalls.c \
-	raw_syscalls.h string_utils.c string_utils.h
+	initutils.c initutils.h memory_utils.h parse.c parse.h \
+	raw_syscalls.c raw_syscalls.h string_utils.c string_utils.h
 @ENABLE_COMMANDS_TRUE@am_init_lxc_OBJECTS = cmd/lxc_init.$(OBJEXT) \
 @ENABLE_COMMANDS_TRUE@	initutils.$(OBJEXT) parse.$(OBJEXT) \
 @ENABLE_COMMANDS_TRUE@	raw_syscalls.$(OBJEXT) \
@@ -311,13 +321,13 @@ init_lxc_LDADD = $(LDADD)
 init_lxc_DEPENDENCIES = liblxc.la
 am__init_lxc_static_SOURCES_DIST = cmd/lxc_init.c caps.c caps.h \
 	error.c error.h initutils.c initutils.h file_utils.c \
-	file_utils.h log.c log.h macro.h namespace.c namespace.h \
-	string_utils.c string_utils.h ../include/getline.c \
+	file_utils.h log.c log.h macro.h memory_utils.h namespace.c \
+	namespace.h string_utils.c string_utils.h ../include/getline.c \
 	../include/getline.h ../include/strlcpy.c ../include/strlcpy.h \
 	../include/strlcat.c ../include/strlcat.h
-@ENABLE_COMMANDS_TRUE@@HAVE_FGETLN_TRUE@@HAVE_GETLINE_FALSE@@HAVE_STATIC_LIBCAP_TRUE@am__objects_13 = ../include/init_lxc_static-getline.$(OBJEXT)
-@ENABLE_COMMANDS_TRUE@@HAVE_STATIC_LIBCAP_TRUE@@HAVE_STRLCPY_FALSE@am__objects_14 = ../include/init_lxc_static-strlcpy.$(OBJEXT)
-@ENABLE_COMMANDS_TRUE@@HAVE_STATIC_LIBCAP_TRUE@@HAVE_STRLCAT_FALSE@am__objects_15 = ../include/init_lxc_static-strlcat.$(OBJEXT)
+@ENABLE_COMMANDS_TRUE@@HAVE_FGETLN_TRUE@@HAVE_GETLINE_FALSE@@HAVE_STATIC_LIBCAP_TRUE@am__objects_14 = ../include/init_lxc_static-getline.$(OBJEXT)
+@ENABLE_COMMANDS_TRUE@@HAVE_STATIC_LIBCAP_TRUE@@HAVE_STRLCPY_FALSE@am__objects_15 = ../include/init_lxc_static-strlcpy.$(OBJEXT)
+@ENABLE_COMMANDS_TRUE@@HAVE_STATIC_LIBCAP_TRUE@@HAVE_STRLCAT_FALSE@am__objects_16 = ../include/init_lxc_static-strlcat.$(OBJEXT)
 @ENABLE_COMMANDS_TRUE@@HAVE_STATIC_LIBCAP_TRUE@am_init_lxc_static_OBJECTS = cmd/init_lxc_static-lxc_init.$(OBJEXT) \
 @ENABLE_COMMANDS_TRUE@@HAVE_STATIC_LIBCAP_TRUE@	init_lxc_static-caps.$(OBJEXT) \
 @ENABLE_COMMANDS_TRUE@@HAVE_STATIC_LIBCAP_TRUE@	init_lxc_static-error.$(OBJEXT) \
@@ -326,19 +336,19 @@ am__init_lxc_static_SOURCES_DIST = cmd/lxc_init.c caps.c caps.h \
 @ENABLE_COMMANDS_TRUE@@HAVE_STATIC_LIBCAP_TRUE@	init_lxc_static-log.$(OBJEXT) \
 @ENABLE_COMMANDS_TRUE@@HAVE_STATIC_LIBCAP_TRUE@	init_lxc_static-namespace.$(OBJEXT) \
 @ENABLE_COMMANDS_TRUE@@HAVE_STATIC_LIBCAP_TRUE@	init_lxc_static-string_utils.$(OBJEXT) \
-@ENABLE_COMMANDS_TRUE@@HAVE_STATIC_LIBCAP_TRUE@	$(am__objects_13) \
 @ENABLE_COMMANDS_TRUE@@HAVE_STATIC_LIBCAP_TRUE@	$(am__objects_14) \
-@ENABLE_COMMANDS_TRUE@@HAVE_STATIC_LIBCAP_TRUE@	$(am__objects_15)
+@ENABLE_COMMANDS_TRUE@@HAVE_STATIC_LIBCAP_TRUE@	$(am__objects_15) \
+@ENABLE_COMMANDS_TRUE@@HAVE_STATIC_LIBCAP_TRUE@	$(am__objects_16)
 init_lxc_static_OBJECTS = $(am_init_lxc_static_OBJECTS)
 init_lxc_static_DEPENDENCIES =
 init_lxc_static_LINK = $(LIBTOOL) $(AM_V_lt) --tag=CC \
 	$(AM_LIBTOOLFLAGS) $(LIBTOOLFLAGS) --mode=link $(CCLD) \
 	$(init_lxc_static_CFLAGS) $(CFLAGS) $(init_lxc_static_LDFLAGS) \
 	$(LDFLAGS) -o $@
-am__lxc_attach_SOURCES_DIST = tools/lxc_attach.c tools/arguments.c \
-	tools/arguments.h
+am__lxc_attach_SOURCES_DIST = tools/lxc_attach.c rexec.c rexec.h \
+	tools/arguments.c tools/arguments.h
 @ENABLE_TOOLS_TRUE@am_lxc_attach_OBJECTS = tools/lxc_attach.$(OBJEXT) \
-@ENABLE_TOOLS_TRUE@	tools/arguments.$(OBJEXT)
+@ENABLE_TOOLS_TRUE@	rexec.$(OBJEXT) tools/arguments.$(OBJEXT)
 lxc_attach_OBJECTS = $(am_lxc_attach_OBJECTS)
 lxc_attach_LDADD = $(LDADD)
 lxc_attach_DEPENDENCIES = liblxc.la
@@ -384,11 +394,11 @@ am__lxc_copy_SOURCES_DIST = tools/lxc_copy.c tools/arguments.c \
 	tools/arguments.h storage/storage_utils.c \
 	storage/storage_utils.h tools/include/getsubopt.c \
 	tools/include/getsubopt.h
-@ENABLE_TOOLS_TRUE@@HAVE_GETSUBOPT_FALSE@am__objects_16 = tools/include/getsubopt.$(OBJEXT)
+@ENABLE_TOOLS_TRUE@@HAVE_GETSUBOPT_FALSE@am__objects_17 = tools/include/getsubopt.$(OBJEXT)
 @ENABLE_TOOLS_TRUE@am_lxc_copy_OBJECTS = tools/lxc_copy.$(OBJEXT) \
 @ENABLE_TOOLS_TRUE@	tools/arguments.$(OBJEXT) \
 @ENABLE_TOOLS_TRUE@	storage/storage_utils.$(OBJEXT) \
-@ENABLE_TOOLS_TRUE@	$(am__objects_16)
+@ENABLE_TOOLS_TRUE@	$(am__objects_17)
 lxc_copy_OBJECTS = $(am_lxc_copy_OBJECTS)
 lxc_copy_LDADD = $(LDADD)
 lxc_copy_DEPENDENCIES = liblxc.la
@@ -511,25 +521,27 @@ lxc_unshare_LDADD = $(LDADD)
 lxc_unshare_DEPENDENCIES = liblxc.la
 am__lxc_user_nic_SOURCES_DIST = cmd/lxc_user_nic.c \
 	../include/netns_ifaddrs.c ../include/netns_ifaddrs.h log.c \
-	log.h network.c network.h parse.c parse.h raw_syscalls.c \
-	raw_syscalls.h syscall_wrappers.h
+	log.h memory_utils.h network.c network.h parse.c parse.h \
+	raw_syscalls.c raw_syscalls.h string_utils.c string_utils.h \
+	syscall_wrappers.h
 @ENABLE_COMMANDS_TRUE@am_lxc_user_nic_OBJECTS =  \
 @ENABLE_COMMANDS_TRUE@	cmd/lxc_user_nic.$(OBJEXT) \
 @ENABLE_COMMANDS_TRUE@	../include/netns_ifaddrs.$(OBJEXT) \
 @ENABLE_COMMANDS_TRUE@	log.$(OBJEXT) network.$(OBJEXT) \
-@ENABLE_COMMANDS_TRUE@	parse.$(OBJEXT) raw_syscalls.$(OBJEXT)
+@ENABLE_COMMANDS_TRUE@	parse.$(OBJEXT) raw_syscalls.$(OBJEXT) \
+@ENABLE_COMMANDS_TRUE@	string_utils.$(OBJEXT)
 lxc_user_nic_OBJECTS = $(am_lxc_user_nic_OBJECTS)
 lxc_user_nic_LDADD = $(LDADD)
 lxc_user_nic_DEPENDENCIES = liblxc.la
 am__lxc_usernsexec_SOURCES_DIST = cmd/lxc_usernsexec.c conf.c conf.h \
-	list.h log.c log.h macro.h file_utils.c file_utils.h \
-	string_utils.c string_utils.h syscall_wrappers.h utils.c \
-	utils.h
+	file_utils.c file_utils.h list.h log.c log.h macro.h \
+	memory_utils.h string_utils.c string_utils.h \
+	syscall_wrappers.h utils.c utils.h
 @ENABLE_COMMANDS_TRUE@am_lxc_usernsexec_OBJECTS =  \
 @ENABLE_COMMANDS_TRUE@	cmd/lxc_usernsexec.$(OBJEXT) \
-@ENABLE_COMMANDS_TRUE@	conf.$(OBJEXT) log.$(OBJEXT) \
-@ENABLE_COMMANDS_TRUE@	file_utils.$(OBJEXT) \
-@ENABLE_COMMANDS_TRUE@	string_utils.$(OBJEXT) utils.$(OBJEXT)
+@ENABLE_COMMANDS_TRUE@	conf.$(OBJEXT) file_utils.$(OBJEXT) \
+@ENABLE_COMMANDS_TRUE@	log.$(OBJEXT) string_utils.$(OBJEXT) \
+@ENABLE_COMMANDS_TRUE@	utils.$(OBJEXT)
 lxc_usernsexec_OBJECTS = $(am_lxc_usernsexec_OBJECTS)
 lxc_usernsexec_LDADD = $(LDADD)
 lxc_usernsexec_DEPENDENCIES = liblxc.la
@@ -559,6 +571,7 @@ am__maybe_remake_depfiles = depfiles
 am__depfiles_remade = ../include/$(DEPDIR)/init_lxc_static-getline.Po \
 	../include/$(DEPDIR)/init_lxc_static-strlcat.Po \
 	../include/$(DEPDIR)/init_lxc_static-strlcpy.Po \
+	../include/$(DEPDIR)/liblxc_la-fexecve.Plo \
 	../include/$(DEPDIR)/liblxc_la-getgrgid_r.Plo \
 	../include/$(DEPDIR)/liblxc_la-getline.Plo \
 	../include/$(DEPDIR)/liblxc_la-lxcmntent.Plo \
@@ -600,6 +613,7 @@ am__depfiles_remade = ../include/$(DEPDIR)/init_lxc_static-getline.Po \
 	./$(DEPDIR)/liblxc_la-network.Plo ./$(DEPDIR)/liblxc_la-nl.Plo \
 	./$(DEPDIR)/liblxc_la-parse.Plo \
 	./$(DEPDIR)/liblxc_la-raw_syscalls.Plo \
+	./$(DEPDIR)/liblxc_la-rexec.Plo \
 	./$(DEPDIR)/liblxc_la-ringbuf.Plo \
 	./$(DEPDIR)/liblxc_la-rtnl.Plo \
 	./$(DEPDIR)/liblxc_la-seccomp.Plo \
@@ -608,12 +622,14 @@ am__depfiles_remade = ../include/$(DEPDIR)/init_lxc_static-getline.Po \
 	./$(DEPDIR)/liblxc_la-string_utils.Plo \
 	./$(DEPDIR)/liblxc_la-sync.Plo \
 	./$(DEPDIR)/liblxc_la-terminal.Plo \
-	./$(DEPDIR)/liblxc_la-utils.Plo ./$(DEPDIR)/log.Po \
-	./$(DEPDIR)/mainloop.Po ./$(DEPDIR)/monitor.Po \
-	./$(DEPDIR)/network.Po ./$(DEPDIR)/pam_cgfs_la-file_utils.Plo \
+	./$(DEPDIR)/liblxc_la-utils.Plo ./$(DEPDIR)/liblxc_la-uuid.Plo \
+	./$(DEPDIR)/log.Po ./$(DEPDIR)/mainloop.Po \
+	./$(DEPDIR)/monitor.Po ./$(DEPDIR)/network.Po \
+	./$(DEPDIR)/pam_cgfs_la-file_utils.Plo \
 	./$(DEPDIR)/pam_cgfs_la-string_utils.Plo ./$(DEPDIR)/parse.Po \
-	./$(DEPDIR)/raw_syscalls.Po ./$(DEPDIR)/string_utils.Po \
-	./$(DEPDIR)/utils.Po cgroups/$(DEPDIR)/liblxc_la-cgfsng.Plo \
+	./$(DEPDIR)/raw_syscalls.Po ./$(DEPDIR)/rexec.Po \
+	./$(DEPDIR)/string_utils.Po ./$(DEPDIR)/utils.Po \
+	cgroups/$(DEPDIR)/liblxc_la-cgfsng.Plo \
 	cgroups/$(DEPDIR)/liblxc_la-cgroup.Plo \
 	cgroups/$(DEPDIR)/liblxc_la-cgroup_utils.Plo \
 	cmd/$(DEPDIR)/init_lxc_static-lxc_init.Po \
@@ -712,14 +728,15 @@ am__noinst_HEADERS_DIST = attach.h caps.h cgroups/cgroup.h \
 	cgroups/cgroup_utils.h compiler.h conf.h confile.h \
 	confile_utils.h criu.h error.h file_utils.h \
 	../include/netns_ifaddrs.h initutils.h list.h log.h lxc.h \
-	lxclock.h macro.h monitor.h namespace.h raw_syscalls.h start.h \
-	state.h storage/btrfs.h storage/dir.h storage/loop.h \
-	storage/lvm.h storage/nbd.h storage/overlay.h storage/rbd.h \
-	storage/rsync.h storage/storage.h storage/storage_utils.h \
-	storage/zfs.h string_utils.h syscall_wrappers.h terminal.h \
-	../tests/lxctest.h tools/arguments.h utils.h \
-	../include/lxcmntent.h ../include/openpty.h \
-	../include/prlimit.h ../include/getline.h \
+	lxclock.h macro.h memory_utils.h monitor.h namespace.h \
+	raw_syscalls.h rexec.h start.h state.h storage/btrfs.h \
+	storage/dir.h storage/loop.h storage/lvm.h storage/nbd.h \
+	storage/overlay.h storage/rbd.h storage/rsync.h \
+	storage/storage.h storage/storage_utils.h storage/zfs.h \
+	string_utils.h syscall_wrappers.h terminal.h \
+	../tests/lxctest.h tools/arguments.h utils.h uuid.h \
+	../include/fexecve.h ../include/lxcmntent.h \
+	../include/openpty.h ../include/prlimit.h ../include/getline.h \
 	tools/include/getsubopt.h ../include/getgrgid_r.h
 HEADERS = $(noinst_HEADERS) $(pkginclude_HEADERS)
 am__tagged_files = $(HEADERS) $(SOURCES) $(TAGS_FILES) $(LISP)
@@ -774,7 +791,6 @@ ECHO_T = @ECHO_T@
 EGREP = @EGREP@
 EXEEXT = @EXEEXT@
 FGREP = @FGREP@
-GNUTLS_LIBS = @GNUTLS_LIBS@
 GREP = @GREP@
 HAVE_DOXYGEN = @HAVE_DOXYGEN@
 INCLUDEDIR = @INCLUDEDIR@
@@ -828,6 +844,7 @@ NM = @NM@
 NMEDIT = @NMEDIT@
 OBJDUMP = @OBJDUMP@
 OBJEXT = @OBJEXT@
+OPENSSL_LIBS = @OPENSSL_LIBS@
 OTOOL = @OTOOL@
 OTOOL64 = @OTOOL64@
 PACKAGE = @PACKAGE@
@@ -926,13 +943,14 @@ noinst_HEADERS = attach.h caps.h cgroups/cgroup.h \
 	cgroups/cgroup_utils.h compiler.h conf.h confile.h \
 	confile_utils.h criu.h error.h file_utils.h \
 	../include/netns_ifaddrs.h initutils.h list.h log.h lxc.h \
-	lxclock.h macro.h monitor.h namespace.h raw_syscalls.h start.h \
-	state.h storage/btrfs.h storage/dir.h storage/loop.h \
-	storage/lvm.h storage/nbd.h storage/overlay.h storage/rbd.h \
-	storage/rsync.h storage/storage.h storage/storage_utils.h \
-	storage/zfs.h string_utils.h syscall_wrappers.h terminal.h \
+	lxclock.h macro.h memory_utils.h monitor.h namespace.h \
+	raw_syscalls.h rexec.h start.h state.h storage/btrfs.h \
+	storage/dir.h storage/loop.h storage/lvm.h storage/nbd.h \
+	storage/overlay.h storage/rbd.h storage/rsync.h \
+	storage/storage.h storage/storage_utils.h storage/zfs.h \
+	string_utils.h syscall_wrappers.h terminal.h \
 	../tests/lxctest.h tools/arguments.h storage/storage_utils.h \
-	utils.h $(am__append_1) $(am__append_2) $(am__append_3) \
+	utils.h uuid.h $(am__append_1) $(am__append_2) $(am__append_3) \
 	$(am__append_4) $(am__append_5)
 sodir = $(libdir)
 LSM_SOURCES = lsm/lsm.c lsm/lsm.h lsm/nop.c $(am__append_6) \
@@ -947,9 +965,9 @@ liblxc_la_SOURCES = af_unix.c af_unix.h attach.c attach.h caps.c \
 	file_utils.h ../include/netns_ifaddrs.c \
 	../include/netns_ifaddrs.h initutils.c initutils.h list.h \
 	log.c log.h lxc.h lxccontainer.c lxccontainer.h lxclock.c \
-	lxclock.h lxcseccomp.h macro.h mainloop.c mainloop.h \
-	namespace.c namespace.h nl.c nl.h network.c network.h \
-	monitor.c monitor.h parse.c parse.h raw_syscalls.c \
+	lxclock.h lxcseccomp.h macro.h memory_utils.h mainloop.c \
+	mainloop.h namespace.c namespace.h nl.c nl.h network.c \
+	network.h monitor.c monitor.h parse.c parse.h raw_syscalls.c \
 	raw_syscalls.h ringbuf.c ringbuf.h rtnl.c rtnl.h state.c \
 	state.h start.c start.h storage/btrfs.c storage/btrfs.h \
 	storage/dir.c storage/dir.h storage/loop.c storage/loop.h \
@@ -959,10 +977,10 @@ liblxc_la_SOURCES = af_unix.c af_unix.h attach.c attach.h caps.c \
 	storage/storage.c storage/storage.h storage/storage_utils.c \
 	storage/storage_utils.h storage/zfs.c storage/zfs.h \
 	string_utils.c string_utils.h sync.c sync.h syscall_wrappers.h \
-	terminal.c utils.c utils.h version.h $(LSM_SOURCES) \
-	$(am__append_8) $(am__append_9) $(am__append_10) \
-	$(am__append_11) $(am__append_12) $(am__append_13) \
-	$(am__append_14)
+	terminal.c utils.c utils.h uuid.c uuid.h version.h \
+	$(LSM_SOURCES) $(am__append_8) $(am__append_9) \
+	$(am__append_10) $(am__append_11) $(am__append_12) \
+	$(am__append_13) $(am__append_14) $(am__append_15)
 AM_CFLAGS = -DLXCROOTFSMOUNT=\"$(LXCROOTFSMOUNT)\" \
 	-DLXCPATH=\"$(LXCPATH)\" \
 	-DLXC_GLOBAL_CONF=\"$(LXC_GLOBAL_CONF)\" \
@@ -977,34 +995,31 @@ AM_CFLAGS = -DLXCROOTFSMOUNT=\"$(LXCROOTFSMOUNT)\" \
 	-DRUNTIME_PATH=\"$(RUNTIME_PATH)\" -DSBINDIR=\"$(SBINDIR)\" -I \
 	$(top_srcdir)/src -I $(top_srcdir)/src/lxc -I \
 	$(top_srcdir)/src/lxc/storage -I $(top_srcdir)/src/lxc/cgroups \
-	$(am__append_15) $(am__append_16) $(am__append_17) \
-	$(am__append_18) $(am__append_19)
+	$(am__append_16) $(am__append_17) $(am__append_18) \
+	$(am__append_19) $(am__append_20)
 
 # build the shared library
-liblxc_la_CFLAGS = -fPIC \
-		   -DPIC \
-		   $(AM_CFLAGS) \
-		   -pthread
-
+liblxc_la_CFLAGS = -fPIC -DPIC $(AM_CFLAGS) -pthread $(am__append_21)
 liblxc_la_LDFLAGS = -pthread \
 		    -Wl,-no-undefined \
 		    -Wl,-soname,liblxc.so.$(firstword $(subst ., ,@LXC_ABI@)) \
 		    -version-info @LXC_ABI_MAJOR@
 
 liblxc_la_LIBADD = $(CAP_LIBS) \
-		   $(GNUTLS_LIBS) \
+		   $(OPENSSL_LIBS) \
 		   $(SELINUX_LIBS) \
 		   $(SECCOMP_LIBS)
 
-bin_SCRIPTS = $(am__append_20)
-AM_LDFLAGS = -Wl,-E $(am__append_22)
+bin_SCRIPTS = $(am__append_22)
+AM_LDFLAGS = -Wl,-E $(am__append_24)
 LDADD = liblxc.la \
 	@CAP_LIBS@ \
-	@GNUTLS_LIBS@ \
+	@OPENSSL_LIBS@ \
 	@SECCOMP_LIBS@ \
 	@SELINUX_LIBS@
 
 @ENABLE_TOOLS_TRUE@lxc_attach_SOURCES = tools/lxc_attach.c \
+@ENABLE_TOOLS_TRUE@		     rexec.c rexec.h \
 @ENABLE_TOOLS_TRUE@		     tools/arguments.c tools/arguments.h
 
 @ENABLE_TOOLS_TRUE@lxc_autostart_SOURCES = tools/lxc_autostart.c \
@@ -1044,7 +1059,7 @@ LDADD = liblxc.la \
 @ENABLE_TOOLS_TRUE@lxc_copy_SOURCES = tools/lxc_copy.c \
 @ENABLE_TOOLS_TRUE@	tools/arguments.c tools/arguments.h \
 @ENABLE_TOOLS_TRUE@	storage/storage_utils.c \
-@ENABLE_TOOLS_TRUE@	storage/storage_utils.h $(am__append_23)
+@ENABLE_TOOLS_TRUE@	storage/storage_utils.h $(am__append_25)
 @ENABLE_TOOLS_TRUE@lxc_start_SOURCES = tools/lxc_start.c \
 @ENABLE_TOOLS_TRUE@		    tools/arguments.c tools/arguments.h
 
@@ -1079,6 +1094,7 @@ LDADD = liblxc.la \
 @ENABLE_COMMANDS_TRUE@		   compiler.h \
 @ENABLE_COMMANDS_TRUE@		   error.h \
 @ENABLE_COMMANDS_TRUE@		   initutils.c initutils.h \
+@ENABLE_COMMANDS_TRUE@		   memory_utils.h \
 @ENABLE_COMMANDS_TRUE@		   parse.c parse.h \
 @ENABLE_COMMANDS_TRUE@		   raw_syscalls.c raw_syscalls.h \
 @ENABLE_COMMANDS_TRUE@		   string_utils.c string_utils.h
@@ -1094,17 +1110,20 @@ LDADD = liblxc.la \
 @ENABLE_COMMANDS_TRUE@lxc_user_nic_SOURCES = cmd/lxc_user_nic.c \
 @ENABLE_COMMANDS_TRUE@		       ../include/netns_ifaddrs.c ../include/netns_ifaddrs.h \
 @ENABLE_COMMANDS_TRUE@		       log.c log.h \
+@ENABLE_COMMANDS_TRUE@		       memory_utils.h \
 @ENABLE_COMMANDS_TRUE@		       network.c network.h \
 @ENABLE_COMMANDS_TRUE@		       parse.c parse.h \
 @ENABLE_COMMANDS_TRUE@		       raw_syscalls.c raw_syscalls.h \
+@ENABLE_COMMANDS_TRUE@		       string_utils.c string_utils.h \
 @ENABLE_COMMANDS_TRUE@		       syscall_wrappers.h
 
 @ENABLE_COMMANDS_TRUE@lxc_usernsexec_SOURCES = cmd/lxc_usernsexec.c \
 @ENABLE_COMMANDS_TRUE@			 conf.c conf.h \
+@ENABLE_COMMANDS_TRUE@			 file_utils.c file_utils.h \
 @ENABLE_COMMANDS_TRUE@			 list.h \
 @ENABLE_COMMANDS_TRUE@			 log.c log.h \
 @ENABLE_COMMANDS_TRUE@			 macro.h \
-@ENABLE_COMMANDS_TRUE@			 file_utils.c file_utils.h \
+@ENABLE_COMMANDS_TRUE@			 memory_utils.h \
 @ENABLE_COMMANDS_TRUE@			 string_utils.c string_utils.h \
 @ENABLE_COMMANDS_TRUE@			 syscall_wrappers.h \
 @ENABLE_COMMANDS_TRUE@			 utils.c utils.h
@@ -1119,23 +1138,24 @@ LDADD = liblxc.la \
 @ENABLE_COMMANDS_TRUE@@HAVE_STATIC_LIBCAP_TRUE@	file_utils.h \
 @ENABLE_COMMANDS_TRUE@@HAVE_STATIC_LIBCAP_TRUE@	log.c log.h \
 @ENABLE_COMMANDS_TRUE@@HAVE_STATIC_LIBCAP_TRUE@	macro.h \
+@ENABLE_COMMANDS_TRUE@@HAVE_STATIC_LIBCAP_TRUE@	memory_utils.h \
 @ENABLE_COMMANDS_TRUE@@HAVE_STATIC_LIBCAP_TRUE@	namespace.c \
 @ENABLE_COMMANDS_TRUE@@HAVE_STATIC_LIBCAP_TRUE@	namespace.h \
 @ENABLE_COMMANDS_TRUE@@HAVE_STATIC_LIBCAP_TRUE@	string_utils.c \
 @ENABLE_COMMANDS_TRUE@@HAVE_STATIC_LIBCAP_TRUE@	string_utils.h \
-@ENABLE_COMMANDS_TRUE@@HAVE_STATIC_LIBCAP_TRUE@	$(am__append_25) \
-@ENABLE_COMMANDS_TRUE@@HAVE_STATIC_LIBCAP_TRUE@	$(am__append_26) \
-@ENABLE_COMMANDS_TRUE@@HAVE_STATIC_LIBCAP_TRUE@	$(am__append_27)
+@ENABLE_COMMANDS_TRUE@@HAVE_STATIC_LIBCAP_TRUE@	$(am__append_27) \
+@ENABLE_COMMANDS_TRUE@@HAVE_STATIC_LIBCAP_TRUE@	$(am__append_28) \
+@ENABLE_COMMANDS_TRUE@@HAVE_STATIC_LIBCAP_TRUE@	$(am__append_29)
 @ENABLE_COMMANDS_TRUE@@HAVE_STATIC_LIBCAP_TRUE@init_lxc_static_LDFLAGS = -all-static
 @ENABLE_COMMANDS_TRUE@@HAVE_STATIC_LIBCAP_TRUE@init_lxc_static_LDADD = @CAP_LIBS@
 @ENABLE_COMMANDS_TRUE@@HAVE_STATIC_LIBCAP_TRUE@init_lxc_static_CFLAGS = $(AM_CFLAGS) -DNO_LXC_CONF
 @ENABLE_PAM_TRUE@@HAVE_PAM_TRUE@pam_LTLIBRARIES = pam_cgfs.la
 @ENABLE_PAM_TRUE@@HAVE_PAM_TRUE@pam_cgfs_la_SOURCES = pam/pam_cgfs.c \
 @ENABLE_PAM_TRUE@@HAVE_PAM_TRUE@	file_utils.c file_utils.h \
-@ENABLE_PAM_TRUE@@HAVE_PAM_TRUE@	macro.h string_utils.c \
-@ENABLE_PAM_TRUE@@HAVE_PAM_TRUE@	string_utils.h \
-@ENABLE_PAM_TRUE@@HAVE_PAM_TRUE@	$(am__append_28) \
-@ENABLE_PAM_TRUE@@HAVE_PAM_TRUE@	$(am__append_29)
+@ENABLE_PAM_TRUE@@HAVE_PAM_TRUE@	macro.h memory_utils.h \
+@ENABLE_PAM_TRUE@@HAVE_PAM_TRUE@	string_utils.c string_utils.h \
+@ENABLE_PAM_TRUE@@HAVE_PAM_TRUE@	$(am__append_30) \
+@ENABLE_PAM_TRUE@@HAVE_PAM_TRUE@	$(am__append_31)
 @ENABLE_PAM_TRUE@@HAVE_PAM_TRUE@pam_cgfs_la_CFLAGS = $(AM_CFLAGS) -DNO_LXC_CONF
 @ENABLE_PAM_TRUE@@HAVE_PAM_TRUE@pam_cgfs_la_LIBADD = $(AM_LIBS) \
 @ENABLE_PAM_TRUE@@HAVE_PAM_TRUE@		     $(PAM_LIBS) \
@@ -1463,6 +1483,8 @@ lsm/liblxc_la-apparmor.lo: lsm/$(am__dirstamp) \
 	lsm/$(DEPDIR)/$(am__dirstamp)
 lsm/liblxc_la-selinux.lo: lsm/$(am__dirstamp) \
 	lsm/$(DEPDIR)/$(am__dirstamp)
+../include/liblxc_la-fexecve.lo: ../include/$(am__dirstamp) \
+	../include/$(DEPDIR)/$(am__dirstamp)
 ../include/liblxc_la-lxcmntent.lo: ../include/$(am__dirstamp) \
 	../include/$(DEPDIR)/$(am__dirstamp)
 ../include/liblxc_la-openpty.lo: ../include/$(am__dirstamp) \
@@ -1750,6 +1772,7 @@ distclean-compile:
 @AMDEP_TRUE@@am__include@ @am__quote@../include/$(DEPDIR)/init_lxc_static-getline.Po@am__quote@ # am--include-marker
 @AMDEP_TRUE@@am__include@ @am__quote@../include/$(DEPDIR)/init_lxc_static-strlcat.Po@am__quote@ # am--include-marker
 @AMDEP_TRUE@@am__include@ @am__quote@../include/$(DEPDIR)/init_lxc_static-strlcpy.Po@am__quote@ # am--include-marker
+@AMDEP_TRUE@@am__include@ @am__quote@../include/$(DEPDIR)/liblxc_la-fexecve.Plo@am__quote@ # am--include-marker
 @AMDEP_TRUE@@am__include@ @am__quote@../include/$(DEPDIR)/liblxc_la-getgrgid_r.Plo@am__quote@ # am--include-marker
 @AMDEP_TRUE@@am__include@ @am__quote@../include/$(DEPDIR)/liblxc_la-getline.Plo@am__quote@ # am--include-marker
 @AMDEP_TRUE@@am__include@ @am__quote@../include/$(DEPDIR)/liblxc_la-lxcmntent.Plo@am__quote@ # am--include-marker
@@ -1796,6 +1819,7 @@ distclean-compile:
 @AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/liblxc_la-nl.Plo@am__quote@ # am--include-marker
 @AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/liblxc_la-parse.Plo@am__quote@ # am--include-marker
 @AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/liblxc_la-raw_syscalls.Plo@am__quote@ # am--include-marker
+@AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/liblxc_la-rexec.Plo@am__quote@ # am--include-marker
 @AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/liblxc_la-ringbuf.Plo@am__quote@ # am--include-marker
 @AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/liblxc_la-rtnl.Plo@am__quote@ # am--include-marker
 @AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/liblxc_la-seccomp.Plo@am__quote@ # am--include-marker
@@ -1805,6 +1829,7 @@ distclean-compile:
 @AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/liblxc_la-sync.Plo@am__quote@ # am--include-marker
 @AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/liblxc_la-terminal.Plo@am__quote@ # am--include-marker
 @AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/liblxc_la-utils.Plo@am__quote@ # am--include-marker
+@AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/liblxc_la-uuid.Plo@am__quote@ # am--include-marker
 @AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/log.Po@am__quote@ # am--include-marker
 @AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/mainloop.Po@am__quote@ # am--include-marker
 @AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/monitor.Po@am__quote@ # am--include-marker
@@ -1813,6 +1838,7 @@ distclean-compile:
 @AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/pam_cgfs_la-string_utils.Plo@am__quote@ # am--include-marker
 @AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/parse.Po@am__quote@ # am--include-marker
 @AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/raw_syscalls.Po@am__quote@ # am--include-marker
+@AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/rexec.Po@am__quote@ # am--include-marker
 @AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/string_utils.Po@am__quote@ # am--include-marker
 @AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/utils.Po@am__quote@ # am--include-marker
 @AMDEP_TRUE@@am__include@ @am__quote@cgroups/$(DEPDIR)/liblxc_la-cgfsng.Plo@am__quote@ # am--include-marker
@@ -2224,6 +2250,13 @@ liblxc_la-utils.lo: utils.c
 @AMDEP_TRUE@@am__fastdepCC_FALSE@	DEPDIR=$(DEPDIR) $(CCDEPMODE) $(depcomp) @AMDEPBACKSLASH@
 @am__fastdepCC_FALSE@	$(AM_V_CC@am__nodep@)$(LIBTOOL) $(AM_V_lt) --tag=CC $(AM_LIBTOOLFLAGS) $(LIBTOOLFLAGS) --mode=compile $(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(liblxc_la_CFLAGS) $(CFLAGS) -c -o liblxc_la-utils.lo `test -f 'utils.c' || echo '$(srcdir)/'`utils.c
 
+liblxc_la-uuid.lo: uuid.c
+@am__fastdepCC_TRUE@	$(AM_V_CC)$(LIBTOOL) $(AM_V_lt) --tag=CC $(AM_LIBTOOLFLAGS) $(LIBTOOLFLAGS) --mode=compile $(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(liblxc_la_CFLAGS) $(CFLAGS) -MT liblxc_la-uuid.lo -MD -MP -MF $(DEPDIR)/liblxc_la-uuid.Tpo -c -o liblxc_la-uuid.lo `test -f 'uuid.c' || echo '$(srcdir)/'`uuid.c
+@am__fastdepCC_TRUE@	$(AM_V_at)$(am__mv) $(DEPDIR)/liblxc_la-uuid.Tpo $(DEPDIR)/liblxc_la-uuid.Plo
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	$(AM_V_CC)source='uuid.c' object='liblxc_la-uuid.lo' libtool=yes @AMDEPBACKSLASH@
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	DEPDIR=$(DEPDIR) $(CCDEPMODE) $(depcomp) @AMDEPBACKSLASH@
+@am__fastdepCC_FALSE@	$(AM_V_CC@am__nodep@)$(LIBTOOL) $(AM_V_lt) --tag=CC $(AM_LIBTOOLFLAGS) $(LIBTOOLFLAGS) --mode=compile $(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(liblxc_la_CFLAGS) $(CFLAGS) -c -o liblxc_la-uuid.lo `test -f 'uuid.c' || echo '$(srcdir)/'`uuid.c
+
 lsm/liblxc_la-lsm.lo: lsm/lsm.c
 @am__fastdepCC_TRUE@	$(AM_V_CC)$(LIBTOOL) $(AM_V_lt) --tag=CC $(AM_LIBTOOLFLAGS) $(LIBTOOLFLAGS) --mode=compile $(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(liblxc_la_CFLAGS) $(CFLAGS) -MT lsm/liblxc_la-lsm.lo -MD -MP -MF lsm/$(DEPDIR)/liblxc_la-lsm.Tpo -c -o lsm/liblxc_la-lsm.lo `test -f 'lsm/lsm.c' || echo '$(srcdir)/'`lsm/lsm.c
 @am__fastdepCC_TRUE@	$(AM_V_at)$(am__mv) lsm/$(DEPDIR)/liblxc_la-lsm.Tpo lsm/$(DEPDIR)/liblxc_la-lsm.Plo
@@ -2251,6 +2284,13 @@ lsm/liblxc_la-selinux.lo: lsm/selinux.c
 @AMDEP_TRUE@@am__fastdepCC_FALSE@	$(AM_V_CC)source='lsm/selinux.c' object='lsm/liblxc_la-selinux.lo' libtool=yes @AMDEPBACKSLASH@
 @AMDEP_TRUE@@am__fastdepCC_FALSE@	DEPDIR=$(DEPDIR) $(CCDEPMODE) $(depcomp) @AMDEPBACKSLASH@
 @am__fastdepCC_FALSE@	$(AM_V_CC@am__nodep@)$(LIBTOOL) $(AM_V_lt) --tag=CC $(AM_LIBTOOLFLAGS) $(LIBTOOLFLAGS) --mode=compile $(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(liblxc_la_CFLAGS) $(CFLAGS) -c -o lsm/liblxc_la-selinux.lo `test -f 'lsm/selinux.c' || echo '$(srcdir)/'`lsm/selinux.c
+
+../include/liblxc_la-fexecve.lo: ../include/fexecve.c
+@am__fastdepCC_TRUE@	$(AM_V_CC)$(LIBTOOL) $(AM_V_lt) --tag=CC $(AM_LIBTOOLFLAGS) $(LIBTOOLFLAGS) --mode=compile $(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(liblxc_la_CFLAGS) $(CFLAGS) -MT ../include/liblxc_la-fexecve.lo -MD -MP -MF ../include/$(DEPDIR)/liblxc_la-fexecve.Tpo -c -o ../include/liblxc_la-fexecve.lo `test -f '../include/fexecve.c' || echo '$(srcdir)/'`../include/fexecve.c
+@am__fastdepCC_TRUE@	$(AM_V_at)$(am__mv) ../include/$(DEPDIR)/liblxc_la-fexecve.Tpo ../include/$(DEPDIR)/liblxc_la-fexecve.Plo
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	$(AM_V_CC)source='../include/fexecve.c' object='../include/liblxc_la-fexecve.lo' libtool=yes @AMDEPBACKSLASH@
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	DEPDIR=$(DEPDIR) $(CCDEPMODE) $(depcomp) @AMDEPBACKSLASH@
+@am__fastdepCC_FALSE@	$(AM_V_CC@am__nodep@)$(LIBTOOL) $(AM_V_lt) --tag=CC $(AM_LIBTOOLFLAGS) $(LIBTOOLFLAGS) --mode=compile $(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(liblxc_la_CFLAGS) $(CFLAGS) -c -o ../include/liblxc_la-fexecve.lo `test -f '../include/fexecve.c' || echo '$(srcdir)/'`../include/fexecve.c
 
 ../include/liblxc_la-lxcmntent.lo: ../include/lxcmntent.c
 @am__fastdepCC_TRUE@	$(AM_V_CC)$(LIBTOOL) $(AM_V_lt) --tag=CC $(AM_LIBTOOLFLAGS) $(LIBTOOLFLAGS) --mode=compile $(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(liblxc_la_CFLAGS) $(CFLAGS) -MT ../include/liblxc_la-lxcmntent.lo -MD -MP -MF ../include/$(DEPDIR)/liblxc_la-lxcmntent.Tpo -c -o ../include/liblxc_la-lxcmntent.lo `test -f '../include/lxcmntent.c' || echo '$(srcdir)/'`../include/lxcmntent.c
@@ -2307,6 +2347,13 @@ liblxc_la-seccomp.lo: seccomp.c
 @AMDEP_TRUE@@am__fastdepCC_FALSE@	$(AM_V_CC)source='../include/strlcat.c' object='../include/liblxc_la-strlcat.lo' libtool=yes @AMDEPBACKSLASH@
 @AMDEP_TRUE@@am__fastdepCC_FALSE@	DEPDIR=$(DEPDIR) $(CCDEPMODE) $(depcomp) @AMDEPBACKSLASH@
 @am__fastdepCC_FALSE@	$(AM_V_CC@am__nodep@)$(LIBTOOL) $(AM_V_lt) --tag=CC $(AM_LIBTOOLFLAGS) $(LIBTOOLFLAGS) --mode=compile $(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(liblxc_la_CFLAGS) $(CFLAGS) -c -o ../include/liblxc_la-strlcat.lo `test -f '../include/strlcat.c' || echo '$(srcdir)/'`../include/strlcat.c
+
+liblxc_la-rexec.lo: rexec.c
+@am__fastdepCC_TRUE@	$(AM_V_CC)$(LIBTOOL) $(AM_V_lt) --tag=CC $(AM_LIBTOOLFLAGS) $(LIBTOOLFLAGS) --mode=compile $(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(liblxc_la_CFLAGS) $(CFLAGS) -MT liblxc_la-rexec.lo -MD -MP -MF $(DEPDIR)/liblxc_la-rexec.Tpo -c -o liblxc_la-rexec.lo `test -f 'rexec.c' || echo '$(srcdir)/'`rexec.c
+@am__fastdepCC_TRUE@	$(AM_V_at)$(am__mv) $(DEPDIR)/liblxc_la-rexec.Tpo $(DEPDIR)/liblxc_la-rexec.Plo
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	$(AM_V_CC)source='rexec.c' object='liblxc_la-rexec.lo' libtool=yes @AMDEPBACKSLASH@
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	DEPDIR=$(DEPDIR) $(CCDEPMODE) $(depcomp) @AMDEPBACKSLASH@
+@am__fastdepCC_FALSE@	$(AM_V_CC@am__nodep@)$(LIBTOOL) $(AM_V_lt) --tag=CC $(AM_LIBTOOLFLAGS) $(LIBTOOLFLAGS) --mode=compile $(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(liblxc_la_CFLAGS) $(CFLAGS) -c -o liblxc_la-rexec.lo `test -f 'rexec.c' || echo '$(srcdir)/'`rexec.c
 
 pam/cgfs_la-pam_cgfs.lo: pam/pam_cgfs.c
 @am__fastdepCC_TRUE@	$(AM_V_CC)$(LIBTOOL) $(AM_V_lt) --tag=CC $(AM_LIBTOOLFLAGS) $(LIBTOOLFLAGS) --mode=compile $(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(pam_cgfs_la_CFLAGS) $(CFLAGS) -MT pam/cgfs_la-pam_cgfs.lo -MD -MP -MF pam/$(DEPDIR)/cgfs_la-pam_cgfs.Tpo -c -o pam/cgfs_la-pam_cgfs.lo `test -f 'pam/pam_cgfs.c' || echo '$(srcdir)/'`pam/pam_cgfs.c
@@ -2669,6 +2716,7 @@ distclean-generic:
 maintainer-clean-generic:
 	@echo "This command is intended for maintainers to use"
 	@echo "it deletes files that may require special tools to rebuild."
+@ENABLE_COMMANDS_FALSE@install-exec-hook:
 @ENABLE_PAM_FALSE@install-data-hook:
 @HAVE_PAM_FALSE@install-data-hook:
 clean: clean-am
@@ -2681,6 +2729,7 @@ distclean: distclean-am
 		-rm -f ../include/$(DEPDIR)/init_lxc_static-getline.Po
 	-rm -f ../include/$(DEPDIR)/init_lxc_static-strlcat.Po
 	-rm -f ../include/$(DEPDIR)/init_lxc_static-strlcpy.Po
+	-rm -f ../include/$(DEPDIR)/liblxc_la-fexecve.Plo
 	-rm -f ../include/$(DEPDIR)/liblxc_la-getgrgid_r.Plo
 	-rm -f ../include/$(DEPDIR)/liblxc_la-getline.Plo
 	-rm -f ../include/$(DEPDIR)/liblxc_la-lxcmntent.Plo
@@ -2727,6 +2776,7 @@ distclean: distclean-am
 	-rm -f ./$(DEPDIR)/liblxc_la-nl.Plo
 	-rm -f ./$(DEPDIR)/liblxc_la-parse.Plo
 	-rm -f ./$(DEPDIR)/liblxc_la-raw_syscalls.Plo
+	-rm -f ./$(DEPDIR)/liblxc_la-rexec.Plo
 	-rm -f ./$(DEPDIR)/liblxc_la-ringbuf.Plo
 	-rm -f ./$(DEPDIR)/liblxc_la-rtnl.Plo
 	-rm -f ./$(DEPDIR)/liblxc_la-seccomp.Plo
@@ -2736,6 +2786,7 @@ distclean: distclean-am
 	-rm -f ./$(DEPDIR)/liblxc_la-sync.Plo
 	-rm -f ./$(DEPDIR)/liblxc_la-terminal.Plo
 	-rm -f ./$(DEPDIR)/liblxc_la-utils.Plo
+	-rm -f ./$(DEPDIR)/liblxc_la-uuid.Plo
 	-rm -f ./$(DEPDIR)/log.Po
 	-rm -f ./$(DEPDIR)/mainloop.Po
 	-rm -f ./$(DEPDIR)/monitor.Po
@@ -2744,6 +2795,7 @@ distclean: distclean-am
 	-rm -f ./$(DEPDIR)/pam_cgfs_la-string_utils.Plo
 	-rm -f ./$(DEPDIR)/parse.Po
 	-rm -f ./$(DEPDIR)/raw_syscalls.Po
+	-rm -f ./$(DEPDIR)/rexec.Po
 	-rm -f ./$(DEPDIR)/string_utils.Po
 	-rm -f ./$(DEPDIR)/utils.Po
 	-rm -f cgroups/$(DEPDIR)/liblxc_la-cgfsng.Plo
@@ -2847,6 +2899,7 @@ maintainer-clean: maintainer-clean-am
 		-rm -f ../include/$(DEPDIR)/init_lxc_static-getline.Po
 	-rm -f ../include/$(DEPDIR)/init_lxc_static-strlcat.Po
 	-rm -f ../include/$(DEPDIR)/init_lxc_static-strlcpy.Po
+	-rm -f ../include/$(DEPDIR)/liblxc_la-fexecve.Plo
 	-rm -f ../include/$(DEPDIR)/liblxc_la-getgrgid_r.Plo
 	-rm -f ../include/$(DEPDIR)/liblxc_la-getline.Plo
 	-rm -f ../include/$(DEPDIR)/liblxc_la-lxcmntent.Plo
@@ -2893,6 +2946,7 @@ maintainer-clean: maintainer-clean-am
 	-rm -f ./$(DEPDIR)/liblxc_la-nl.Plo
 	-rm -f ./$(DEPDIR)/liblxc_la-parse.Plo
 	-rm -f ./$(DEPDIR)/liblxc_la-raw_syscalls.Plo
+	-rm -f ./$(DEPDIR)/liblxc_la-rexec.Plo
 	-rm -f ./$(DEPDIR)/liblxc_la-ringbuf.Plo
 	-rm -f ./$(DEPDIR)/liblxc_la-rtnl.Plo
 	-rm -f ./$(DEPDIR)/liblxc_la-seccomp.Plo
@@ -2902,6 +2956,7 @@ maintainer-clean: maintainer-clean-am
 	-rm -f ./$(DEPDIR)/liblxc_la-sync.Plo
 	-rm -f ./$(DEPDIR)/liblxc_la-terminal.Plo
 	-rm -f ./$(DEPDIR)/liblxc_la-utils.Plo
+	-rm -f ./$(DEPDIR)/liblxc_la-uuid.Plo
 	-rm -f ./$(DEPDIR)/log.Po
 	-rm -f ./$(DEPDIR)/mainloop.Po
 	-rm -f ./$(DEPDIR)/monitor.Po
@@ -2910,6 +2965,7 @@ maintainer-clean: maintainer-clean-am
 	-rm -f ./$(DEPDIR)/pam_cgfs_la-string_utils.Plo
 	-rm -f ./$(DEPDIR)/parse.Po
 	-rm -f ./$(DEPDIR)/raw_syscalls.Po
+	-rm -f ./$(DEPDIR)/rexec.Po
 	-rm -f ./$(DEPDIR)/string_utils.Po
 	-rm -f ./$(DEPDIR)/utils.Po
 	-rm -f cgroups/$(DEPDIR)/liblxc_la-cgfsng.Plo
@@ -3018,8 +3074,8 @@ install-exec-local: install-libLTLIBRARIES
 	ln -sf liblxc.so.@LXC_ABI@ liblxc.so.$(firstword $(subst ., ,@LXC_ABI@)); \
 	ln -sf liblxc.so.$(firstword $(subst ., ,@LXC_ABI@)) liblxc.so
 
-install-exec-hook:
-	chmod u+s $(DESTDIR)$(libexecdir)/lxc/lxc-user-nic
+@ENABLE_COMMANDS_TRUE@install-exec-hook:
+@ENABLE_COMMANDS_TRUE@	chmod u+s $(DESTDIR)$(libexecdir)/lxc/lxc-user-nic
 
 uninstall-local:
 	$(RM) $(DESTDIR)$(libdir)/liblxc.so*

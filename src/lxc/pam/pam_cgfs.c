@@ -59,6 +59,7 @@
 #include "config.h"
 #include "file_utils.h"
 #include "macro.h"
+#include "memory_utils.h"
 #include "string_utils.h"
 
 #define PAM_SM_SESSION
@@ -258,7 +259,7 @@ static bool mkdir_parent(const char *root, char *path)
 		return true;
 
 	b = path + strlen(root) + 1;
-	while (true) {
+	for (;;) {
 		while (*b && (*b == '/'))
 			b++;
 		if (!*b)
@@ -297,8 +298,11 @@ static void mysyslog(int err, const char *format, ...)
 	va_list args;
 
 	va_start(args, format);
+#pragma GCC diagnostic push
+#pragma GCC diagnostic ignored "-Wformat-nonliteral"
 	openlog("PAM-CGFS", LOG_CONS | LOG_PID, LOG_AUTH);
 	vsyslog(err, format, args);
+#pragma GCC diagnostic pop
 	va_end(args);
 	closelog();
 }
@@ -842,8 +846,9 @@ static char **cgv1_get_proc_mountinfo_controllers(char **klist, char **nlist, ch
 /* Check if a cgroupfs v2 controller is present in the string @cgline. */
 static bool cgv1_controller_in_clist(char *cgline, char *c)
 {
+	__do_free char *tmp = NULL;
 	size_t len;
-	char *tok, *eol, *tmp;
+	char *tok, *eol;
 	char *saveptr = NULL;
 
 	eol = strchr(cgline, ':');
@@ -851,7 +856,7 @@ static bool cgv1_controller_in_clist(char *cgline, char *c)
 		return false;
 
 	len = eol - cgline;
-	tmp = alloca(len + 1);
+	tmp = must_realloc(NULL, len + 1);
 	memcpy(tmp, cgline, len);
 	tmp[len] = '\0';
 
@@ -873,7 +878,7 @@ static char *cgv1_get_current_cgroup(char *basecginfo, char *controller)
 
 	p = basecginfo;
 
-	while (true) {
+	for (;;) {
 		p = strchr(p, ':');
 		if (!p)
 			return NULL;

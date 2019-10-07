@@ -3,6 +3,9 @@
 /* "Prefix for shared files." */
 #undef DATADIR
 
+/* Rexec liblxc as memfd */
+#undef ENFORCE_MEMFD_REXEC
+
 /* Define to 1 if you have the `confstr' function. */
 #undef HAVE_CONFSTR
 
@@ -88,6 +91,9 @@
 
 /* Define to 1 if you have the <memory.h> header file. */
 #undef HAVE_MEMORY_H
+
+/* Have %m format */
+#undef HAVE_M_FORMAT
 
 /* Define to 1 if you have the `openpty' function. */
 #undef HAVE_OPENPTY

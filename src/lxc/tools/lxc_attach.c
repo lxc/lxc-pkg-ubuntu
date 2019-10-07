@@ -44,9 +44,27 @@
 #include "config.h"
 #include "confile.h"
 #include "log.h"
+#include "rexec.h"
 #include "utils.h"
 
 lxc_log_define(lxc_attach, lxc);
+
+/**
+ * This function will copy any binary that calls liblxc into a memory file and
+ * will use the memfd to rexecute the binary. This is done to prevent attacks
+ * through the /proc/self/exe symlink to corrupt the host binary when host and
+ * container are in the same user namespace or have set up an identity id
+ * mapping: CVE-2019-5736.
+ */
+#ifdef ENFORCE_MEMFD_REXEC
+__attribute__((constructor)) static void lxc_attach_rexec(void)
+{
+	if (!getenv("LXC_MEMFD_REXEC") && lxc_rexec("lxc-attach")) {
+		fprintf(stderr, "Failed to re-execute lxc-attach via memory file descriptor\n");
+		_exit(EXIT_FAILURE);
+	}
+}
+#endif
 
 static int my_parser(struct lxc_arguments *args, int c, char *arg);
 static int add_to_simple_array(char ***array, ssize_t *capacity, char *value);
@@ -336,19 +354,23 @@ int main(int argc, char *argv[])
 			goto out;
 	}
 
-	if (command.program)
-		ret = c->attach(c, lxc_attach_run_command, &command, &attach_options, &pid);
-	else
+	if (command.program) {
+		ret = c->attach_run_wait(c, &attach_options, command.program,
+					 (const char **)command.argv);
+		if (ret < 0)
+			goto out;
+	} else {
 		ret = c->attach(c, lxc_attach_run_shell, NULL, &attach_options, &pid);
-	if (ret < 0)
-		goto out;
+		if (ret < 0)
+			goto out;
 
-	ret = lxc_wait_for_pid_status(pid);
-	if (ret < 0)
-		goto out;
+		ret = lxc_wait_for_pid_status(pid);
+		if (ret < 0)
+			goto out;
 
-	if (WIFEXITED(ret))
-		wexit = WEXITSTATUS(ret);
+		if (WIFEXITED(ret))
+			wexit = WEXITSTATUS(ret);
+	}
 
 out:
 	lxc_container_put(c);

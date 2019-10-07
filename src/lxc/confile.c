@@ -53,6 +53,7 @@
 #include "../include/netns_ifaddrs.h"
 #include "log.h"
 #include "lxcseccomp.h"
+#include "memory_utils.h"
 #include "network.h"
 #include "parse.h"
 #include "storage.h"
@@ -1314,6 +1315,26 @@ static int set_config_cgroup_dir(const char *key, const char *value,
 	return set_config_string_item(&lxc_conf->cgroup_meta.dir, value);
 }
 
+static bool parse_limit_value(const char **value, rlim_t *res)
+{
+	char *endptr = NULL;
+
+	if (strncmp(*value, "unlimited", STRLITERALLEN("unlimited")) == 0) {
+		*res = RLIM_INFINITY;
+		*value += STRLITERALLEN("unlimited");
+		return true;
+	}
+
+	errno = 0;
+	*res = strtoull(*value, &endptr, 10);
+	if (errno || !endptr)
+		return false;
+
+	*value = endptr;
+
+	return true;
+}
+
 static int set_config_prlimit(const char *key, const char *value,
 			    struct lxc_conf *lxc_conf, void *data)
 {
@@ -1901,6 +1922,40 @@ static int set_config_console_size(const char *key, const char *value,
 	lxc_conf->console.log_size = log_size;
 
 	return 0;
+}
+
+/*
+ * If we find a lxc.net.[i].hwaddr or lxc.network.hwaddr in the original config
+ * file, we expand it in the unexpanded_config, so that after a save_config we
+ * store the hwaddr for re-use.
+ * This is only called when reading the config file, not when executing a
+ * lxc.include.
+ * 'x' and 'X' are substituted in-place.
+ */
+static void update_hwaddr(const char *line)
+{
+	char *p;
+
+	line += lxc_char_left_gc(line, strlen(line));
+	if (line[0] == '#')
+		return;
+
+	if (!lxc_config_net_is_hwaddr(line))
+		return;
+
+	/* Let config_net_hwaddr raise the error. */
+	p = strchr(line, '=');
+	if (!p)
+		return;
+	p++;
+
+	while (isblank(*p))
+		p++;
+
+	if (!*p)
+		return;
+
+	rand_complete_hwaddr(p);
 }
 
 int append_unexp_config_line(const char *line, struct lxc_conf *conf)
@@ -2508,12 +2563,12 @@ int write_config(int fd, const struct lxc_conf *conf)
 bool do_append_unexp_config_line(struct lxc_conf *conf, const char *key,
 				 const char *v)
 {
+	__do_free char *tmp = NULL;
 	int ret;
 	size_t len;
-	char *tmp;
 
 	len = strlen(key) + strlen(v) + 4;
-	tmp = alloca(len);
+	tmp = must_realloc(NULL, len);
 
 	if (lxc_config_value_empty(v))
 		ret = snprintf(tmp, len, "%s =", key);
@@ -2575,21 +2630,23 @@ bool clone_update_unexp_ovl_paths(struct lxc_conf *conf, const char *oldpath,
 				  const char *newpath, const char *oldname,
 				  const char *newname, const char *ovldir)
 {
+	__do_free char *newdir = NULL,
+							 *olddir = NULL;
 	int ret;
-	char *lend, *newdir, *olddir, *p, *q;
+	char *lend, *p, *q;
 	size_t newdirlen, olddirlen;
 	char *lstart = conf->unexpanded_config;
 	const char *key = "lxc.mount.entry";
 
 	olddirlen = strlen(ovldir) + strlen(oldpath) + strlen(oldname) + 2;
-	olddir = alloca(olddirlen + 1);
+	olddir = must_realloc(NULL, olddirlen + 1);
 	ret = snprintf(olddir, olddirlen + 1, "%s=%s/%s", ovldir, oldpath,
 		       oldname);
 	if (ret < 0 || ret >= olddirlen + 1)
 		return false;
 
 	newdirlen = strlen(ovldir) + strlen(newpath) + strlen(newname) + 2;
-	newdir = alloca(newdirlen + 1);
+	newdir = must_realloc(NULL, newdirlen + 1);
 	ret = snprintf(newdir, newdirlen + 1, "%s=%s/%s", ovldir, newpath,
 		       newname);
 	if (ret < 0 || ret >= newdirlen + 1)
@@ -2683,20 +2740,22 @@ bool clone_update_unexp_hooks(struct lxc_conf *conf, const char *oldpath,
 			      const char *newpath, const char *oldname,
 			      const char *newname)
 {
+	__do_free char *newdir = NULL,
+							 *olddir = NULL;
 	int ret;
-	char *lend, *newdir, *olddir, *p;
+	char *lend, *p;
 	char *lstart = conf->unexpanded_config;
 	size_t newdirlen, olddirlen;
 	const char *key = "lxc.hook";
 
 	olddirlen = strlen(oldpath) + strlen(oldname) + 1;
-	olddir = alloca(olddirlen + 1);
+	olddir = must_realloc(NULL, olddirlen + 1);
 	ret = snprintf(olddir, olddirlen + 1, "%s/%s", oldpath, oldname);
 	if (ret < 0 || ret >= olddirlen + 1)
 		return false;
 
 	newdirlen = strlen(newpath) + strlen(newname) + 1;
-	newdir = alloca(newdirlen + 1);
+	newdir = must_realloc(NULL, newdirlen + 1);
 	ret = snprintf(newdir, newdirlen + 1, "%s/%s", newpath, newname);
 	if (ret < 0 || ret >= newdirlen + 1)
 		return false;
@@ -2807,7 +2866,7 @@ bool network_new_hwaddrs(struct lxc_conf *conf)
 		else
 			lend++;
 
-		if (!lxc_config_net_hwaddr(lstart)) {
+		if (!lxc_config_net_is_hwaddr(lstart)) {
 			lstart = lend;
 			continue;
 		}

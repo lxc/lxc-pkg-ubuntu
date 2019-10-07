@@ -53,7 +53,7 @@ int zfs_detect_exec_wrapper(void *data)
 {
 	struct zfs_args *args = data;
 
-	execlp("zfs", "zfs", "get", "type", "-H", "-o", "name", args->dataset,
+	execlp("zfs", "zfs", "get", "-H", "-o", "name", "type", args->dataset,
 	       (char *)NULL);
 
 	return -1;
@@ -101,7 +101,7 @@ int zfs_get_parent_snapshot_exec_wrapper(void *args)
 {
 	struct zfs_args *zfs_args = args;
 
-	execlp("zfs", "zfs", "get", "origin", "-o", "value", "-H",
+	execlp("zfs", "zfs", "get", "-H", "-o", "value", "origin",
 	       zfs_args->dataset, (char *)NULL);
 
 	return -1;
@@ -427,7 +427,7 @@ bool zfs_snapshot(struct lxc_conf *conf, struct lxc_storage *orig,
 	if (ret < 0 || ret >= PATH_MAX) {
 		ERROR("Failed to create string");
 		free(snapshot);
-		return -1;
+		return false;
 	}
 
 	cmd_args.dataset = lxc_storage_get_path(new->src, new->type);
@@ -468,7 +468,6 @@ int zfs_clonepaths(struct lxc_storage *orig, struct lxc_storage *new,
 
 	orig_src = lxc_storage_get_path(orig->src, orig->type);
 	if (!strcmp(orig->type, "zfs")) {
-		size_t len;
 		if (*orig_src == '/') {
 			bool found;
 
@@ -594,8 +593,6 @@ int zfs_destroy(struct lxc_storage *orig)
 	 * "<lxcpath>/<lxcname>/rootfs" is given.
 	 */
 	if (*src == '/') {
-		char *tmp;
-
 		found = zfs_list_entry(src, cmd_output, sizeof(cmd_output));
 		if (!found) {
 			ERROR("Failed to find zfs entry \"%s\"", orig->src);
