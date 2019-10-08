@@ -1,3 +1,39 @@
+lxc (3.0.4-0ubuntu1) eoan; urgency=medium
+
+  * New upstream bugfix release (3.0.4).
+  * Cherry-pick upstream bugfixes:
+    - cgfsng: fix memory leak in lxc_cpumask_to_cpulist
+    - cgroups: use __do_free
+    - cgroups: move variables into tighter scope
+    - cgroups: simplify cgfsng_setup_limits()
+    - cgroups: use __do_free in cgfsng_attach()
+    - cgroups: move variable into tighter scope
+    - cgroups: move variable into tighter scope
+    - cgroups: simplify cgfsng_nrtasks()
+    - cgroups: move variable into tighter scope
+    - cgroups: correctly order variables
+    - cgroups: move variable into tighter scope
+    - fix memory leak in do_storage_create
+    - Move code/variable in smaller scope
+    - start: expose LXC_PID to network hooks too
+    - cgroups: hande cpuset initialization race
+    - pidf_send_signal: fix return value
+    - cgroup: check for non-empty conf
+    - typo fix
+    - Suppress hardcoded table sizes
+    - lxc/log: add error_log_errno macro
+    - pidfds: don't print a scary warning on ENOSYS
+    - cgroups: initialize cpuset properly
+    - lxccontainer: fix detaching wlan devices
+    - utils: fix wrong integer of a function parameter
+    - lxc.pc: Fix invalid @DLOG_LIBS@
+  * debian/control: Set Rules-Requires-Root to no
+  * debian/control: Bump standards to 4.4.0
+  * debian/upstream: Reduce size of GPG key
+  * debian/source: Remove unused lintian override
+
+ -- Stéphane Graber <stgraber@ubuntu.com>  Mon, 07 Oct 2019 19:24:07 -0400
+
 lxc (3.0.3-0ubuntu1) disco; urgency=medium
 
   * New upstream bugfix release (LP: #1804755):
