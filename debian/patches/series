@@ -23,3 +23,4 @@
 0023-cgroups-initialize-cpuset-properly.patch
 0024-lxccontainer-do_lxcapi_detach_interface-to-support-d.patch
 0025-utils-Fix-wrong-integer-of-a-function-parameter.patch
+0026-lxc.pc-Fix-invalid-DLOG_LIBS.patch
