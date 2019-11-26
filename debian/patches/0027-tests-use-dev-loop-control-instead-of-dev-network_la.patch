@@ -1,0 +1,27 @@
+From 1df746548ddbd277088e2911b8fd227f12f96c5f Mon Sep 17 00:00:00 2001
+From: Christian Brauner <christian.brauner@ubuntu.com>
+Date: Mon, 18 Nov 2019 15:08:22 +0100
+Subject: tests: use /dev/loop-control instead of /dev/network_latency
+
+BugLink: https://bugs.launchpad.net/bugs/1848587
+
+The latter device has been removed apparently.
+
+Signed-off-by: Christian Brauner <christian.brauner@ubuntu.com>
+---
+ src/tests/device_add_remove.c | 2 +-
+ 1 file changed, 1 insertion(+), 1 deletion(-)
+
+diff --git a/src/tests/device_add_remove.c b/src/tests/device_add_remove.c
+index 4a2e95138..50ccb2d51 100644
+--- a/src/tests/device_add_remove.c
++++ b/src/tests/device_add_remove.c
+@@ -21,7 +21,7 @@
+ #include <lxc/lxccontainer.h>
+ 
+ #define NAME "device_add_remove_test"
+-#define DEVICE "/dev/network_latency"
++#define DEVICE "/dev/loop-control"
+ 
+ int main(int argc, char *argv[])
+ {
