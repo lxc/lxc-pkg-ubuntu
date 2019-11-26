@@ -1,3 +1,10 @@
+lxc (3.0.4-0ubuntu2) focal; urgency=medium
+
+  * Cherry-pick upstream bugfixes (LP: #1848587):
+    - tests: use /dev/loop-control instead of /dev/network_latency
+
+ -- Stéphane Graber <stgraber@ubuntu.com>  Tue, 26 Nov 2019 12:22:37 -0500
+
 lxc (3.0.4-0ubuntu1) eoan; urgency=medium
 
   * New upstream bugfix release (3.0.4).
