@@ -1,21 +1,4 @@
-/*
- *
- * Copyright © 2013 Serge Hallyn <serge.hallyn@ubuntu.com>.
- * Copyright © 2013 Canonical Ltd.
- *
- * This program is free software; you can redistribute it and/or modify
- * it under the terms of the GNU General Public License version 2, as
- * published by the Free Software Foundation.
- *
- * This program is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
- * GNU General Public License for more details.
- *
- * You should have received a copy of the GNU General Public License along
- * with this program; if not, write to the Free Software Foundation, Inc.,
- * 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
- */
+/* SPDX-License-Identifier: GPL-2.0-only */
 
 #ifndef _GNU_SOURCE
 #define _GNU_SOURCE 1
@@ -232,6 +215,11 @@ int main(int argc, char *argv[])
 	if (!my_args.template) {
 		ERROR("A template must be specified");
 		ERROR("Use \"none\" if you really want a container without a rootfs");
+		exit(EXIT_FAILURE);
+	}
+
+	if (my_args.dir && my_args.dir[0] != '/') {
+		ERROR("--dir should use absolute path");
 		exit(EXIT_FAILURE);
 	}
 

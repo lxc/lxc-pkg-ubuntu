@@ -1,25 +1,4 @@
-/*
- * lxc: linux Container library
- *
- * (C) Copyright IBM Corp. 2007, 2008
- *
- * Authors:
- * Daniel Lezcano <daniel.lezcano at free.fr>
- *
- * This library is free software; you can redistribute it and/or
- * modify it under the terms of the GNU Lesser General Public
- * License as published by the Free Software Foundation; either
- * version 2.1 of the License, or (at your option) any later version.
- *
- * This library is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
- * Lesser General Public License for more details.
- *
- * You should have received a copy of the GNU Lesser General Public
- * License along with this library; if not, write to the Free Software
- * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA
- */
+/* SPDX-License-Identifier: LGPL-2.1+ */
 
 #ifndef _GNU_SOURCE
 #define _GNU_SOURCE 1
@@ -33,12 +12,15 @@
 #include <inttypes.h>
 #include <libgen.h>
 #include <pthread.h>
+#include <signal.h>
 #include <stddef.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 #include <sys/mman.h>
 #include <sys/mount.h>
+/* Needs to be after sys/mount.h header */
+#include <linux/fs.h>
 #include <sys/param.h>
 #include <sys/prctl.h>
 #include <sys/stat.h>
@@ -48,6 +30,7 @@
 
 #include "config.h"
 #include "log.h"
+#include "lsm/lsm.h"
 #include "lxclock.h"
 #include "memory_utils.h"
 #include "namespace.h"
@@ -82,21 +65,20 @@ extern bool btrfs_try_remove_subvol(const char *path);
 static int _recursive_rmdir(const char *dirname, dev_t pdev,
 			    const char *exclude, int level, bool onedev)
 {
-	struct dirent *direntp;
-	DIR *dir;
-	int ret, failed = 0;
-	char pathname[PATH_MAX];
+	__do_closedir DIR *dir = NULL;
+	int failed = 0;
 	bool hadexclude = false;
+	int ret;
+	struct dirent *direntp;
+	char pathname[PATH_MAX];
 
 	dir = opendir(dirname);
-	if (!dir) {
-		ERROR("Failed to open \"%s\"", dirname);
-		return -1;
-	}
+	if (!dir)
+		return log_error(-1, "Failed to open \"%s\"", dirname);
 
 	while ((direntp = readdir(dir))) {
-		struct stat mystat;
 		int rc;
+		struct stat mystat;
 
 		if (!strcmp(direntp->d_name, ".") ||
 		    !strcmp(direntp->d_name, ".."))
@@ -105,14 +87,14 @@ static int _recursive_rmdir(const char *dirname, dev_t pdev,
 		rc = snprintf(pathname, PATH_MAX, "%s/%s", dirname, direntp->d_name);
 		if (rc < 0 || rc >= PATH_MAX) {
 			ERROR("The name of path is too long");
-			failed=1;
+			failed = 1;
 			continue;
 		}
 
 		if (!level && exclude && !strcmp(direntp->d_name, exclude)) {
 			ret = rmdir(pathname);
 			if (ret < 0) {
-				switch(errno) {
+				switch (errno) {
 				case ENOTEMPTY:
 					INFO("Not deleting snapshot \"%s\"", pathname);
 					hadexclude = true;
@@ -140,48 +122,57 @@ static int _recursive_rmdir(const char *dirname, dev_t pdev,
 		}
 
 		if (onedev && mystat.st_dev != pdev) {
-			/* TODO should we be checking /proc/self/mountinfo for
-			 * pathname and not doing this if found? */
 			if (btrfs_try_remove_subvol(pathname))
 				INFO("Removed btrfs subvolume at \"%s\"", pathname);
 			continue;
 		}
 
 		if (S_ISDIR(mystat.st_mode)) {
-			if (_recursive_rmdir(pathname, pdev, exclude, level+1, onedev) < 0)
-				failed=1;
+			if (_recursive_rmdir(pathname, pdev, exclude, level + 1, onedev) < 0)
+				failed = 1;
 		} else {
-			if (unlink(pathname) < 0) {
-				SYSERROR("Failed to delete \"%s\"", pathname);
-				failed=1;
+			ret = unlink(pathname);
+			if (ret < 0) {
+				__do_close int fd = -EBADF;
+
+				fd = open(pathname, O_RDONLY | O_CLOEXEC | O_NONBLOCK);
+				if (fd >= 0) {
+					/* The file might be marked immutable. */
+					int attr = 0;
+					ret = ioctl(fd, FS_IOC_GETFLAGS, &attr);
+					if (ret < 0)
+						SYSERROR("Failed to retrieve file flags");
+					attr &= ~FS_IMMUTABLE_FL;
+					ret = ioctl(fd, FS_IOC_SETFLAGS, &attr);
+					if (ret < 0)
+						SYSERROR("Failed to set file flags");
+				}
+
+				ret = unlink(pathname);
+				if (ret < 0) {
+					SYSERROR("Failed to delete \"%s\"", pathname);
+					failed = 1;
+				}
 			}
 		}
 	}
 
 	if (rmdir(dirname) < 0 && !btrfs_try_remove_subvol(dirname) && !hadexclude) {
 		SYSERROR("Failed to delete \"%s\"", dirname);
-		failed=1;
-	}
-
-	ret = closedir(dir);
-	if (ret) {
-		SYSERROR("Failed to close directory \"%s\"", dirname);
-		failed=1;
+		failed = 1;
 	}
 
 	return failed ? -1 : 0;
 }
 
-/* In overlayfs, st_dev is unreliable. So on overlayfs we don't do the
- * lxc_rmdir_onedev()
+/*
+ * In overlayfs, st_dev is unreliable. So on overlayfs we don't do the
+ * lxc_rmdir_onedev().
  */
-static bool is_native_overlayfs(const char *path)
+static inline bool is_native_overlayfs(const char *path)
 {
-	if (has_fs_type(path, OVERLAY_SUPER_MAGIC) ||
-	    has_fs_type(path, OVERLAYFS_SUPER_MAGIC))
-		return true;
-
-	return false;
+	return has_fs_type(path, OVERLAY_SUPER_MAGIC) ||
+	       has_fs_type(path, OVERLAYFS_SUPER_MAGIC);
 }
 
 /* returns 0 on success, -1 if there were any failures */
@@ -197,8 +188,7 @@ extern int lxc_rmdir_onedev(const char *path, const char *exclude)
 		if (errno == ENOENT)
 			return 0;
 
-		SYSERROR("Failed to stat \"%s\"", path);
-		return -1;
+		return log_error_errno(-1, errno, "Failed to stat \"%s\"", path);
 	}
 
 	return _recursive_rmdir(path, mystat.st_dev, exclude, 0, onedev);
@@ -229,25 +219,20 @@ int mkdir_p(const char *dir, mode_t mode)
 	const char *orig = dir;
 
 	do {
+		__do_free char *makeme = NULL;
 		int ret;
-		char *makeme;
 
 		dir = tmp + strspn(tmp, "/");
 		tmp = dir + strcspn(dir, "/");
 
-		errno = ENOMEM;
 		makeme = strndup(orig, dir - orig);
 		if (!makeme)
-			return -1;
+			return ret_set_errno(-1, ENOMEM);
 
 		ret = mkdir(makeme, mode);
-		if (ret < 0 && errno != EEXIST) {
-			SYSERROR("Failed to create directory \"%s\"", makeme);
-			free(makeme);
-			return -1;
-		}
+		if (ret < 0 && errno != EEXIST)
+			return log_error_errno(-1, errno, "Failed to create directory \"%s\"", makeme);
 
-		free(makeme);
 	} while (tmp != dir);
 
 	return 0;
@@ -256,36 +241,31 @@ int mkdir_p(const char *dir, mode_t mode)
 char *get_rundir()
 {
 	char *rundir;
+	size_t len;
 	const char *homedir;
 	struct stat sb;
 
 	if (stat(RUNTIME_PATH, &sb) < 0)
 		return NULL;
 
-	if (geteuid() == sb.st_uid || getegid() == sb.st_gid) {
-		rundir = strdup(RUNTIME_PATH);
-		return rundir;
-	}
+	if (geteuid() == sb.st_uid || getegid() == sb.st_gid)
+		return strdup(RUNTIME_PATH);
 
 	rundir = getenv("XDG_RUNTIME_DIR");
-	if (rundir) {
-		rundir = strdup(rundir);
-		return rundir;
-	}
+	if (rundir)
+		return strdup(rundir);
 
 	INFO("XDG_RUNTIME_DIR isn't set in the environment");
 	homedir = getenv("HOME");
-	if (!homedir) {
-		ERROR("HOME isn't set in the environment");
-		return NULL;
-	}
+	if (!homedir)
+		return log_error(NULL, "HOME isn't set in the environment");
 
-	rundir = malloc(sizeof(char) * (17 + strlen(homedir)));
+	len = strlen(homedir) + 17;
+	rundir = malloc(sizeof(char) * len);
 	if (!rundir)
 		return NULL;
 
-	sprintf(rundir, "%s/.cache/lxc/run/", homedir);
-
+	snprintf(rundir, len, "%s/.cache/lxc/run/", homedir);
 	return rundir;
 }
 
@@ -311,6 +291,20 @@ again:
 	return 0;
 }
 
+int wait_for_pidfd(int pidfd)
+{
+	int ret;
+	siginfo_t info = {
+		.si_signo = 0,
+	};
+
+	do {
+		ret = waitid(P_PIDFD, pidfd, &info, __WALL | WEXITED);
+	} while (ret < 0 && errno == EINTR);
+
+	return !ret && WIFEXITED(info.si_status) && WEXITSTATUS(info.si_status) == 0;
+}
+
 int lxc_wait_for_pid_status(pid_t pid)
 {
 	int status, ret;
@@ -333,82 +327,58 @@ again:
 #ifdef HAVE_OPENSSL
 #include <openssl/evp.h>
 
-static int do_sha1_hash(const char *buf, int buflen, unsigned char *md_value, unsigned int *md_len)
+static int do_sha1_hash(const char *buf, int buflen, unsigned char *md_value,
+			unsigned int *md_len)
 {
 	EVP_MD_CTX *mdctx;
 	const EVP_MD *md;
 
 	md = EVP_get_digestbyname("sha1");
-	if(!md) {
-		printf("Unknown message digest: sha1\n");
-		return -1;
-	}
+	if (!md)
+		return log_error(-1, "Unknown message digest: sha1\n");
 
-	mdctx = EVP_MD_CTX_new();
+	mdctx = EVP_MD_CTX_create();
 	EVP_DigestInit_ex(mdctx, md, NULL);
 	EVP_DigestUpdate(mdctx, buf, buflen);
 	EVP_DigestFinal_ex(mdctx, md_value, md_len);
-	EVP_MD_CTX_free(mdctx);
+	EVP_MD_CTX_destroy(mdctx);
 
 	return 0;
 }
 
 int sha1sum_file(char *fnam, unsigned char *digest, unsigned int *md_len)
 {
-	char *buf;
+	__do_free char *buf = NULL;
+	__do_fclose FILE *f = NULL;
 	int ret;
-	FILE *f;
 	long flen;
 
 	if (!fnam)
 		return -1;
 
 	f = fopen_cloexec(fnam, "r");
-	if (!f) {
-		SYSERROR("Failed to open template \"%s\"", fnam);
-		return -1;
-	}
+	if (!f)
+		return log_error_errno(-1, errno, "Failed to open template \"%s\"", fnam);
 
-	if (fseek(f, 0, SEEK_END) < 0) {
-		SYSERROR("Failed to seek to end of template");
-		fclose(f);
-		return -1;
-	}
+	if (fseek(f, 0, SEEK_END) < 0)
+		return log_error_errno(-1, errno, "Failed to seek to end of template");
 
-	if ((flen = ftell(f)) < 0) {
-		SYSERROR("Failed to tell size of template");
-		fclose(f);
-		return -1;
-	}
+	flen = ftell(f);
+	if (flen < 0)
+		return log_error_errno(-1, errno, "Failed to tell size of template");
 
-	if (fseek(f, 0, SEEK_SET) < 0) {
-		SYSERROR("Failed to seek to start of template");
-		fclose(f);
-		return -1;
-	}
+	if (fseek(f, 0, SEEK_SET) < 0)
+		return log_error_errno(-1, errno, "Failed to seek to start of template");
 
-	if ((buf = malloc(flen+1)) == NULL) {
-		SYSERROR("Out of memory");
-		fclose(f);
-		return -1;
-	}
+	buf = malloc(flen + 1);
+	if (!buf)
+		return log_error_errno(-1, ENOMEM, "Out of memory");
 
-	if (fread(buf, 1, flen, f) != flen) {
-		SYSERROR("Failed to read template");
-		free(buf);
-		fclose(f);
-		return -1;
-	}
-
-	if (fclose(f) < 0) {
-		SYSERROR("Failed to close template");
-		free(buf);
-		return -1;
-	}
+	if (fread(buf, 1, flen, f) != flen)
+		return log_error_errno(-1, errno, "Failed to read template");
 
 	buf[flen] = '\0';
 	ret = do_sha1_hash(buf, flen, (void *)digest, md_len);
-	free(buf);
 	return ret;
 }
 #endif
@@ -534,19 +504,17 @@ int lxc_pclose(struct lxc_popen_FILE *fp)
 
 int randseed(bool srand_it)
 {
-	FILE *f;
+	__do_fclose FILE *f = NULL;
 	/*
 	 * srand pre-seed function based on /dev/urandom
 	 */
 	unsigned int seed = time(NULL) + getpid();
 
-	f = fopen("/dev/urandom", "r");
+	f = fopen("/dev/urandom", "re");
 	if (f) {
 		int ret = fread(&seed, sizeof(seed), 1, f);
 		if (ret != 1)
 			SYSDEBUG("Unable to fread /dev/urandom, fallback to time+pid rand seed");
-
-		fclose(f);
 	}
 
 	if (srand_it)
@@ -557,64 +525,46 @@ int randseed(bool srand_it)
 
 uid_t get_ns_uid(uid_t orig)
 {
-	char *line = NULL;
+	__do_free char *line = NULL;
+	__do_fclose FILE *f = NULL;
 	size_t sz = 0;
 	uid_t nsid, hostid, range;
-	FILE *f;
 
-	f = fopen("/proc/self/uid_map", "r");
-	if (!f) {
-		SYSERROR("Failed to open uid_map");
-		return 0;
-	}
+	f = fopen("/proc/self/uid_map", "re");
+	if (!f)
+		return log_error_errno(0, errno, "Failed to open uid_map");
 
 	while (getline(&line, &sz, f) != -1) {
 		if (sscanf(line, "%u %u %u", &nsid, &hostid, &range) != 3)
 			continue;
 
-		if (hostid <= orig && hostid + range > orig) {
-			nsid += orig - hostid;
-			goto found;
-		}
+		if (hostid <= orig && hostid + range > orig)
+			return nsid += orig - hostid;
 	}
 
-	nsid = LXC_INVALID_UID;
-
-found:
-	fclose(f);
-	free(line);
-	return nsid;
+	return LXC_INVALID_UID;
 }
 
 gid_t get_ns_gid(gid_t orig)
 {
-	char *line = NULL;
+	__do_free char *line = NULL;
+	__do_fclose FILE *f = NULL;
 	size_t sz = 0;
 	gid_t nsid, hostid, range;
-	FILE *f;
 
-	f = fopen("/proc/self/gid_map", "r");
-	if (!f) {
-		SYSERROR("Failed to open gid_map");
-		return 0;
-	}
+	f = fopen("/proc/self/gid_map", "re");
+	if (!f)
+		return log_error_errno(0, errno, "Failed to open gid_map");
 
 	while (getline(&line, &sz, f) != -1) {
 		if (sscanf(line, "%u %u %u", &nsid, &hostid, &range) != 3)
 			continue;
 
-		if (hostid <= orig && hostid + range > orig) {
-			nsid += orig - hostid;
-			goto found;
-		}
+		if (hostid <= orig && hostid + range > orig)
+			return nsid += orig - hostid;
 	}
 
-	nsid = LXC_INVALID_GID;
-
-found:
-	fclose(f);
-	free(line);
-	return nsid;
+	return LXC_INVALID_GID;
 }
 
 bool dir_exists(const char *path)
@@ -653,6 +603,42 @@ uint64_t fnv_64a_buf(void *buf, size_t len, uint64_t hval)
 	return hval;
 }
 
+bool is_shared_mountpoint(const char *path)
+{
+	__do_fclose FILE *f = NULL;
+	__do_free char *line = NULL;
+	int i;
+	size_t len = 0;
+
+	f = fopen("/proc/self/mountinfo", "re");
+	if (!f)
+		return 0;
+
+	while (getline(&line, &len, f) > 0) {
+		char *slider1, *slider2;
+
+		for (slider1 = line, i = 0; slider1 && i < 4; i++)
+			slider1 = strchr(slider1 + 1, ' ');
+
+		if (!slider1)
+			continue;
+
+		slider2 = strchr(slider1 + 1, ' ');
+		if (!slider2)
+			continue;
+
+		*slider2 = '\0';
+		if (strcmp(slider1 + 1, path) == 0) {
+			/* This is the path. Is it shared? */
+			slider1 = strchr(slider2 + 1, ' ');
+			if (slider1 && strstr(slider1, "shared:"))
+				return true;
+		}
+	}
+
+	return false;
+}
+
 /*
  * Detect whether / is mounted MS_SHARED.  The only way I know of to
  * check that is through /proc/self/mountinfo.
@@ -662,43 +648,15 @@ uint64_t fnv_64a_buf(void *buf, size_t len, uint64_t hval)
  */
 int detect_shared_rootfs(void)
 {
-	char buf[LXC_LINELEN], *p;
-	FILE *f;
-	int i;
-	char *p2;
+	if (is_shared_mountpoint("/"))
+		return 1;
 
-	f = fopen("/proc/self/mountinfo", "r");
-	if (!f)
-		return 0;
-
-	while (fgets(buf, LXC_LINELEN, f)) {
-		for (p = buf, i = 0; p && i < 4; i++)
-			p = strchr(p + 1, ' ');
-		if (!p)
-			continue;
-
-		p2 = strchr(p + 1, ' ');
-		if (!p2)
-			continue;
-
-		*p2 = '\0';
-		if (strcmp(p + 1, "/") == 0) {
-			/* This is '/'. Is it shared? */
-			p = strchr(p2 + 1, ' ');
-			if (p && strstr(p, "shared:")) {
-				fclose(f);
-				return 1;
-			}
-		}
-	}
-
-	fclose(f);
 	return 0;
 }
 
 bool switch_to_ns(pid_t pid, const char *ns)
 {
-	__do_close_prot_errno int fd = -EBADF;
+	__do_close int fd = -EBADF;
 	int ret;
 	char nspath[STRLITERALLEN("/proc//ns/")
 		    + INTTYPE_TO_STRLEN(pid_t)
@@ -710,17 +668,12 @@ bool switch_to_ns(pid_t pid, const char *ns)
 		return false;
 
 	fd = open(nspath, O_RDONLY | O_CLOEXEC);
-	if (fd < 0) {
-		SYSERROR("Failed to open \"%s\"", nspath);
-		return false;
-	}
+	if (fd < 0)
+		return log_error_errno(false, errno, "Failed to open \"%s\"", nspath);
 
 	ret = setns(fd, 0);
-	if (ret) {
-		SYSERROR("Failed to set process %d to \"%s\" of %d.", pid, ns,
-			 fd);
-		return false;
-	}
+	if (ret)
+		return log_error_errno(false, errno, "Failed to set process %d to \"%s\" of %d", pid, ns, fd);
 
 	return true;
 }
@@ -734,19 +687,19 @@ bool switch_to_ns(pid_t pid, const char *ns)
  */
 bool detect_ramfs_rootfs(void)
 {
-	FILE *f;
-	char *p, *p2;
-	char *line = NULL;
+	__do_free char *line = NULL;
+	__do_free void *fopen_cache = NULL;
+	__do_fclose FILE *f = NULL;
 	size_t len = 0;
-	int i;
 
-	f = fopen("/proc/self/mountinfo", "r");
-	if (!f) {
-		SYSERROR("Failed to open mountinfo");
+	f = fopen_cached("/proc/self/mountinfo", "re", &fopen_cache);
+	if (!f)
 		return false;
-	}
 
 	while (getline(&line, &len, f) != -1) {
+		int i;
+		char *p, *p2;
+
 		for (p = line, i = 0; p && i < 4; i++)
 			p = strchr(p + 1, ' ');
 		if (!p)
@@ -755,28 +708,22 @@ bool detect_ramfs_rootfs(void)
 		p2 = strchr(p + 1, ' ');
 		if (!p2)
 			continue;
-
 		*p2 = '\0';
 		if (strcmp(p + 1, "/") == 0) {
 			/* This is '/'. Is it the ramfs? */
 			p = strchr(p2 + 1, '-');
-			if (p && strncmp(p, "- rootfs rootfs ", 16) == 0) {
-				free(line);
-				fclose(f);
-				INFO("Rootfs is located on ramfs");
+			if (p && strncmp(p, "- rootfs rootfs ", 16) == 0)
 				return true;
-			}
 		}
 	}
 
-	free(line);
-	fclose(f);
 	return false;
 }
 
 char *on_path(const char *cmd, const char *rootfs)
 {
-	char *entry = NULL, *path = NULL;
+	__do_free char *path = NULL;
+	char *entry = NULL;
 	char cmdpath[PATH_MAX];
 	int ret;
 
@@ -788,7 +735,7 @@ char *on_path(const char *cmd, const char *rootfs)
 	if (!path)
 		return NULL;
 
-	lxc_iterate_parts (entry, path, ":") {
+	lxc_iterate_parts(entry, path, ":") {
 		if (rootfs)
 			ret = snprintf(cmdpath, PATH_MAX, "%s/%s/%s", rootfs,
 				       entry, cmd);
@@ -797,13 +744,10 @@ char *on_path(const char *cmd, const char *rootfs)
 		if (ret < 0 || ret >= PATH_MAX)
 			continue;
 
-		if (access(cmdpath, X_OK) == 0) {
-			free(path);
+		if (access(cmdpath, X_OK) == 0)
 			return strdup(cmdpath);
-		}
 	}
 
-	free(path);
 	return NULL;
 }
 
@@ -1329,21 +1273,21 @@ int null_stdfds(void)
 #define __PROC_STATUS_LEN (6 + INTTYPE_TO_STRLEN(pid_t) + 7 + 1)
 bool task_blocks_signal(pid_t pid, int signal)
 {
+	__do_free char *line = NULL;
+	__do_fclose FILE *f = NULL;
 	int ret;
 	char status[__PROC_STATUS_LEN] = {0};
-	FILE *f;
 	uint64_t sigblk = 0, one = 1;
 	size_t n = 0;
 	bool bret = false;
-	char *line = NULL;
 
 	ret = snprintf(status, __PROC_STATUS_LEN, "/proc/%d/status", pid);
 	if (ret < 0 || ret >= __PROC_STATUS_LEN)
 		return bret;
 
-	f = fopen(status, "r");
+	f = fopen(status, "re");
 	if (!f)
-		return bret;
+		return false;
 
 	while (getline(&line, &n, f) != -1) {
 		char *numstr;
@@ -1354,7 +1298,7 @@ bool task_blocks_signal(pid_t pid, int signal)
 		numstr = lxc_trim_whitespace_in_place(line + 7);
 		ret = lxc_safe_uint64(numstr, &sigblk, 16);
 		if (ret < 0)
-			goto out;
+			return false;
 
 		break;
 	}
@@ -1362,9 +1306,6 @@ bool task_blocks_signal(pid_t pid, int signal)
 	if (sigblk & (one << (signal - 1)))
 		bret = true;
 
-out:
-	free(line);
-	fclose(f);
 	return bret;
 }
 
@@ -1549,6 +1490,8 @@ int lxc_prepare_loop_dev(const char *source, char *loop_dev, int flags)
 	memset(&lo64, 0, sizeof(lo64));
 	lo64.lo_flags = flags;
 
+	strlcpy((char *)lo64.lo_file_name, source, LO_NAME_SIZE);
+
 	ret = ioctl(fd_loop, LOOP_SET_STATUS64, &lo64);
 	if (ret < 0) {
 		SYSERROR("Failed to set loop status64");
@@ -1718,7 +1661,45 @@ uint64_t lxc_find_next_power2(uint64_t n)
 	return n;
 }
 
-int lxc_set_death_signal(int signal, pid_t parent)
+static int process_dead(/* takes */ int status_fd)
+{
+	__do_close int dupfd = -EBADF;
+	__do_free char *line = NULL;
+	__do_fclose FILE *f = NULL;
+	int ret = 0;
+	size_t n = 0;
+
+	dupfd = dup(status_fd);
+	if (dupfd < 0)
+		return -1;
+
+	if (fd_cloexec(dupfd, true) < 0)
+		return -1;
+
+	f = fdopen(dupfd, "re");
+	if (!f)
+		return -1;
+
+	/* Transfer ownership of fd. */
+	move_fd(dupfd);
+
+	ret = 0;
+	while (getline(&line, &n, f) != -1) {
+		char *state;
+
+		if (strncmp(line, "State:", 6))
+			continue;
+
+		state = lxc_trim_whitespace_in_place(line + 6);
+		/* only check whether process is dead or zombie for now */
+		if (*state == 'X' || *state == 'Z')
+			ret = 1;
+	}
+
+	return ret;
+}
+
+int lxc_set_death_signal(int signal, pid_t parent, int parent_status_fd)
 {
 	int ret;
 	pid_t ppid;
@@ -1726,12 +1707,16 @@ int lxc_set_death_signal(int signal, pid_t parent)
 	ret = prctl(PR_SET_PDEATHSIG, prctl_arg(signal), prctl_arg(0),
 		    prctl_arg(0), prctl_arg(0));
 
-	/* If not in a PID namespace, check whether we have been orphaned. */
+	/* verify that we haven't been orphaned in the meantime */
 	ppid = (pid_t)syscall(SYS_getppid);
-	if (ppid && ppid != parent) {
-		ret = raise(SIGKILL);
-		if (ret < 0)
-			return -1;
+	if (ppid == 0) { /* parent outside our pidns */
+		if (parent_status_fd < 0)
+			return 0;
+
+		if (process_dead(parent_status_fd) == 1)
+			return raise(SIGKILL);
+	} else if (ppid != parent) {
+		return raise(SIGKILL);
 	}
 
 	if (ret < 0)
@@ -1762,21 +1747,19 @@ int fd_cloexec(int fd, bool cloexec)
 	return 0;
 }
 
-int recursive_destroy(char *dirname)
+int recursive_destroy(const char *dirname)
 {
+	__do_closedir DIR *dir = NULL;
+	int fret = 0;
 	int ret;
 	struct dirent *direntp;
-	DIR *dir;
-	int r = 0;
 
 	dir = opendir(dirname);
-	if (!dir) {
-		SYSERROR("Failed to open dir \"%s\"", dirname);
-		return -1;
-	}
+	if (!dir)
+		return log_error_errno(-1, errno, "Failed to open dir \"%s\"", dirname);
 
 	while ((direntp = readdir(dir))) {
-		char *pathname;
+		__do_free char *pathname = NULL;
 		struct stat mystat;
 
 		if (!strcmp(direntp->d_name, ".") ||
@@ -1784,50 +1767,40 @@ int recursive_destroy(char *dirname)
 			continue;
 
 		pathname = must_make_path(dirname, direntp->d_name, NULL);
-
 		ret = lstat(pathname, &mystat);
 		if (ret < 0) {
-			if (!r)
+			if (!fret)
 				SYSWARN("Failed to stat \"%s\"", pathname);
 
-			r = -1;
-			goto next;
+			fret = -1;
+			continue;
 		}
 
 		if (!S_ISDIR(mystat.st_mode))
-			goto next;
+			continue;
 
 		ret = recursive_destroy(pathname);
 		if (ret < 0)
-			r = -1;
-
-	next:
-		free(pathname);
+			fret = -1;
 	}
 
 	ret = rmdir(dirname);
-	if (ret < 0) {
-		if (!r)
-			SYSWARN("Failed to delete \"%s\"", dirname);
+	if (ret < 0)
+		return log_warn_errno(-1, errno, "Failed to delete \"%s\"", dirname);
 
-		r = -1;
-	}
-
-	ret = closedir(dir);
-	if (ret < 0) {
-		if (!r)
-			SYSWARN("Failed to delete \"%s\"", dirname);
-
-		r = -1;
-	}
-
-	return r;
+	return fret;
 }
 
-int lxc_setup_keyring(void)
+int lxc_setup_keyring(char *keyring_label)
 {
 	key_serial_t keyring;
 	int ret = 0;
+
+	if (keyring_label) {
+		if (lsm_keyring_label_set(keyring_label) < 0) {
+			ERROR("Couldn't set keyring label");
+		}
+	}
 
 	/* Try to allocate a new session keyring for the container to prevent
 	 * information leaks.
@@ -1851,4 +1824,39 @@ int lxc_setup_keyring(void)
 	}
 
 	return ret;
+}
+
+bool lxc_can_use_pidfd(int pidfd)
+{
+	int ret;
+
+	if (pidfd < 0)
+		return log_error(false, "Kernel does not support pidfds");
+
+	/*
+	 * We don't care whether or not children were in a waitable state. We
+	 * just care whether waitid() recognizes P_PIDFD.
+	 *
+	 * Btw, while I have your attention, the above waitid() code is an
+	 * excellent example of how _not_ to do flag-based kernel APIs. So if
+	 * you ever go into kernel development or are already and you add this
+	 * kind of flag potpourri even though you have read this comment shame
+	 * on you. May the gods of operating system development have mercy on
+	 * your soul because I won't.
+	 */
+	ret = waitid(P_PIDFD, pidfd, NULL,
+		    /* Type of children to wait for. */
+		    __WALL |
+		    /* How to wait for them. */
+		    WNOHANG | WNOWAIT |
+		    /* What state to wait for. */
+		    WEXITED | WSTOPPED | WCONTINUED);
+	if (ret < 0)
+		return log_error_errno(false, errno, "Kernel does not support waiting on processes through pidfds");
+
+	ret = lxc_raw_pidfd_send_signal(pidfd, 0, NULL, 0);
+	if (ret)
+		return log_error_errno(false, errno, "Kernel does not support sending singals through pidfds");
+
+	return log_trace(true, "Kernel supports pidfds");
 }

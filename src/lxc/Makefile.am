@@ -1,11 +1,15 @@
+# SPDX-License-Identifier: LGPL-2.1+
+
 pkginclude_HEADERS = attach_options.h \
 		     lxccontainer.h \
 		     version.h
 
-noinst_HEADERS = attach.h \
+noinst_HEADERS = api_extensions.h \
+		 attach.h \
 		 caps.h \
 		 cgroups/cgroup.h \
 		 cgroups/cgroup_utils.h \
+		 cgroups/cgroup2_devices.h \
 		 compiler.h \
 		 conf.h \
 		 confile.h \
@@ -39,6 +43,7 @@ noinst_HEADERS = attach.h \
 		 storage/storage_utils.h \
 		 storage/zfs.h \
 		 string_utils.h \
+		 syscall_numbers.h \
 		 syscall_wrappers.h \
 		 terminal.h \
 		 ../tests/lxctest.h \
@@ -89,10 +94,12 @@ endif
 
 lib_LTLIBRARIES = liblxc.la
 liblxc_la_SOURCES = af_unix.c af_unix.h \
+		    api_extensions.h \
 		    attach.c attach.h \
 		    caps.c caps.h \
 		    cgroups/cgfsng.c \
 		    cgroups/cgroup.c cgroups/cgroup.h \
+		    cgroups/cgroup2_devices.c cgroups/cgroup2_devices.h \
 		    cgroups/cgroup_utils.c cgroups/cgroup_utils.h \
 		    compiler.h \
 		    commands.c commands.h \
@@ -139,6 +146,7 @@ liblxc_la_SOURCES = af_unix.c af_unix.h \
 		    storage/zfs.c storage/zfs.h \
 		    string_utils.c string_utils.h \
 		    sync.c sync.h \
+		    syscall_numbers.h \
 		    syscall_wrappers.h \
 		    terminal.c \
 		    utils.c utils.h \
@@ -198,6 +206,7 @@ AM_CFLAGS = -DLXCROOTFSMOUNT=\"$(LXCROOTFSMOUNT)\" \
 	    -DDEFAULT_CGROUP_PATTERN=\"$(DEFAULT_CGROUP_PATTERN)\" \
 	    -DRUNTIME_PATH=\"$(RUNTIME_PATH)\" \
 	    -DSBINDIR=\"$(SBINDIR)\" \
+	    -DAPPARMOR_CACHE_DIR=\"$(APPARMOR_CACHE_DIR)\" \
 	    -I $(top_srcdir)/src \
 	    -I $(top_srcdir)/src/lxc \
 	    -I $(top_srcdir)/src/lxc/storage \
@@ -220,6 +229,11 @@ if ENABLE_SELINUX
 AM_CFLAGS += -DHAVE_SELINUX
 endif
 
+if ENABLE_DLOG
+AM_CFLAGS += -DHAVE_DLOG \
+	      $(DLOG_CFLAGS)
+endif
+
 if USE_CONFIGPATH_LOGS
 AM_CFLAGS += -DUSE_CONFIGPATH_LOGS
 endif
@@ -228,10 +242,15 @@ endif
 liblxc_la_CFLAGS = -fPIC \
 		   -DPIC \
 		   $(AM_CFLAGS) \
+		   $(LIBLXC_SANITIZER) \
 		   -pthread
 if ENABLE_ASAN
 liblxc_la_CFLAGS += -fsanitize=address \
 		    -fno-omit-frame-pointer
+endif
+
+if ENABLE_UBSAN
+liblxc_la_CFLAGS += -fsanitize=undefined
 endif
 
 liblxc_la_LDFLAGS = -pthread \
@@ -242,7 +261,8 @@ liblxc_la_LDFLAGS = -pthread \
 liblxc_la_LIBADD = $(CAP_LIBS) \
 		   $(OPENSSL_LIBS) \
 		   $(SELINUX_LIBS) \
-		   $(SECCOMP_LIBS)
+		   $(SECCOMP_LIBS) \
+		   $(DLOG_LIBS)
 
 bin_SCRIPTS=
 
@@ -300,7 +320,8 @@ LDADD = liblxc.la \
 	@CAP_LIBS@ \
 	@OPENSSL_LIBS@ \
 	@SECCOMP_LIBS@ \
-	@SELINUX_LIBS@
+	@SELINUX_LIBS@ \
+	@DLOG_LIBS@
 
 if ENABLE_TOOLS
 lxc_attach_SOURCES = tools/lxc_attach.c \
@@ -341,6 +362,8 @@ lxc_top_SOURCES = tools/lxc_top.c \
 lxc_unfreeze_SOURCES = tools/lxc_unfreeze.c \
 		       tools/arguments.c tools/arguments.h
 lxc_unshare_SOURCES = tools/lxc_unshare.c \
+		      syscall_numbers.h \
+		      syscall_wrappers.h \
 		      tools/arguments.c tools/arguments.h
 lxc_wait_SOURCES = tools/lxc_wait.c \
 		   tools/arguments.c tools/arguments.h
@@ -362,13 +385,18 @@ init_lxc_SOURCES = cmd/lxc_init.c \
 		   memory_utils.h \
 		   parse.c parse.h \
 		   raw_syscalls.c raw_syscalls.h \
+		   syscall_numbers.h \
 		   string_utils.c string_utils.h
+
+init_lxc_LDFLAGS = -pthread
+
 lxc_monitord_SOURCES = cmd/lxc_monitord.c \
 		       af_unix.c af_unix.h \
 		       log.c log.h \
 		       mainloop.c mainloop.h \
 		       monitor.c monitor.h \
 		       raw_syscalls.c raw_syscalls.h \
+		       syscall_numbers.h \
 		       utils.c utils.h
 lxc_user_nic_SOURCES = cmd/lxc_user_nic.c \
 		       ../include/netns_ifaddrs.c ../include/netns_ifaddrs.h \
@@ -377,6 +405,8 @@ lxc_user_nic_SOURCES = cmd/lxc_user_nic.c \
 		       network.c network.h \
 		       parse.c parse.h \
 		       raw_syscalls.c raw_syscalls.h \
+		       syscall_numbers.h \
+		       file_utils.c file_utils.h \
 		       string_utils.c string_utils.h \
 		       syscall_wrappers.h
 lxc_usernsexec_SOURCES = cmd/lxc_usernsexec.c \
@@ -427,7 +457,7 @@ if !HAVE_STRLCAT
 init_lxc_static_SOURCES += ../include/strlcat.c ../include/strlcat.h
 endif
 
-init_lxc_static_LDFLAGS = -all-static
+init_lxc_static_LDFLAGS = -all-static -pthread
 init_lxc_static_LDADD = @CAP_LIBS@
 init_lxc_static_CFLAGS = $(AM_CFLAGS) -DNO_LXC_CONF
 endif
@@ -455,6 +485,7 @@ pam_cgfs_la_CFLAGS = $(AM_CFLAGS) -DNO_LXC_CONF
 
 pam_cgfs_la_LIBADD = $(AM_LIBS) \
 		     $(PAM_LIBS) \
+		     $(DLOG_LIBS) \
 		     -L$(top_srcdir)
 
 pam_cgfs_la_LDFLAGS = $(AM_LDFLAGS) \

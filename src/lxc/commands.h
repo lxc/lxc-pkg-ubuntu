@@ -1,25 +1,4 @@
-/*
- * lxc: linux Container library
- *
- * (C) Copyright IBM Corp. 2007, 2009
- *
- * Authors:
- * Daniel Lezcano <daniel.lezcano at free.fr>
- *
- * This library is free software; you can redistribute it and/or
- * modify it under the terms of the GNU Lesser General Public
- * License as published by the Free Software Foundation; either
- * version 2.1 of the License, or (at your option) any later version.
- *
- * This library is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
- * Lesser General Public License for more details.
- *
- * You should have received a copy of the GNU Lesser General Public
- * License along with this library; if not, write to the Free Software
- * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA
- */
+/* SPDX-License-Identifier: LGPL-2.1+ */
 
 #ifndef __LXC_COMMANDS_H
 #define __LXC_COMMANDS_H
@@ -31,6 +10,13 @@
 #include "lxccontainer.h"
 #include "macro.h"
 #include "state.h"
+
+/*
+ * Value command callbacks should return when they want the client fd to be
+ * cleaned up by the main loop. This is most certainly what you want unless you
+ * have specific reasons to keep the file descriptor alive.
+ */
+#define LXC_CMD_REAP_CLIENT_FD 1
 
 typedef enum {
 	LXC_CMD_CONSOLE,
@@ -47,6 +33,11 @@ typedef enum {
 	LXC_CMD_CONSOLE_LOG,
 	LXC_CMD_SERVE_STATE_CLIENTS,
 	LXC_CMD_SECCOMP_NOTIFY_ADD_LISTENER,
+	LXC_CMD_ADD_BPF_DEVICE_CGROUP,
+	LXC_CMD_FREEZE,
+	LXC_CMD_UNFREEZE,
+	LXC_CMD_GET_CGROUP2_FD,
+	LXC_CMD_GET_INIT_PIDFD,
 	LXC_CMD_MAX,
 } lxc_cmd_t;
 
@@ -94,6 +85,7 @@ extern char *lxc_cmd_get_config_item(const char *name, const char *item, const c
 extern char *lxc_cmd_get_name(const char *hashed_sock);
 extern char *lxc_cmd_get_lxcpath(const char *hashed_sock);
 extern pid_t lxc_cmd_get_init_pid(const char *name, const char *lxcpath);
+extern int lxc_cmd_get_init_pidfd(const char *name, const char *lxcpath);
 extern int lxc_cmd_get_state(const char *name, const char *lxcpath);
 extern int lxc_cmd_stop(const char *name, const char *lxcpath);
 
@@ -130,5 +122,12 @@ extern int lxc_cmd_seccomp_notify_add_listener(const char *name,
 					       int fd,
 					       /* unused */ unsigned int command,
 					       /* unused */ unsigned int flags);
+
+struct device_item;
+extern int lxc_cmd_add_bpf_device_cgroup(const char *name, const char *lxcpath,
+					 struct device_item *device);
+extern int lxc_cmd_freeze(const char *name, const char *lxcpath, int timeout);
+extern int lxc_cmd_unfreeze(const char *name, const char *lxcpath, int timeout);
+extern int lxc_cmd_get_cgroup2_fd(const char *name, const char *lxcpath);
 
 #endif /* __commands_h */

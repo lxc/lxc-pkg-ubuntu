@@ -1,24 +1,23 @@
-#                                               -*- Autoconf -*-
-# Process this file with autoconf to produce a configure script.
+AC_PREREQ([2.69])
 
 m4_define([lxc_devel], 0)
-m4_define([lxc_version_major], 3)
+m4_define([lxc_version_major], 4)
 m4_define([lxc_version_minor], 0)
-m4_define([lxc_version_micro], 4)
+m4_define([lxc_version_micro], 0)
 m4_define([lxc_version_beta], [])
 
 m4_define([lxc_abi_major], 1)
-m4_define([lxc_abi_minor], 4)
+m4_define([lxc_abi_minor], 7)
 m4_define([lxc_abi_micro], 0)
 m4_define([lxc_abi], [lxc_abi_major.lxc_abi_minor.lxc_abi_micro])
 
 m4_define([lxc_version_base], [lxc_version_major.lxc_version_minor.lxc_version_micro])
 m4_define([lxc_version],
-	  [ifelse(lxc_devel, 1,
+       [ifelse(lxc_devel, 1,
         ifelse(lxc_version_beta, [], [lxc_version_base], [lxc_version_base.lxc_version_beta])-devel,
         ifelse(lxc_version_beta, [], [lxc_version_base], [lxc_version_base.lxc_version_beta]))])
 
-AC_INIT([lxc], [lxc_version])
+AC_INIT([lxc],[lxc_version])
 
 # We need pkg-config
 PKG_PROG_PKG_CONFIG
@@ -43,7 +42,7 @@ AC_CONFIG_HEADERS([src/config.h])
 AM_INIT_AUTOMAKE([-Wall -Werror -Wno-portability subdir-objects])
 AC_CANONICAL_HOST
 AM_PROG_CC_C_O
-AC_GNU_SOURCE
+AC_USE_SYSTEM_EXTENSIONS
 
 # Test if we have a new enough compiler.
 AC_COMPILE_IFELSE([AC_LANG_PROGRAM([[
@@ -123,7 +122,7 @@ AC_CONFIG_LINKS([config/etc/default.conf:config/etc/${distroconf}])
 # Check for init system type
 AC_MSG_CHECKING([for init system type])
 AC_ARG_WITH([init-script],
-	    [AC_HELP_STRING([--with-init-script@<:@=TYPE@<:@,TYPE,...@:>@@:>@],
+	    [AS_HELP_STRING([--with-init-script@<:@=TYPE@<:@,TYPE,...@:>@@:>@],
 			    [Type(s) of init script to install: sysvinit, systemd, upstart,
 			     distro @<:@default=distro@:>@])],[],[with_init_script=distro])
 case "$with_init_script" in
@@ -174,9 +173,9 @@ AC_MSG_RESULT($init_script)
 
 # systemd unit dir
 AC_ARG_WITH([systemdsystemunitdir],
-            AS_HELP_STRING([--with-systemdsystemunitdir=DIR], [Directory for systemd service files]),
-            [],
-            [with_systemdsystemunitdir=$($PKG_CONFIG --variable=systemdsystemunitdir systemd)])
+	AS_HELP_STRING([--with-systemdsystemunitdir=DIR], [Directory for systemd service files]),
+	[with_systemdsystemunitdir=$withval],
+	[with_systemdsystemunitdir=$($PKG_CONFIG --variable=systemdsystemunitdir systemd)])
 if test -z "$with_systemdsystemunitdir"; then
   with_systemdsystemunitdir=/lib/systemd/system
 fi
@@ -185,20 +184,19 @@ if test "x$with_systemdsystemunitdir" != "xno"; then
 fi
 
 AC_ARG_ENABLE([werror],
-	[AC_HELP_STRING([--disable-werror],
-	[do not treat warnings as errors])],
-	[], [enable_werror=yes])
+	[AS_HELP_STRING([--disable-werror], [do not treat warnings as errors])],
+	[enable_werror=$enableval], [enable_werror=yes])
 
 # Allow disabling rpath
 AC_ARG_ENABLE([rpath],
-	[AC_HELP_STRING([--enable-rpath], [set rpath in executables [default=no]])],
-	[], [enable_rpath=no])
+	[AS_HELP_STRING([--enable-rpath], [set rpath in executables [default=no]])],
+	[enable_rpath=$enableval], [enable_rpath=no])
 AM_CONDITIONAL([ENABLE_RPATH], [test "x$enable_rpath" = "xyes"])
 
 # Documentation (manpages)
 AC_ARG_ENABLE([doc],
-	[AC_HELP_STRING([--enable-doc], [make man pages [default=auto]])],
-	[], [enable_doc=auto])
+	[AS_HELP_STRING([--enable-doc], [make man pages [default=auto]])],
+	[enable_doc=$enableval], [enable_doc=auto])
 
 if test "x$enable_doc" = "xyes" -o "x$enable_doc" = "xauto"; then
 	db2xman=""
@@ -237,9 +235,8 @@ AC_SUBST(docdtd)
 
 # Documentation (API)
 AC_ARG_ENABLE([api-docs],
-	[AC_HELP_STRING([--enable-api-docs],
-	[make API documentation [default=auto]])],
-	[], [enable_api_docs=auto])
+	[AS_HELP_STRING([--enable-api-docs], [make API documentation [default=auto]])],
+	[enable_api_docs=$enableval], [enable_api_docs=auto])
 
 if test "x$enable_api_docs" = "xyes" -o "x$enable_api_docs" = "xauto"; then
 	AC_CHECK_PROGS([HAVE_DOXYGEN],[doxygen])
@@ -261,8 +258,8 @@ AC_CONFIG_MACRO_DIRS([config])
 
 # Apparmor
 AC_ARG_ENABLE([apparmor],
-	[AC_HELP_STRING([--enable-apparmor], [enable apparmor support [default=auto]])],
-	[], [enable_apparmor=auto])
+	[AS_HELP_STRING([--enable-apparmor], [enable apparmor support [default=auto]])],
+	[enable_apparmor=$enableval], [enable_apparmor=auto])
 
 if test "$enable_apparmor" = "auto" ; then
 	AC_CHECK_LIB([apparmor],[aa_change_profile],[enable_apparmor=yes], [enable_apparmor=no])
@@ -272,8 +269,8 @@ AM_CONDITIONAL([ENABLE_APPARMOR], [test "x$enable_apparmor" = "xyes"])
 # OpenSSL
 # libssl-dev
 AC_ARG_ENABLE([openssl],
-	[AC_HELP_STRING([--enable-openssl], [enable OpenSSL support [default=auto]])],
-	[], [enable_openssl=auto])
+	[AS_HELP_STRING([--enable-openssl], [enable OpenSSL support [default=auto]])],
+	[enable_openssl=$enableval], [enable_openssl=auto])
 
 if test "$enable_openssl" = "auto" ; then
 	AC_CHECK_LIB([ssl], [OPENSSL_init_ssl], [enable_openssl=yes], [enable_openssl=no])
@@ -287,8 +284,8 @@ AM_COND_IF([ENABLE_OPENSSL],
 
 # SELinux
 AC_ARG_ENABLE([selinux],
-	[AC_HELP_STRING([--enable-selinux], [enable SELinux support [default=auto]])],
-	[], [enable_selinux=auto])
+	[AS_HELP_STRING([--enable-selinux], [enable SELinux support [default=auto]])],
+	[enable_selinux=$enableval], [enable_selinux=auto])
 
 if test "x$enable_selinux" = xauto; then
 	AC_CHECK_LIB([selinux],[setexeccon_raw],[enable_selinux=yes],[enable_selinux=no])
@@ -301,8 +298,8 @@ AM_COND_IF([ENABLE_SELINUX],
 
 # Seccomp syscall filter
 AC_ARG_ENABLE([seccomp],
-	[AC_HELP_STRING([--enable-seccomp], [enable seccomp support [default=auto]])],
-	[], [enable_seccomp=auto])
+	[AS_HELP_STRING([--enable-seccomp], [enable seccomp support [default=auto]])],
+	[enable_seccomp=$enableval], [enable_seccomp=auto])
 
 if test "x$enable_seccomp" = "xauto" ; then
 	AC_CHECK_LIB([seccomp],[seccomp_init],[enable_seccomp=yes],[enable_seccomp=no])
@@ -347,8 +344,8 @@ LIBS="$OLD_LIBS"
 
 # Linux capabilities
 AC_ARG_ENABLE([capabilities],
-	[AC_HELP_STRING([--enable-capabilities], [enable kernel capabilities support [default=auto]])],
-	[], [enable_capabilities=auto])
+	[AS_HELP_STRING([--enable-capabilities], [enable kernel capabilities support [default=auto]])],
+	[enable_capabilities=$enableval], [enable_capabilities=auto])
 
 if test "x$enable_capabilities" = "xauto"; then
 	AC_CHECK_LIB([cap],[cap_set_proc],[enable_capabilities=yes],[enable_capabilities=no])
@@ -366,19 +363,25 @@ AM_COND_IF([ENABLE_CAP],
 OLD_CFLAGS="$CFLAGS"
 CFLAGS="$CFLAGS $SECCOMP_CFLAGS"
 AC_CHECK_TYPES([scmp_filter_ctx], [], [], [[#include <seccomp.h>]])
+AC_CHECK_DECLS([seccomp_notify_fd], [], [], [[#include <seccomp.h>]])
+AC_CHECK_TYPES([struct seccomp_notif_sizes], [], [], [[#include <seccomp.h>]])
 AC_CHECK_DECLS([seccomp_syscall_resolve_name_arch], [], [], [[#include <seccomp.h>]])
 CFLAGS="$OLD_CFLAGS"
 
+AC_CHECK_HEADERS([linux/bpf.h], [
+	AC_CHECK_TYPES([struct bpf_cgroup_dev_ctx], [], [], [[#include <linux/bpf.h>]])
+], [], [])
+
 # Configuration examples
 AC_ARG_ENABLE([examples],
-	[AC_HELP_STRING([--enable-examples], [install examples [default=yes]])],
-	[], [enable_examples=yes])
+	[AS_HELP_STRING([--enable-examples], [install examples [default=yes]])],
+	[enable_examples=$enableval], [enable_examples=yes])
 AM_CONDITIONAL([ENABLE_EXAMPLES], [test "x$enable_examples" = "xyes"])
 
 # Enable dumping stack traces
 AC_ARG_ENABLE([mutex-debugging],
-	[AC_HELP_STRING([--enable-mutex-debugging], [Makes mutexes to report error and provide stack trace [default=no]])],
-	[], [enable_mutex_debugging=no])
+	[AS_HELP_STRING([--enable-mutex-debugging], [Makes mutexes to report error and provide stack trace [default=no]])],
+	[enable_mutex_debugging=$enableval], [enable_mutex_debugging=no])
 AM_CONDITIONAL([MUTEX_DEBUGGING], [test "x$enable_mutex_debugging" = "xyes"])
 
 AM_COND_IF([MUTEX_DEBUGGING],
@@ -407,8 +410,8 @@ m4_ifdef([PKG_CHECK_VAR], [],
 
 # Optional bash integration
 AC_ARG_ENABLE([bash],
-	[AC_HELP_STRING([--enable-bash], [build bash integration [default=yes]])],
-	[], [enable_bash=yes])
+	[AS_HELP_STRING([--enable-bash], [build bash integration [default=yes]])],
+	[enable_bash=$enableval], [enable_bash=yes])
 AM_CONDITIONAL([ENABLE_BASH], [test "x$enable_bash" = "xyes"])
 
 AM_COND_IF([ENABLE_BASH],
@@ -421,84 +424,81 @@ AM_COND_IF([ENABLE_BASH],
 
 # Build the command line tools
 AC_ARG_ENABLE([tools],
-	[AC_HELP_STRING([--enable-tools], [build the command line tools [default=yes]])],
-	[], [enable_tools=yes])
+	[AS_HELP_STRING([--enable-tools], [build the command line tools [default=yes]])],
+	[enable_tools=$enableval], [enable_tools=yes])
 AM_CONDITIONAL([ENABLE_TOOLS], [test "x$enable_tools" = "xyes"])
 
 # Build the liblxc commands
 AC_ARG_ENABLE([commands],
-	[AC_HELP_STRING([--enable-commands], [build the liblxc commands [default=yes]])],
-	[], [enable_commands=yes])
+	[AS_HELP_STRING([--enable-commands], [build the liblxc commands [default=yes]])],
+	[enable_commands=$enableval], [enable_commands=yes])
 AM_CONDITIONAL([ENABLE_COMMANDS], [test "x$enable_commands" = "xyes"])
 
 # Build with ASAN commands
 AC_ARG_ENABLE([asan],
-	[AC_HELP_STRING([--enable-asan], [build with address sanitizer enabled [default=no]])],
-	[], [enable_asan=no])
+	[AS_HELP_STRING([--enable-asan], [build with address sanitizer enabled [default=no]])],
+	[enable_asan=$enableval], [enable_asan=no])
 AM_CONDITIONAL([ENABLE_ASAN], [test "x$enable_asan" = "xyes"])
+
+# Build with UBSAN commands
+AC_ARG_ENABLE([ubsan],
+	[AS_HELP_STRING([--enable-ubsan], [build with ubsan sanitizer enabled [default=no]])],
+	[enable_asan=$enableval], [enable_ubsan=no])
+AM_CONDITIONAL([ENABLE_UBSAN], [test "x$enable_ubsan" = "xyes"])
 
 # Optional test binaries
 AC_ARG_ENABLE([tests],
-	[AC_HELP_STRING([--enable-tests], [build test/example binaries [default=no]])],
-	[], [enable_tests=no])
+	[AS_HELP_STRING([--enable-tests], [build test/example binaries [default=no]])],
+	[enable_tests=$enableval], [enable_tests=no])
 AM_CONDITIONAL([ENABLE_TESTS], [test "x$enable_tests" = "xyes"])
 
 # Allow overriding the default runtime dir (/run)
 AC_ARG_WITH([runtime-path],
-	[AC_HELP_STRING(
-		[--with-runtime-path=dir],
-		[runtime directory (default: /run)]
-	)], [], [with_runtime_path=['/run']])
+	[AS_HELP_STRING([--with-runtime-path=dir], [runtime directory (default: /run)])],
+	[with_runtime_path=$withval], [with_runtime_path=['/run']])
 
 # LXC container path, where the containers are actually stored
 # This is overridden by an entry in the file called LXCCONF
 # (i.e. /etc/lxc/lxc.conf)
 AC_ARG_WITH([config-path],
-	[AC_HELP_STRING(
-		[--with-config-path=dir],
-		[lxc configuration repository path]
-	)], [], [with_config_path=['${localstatedir}/lib/lxc']])
+	[AS_HELP_STRING([--with-config-path=dir], [lxc configuration repository path])],
+	[with_config_path=$withval], [with_config_path=['${localstatedir}/lib/lxc']])
 
 # The path of the global lxc configuration file.
 AC_ARG_WITH([global-conf],
-	[AC_HELP_STRING(
-		[--with-global-conf=dir],
-		[global lxc configuration file]
-	)], [], [with_global_conf=['${sysconfdir}/lxc/lxc.conf']])
+	[AS_HELP_STRING([--with-global-conf=dir], [global lxc configuration file])],
+	[with_global_conf=$withval], [with_global_conf=['${sysconfdir}/lxc/lxc.conf']])
 
 # The path of the userns network configuration file
 AC_ARG_WITH([usernic-conf],
-	[AC_HELP_STRING(
-		[--with-usernic-conf],
-		[user network interface configuration file]
-	)], [], [with_usernic_conf=['${sysconfdir}/lxc/lxc-usernet']])
+	[AS_HELP_STRING([--with-usernic-conf], [user network interface configuration file])],
+	[with_usernic_conf=$withval], [with_usernic_conf=['${sysconfdir}/lxc/lxc-usernet']])
 
 # The path of the runtime usernic database
 AC_ARG_WITH([usernic-db],
-	[AC_HELP_STRING(
-		[--with-usernic-db],
-		[lxc user nic database]
-	)], [], [with_usernic_db=['${with_runtime_path}/lxc/nics']])
+	[AS_HELP_STRING([--with-usernic-db], [lxc user nic database])],
+	[with_usernic_db=$withval], [with_usernic_db=['${with_runtime_path}/lxc/nics']])
 
 # Rootfs path, where the container mount structure is assembled
 AC_ARG_WITH([rootfs-path],
-	[AC_HELP_STRING(
-		[--with-rootfs-path=dir],
-		[lxc rootfs mount point]
-	)], [], [with_rootfs_path=['${libdir}/lxc/rootfs']])
+	[AS_HELP_STRING([--with-rootfs-path=dir], [lxc rootfs mount point])],
+	[with_rootfs_path=$withval], [with_rootfs_path=['${libdir}/lxc/rootfs']])
 
 # cgroup pattern specification
 AC_ARG_WITH([cgroup-pattern],
-	[AC_HELP_STRING(
-		[--with-cgroup-pattern=pattern],
-		[pattern for container cgroups]
-	)], [], [with_cgroup_pattern=['lxc.payload/%n']])
+	[AS_HELP_STRING([--with-cgroup-pattern=pattern], [pattern for container cgroups])],
+	[with_cgroup_pattern=$withval], [with_cgroup_pattern=['']])
+
+# The path for the apparmor_parser's cache for generated apparmor profiles
+AC_ARG_WITH([apparmor-cache-dir],
+	[AS_HELP_STRING([--with-apparmor-cache-dir=dir],[path for apparmor_parser cache])],
+	[with_apparmor_cache_dir=$withval], [with_apparmor_cache_dir=['${localstatedir}/cache/lxc/apparmor']])
 
 # Container log path.  By default, use $lxcpath.
 AC_MSG_CHECKING([Whether to place logfiles in container config path])
 AC_ARG_ENABLE([configpath-log],
-	[AC_HELP_STRING([--enable-configpath-log], [use logfiles in config path [default=no]])],
-	[], [enable_configpath_log=no])
+	[AS_HELP_STRING([--enable-configpath-log], [use logfiles in config path [default=no]])],
+	[enable_configpath_log=$enableval], [enable_configpath_log=no])
 AC_MSG_RESULT([$enable_configpath_log])
 AM_CONDITIONAL([USE_CONFIGPATH_LOGS], [test "$enable_configpath_log" = "yes"])
 
@@ -509,10 +509,8 @@ else
 fi
 
 AC_ARG_WITH([log-path],
-	[AC_HELP_STRING(
-		[--with-log-path=dir],
-		[per container log path]
-	)], [], [with_log_path=['${default_log_path}']])
+	[AS_HELP_STRING([--with-log-path=dir],[per container log path])],
+	[with_log_path=$withval], [with_log_path=['${default_log_path}']])
 
 # Expand some useful variables
 AS_AC_EXPAND(PREFIX, "$prefix")
@@ -540,6 +538,7 @@ AS_AC_EXPAND(LXCBINHOOKDIR, "$libexecdir/lxc/hooks")
 AS_AC_EXPAND(LXCINITDIR, "$libexecdir")
 AS_AC_EXPAND(LOGPATH, "$with_log_path")
 AS_AC_EXPAND(RUNTIME_PATH, "$with_runtime_path")
+AS_AC_EXPAND(APPARMOR_CACHE_DIR, "$with_apparmor_cache_dir")
 AC_SUBST(DEFAULT_CGROUP_PATTERN, ["$with_cgroup_pattern"])
 
 # We need the install path so criu knows where to reference the hook scripts.
@@ -569,8 +568,8 @@ AM_CONDITIONAL([IS_BIONIC], [test "x$is_bionic" = "xyes"])
 
 # Configuration examples
 AC_ARG_ENABLE([pam],
-	[AC_HELP_STRING([--enable-pam], [enable pam module [default=no]])],
-	[], [enable_pam=no])
+	[AS_HELP_STRING([--enable-pam], [enable pam module [default=no]])],
+	[enable_pam=$enableval], [enable_pam=no])
 AM_CONDITIONAL([ENABLE_PAM], [test "x$enable_pam" = "xyes"])
 
 AM_COND_IF([ENABLE_PAM],
@@ -578,7 +577,7 @@ AM_COND_IF([ENABLE_PAM],
 		[pamdir],
 		[AS_HELP_STRING([--with-pamdir=PATH],[Specify the directory where PAM modules are stored,
 							or "none" if PAM modules are not to be built])],
-		[pamdir="${withval}"],
+		[pamdir=$withval],
 		[
 			if test "${prefix}" = "/usr"; then
 				pamdir="/lib${libdir##*/lib}/security"
@@ -633,7 +632,7 @@ AC_FUNC_STRERROR_R
 
 # Check if "%m" is supported by printf and Co
 AC_MSG_CHECKING([%m format])
-AC_TRY_RUN([
+AC_RUN_IFELSE([AC_LANG_SOURCE([[
 #include <stdio.h>
 int main(void)
 {
@@ -649,8 +648,7 @@ int main(void)
   {
     return 1;
   }
-}],
-[fmt_m=yes], [fmt_m=no], [fmt_m=no])
+}]])],[fmt_m=yes],[fmt_m=no],[fmt_m=no])
 if test "x$fmt_m" = "xyes"; then
 	AC_DEFINE([HAVE_M_FORMAT], 1, [Have %m format])
 	AC_MSG_RESULT([yes])
@@ -703,6 +701,10 @@ AC_CHECK_FUNCS([strlcat],
 	AM_CONDITIONAL(HAVE_STRLCAT, true)
 	AC_DEFINE(HAVE_STRLCAT,1,[Have strlcat]),
 	AM_CONDITIONAL(HAVE_STRLCAT, false))
+AC_CHECK_FUNCS([fmemopen],
+	AM_CONDITIONAL(HAVE_FMEMOPEN, true)
+	AC_DEFINE(HAVE_FMEMOPEN,1,[Have fmemopen]),
+	AM_CONDITIONAL(HAVE_FMEMOPEN, false))
 
 # HAVE_STRUCT_RTNL_LINK_STATS64={0,1}
 AC_CHECK_TYPES([struct rtnl_link_stats64], [], [], [[#include <linux/if_link.h>]])
@@ -725,8 +727,8 @@ AX_CHECK_COMPILE_FLAG([-Wcast-align], [CFLAGS="$CFLAGS -Wcast-align"],,[-Werror]
 AX_CHECK_COMPILE_FLAG([-Wstrict-prototypes], [CFLAGS="$CFLAGS -Wstrict-prototypes"],,[-Werror])
 AX_CHECK_COMPILE_FLAG([-fno-strict-aliasing], [CFLAGS="$CFLAGS -fno-strict-aliasing"],,[-Werror])
 AX_CHECK_COMPILE_FLAG([-fstack-clash-protection], [CFLAGS="$CFLAGS -fstack-clash-protection"],,[-Werror])
-AX_CHECK_COMPILE_FLAG([-fstack-protector-strong], [CFLAGS="$CFLAGS -fstack-protector-strong"],,[-Werror])
-AX_CHECK_COMPILE_FLAG([--param=ssp-buffer-size=4], [CFLAGS="$CFLAGS --param=ssp-buffer-size=4"],,[-Werror])
+AX_CHECK_LINK_FLAG([-fstack-protector-strong], [CFLAGS="$CFLAGS -fstack-protector-strong"],,[-Werror])
+AX_CHECK_LINK_FLAG([--param=ssp-buffer-size=4], [CFLAGS="$CFLAGS --param=ssp-buffer-size=4"],,[-Werror])
 AX_CHECK_COMPILE_FLAG([-g], [CFLAGS="$CFLAGS -g"],,[-Werror])
 AX_CHECK_COMPILE_FLAG([--mcet -fcf-protection], [CFLAGS="$CFLAGS --mcet -fcf-protection"],,[-Werror])
 AX_CHECK_COMPILE_FLAG([-Werror=implicit-function-declaration], [CFLAGS="$CFLAGS -Werror=implicit-function-declaration"],,[-Werror])
@@ -734,6 +736,7 @@ AX_CHECK_COMPILE_FLAG([-Wlogical-op], [CFLAGS="$CFLAGS -Wlogical-op"],,[-Werror]
 AX_CHECK_COMPILE_FLAG([-Wmissing-include-dirs], [CFLAGS="$CFLAGS -Wmissing-include-dirs"],,[-Werror])
 AX_CHECK_COMPILE_FLAG([-Wold-style-definition], [CFLAGS="$CFLAGS -Wold-style-definition"],,[-Werror])
 AX_CHECK_COMPILE_FLAG([-Winit-self], [CFLAGS="$CFLAGS -Winit-self"],,[-Werror])
+AX_CHECK_COMPILE_FLAG([-Wunused-but-set-variable], [CFLAGS="$CFLAGS -Wunused-but-set-variable"],,[-Werror])
 AX_CHECK_COMPILE_FLAG([-Wfloat-equal], [CFLAGS="$CFLAGS -Wfloat-equal"],,[-Werror])
 AX_CHECK_COMPILE_FLAG([-Wsuggest-attribute=noreturn], [CFLAGS="$CFLAGS -Wsuggest-attribute=noreturn"],,[-Werror])
 AX_CHECK_COMPILE_FLAG([-Werror=return-type], [CFLAGS="$CFLAGS -Werror=return-type"],,[-Werror])
@@ -760,13 +763,26 @@ if test "x$enable_werror" = "xyes"; then
 fi
 
 AC_ARG_ENABLE([thread-safety],
-	[AC_HELP_STRING([--enable-thread-safety], [enforce thread-safety otherwise fail the build [default=yes]])],
-	[], [enable_thread_safety=yes])
+	[AS_HELP_STRING([--enable-thread-safety], [enforce thread-safety otherwise fail the build [default=yes]])],
+	[enable_thread_safety=$enableval], [enable_thread_safety=yes])
 AM_CONDITIONAL([ENFORCE_THREAD_SAFETY], [test "x$enable_thread_safety" = "xyes"])
 
+AC_ARG_ENABLE([dlog],
+	[AS_HELP_STRING([--enable-dlog], [enable dlog support [default=no]])],
+	[enable_dlog=$enableval], [enable_dlog=no])
+AM_CONDITIONAL([ENABLE_DLOG], [test "x$enable_dlog" = "xyes"])
+
+AM_COND_IF([ENABLE_DLOG],
+	[PKG_CHECK_MODULES([DLOG],[dlog],[],[
+		AC_CHECK_HEADER([dlog.h],[],[AC_MSG_ERROR([You must install the dlog development package in order to compile lxc])])
+		AC_CHECK_LIB([dlog], [dlog_print],[],[AC_MSG_ERROR([You must install the dlog development package in order to compile lxc])])
+		AC_SUBST([DLOG_LIBS], [-ldlog])
+		])
+	])
+
 AC_ARG_ENABLE([memfd-rexec],
-	[AC_HELP_STRING([--enable-memfd-rexec], [enforce liblxc as a memfd to protect against certain symlink attacks [default=yes]])],
-	[], [enable_memfd_rexec=yes])
+	[AS_HELP_STRING([--enable-memfd-rexec], [enforce liblxc as a memfd to protect against certain symlink attacks [default=yes]])],
+	[enable_memfd_rexec=$enableval], [enable_memfd_rexec=yes])
 AM_CONDITIONAL([ENFORCE_MEMFD_REXEC], [test "x$enable_memfd_rexec" = "xyes"])
 if test "x$enable_memfd_rexec" = "xyes"; then
 	AC_DEFINE([ENFORCE_MEMFD_REXEC], 1, [Rexec liblxc as memfd])
@@ -780,6 +796,8 @@ AC_CONFIG_FILES([
 	Makefile
 	lxc.pc
 	lxc.spec
+
+	coccinelle/Makefile
 
 	config/Makefile
 	config/apparmor/Makefile
@@ -841,6 +859,8 @@ AC_CONFIG_FILES([
 	doc/lxc-usernsexec.sgml
 	doc/lxc-wait.sgml
 
+	doc/pam_cgfs.sgml
+
 	doc/lxc.conf.sgml
 	doc/lxc.container.conf.sgml
 	doc/lxc.system.conf.sgml
@@ -887,6 +907,8 @@ AC_CONFIG_FILES([
 	doc/ja/lxc-user-nic.sgml
 	doc/ja/lxc-usernsexec.sgml
 	doc/ja/lxc-wait.sgml
+
+	doc/ja/pam_cgfs.sgml
 
 	doc/ja/lxc.conf.sgml
 	doc/ja/lxc.container.conf.sgml
@@ -1025,4 +1047,6 @@ Paths:
 Thread-safety:
  - enforce: $enable_thread_safety
 
+Dlog:
+ - enable: $enable_dlog
 EOF

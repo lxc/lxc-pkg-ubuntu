@@ -1,25 +1,4 @@
-/*
- * lxc: linux Container library
- *
- * (C) Copyright IBM Corp. 2007, 2008
- *
- * Authors:
- * Daniel Lezcano <daniel.lezcano at free.fr>
- *
- * This library is free software; you can redistribute it and/or
- * modify it under the terms of the GNU Lesser General Public
- * License as published by the Free Software Foundation; either
- * version 2.1 of the License, or (at your option) any later version.
- *
- * This library is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
- * Lesser General Public License for more details.
- *
- * You should have received a copy of the GNU Lesser General Public
- * License along with this library; if not, write to the Free Software
- * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA
- */
+/* SPDX-License-Identifier: LGPL-2.1+ */
 
 #ifndef _GNU_SOURCE
 #define _GNU_SOURCE 1
@@ -47,6 +26,8 @@
 #include "list.h"
 #include "log.h"
 #include "namespace.h"
+#include "syscall_numbers.h"
+#include "syscall_wrappers.h"
 #include "utils.h"
 
 lxc_log_define(lxc_unshare, lxc);
@@ -62,7 +43,6 @@ struct start_arg {
 };
 
 static int my_parser(struct lxc_arguments *args, int c, char *arg);
-static inline int sethostname_including_android(const char *name, size_t len);
 static int get_namespace_flags(char *namespaces);
 static bool lookup_user(const char *oparg, uid_t *uid);
 static int mount_fs(const char *source, const char *target, const char *type);
@@ -148,23 +128,6 @@ static int my_parser(struct lxc_arguments *args, int c, char *arg)
 		break;
 	}
 	return 0;
-}
-
-/* Define sethostname() if missing from the C library also workaround some
- * quirky with having this defined in multiple places.
- */
-static inline int sethostname_including_android(const char *name, size_t len)
-{
-#ifndef HAVE_SETHOSTNAME
-#ifdef __NR_sethostname
-	return syscall(__NR_sethostname, name, len);
-#else
-	errno = ENOSYS;
-	return -1;
-#endif
-#else
-	return sethostname(name, len);
-#endif
 }
 
 static int get_namespace_flags(char *namespaces)
@@ -287,7 +250,7 @@ static int do_start(void *arg)
 		lxc_setup_fs();
 
 	if ((start_arg->flags & CLONE_NEWUTS) && want_hostname)
-		if (sethostname_including_android(want_hostname, strlen(want_hostname)) < 0) {
+		if (sethostname(want_hostname, strlen(want_hostname)) < 0) {
 			SYSERROR("Failed to set hostname %s", want_hostname);
 			_exit(EXIT_FAILURE);
 		}

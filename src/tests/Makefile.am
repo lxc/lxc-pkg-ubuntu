@@ -24,7 +24,9 @@ lxc_test_list_SOURCES = list.c
 lxc_test_locktests_SOURCES = locktests.c
 lxc_test_lxcpath_SOURCES = lxcpath.c
 lxc_test_may_control_SOURCES = may_control.c
-lxc_test_parse_config_file_SOURCES = parse_config_file.c lxctest.h
+lxc_test_mount_injection_SOURCES = mount_injection.c lxctest.h
+lxc_test_parse_config_file_SOURCES = parse_config_file.c \
+				     lxctest.h
 lxc_test_raw_clone_SOURCES = lxc_raw_clone.c \
 			     lxctest.h \
 			     ../lxc/namespace.c ../lxc/namespace.h \
@@ -32,12 +34,16 @@ lxc_test_raw_clone_SOURCES = lxc_raw_clone.c \
 			     ../lxc/utils.c ../lxc/utils.h
 lxc_test_reboot_SOURCES = reboot.c
 lxc_test_saveconfig_SOURCES = saveconfig.c
-lxc_test_share_ns_SOURCES = share_ns.c lxctest.h
+lxc_test_share_ns_SOURCES = share_ns.c \
+			    lxctest.h \
+			    ../lxc/compiler.h
 lxc_test_shortlived_SOURCES = shortlived.c
 lxc_test_shutdowntest_SOURCES = shutdowntest.c
 lxc_test_snapshot_SOURCES = snapshot.c
 lxc_test_startone_SOURCES = startone.c
-lxc_test_state_server_SOURCES = state_server.c lxctest.h
+lxc_test_state_server_SOURCES = state_server.c \
+				lxctest.h \
+				../lxc/compiler.h
 lxc_test_utils_SOURCES = lxc-test-utils.c lxctest.h
 
 AM_CFLAGS=-DLXCROOTFSMOUNT=\"$(LXCROOTFSMOUNT)\" \
@@ -54,6 +60,11 @@ AM_CFLAGS=-DLXCROOTFSMOUNT=\"$(LXCROOTFSMOUNT)\" \
 
 if ENABLE_APPARMOR
 AM_CFLAGS += -DHAVE_APPARMOR
+endif
+
+if ENABLE_SECCOMP
+AM_CFLAGS += -DHAVE_SECCOMP \
+	     $(SECCOMP_CFLAGS)
 endif
 
 if ENABLE_SELINUX
@@ -82,6 +93,7 @@ bin_PROGRAMS = lxc-test-api-reboot \
 	       lxc-test-locktests \
 	       lxc-test-lxcpath \
 	       lxc-test-may-control \
+	       lxc-test-mount-injection \
 	       lxc-test-parse-config-file \
 	       lxc-test-raw-clone \
 	       lxc-test-reboot \
@@ -100,12 +112,14 @@ bin_SCRIPTS += lxc-test-automount \
 	       lxc-test-autostart \
 	       lxc-test-cloneconfig \
 	       lxc-test-createconfig \
+	       lxc-test-exit-code \
 	       lxc-test-no-new-privs \
 	       lxc-test-rootfs
 
 if DISTRO_UBUNTU
 bin_SCRIPTS += lxc-test-lxc-attach \
 	       lxc-test-apparmor-mount \
+	       lxc-test-apparmor-generated \
 	       lxc-test-checkpoint-restore \
 	       lxc-test-snapdeps \
 	       lxc-test-symlink \
@@ -140,15 +154,18 @@ EXTRA_DIST = basic.c \
 	     lxc-test-rootfs \
 	     lxc-test-autostart \
 	     lxc-test-apparmor-mount \
+	     lxc-test-apparmor-generated \
 	     lxc-test-checkpoint-restore \
 	     lxc-test-cloneconfig \
 	     lxc-test-createconfig \
+	     lxc-test-exit-code \
 	     lxc-test-no-new-privs \
 	     lxc-test-snapdeps \
 	     lxc-test-symlink \
 	     lxc-test-unpriv \
 	     lxc-test-utils.c \
 	     may_control.c \
+	     mount_injection.c \
 	     parse_config_file.c \
 	     saveconfig.c \
 	     shortlived.c \
@@ -156,7 +173,8 @@ EXTRA_DIST = basic.c \
 	     snapshot.c \
 	     startone.c \
 	     state_server.c \
-	     share_ns.c
+	     share_ns.c \
+	     travis.sh
 
 clean-local:
 	rm -f lxc-test-utils-*

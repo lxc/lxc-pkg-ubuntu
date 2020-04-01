@@ -21,6 +21,10 @@
    if you don't. */
 #undef HAVE_DECL_PR_SET_NO_NEW_PRIVS
 
+/* Define to 1 if you have the declaration of `seccomp_notify_fd', and to 0 if
+   you don't. */
+#undef HAVE_DECL_SECCOMP_NOTIFY_FD
+
 /* Define to 1 if you have the declaration of
    `seccomp_syscall_resolve_name_arch', and to 0 if you don't. */
 #undef HAVE_DECL_SECCOMP_SYSCALL_RESOLVE_NAME_ARCH
@@ -40,6 +44,9 @@
 
 /* Define to 1 if you have the `fgetln' function. */
 #undef HAVE_FGETLN
+
+/* Define to 1 if you have the `fmemopen' function. */
+#undef HAVE_FMEMOPEN
 
 /* Define to 1 if you have the `getgrgid_r' function. */
 #undef HAVE_GETGRGID_R
@@ -68,6 +75,9 @@
 /* Define to 1 if you have the `cap' library (-lcap). */
 #undef HAVE_LIBCAP
 
+/* Define to 1 if you have the `dlog' library (-ldlog). */
+#undef HAVE_LIBDLOG
+
 /* Define to 1 if you have the `pthread' library (-lpthread). */
 #undef HAVE_LIBPTHREAD
 
@@ -76,6 +86,9 @@
 
 /* Define to 1 if you have the `util' library (-lutil). */
 #undef HAVE_LIBUTIL
+
+/* Define to 1 if you have the <linux/bpf.h> header file. */
+#undef HAVE_LINUX_BPF_H
 
 /* Define to 1 if you have the <linux/genetlink.h> header file. */
 #undef HAVE_LINUX_GENETLINK_H
@@ -161,8 +174,14 @@
 /* Define to 1 if you have the `strlcpy' function. */
 #undef HAVE_STRLCPY
 
+/* Define to 1 if the system has the type `struct bpf_cgroup_dev_ctx'. */
+#undef HAVE_STRUCT_BPF_CGROUP_DEV_CTX
+
 /* Define to 1 if the system has the type `struct rtnl_link_stats64'. */
 #undef HAVE_STRUCT_RTNL_LINK_STATS64
+
+/* Define to 1 if the system has the type `struct seccomp_notif_sizes'. */
+#undef HAVE_STRUCT_SECCOMP_NOTIF_SIZES
 
 /* Define to 1 if you have the <sys/memfd.h> header file. */
 #undef HAVE_SYS_MEMFD_H

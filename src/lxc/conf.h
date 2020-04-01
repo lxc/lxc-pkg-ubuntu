@@ -1,25 +1,5 @@
-/*
- * lxc: linux Container library
- *
- * (C) Copyright IBM Corp. 2007, 2008
- *
- * Authors:
- * Daniel Lezcano <daniel.lezcano at free.fr>
- *
- * This library is free software; you can redistribute it and/or
- * modify it under the terms of the GNU Lesser General Public
- * License as published by the Free Software Foundation; either
- * version 2.1 of the License, or (at your option) any later version.
- *
- * This library is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
- * Lesser General Public License for more details.
- *
- * You should have received a copy of the GNU Lesser General Public
- * License along with this library; if not, write to the Free Software
- * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA
- */
+/* SPDX-License-Identifier: LGPL-2.1+ */
+
 #ifndef __LXC_CONF_H
 #define __LXC_CONF_H
 
@@ -38,6 +18,7 @@
 #include "compiler.h"
 #include "config.h"
 #include "list.h"
+#include "lxcseccomp.h"
 #include "ringbuf.h"
 #include "start.h"
 #include "terminal.h"
@@ -79,6 +60,7 @@ struct lxc_cgroup {
 		struct /* meta */ {
 			char *controllers;
 			char *dir;
+			bool relative;
 		};
 	};
 };
@@ -160,6 +142,7 @@ struct lxc_tty_info {
  * @options    : mount options
  * @mountflags : the portion of @options that are flags
  * @data       : the portion of @options that are not flags
+ * @managed    : whether it is managed by LXC
  */
 struct lxc_rootfs {
 	char *path;
@@ -168,6 +151,7 @@ struct lxc_rootfs {
 	char *options;
 	unsigned long mountflags;
 	char *data;
+	bool managed;
 };
 
 /*
@@ -199,6 +183,9 @@ enum {
 	LXC_AUTO_CGROUP_FULL_NOSPEC   = 0x0E0, /* /sys/fs/cgroup (full mount, r/w or mixed, depending on caps) */
 	LXC_AUTO_CGROUP_FORCE         = 0x100, /* mount cgroups even when cgroup namespaces are supported */
 	LXC_AUTO_CGROUP_MASK          = 0x1F0, /* all known cgroup options, doe not contain LXC_AUTO_CGROUP_FORCE */
+
+	LXC_AUTO_SHMOUNTS             = 0x200, /* shared mount point */
+	LXC_AUTO_SHMOUNTS_MASK        = 0x200, /* shared mount point mask */
 	LXC_AUTO_ALL_MASK             = 0x1FF, /* all known settings */
 };
 
@@ -223,6 +210,26 @@ struct lxc_state_client {
 	lxc_state_t states[MAX_STATE];
 };
 
+enum {
+	LXC_BPF_DEVICE_CGROUP_LOCAL_RULE = -1,
+	LXC_BPF_DEVICE_CGROUP_WHITELIST  =  0,
+	LXC_BPF_DEVICE_CGROUP_BLACKLIST  =  1,
+};
+
+struct device_item {
+	char type;
+	int major;
+	int minor;
+	char access[4];
+	int allow;
+	/*
+	 * LXC_BPF_DEVICE_CGROUP_LOCAL_RULE -> no global rule
+	 * LXC_BPF_DEVICE_CGROUP_WHITELIST  -> whitelist (deny all)
+	 * LXC_BPF_DEVICE_CGROUP_BLACKLIST  -> blacklist (allow all)
+	 */
+	int global_rule;
+};
+
 struct lxc_conf {
 	/* Pointer to the name of the container. Do not free! */
 	const char *name;
@@ -234,6 +241,9 @@ struct lxc_conf {
 	struct {
 		struct lxc_list cgroup;
 		struct lxc_list cgroup2;
+		struct bpf_program *cgroup2_devices;
+		/* This should be reimplemented as a hashmap. */
+		struct lxc_list devices;
 	};
 
 	struct {
@@ -282,15 +292,19 @@ struct lxc_conf {
 	};
 
 	char *lsm_aa_profile;
+	char *lsm_aa_profile_computed;
+	bool lsm_aa_profile_created;
+	unsigned int lsm_aa_allow_nesting;
 	unsigned int lsm_aa_allow_incomplete;
+	struct lxc_list lsm_aa_raw;
 	char *lsm_se_context;
+	char *lsm_se_keyring_context;
+	bool keyring_disable_session;
 	bool tmp_umount_proc;
-	char *seccomp;  /* filename with the seccomp rules */
-#if HAVE_SCMP_FILTER_CTX
-	scmp_filter_ctx seccomp_ctx;
-#endif
+	struct lxc_seccomp seccomp;
 	int maincmd_fd;
 	unsigned int autodev;  /* if 1, mount and fill a /dev at start */
+	int autodevtmpfssize; /* size of the /dev tmpfs */
 	int haltsignal; /* signal used to halt container */
 	int rebootsignal; /* signal used to reboot container */
 	int stopsignal; /* signal used to hard stop container */
@@ -313,6 +327,7 @@ struct lxc_conf {
 
 	/* unshare the mount namespace in the monitor */
 	unsigned int monitor_unshare;
+	unsigned int monitor_signal_pdeath;
 
 	/* list of included files */
 	struct lxc_list includes;
@@ -376,6 +391,13 @@ struct lxc_conf {
 
 	/* procs */
 	struct lxc_list procs;
+
+	struct shmount {
+		/* Absolute path to the shared mount point on the host */
+		char *path_host;
+		/* Absolute path (in the container) to the shared mount point */
+		char *path_cont;
+	} shmount;
 };
 
 extern int write_id_mapping(enum idtype idtype, pid_t pid, const char *buf,
@@ -407,6 +429,7 @@ extern int lxc_clear_groups(struct lxc_conf *c);
 extern int lxc_clear_environment(struct lxc_conf *c);
 extern int lxc_clear_limits(struct lxc_conf *c, const char *key);
 extern int lxc_delete_autodev(struct lxc_handler *handler);
+extern int lxc_clear_autodev_tmpfs_size(struct lxc_conf *c);
 extern void lxc_clear_includes(struct lxc_conf *conf);
 extern int lxc_setup_rootfs_prepare_root(struct lxc_conf *conf,
 					 const char *name, const char *lxcpath);
@@ -414,9 +437,9 @@ extern int lxc_setup(struct lxc_handler *handler);
 extern int lxc_setup_parent(struct lxc_handler *handler);
 extern int setup_resource_limits(struct lxc_list *limits, pid_t pid);
 extern int find_unmapped_nsid(struct lxc_conf *conf, enum idtype idtype);
-extern int mapped_hostid(unsigned id, struct lxc_conf *conf,
+extern int mapped_hostid(unsigned id, const struct lxc_conf *conf,
 			 enum idtype idtype);
-extern int chown_mapped_root(const char *path, struct lxc_conf *conf);
+extern int chown_mapped_root(const char *path, const struct lxc_conf *conf);
 extern int userns_exec_1(struct lxc_conf *conf, int (*fn)(void *), void *data,
 			 const char *fn_name);
 extern int userns_exec_full(struct lxc_conf *conf, int (*fn)(void *),
@@ -427,7 +450,8 @@ extern int parse_propagationopts(const char *mntopts, unsigned long *pflags);
 extern void tmp_proc_unmount(struct lxc_conf *lxc_conf);
 extern void remount_all_slave(void);
 extern void suggest_default_idmap(void);
-extern FILE *make_anonymous_mount_file(struct lxc_list *mount);
+extern FILE *make_anonymous_mount_file(struct lxc_list *mount,
+				       bool include_nesting_helpers);
 extern struct lxc_list *sort_cgroup_settings(struct lxc_list *cgroup_settings);
 extern unsigned long add_required_remount_flags(const char *s, const char *d,
 						unsigned long flags);
@@ -441,5 +465,7 @@ extern int setup_sysctl_parameters(struct lxc_list *sysctls);
 extern int lxc_clear_sysctls(struct lxc_conf *c, const char *key);
 extern int setup_proc_filesystem(struct lxc_list *procs, pid_t pid);
 extern int lxc_clear_procs(struct lxc_conf *c, const char *key);
+extern int lxc_clear_apparmor_raw(struct lxc_conf *c);
+extern int lxc_clear_namespace(struct lxc_conf *c);
 
 #endif /* __LXC_CONF_H */

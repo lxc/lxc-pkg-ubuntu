@@ -28,6 +28,7 @@
 #include <unistd.h>
 #include <libgen.h>
 
+#include "conf.h"
 #include "confile_utils.h"
 #include "lxc/state.h"
 #include "lxctest.h"
@@ -107,6 +108,16 @@ static int set_and_clear_complete_netdev(struct lxc_container *c)
 		return -1;
 	}
 
+	if (!c->set_config_item(c, "lxc.net.1.ipv4.gateway", "auto")) {
+		lxc_error("%s\n", "lxc.net.1.ipv4.gateway");
+		return -1;
+	}
+
+	if (!c->set_config_item(c, "lxc.net.1.ipv4.gateway", "dev")) {
+		lxc_error("%s\n", "lxc.net.1.ipv4.gateway");
+		return -1;
+	}
+
 	if (!c->set_config_item(c, "lxc.net.1.ipv6.address",
 				"2003:db8:1:0:214:1234:fe0b:3596/64")) {
 		lxc_error("%s\n", "lxc.net.1.ipv6.address");
@@ -115,6 +126,16 @@ static int set_and_clear_complete_netdev(struct lxc_container *c)
 
 	if (!c->set_config_item(c, "lxc.net.1.ipv6.gateway",
 				"2003:db8:1:0::1")) {
+		lxc_error("%s\n", "lxc.net.1.ipv6.gateway");
+		return -1;
+	}
+
+	if (!c->set_config_item(c, "lxc.net.1.ipv6.gateway", "auto")) {
+		lxc_error("%s\n", "lxc.net.1.ipv6.gateway");
+		return -1;
+	}
+
+	if (!c->set_config_item(c, "lxc.net.1.ipv6.gateway", "dev")) {
 		lxc_error("%s\n", "lxc.net.1.ipv6.gateway");
 		return -1;
 	}
@@ -131,6 +152,16 @@ static int set_and_clear_complete_netdev(struct lxc_container *c)
 
 	if (!c->set_config_item(c, "lxc.net.1.veth.pair", "bla")) {
 		lxc_error("%s\n", "lxc.net.1.veth.pair");
+		return -1;
+	}
+
+	if (!c->set_config_item(c, "lxc.net.1.veth.ipv4.route", "192.0.2.1/32")) {
+		lxc_error("%s\n", "lxc.net.1.veth.ipv4.route");
+		return -1;
+	}
+
+	if (!c->set_config_item(c, "lxc.net.1.veth.ipv6.route", "2001:db8::1/128")) {
+		lxc_error("%s\n", "lxc.net.1.veth.ipv6.route");
 		return -1;
 	}
 
@@ -529,6 +560,11 @@ int main(int argc, char *argv[])
 		goto non_test_error;
 	}
 
+	if (set_get_compare_clear_save_load(c, "lxc.autodev.tmpfs.size", "1", tmpf, true) < 0) {
+		lxc_error("%s\n", "lxc.autodev.tmpfs.size");
+		goto non_test_error;
+	}
+
 	if (set_get_compare_clear_save_load(c, "lxc.autodev", "1", tmpf, true) <
 	    0) {
 		lxc_error("%s\n", "lxc.autodev");
@@ -655,6 +691,11 @@ int main(int argc, char *argv[])
 		goto non_test_error;
 	}
 
+	if (set_get_compare_clear_save_load(c, "lxc.net.0.type", "ipvlan", tmpf, true)) {
+		lxc_error("%s\n", "lxc.net.0.type");
+		goto non_test_error;
+	}
+
 	if (set_get_compare_clear_save_load(c, "lxc.net.1000.type", "phys", tmpf, true)) {
 		lxc_error("%s\n", "lxc.net.1000.type");
 		goto non_test_error;
@@ -690,9 +731,49 @@ int main(int argc, char *argv[])
 		goto non_test_error;
 	}
 
+	if (set_get_compare_clear_save_load_network(c, "lxc.net.0.ipvlan.mode", "l3", tmpf, true, "ipvlan")) {
+		lxc_error("%s\n", "lxc.net.0.ipvlan.mode");
+		goto non_test_error;
+	}
+
+	if (set_get_compare_clear_save_load_network(c, "lxc.net.0.ipvlan.mode", "l3s", tmpf, true, "ipvlan")) {
+		lxc_error("%s\n", "lxc.net.0.ipvlan.mode");
+		goto non_test_error;
+	}
+
+	if (set_get_compare_clear_save_load_network(c, "lxc.net.0.ipvlan.mode", "l2", tmpf, true, "ipvlan")) {
+		lxc_error("%s\n", "lxc.net.0.ipvlan.mode");
+		goto non_test_error;
+	}
+
+	if (set_get_compare_clear_save_load_network(c, "lxc.net.0.ipvlan.isolation", "bridge", tmpf, true, "ipvlan")) {
+		lxc_error("%s\n", "lxc.net.0.ipvlan.isolation");
+		goto non_test_error;
+	}
+
+	if (set_get_compare_clear_save_load_network(c, "lxc.net.0.ipvlan.isolation", "private", tmpf, true, "ipvlan")) {
+		lxc_error("%s\n", "lxc.net.0.ipvlan.isolation");
+		goto non_test_error;
+	}
+
+	if (set_get_compare_clear_save_load_network(c, "lxc.net.0.ipvlan.isolation", "vepa", tmpf, true, "ipvlan")) {
+		lxc_error("%s\n", "lxc.net.0.ipvlan.isolation");
+		goto non_test_error;
+	}
+
 	if (set_get_compare_clear_save_load_network(c, "lxc.net.0.veth.pair", "clusterfuck", tmpf, true, "veth")) {
 		lxc_error("%s\n", "lxc.net.0.veth.pair");
 		goto non_test_error;
+	}
+
+	if (set_get_compare_clear_save_load_network(c, "lxc.net.0.veth.ipv4.route", "192.0.2.1/32", tmpf, true, "veth")) {
+		lxc_error("%s\n", "lxc.net.0.veth.ipv4.route");
+		return -1;
+	}
+
+	if (set_get_compare_clear_save_load_network(c, "lxc.net.0.veth.ipv6.route", "2001:db8::1/128", tmpf, true, "veth")) {
+		lxc_error("%s\n", "lxc.net.0.veth.ipv6.route");
+		return -1;
 	}
 
 	if (set_get_compare_clear_save_load(c, "lxc.net.0.script.up", "/some/up/path", tmpf, true)) {
@@ -725,7 +806,27 @@ int main(int argc, char *argv[])
 		goto non_test_error;
 	}
 
+	if (set_get_compare_clear_save_load(c, "lxc.net.0.ipv4.gateway", "auto", tmpf, true)) {
+		lxc_error("%s\n", "lxc.net.0.ipv4.gateway");
+		goto non_test_error;
+	}
+
+	if (set_get_compare_clear_save_load(c, "lxc.net.0.ipv4.gateway", "dev", tmpf, true)) {
+		lxc_error("%s\n", "lxc.net.0.ipv4.gateway");
+		goto non_test_error;
+	}
+
 	if (set_get_compare_clear_save_load(c, "lxc.net.0.ipv6.gateway", "2003:db8:1::1", tmpf, true)) {
+		lxc_error("%s\n", "lxc.net.0.ipv6.gateway");
+		goto non_test_error;
+	}
+
+	if (set_get_compare_clear_save_load(c, "lxc.net.0.ipv6.gateway", "auto", tmpf, true)) {
+		lxc_error("%s\n", "lxc.net.0.ipv6.gateway");
+		goto non_test_error;
+	}
+
+	if (set_get_compare_clear_save_load(c, "lxc.net.0.ipv6.gateway", "dev", tmpf, true)) {
 		lxc_error("%s\n", "lxc.net.0.ipv6.gateway");
 		goto non_test_error;
 	}
@@ -767,6 +868,16 @@ int main(int argc, char *argv[])
 		goto non_test_error;
 	}
 
+	ret = set_get_compare_clear_save_load(c, "lxc.monitor.signal.pdeath", "SIGKILL", tmpf, true);
+	if (ret == 0) {
+		lxc_error("%s\n", "lxc.hook.version");
+		goto non_test_error;
+	}
+
+	if (set_get_compare_clear_save_load(c, "lxc.rootfs.managed", "1", tmpf, true) < 0) {
+		lxc_error("%s\n", "lxc.rootfs.managed");
+		goto non_test_error;
+	}
 
 	if (c->set_config_item(c, "lxc.notaconfigkey", "invalid")) {
 		lxc_error("%s\n", "Managed to set to set invalid config item \"lxc.notaconfigkey\" to \"invalid\"");

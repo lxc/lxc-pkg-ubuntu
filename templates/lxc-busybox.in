@@ -42,7 +42,12 @@ in_userns() {
     fi
   done < /proc/self/uid_map
 
-  [ "$(cat /proc/self/uid_map)" = "$(cat /proc/1/uid_map)" ] && { echo userns-root; return; }
+  if [ -e /proc/1/uid_map ]; then
+    if [ "$(cat /proc/self/uid_map)" = "$(cat /proc/1/uid_map)" ]; then
+      echo userns-root
+      return
+    fi
+  fi
   echo yes
 }
 
@@ -70,9 +75,7 @@ ${rootfs}/mnt \
 ${rootfs}/tmp \
 ${rootfs}/var/log \
 ${rootfs}/var/run \
-${rootfs}/usr/share/udhcpc \
 ${rootfs}/dev/pts \
-${rootfs}/dev/shm \
 ${rootfs}/lib \
 ${rootfs}/usr/lib \
 ${rootfs}/lib64 \
@@ -135,7 +138,7 @@ EOF
   chmod 644 "${rootfs}/etc/inittab" || return 1
 
   # Look for the pathname of "default.script" from the help of udhcpc
-  DEF_SCRIPT=`${BUSYBOX_EXE} udhcpc -h 2>&1 | grep -- '-s,--script PROG' | cut -d'/' -f2- | cut -d')' -f1`
+  DEF_SCRIPT=`${BUSYBOX_EXE} udhcpc --help 2>&1 | egrep -- '-s.*Run PROG' | cut -d'/' -f2- | cut -d')' -f1`
   DEF_SCRIPT_DIR=`dirname /${DEF_SCRIPT}`
   mkdir -p ${rootfs}/${DEF_SCRIPT_DIR}
   chmod 644 ${rootfs}/${DEF_SCRIPT_DIR} || return 1
@@ -232,7 +235,8 @@ lxc.cap.drop = sys_module mac_admin mac_override sys_time
 #lxc.apparmor.profile = unconfined
 
 lxc.mount.auto = cgroup:mixed proc:mixed sys:mixed
-lxc.mount.entry = shm /dev/shm tmpfs defaults 0 0
+lxc.mount.entry = shm dev/shm tmpfs defaults,create=dir 0 0
+lxc.mount.entry = mqueue dev/mqueue mqueue defaults,optional,create=dir 0 0
 EOF
 
   libdirs="\

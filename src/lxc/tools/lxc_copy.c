@@ -1,20 +1,4 @@
-/*
- *
- * Copyright © 2015 Christian Brauner <christian.brauner@mailbox.org>.
- *
- * This program is free software; you can redistribute it and/or modify
- * it under the terms of the GNU General Public License version 2, as
- * published by the Free Software Foundation.
- *
- * This program is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
- * GNU General Public License for more details.
- *
- * You should have received a copy of the GNU General Public License along
- * with this program; if not, write to the Free Software Foundation, Inc.,
- * 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
- */
+/* SPDX-License-Identifier: GPL-2.0-only */
 
 #ifndef _GNU_SOURCE
 #define _GNU_SOURCE 1
@@ -73,6 +57,7 @@ static const struct option my_longopts[] = {
 	{ "newpath", required_argument, 0, 'p'},
 	{ "rename", no_argument, 0, 'R'},
 	{ "snapshot", no_argument, 0, 's'},
+	{ "allowrunning", no_argument, 0, 'a'},
 	{ "foreground", no_argument, 0, 'F'},
 	{ "daemon", no_argument, 0, 'd'},
 	{ "ephemeral", no_argument, 0, 'e'},
@@ -108,6 +93,7 @@ Options :\n\
   -p, --newpath=NEWPATH     NEWPATH for the container to be stored\n\
   -R, --rename              rename container\n\
   -s, --snapshot            create snapshot instead of clone\n\
+  -a, --allowrunning        allow snapshot creation even if source container is running\n\
   -F, --foreground          start with current tty attached to /dev/console\n\
   -d, --daemon              daemonize the container (default)\n\
   -e, --ephemeral           start ephemeral container\n\
@@ -195,7 +181,8 @@ int main(int argc, char *argv[])
 
 	if (my_args.task == SNAP || my_args.task == DESTROY)
 		flags |= LXC_CLONE_SNAPSHOT;
-
+	if (my_args.allowrunning)
+		flags |= LXC_CLONE_ALLOW_RUNNING;
 	if (my_args.keepname)
 		flags |= LXC_CLONE_KEEPNAME;
 
@@ -557,6 +544,9 @@ static int my_parser(struct lxc_arguments *args, int c, char *arg)
 	case 's':
 		args->task = SNAP;
 		break;
+	case 'a':
+		args->allowrunning = 1;
+		break;
 	case 'F':
 		args->daemonize = 0;
 		break;
@@ -776,15 +766,17 @@ static char *mount_tmpfs(const char *oldname, const char *newname,
 	fd = -1;
 
 	ret = fprintf(fp, "#! /bin/sh\n"
-			  "mount -n -t tmpfs -o mode=0755 none %s/%s\n",
+			  "mount -n -t tmpfs -o mode=0755 none %s/%s/overlay\n",
 		      path, newname);
 	if (ret < 0)
 		goto err_close;
 
 	if (!arg->keepname) {
-		ret = fprintf(fp, "mkdir -p %s/%s/delta0/etc\n"
-				  "echo %s > %s/%s/delta0/etc/hostname\n",
-			      path, newname, newname, path, newname);
+		ret = fprintf(fp,
+			      "mkdir -p %s/%s/%s/etc\n"
+			      "echo %s > %s/%s/%s/etc/hostname\n",
+			      path, newname, LXC_OVERLAY_DELTA_PATH, newname,
+			      path, newname, LXC_OVERLAY_DELTA_PATH);
 		if (ret < 0)
 			goto err_close;
 	}

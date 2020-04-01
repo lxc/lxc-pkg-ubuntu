@@ -1,25 +1,4 @@
-/*
- * lxc: linux Container library
- *
- * (C) Copyright IBM Corp. 2007, 2008
- *
- * Authors:
- * Daniel Lezcano <daniel.lezcano at free.fr>
- *
- * This library is free software; you can redistribute it and/or
- * modify it under the terms of the GNU Lesser General Public
- * License as published by the Free Software Foundation; either
- * version 2.1 of the License, or (at your option) any later version.
- *
- * This library is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
- * Lesser General Public License for more details.
- *
- * You should have received a copy of the GNU Lesser General Public
- * License along with this library; if not, write to the Free Software
- * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA
- */
+/* SPDX-License-Identifier: LGPL-2.1+ */
 
 #ifndef _GNU_SOURCE
 #define _GNU_SOURCE 1
@@ -68,15 +47,212 @@
 lxc_log_define(network, lxc);
 
 typedef int (*instantiate_cb)(struct lxc_handler *, struct lxc_netdev *);
+typedef int (*instantiate_ns_cb)(struct lxc_netdev *);
+static const char loop_device[] = "lo";
+
+static int lxc_ip_route_dest(__u16 nlmsg_type, int family, int ifindex, void *dest, unsigned int netmask)
+{
+	call_cleaner(nlmsg_free) struct nlmsg *answer = NULL, *nlmsg = NULL;
+	struct nl_handler nlh;
+	call_cleaner(netlink_close) struct nl_handler *nlh_ptr = &nlh;
+	int addrlen, err;
+	struct rtmsg *rt;
+
+	addrlen = family == AF_INET ? sizeof(struct in_addr)
+				    : sizeof(struct in6_addr);
+
+	err = netlink_open(nlh_ptr, NETLINK_ROUTE);
+	if (err)
+		return err;
+
+	nlmsg = nlmsg_alloc(NLMSG_GOOD_SIZE);
+	if (!nlmsg)
+		return -ENOMEM;
+
+	answer = nlmsg_alloc_reserve(NLMSG_GOOD_SIZE);
+	if (!answer)
+		return -ENOMEM;
+
+	nlmsg->nlmsghdr->nlmsg_flags =
+	    NLM_F_ACK | NLM_F_REQUEST | NLM_F_CREATE | NLM_F_EXCL;
+	nlmsg->nlmsghdr->nlmsg_type = nlmsg_type;
+
+	rt = nlmsg_reserve(nlmsg, sizeof(struct rtmsg));
+	if (!rt)
+		return -ENOMEM;
+
+	rt->rtm_family = family;
+	rt->rtm_table = RT_TABLE_MAIN;
+	rt->rtm_scope = RT_SCOPE_LINK;
+	rt->rtm_protocol = RTPROT_BOOT;
+	rt->rtm_type = RTN_UNICAST;
+	rt->rtm_dst_len = netmask;
+
+	if (nla_put_buffer(nlmsg, RTA_DST, dest, addrlen))
+		return -EINVAL;
+
+	if (nla_put_u32(nlmsg, RTA_OIF, ifindex))
+		return -EINVAL;
+
+	return netlink_transaction(nlh_ptr, nlmsg, answer);
+}
+
+static int lxc_ipv4_dest_add(int ifindex, struct in_addr *dest, unsigned int netmask)
+{
+	return lxc_ip_route_dest(RTM_NEWROUTE, AF_INET, ifindex, dest, netmask);
+}
+
+static int lxc_ipv6_dest_add(int ifindex, struct in6_addr *dest, unsigned int netmask)
+{
+	return lxc_ip_route_dest(RTM_NEWROUTE, AF_INET6, ifindex, dest, netmask);
+}
+
+static int lxc_ipv4_dest_del(int ifindex, struct in_addr *dest, unsigned int netmask)
+{
+	return lxc_ip_route_dest(RTM_DELROUTE, AF_INET, ifindex, dest, netmask);
+}
+
+static int lxc_ipv6_dest_del(int ifindex, struct in6_addr *dest, unsigned int netmask)
+{
+	return lxc_ip_route_dest(RTM_DELROUTE, AF_INET6, ifindex, dest, netmask);
+}
+
+static int lxc_setup_ipv4_routes(struct lxc_list *ip, int ifindex)
+{
+	struct lxc_list *iterator;
+	int err;
+
+	lxc_list_for_each(iterator, ip) {
+		struct lxc_inetdev *inetdev = iterator->elem;
+
+		err = lxc_ipv4_dest_add(ifindex, &inetdev->addr, inetdev->prefix);
+		if (err)
+			return log_error_errno(-1, -err, "Failed to setup ipv4 route for network device with ifindex %d", ifindex);
+	}
+
+	return 0;
+}
+
+static int lxc_setup_ipv6_routes(struct lxc_list *ip, int ifindex)
+{
+	struct lxc_list *iterator;
+	int err;
+
+	lxc_list_for_each(iterator, ip) {
+		struct lxc_inet6dev *inet6dev = iterator->elem;
+
+		err = lxc_ipv6_dest_add(ifindex, &inet6dev->addr, inet6dev->prefix);
+		if (err)
+			return log_error_errno(-1, -err, "Failed to setup ipv6 route for network device with ifindex %d", ifindex);
+	}
+
+	return 0;
+}
+
+static int setup_ipv4_addr_routes(struct lxc_list *ip, int ifindex)
+{
+	struct lxc_list *iterator;
+	int err;
+
+	lxc_list_for_each(iterator, ip) {
+		struct lxc_inetdev *inetdev = iterator->elem;
+
+		err = lxc_ipv4_dest_add(ifindex, &inetdev->addr, 32);
+
+		if (err)
+			return log_error_errno(-1, err, "Failed to setup ipv4 address route for network device with eifindex %d", ifindex);
+	}
+
+	return 0;
+}
+
+static int setup_ipv6_addr_routes(struct lxc_list *ip, int ifindex)
+{
+	struct lxc_list *iterator;
+	int err;
+
+	lxc_list_for_each(iterator, ip) {
+		struct lxc_inet6dev *inet6dev = iterator->elem;
+
+		err = lxc_ipv6_dest_add(ifindex, &inet6dev->addr, 128);
+		if (err)
+			return log_error_errno(-1, err, "Failed to setup ipv6 address route for network device with eifindex %d", ifindex);
+	}
+
+	return 0;
+}
+
+struct ip_proxy_args {
+	const char *ip;
+	const char *dev;
+};
+
+static int lxc_ip_neigh_proxy(__u16 nlmsg_type, int family, int ifindex, void *dest)
+{
+	call_cleaner(nlmsg_free) struct nlmsg *answer = NULL, *nlmsg = NULL;
+	struct nl_handler nlh;
+	call_cleaner(netlink_close) struct nl_handler *nlh_ptr = &nlh;
+	int addrlen, err;
+	struct ndmsg *rt;
+
+	addrlen = family == AF_INET ? sizeof(struct in_addr) : sizeof(struct in6_addr);
+
+	err = netlink_open(nlh_ptr, NETLINK_ROUTE);
+	if (err)
+		return err;
+
+	nlmsg = nlmsg_alloc(NLMSG_GOOD_SIZE);
+	if (!nlmsg)
+		return -ENOMEM;
+
+	answer = nlmsg_alloc_reserve(NLMSG_GOOD_SIZE);
+	if (!answer)
+		return -ENOMEM;
+
+	nlmsg->nlmsghdr->nlmsg_flags = NLM_F_ACK | NLM_F_REQUEST | NLM_F_CREATE | NLM_F_EXCL;
+	nlmsg->nlmsghdr->nlmsg_type = nlmsg_type;
+
+	rt = nlmsg_reserve(nlmsg, sizeof(struct ndmsg));
+	if (!rt)
+		return -ENOMEM;
+
+	rt->ndm_ifindex = ifindex;
+	rt->ndm_flags = NTF_PROXY;
+	rt->ndm_type = NDA_DST;
+	rt->ndm_family = family;
+
+	if (nla_put_buffer(nlmsg, NDA_DST, dest, addrlen))
+		return -EINVAL;
+
+	return netlink_transaction(nlh_ptr, nlmsg, answer);
+}
+
+static int lxc_is_ip_forwarding_enabled(const char *ifname, int family)
+{
+	int ret;
+	char path[PATH_MAX];
+	char buf[1] = "";
+
+	if (family != AF_INET && family != AF_INET6)
+		return ret_set_errno(-1, EINVAL);
+
+	ret = snprintf(path, sizeof(path), "/proc/sys/net/%s/conf/%s/%s",
+		       family == AF_INET ? "ipv4" : "ipv6", ifname,
+		       "forwarding");
+	if (ret < 0 || (size_t)ret >= sizeof(path))
+		return ret_set_errno(-1, E2BIG);
+
+	return lxc_read_file_expect(path, buf, 1, "1");
+}
 
 static int instantiate_veth(struct lxc_handler *handler, struct lxc_netdev *netdev)
 {
-	int bridge_index, err;
+	int err;
+	unsigned int mtu = 1500;
 	char *veth1, *veth2;
 	char veth1buf[IFNAMSIZ], veth2buf[IFNAMSIZ];
-	unsigned int mtu = 0;
 
-	if (netdev->priv.veth_attr.pair[0] != '\0') {
+	if (!is_empty_string(netdev->priv.veth_attr.pair)) {
 		veth1 = netdev->priv.veth_attr.pair;
 		if (handler->conf->reboot)
 			lxc_netdev_delete_by_name(veth1);
@@ -85,7 +261,7 @@ static int instantiate_veth(struct lxc_handler *handler, struct lxc_netdev *netd
 		if (err < 0 || (size_t)err >= sizeof(veth1buf))
 			return -1;
 
-		veth1 = lxc_mkifname(veth1buf);
+		veth1 = lxc_ifname_alnum_case_sensitive(veth1buf);
 		if (!veth1)
 			return -1;
 
@@ -97,16 +273,29 @@ static int instantiate_veth(struct lxc_handler *handler, struct lxc_netdev *netd
 	if (err < 0 || (size_t)err >= sizeof(veth2buf))
 		return -1;
 
-	veth2 = lxc_mkifname(veth2buf);
+	veth2 = lxc_ifname_alnum_case_sensitive(veth2buf);
 	if (!veth2)
-		goto out_delete;
+		return -1;
 
-	err = lxc_veth_create(veth1, veth2);
-	if (err) {
-		errno = -err;
-		SYSERROR("Failed to create veth pair \"%s\" and \"%s\"", veth1, veth2);
-		goto out_delete;
+	/* if mtu is specified in config then use that, otherwise inherit from link device if provided. */
+	if (netdev->mtu) {
+		if (lxc_safe_uint(netdev->mtu, &mtu))
+			return log_error_errno(-1, errno, "Failed to parse mtu");
+	} else if (!is_empty_string(netdev->link)) {
+		int ifindex_mtu;
+
+		ifindex_mtu = if_nametoindex(netdev->link);
+		if (ifindex_mtu) {
+			mtu = netdev_get_mtu(ifindex_mtu);
+			INFO("Retrieved mtu %d from %s", mtu, netdev->link);
+		}
 	}
+
+	err = lxc_veth_create(veth1, veth2, handler->pid, mtu);
+	if (err)
+		return log_error_errno(-1, -err, "Failed to create veth pair \"%s\" and \"%s\"", veth1, veth2);
+
+	strlcpy(netdev->created_name, veth2, IFNAMSIZ);
 
 	/* changing the high byte of the mac address to 0xfe, the bridge interface
 	 * will always keep the host's mac address and not take the mac address
@@ -125,47 +314,16 @@ static int instantiate_veth(struct lxc_handler *handler, struct lxc_netdev *netd
 		goto out_delete;
 	}
 
-	/* Note that we're retrieving the container's ifindex in the host's
-	 * network namespace because we need it to move the device from the
-	 * host's network namespace to the container's network namespace later
-	 * on.
-	 */
-	netdev->ifindex = if_nametoindex(veth2);
-	if (!netdev->ifindex) {
-		ERROR("Failed to retrieve ifindex for \"%s\"", veth2);
-		goto out_delete;
-	}
-
-	if (netdev->mtu) {
-		if (lxc_safe_uint(netdev->mtu, &mtu) < 0)
-			WARN("Failed to parse mtu");
-		else
-			INFO("Retrieved mtu %d", mtu);
-	} else if (netdev->link[0] != '\0') {
-		bridge_index = if_nametoindex(netdev->link);
-		if (bridge_index) {
-			mtu = netdev_get_mtu(bridge_index);
-			INFO("Retrieved mtu %d from %s", mtu, netdev->link);
-		} else {
-			mtu = netdev_get_mtu(netdev->ifindex);
-			INFO("Retrieved mtu %d from %s", mtu, veth2);
-		}
-	}
-
 	if (mtu) {
 		err = lxc_netdev_set_mtu(veth1, mtu);
-		if (!err)
-			err = lxc_netdev_set_mtu(veth2, mtu);
-
 		if (err) {
 			errno = -err;
-			SYSERROR("Failed to set mtu \"%d\" for veth pair \"%s\" "
-			         "and \"%s\"", mtu, veth1, veth2);
+			SYSERROR("Failed to set mtu \"%d\" for veth pair \"%s\" ", mtu, veth1);
 			goto out_delete;
 		}
 	}
 
-	if (netdev->link[0] != '\0') {
+	if (!is_empty_string(netdev->link) && netdev->priv.veth_attr.mode == VETH_MODE_BRIDGE) {
 		err = lxc_bridge_attach(netdev->link, veth1);
 		if (err) {
 			errno = -err;
@@ -183,6 +341,97 @@ static int instantiate_veth(struct lxc_handler *handler, struct lxc_netdev *netd
 		goto out_delete;
 	}
 
+	/* setup ipv4 routes on the host interface */
+	if (lxc_setup_ipv4_routes(&netdev->priv.veth_attr.ipv4_routes, netdev->priv.veth_attr.ifindex)) {
+		ERROR("Failed to setup ipv4 routes for network device \"%s\"", veth1);
+		goto out_delete;
+	}
+
+	/* setup ipv6 routes on the host interface */
+	if (lxc_setup_ipv6_routes(&netdev->priv.veth_attr.ipv6_routes, netdev->priv.veth_attr.ifindex)) {
+		ERROR("Failed to setup ipv6 routes for network device \"%s\"", veth1);
+		goto out_delete;
+	}
+
+	if (netdev->priv.veth_attr.mode == VETH_MODE_ROUTER) {
+		/* sleep for a short period of time to work around a bug that intermittently prevents IP neighbour
+		   proxy entries from being added using lxc_ip_neigh_proxy below. When the issue occurs the entries
+		   appear to be added successfully but then do not appear in the proxy list. The length of time
+		   slept doesn't appear to be important, only that the process sleeps for a short period of time.
+		*/
+		nanosleep((const struct timespec[]){{0, 1000}}, NULL);
+
+		if (netdev->ipv4_gateway) {
+			char bufinet4[INET_ADDRSTRLEN];
+			if (!inet_ntop(AF_INET, netdev->ipv4_gateway, bufinet4, sizeof(bufinet4))) {
+				SYSERROR("Failed to convert gateway ipv4 address on \"%s\"", veth1);
+				goto out_delete;
+			}
+
+			err = lxc_ip_forwarding_on(veth1, AF_INET);
+			if (err) {
+				SYSERROR("Failed to activate ipv4 forwarding on \"%s\"", veth1);
+				goto out_delete;
+			}
+
+			err = lxc_ip_neigh_proxy(RTM_NEWNEIGH, AF_INET, netdev->priv.veth_attr.ifindex, netdev->ipv4_gateway);
+			if (err) {
+				SYSERROR("Failed to add gateway ipv4 proxy on \"%s\"", veth1);
+				goto out_delete;
+			}
+		}
+
+		if (netdev->ipv6_gateway) {
+			char bufinet6[INET6_ADDRSTRLEN];
+
+			if (!inet_ntop(AF_INET6, netdev->ipv6_gateway, bufinet6, sizeof(bufinet6))) {
+				SYSERROR("Failed to convert gateway ipv6 address on \"%s\"", veth1);
+				goto out_delete;
+			}
+
+			/* Check for sysctl net.ipv6.conf.all.forwarding=1
+			   Kernel requires this to route any packets for IPv6.
+			*/
+			err = lxc_is_ip_forwarding_enabled("all", AF_INET6);
+			if (err) {
+				SYSERROR("Requires sysctl net.ipv6.conf.all.forwarding=1");
+				goto out_delete;
+			}
+
+			err = lxc_ip_forwarding_on(veth1, AF_INET6);
+			if (err) {
+				SYSERROR("Failed to activate ipv6 forwarding on \"%s\"", veth1);
+				goto out_delete;
+			}
+
+			err = lxc_neigh_proxy_on(veth1, AF_INET6);
+			if (err) {
+				SYSERROR("Failed to activate proxy ndp on \"%s\"", veth1);
+				goto out_delete;
+			}
+
+			err = lxc_ip_neigh_proxy(RTM_NEWNEIGH, AF_INET6, netdev->priv.veth_attr.ifindex, netdev->ipv6_gateway);
+			if (err) {
+				SYSERROR("Failed to add gateway ipv6 proxy on \"%s\"", veth1);
+				goto out_delete;
+			}
+		}
+
+		/* setup ipv4 address routes on the host interface */
+		err = setup_ipv4_addr_routes(&netdev->ipv4, netdev->priv.veth_attr.ifindex);
+		if (err) {
+			SYSERROR("Failed to setup ip address routes for network device \"%s\"", veth1);
+			goto out_delete;
+		}
+
+		/* setup ipv6 address routes on the host interface */
+		err = setup_ipv6_addr_routes(&netdev->ipv6, netdev->priv.veth_attr.ifindex);
+		if (err) {
+			SYSERROR("Failed to setup ip address routes for network device \"%s\"", veth1);
+			goto out_delete;
+		}
+	}
+
 	if (netdev->upscript) {
 		char *argv[] = {
 		    "veth",
@@ -198,34 +447,30 @@ static int instantiate_veth(struct lxc_handler *handler, struct lxc_netdev *netd
 			goto out_delete;
 	}
 
-	DEBUG("Instantiated veth \"%s/%s\", index is \"%d\"", veth1, veth2,
-	      netdev->ifindex);
+	DEBUG("Instantiated veth tunnel \"%s <--> %s\"", veth1, veth2);
 
 	return 0;
 
 out_delete:
-	if (netdev->ifindex != 0)
-		lxc_netdev_delete_by_name(veth1);
+	lxc_netdev_delete_by_name(veth1);
 	return -1;
 }
 
 static int instantiate_macvlan(struct lxc_handler *handler, struct lxc_netdev *netdev)
 {
-	char peerbuf[IFNAMSIZ], *peer;
+	char peer[IFNAMSIZ];
 	int err;
-	unsigned int mtu = 0;
 
-	if (netdev->link[0] == '\0') {
+	if (is_empty_string(netdev->link)) {
 		ERROR("No link for macvlan network device specified");
 		return -1;
 	}
 
-	err = snprintf(peerbuf, sizeof(peerbuf), "mcXXXXXX");
-	if (err < 0 || (size_t)err >= sizeof(peerbuf))
+	err = snprintf(peer, sizeof(peer), "mcXXXXXX");
+	if (err < 0 || (size_t)err >= sizeof(peer))
 		return -1;
 
-	peer = lxc_mkifname(peerbuf);
-	if (!peer)
+	if (!lxc_ifname_alnum_case_sensitive(peer))
 		return -1;
 
 	err = lxc_macvlan_create(netdev->link, peer,
@@ -237,6 +482,10 @@ static int instantiate_macvlan(struct lxc_handler *handler, struct lxc_netdev *n
 		goto on_error;
 	}
 
+	strlcpy(netdev->created_name, peer, IFNAMSIZ);
+	if (is_empty_string(netdev->name))
+		(void)strlcpy(netdev->name, peer, IFNAMSIZ);
+
 	netdev->ifindex = if_nametoindex(peer);
 	if (!netdev->ifindex) {
 		ERROR("Failed to retrieve ifindex for \"%s\"", peer);
@@ -244,6 +493,8 @@ static int instantiate_macvlan(struct lxc_handler *handler, struct lxc_netdev *n
 	}
 
 	if (netdev->mtu) {
+		unsigned int mtu;
+
 		err = lxc_safe_uint(netdev->mtu, &mtu);
 		if (err < 0) {
 			errno = -err;
@@ -283,19 +534,172 @@ on_error:
 	return -1;
 }
 
+static int lxc_ipvlan_create(const char *master, const char *name, int mode, int isolation)
+{
+	call_cleaner(nlmsg_free) struct nlmsg *answer = NULL, *nlmsg = NULL;
+	struct nl_handler nlh;
+	call_cleaner(netlink_close) struct nl_handler *nlh_ptr = &nlh;
+	int err, index, len;
+	struct ifinfomsg *ifi;
+	struct rtattr *nest, *nest2;
+
+	len = strlen(master);
+	if (len == 1 || len >= IFNAMSIZ)
+		return ret_errno(EINVAL);
+
+	len = strlen(name);
+	if (len == 1 || len >= IFNAMSIZ)
+		return ret_errno(EINVAL);
+
+	index = if_nametoindex(master);
+	if (!index)
+		return ret_errno(EINVAL);
+
+	err = netlink_open(nlh_ptr, NETLINK_ROUTE);
+	if (err)
+		return ret_errno(-err);
+
+	nlmsg = nlmsg_alloc(NLMSG_GOOD_SIZE);
+	if (!nlmsg)
+		return ret_errno(ENOMEM);
+
+	answer = nlmsg_alloc_reserve(NLMSG_GOOD_SIZE);
+	if (!answer)
+		return ret_errno(ENOMEM);
+
+	nlmsg->nlmsghdr->nlmsg_flags = NLM_F_REQUEST | NLM_F_CREATE | NLM_F_EXCL | NLM_F_ACK;
+	nlmsg->nlmsghdr->nlmsg_type = RTM_NEWLINK;
+
+	ifi = nlmsg_reserve(nlmsg, sizeof(struct ifinfomsg));
+	if (!ifi)
+		return ret_errno(ENOMEM);
+	ifi->ifi_family = AF_UNSPEC;
+
+	nest = nla_begin_nested(nlmsg, IFLA_LINKINFO);
+	if (!nest)
+		return ret_errno(EPROTO);
+
+	if (nla_put_string(nlmsg, IFLA_INFO_KIND, "ipvlan"))
+		return ret_errno(EPROTO);
+
+	if (mode) {
+		nest2 = nla_begin_nested(nlmsg, IFLA_INFO_DATA);
+		if (!nest2)
+			return ret_errno(EPROTO);
+
+		if (nla_put_u32(nlmsg, IFLA_IPVLAN_MODE, mode))
+			return ret_errno(EPROTO);
+
+		/* if_link.h does not define the isolation flag value for bridge mode so we define it as 0
+		 * and only send mode if mode >0 as default mode is bridge anyway according to ipvlan docs.
+		 */
+		if (isolation > 0 &&
+		    nla_put_u16(nlmsg, IFLA_IPVLAN_ISOLATION, isolation))
+			return ret_errno(EPROTO);
+
+		nla_end_nested(nlmsg, nest2);
+	}
+
+	nla_end_nested(nlmsg, nest);
+
+	if (nla_put_u32(nlmsg, IFLA_LINK, index))
+		return ret_errno(EPROTO);
+
+	if (nla_put_string(nlmsg, IFLA_IFNAME, name))
+		return ret_errno(EPROTO);
+
+	return netlink_transaction(nlh_ptr, nlmsg, answer);
+}
+
+static int instantiate_ipvlan(struct lxc_handler *handler, struct lxc_netdev *netdev)
+{
+	char peer[IFNAMSIZ];
+	int err;
+
+	if (is_empty_string(netdev->link)) {
+		ERROR("No link for ipvlan network device specified");
+		return -1;
+	}
+
+	err = snprintf(peer, sizeof(peer), "ipXXXXXX");
+	if (err < 0 || (size_t)err >= sizeof(peer))
+		return -1;
+
+	if (!lxc_ifname_alnum_case_sensitive(peer))
+		return -1;
+
+	err = lxc_ipvlan_create(netdev->link, peer, netdev->priv.ipvlan_attr.mode,
+				netdev->priv.ipvlan_attr.isolation);
+	if (err) {
+		SYSERROR("Failed to create ipvlan interface \"%s\" on \"%s\"",
+			 peer, netdev->link);
+		goto on_error;
+	}
+
+	strlcpy(netdev->created_name, peer, IFNAMSIZ);
+	if (is_empty_string(netdev->name))
+		(void)strlcpy(netdev->name, peer, IFNAMSIZ);
+
+	netdev->ifindex = if_nametoindex(peer);
+	if (!netdev->ifindex) {
+		ERROR("Failed to retrieve ifindex for \"%s\"", peer);
+		goto on_error;
+	}
+
+	if (netdev->mtu) {
+		unsigned int mtu;
+
+		err = lxc_safe_uint(netdev->mtu, &mtu);
+		if (err < 0) {
+			errno = -err;
+			SYSERROR("Failed to parse mtu \"%s\" for interface \"%s\"", netdev->mtu, peer);
+			goto on_error;
+		}
+
+		err = lxc_netdev_set_mtu(peer, mtu);
+		if (err < 0) {
+			errno = -err;
+			SYSERROR("Failed to set mtu \"%s\" for interface \"%s\"", netdev->mtu, peer);
+			goto on_error;
+		}
+	}
+
+	if (netdev->upscript) {
+		char *argv[] = {
+		    "ipvlan",
+		    netdev->link,
+		    NULL,
+		};
+
+		err = run_script_argv(handler->name, handler->conf->hooks_version,
+				      "net", netdev->upscript, "up", argv);
+		if (err < 0)
+			goto on_error;
+	}
+
+	DEBUG("Instantiated ipvlan \"%s\" with ifindex is %d and mode %d", peer,
+	      netdev->ifindex, netdev->priv.macvlan_attr.mode);
+
+	return 0;
+
+on_error:
+	lxc_netdev_delete_by_name(peer);
+	return -1;
+}
+
 static int instantiate_vlan(struct lxc_handler *handler, struct lxc_netdev *netdev)
 {
 	char peer[IFNAMSIZ];
 	int err;
 	static uint16_t vlan_cntr = 0;
-	unsigned int mtu = 0;
 
-	if (netdev->link[0] == '\0') {
+	if (is_empty_string(netdev->link)) {
 		ERROR("No link for vlan network device specified");
 		return -1;
 	}
 
-	err = snprintf(peer, sizeof(peer), "vlan%d-%d", netdev->priv.vlan_attr.vid, vlan_cntr++);
+	err = snprintf(peer, sizeof(peer), "vlan%d-%d",
+		       netdev->priv.vlan_attr.vid, vlan_cntr++);
 	if (err < 0 || (size_t)err >= sizeof(peer))
 		return -1;
 
@@ -307,11 +711,32 @@ static int instantiate_vlan(struct lxc_handler *handler, struct lxc_netdev *netd
 		return -1;
 	}
 
+	strlcpy(netdev->created_name, peer, IFNAMSIZ);
+	if (is_empty_string(netdev->name))
+		(void)strlcpy(netdev->name, peer, IFNAMSIZ);
+
 	netdev->ifindex = if_nametoindex(peer);
 	if (!netdev->ifindex) {
 		ERROR("Failed to retrieve ifindex for \"%s\"", peer);
-		lxc_netdev_delete_by_name(peer);
-		return -1;
+		goto on_error;
+	}
+
+	if (netdev->mtu) {
+		unsigned int mtu;
+
+		err = lxc_safe_uint(netdev->mtu, &mtu);
+		if (err < 0) {
+			errno = -err;
+			SYSERROR("Failed to parse mtu \"%s\" for interface \"%s\"", netdev->mtu, peer);
+			goto on_error;
+		}
+
+		err = lxc_netdev_set_mtu(peer, mtu);
+		if (err < 0) {
+			errno = -err;
+			SYSERROR("Failed to set mtu \"%s\" for interface \"%s\"", netdev->mtu, peer);
+			goto on_error;
+		}
 	}
 
 	if (netdev->upscript) {
@@ -321,49 +746,32 @@ static int instantiate_vlan(struct lxc_handler *handler, struct lxc_netdev *netd
 		    NULL,
 		};
 
-		err = run_script_argv(handler->name,
-				handler->conf->hooks_version, "net",
-				netdev->upscript, "up", argv);
+		err = run_script_argv(handler->name, handler->conf->hooks_version,
+				      "net", netdev->upscript, "up", argv);
 		if (err < 0) {
-			lxc_netdev_delete_by_name(peer);
-			return -1;
+			goto on_error;
 		}
 	}
 
-	DEBUG("Instantiated vlan \"%s\" with ifindex is \"%d\"",
-	      peer, netdev->ifindex);
-	if (netdev->mtu) {
-		if (lxc_safe_uint(netdev->mtu, &mtu) < 0) {
-			ERROR("Failed to retrieve mtu from \"%d\"/\"%s\".",
-			      netdev->ifindex,
-			      netdev->name[0] != '\0' ? netdev->name : "(null)");
-			return -1;
-		}
-
-		err = lxc_netdev_set_mtu(peer, mtu);
-		if (err) {
-			errno = -err;
-			SYSERROR("Failed to set mtu \"%s\" for \"%s\"",
-			         netdev->mtu, peer);
-			lxc_netdev_delete_by_name(peer);
-			return -1;
-		}
-	}
+	DEBUG("Instantiated vlan \"%s\" with ifindex is \"%d\"", peer,
+	      netdev->ifindex);
 
 	return 0;
+
+on_error:
+	lxc_netdev_delete_by_name(peer);
+	return -1;
 }
 
 static int instantiate_phys(struct lxc_handler *handler, struct lxc_netdev *netdev)
 {
 	int err, mtu_orig = 0;
-	unsigned int mtu = 0;
 
-	if (netdev->link[0] == '\0') {
-		ERROR("No link for physical interface specified");
-		return -1;
-	}
+	if (is_empty_string(netdev->link))
+		return log_error_errno(-1, errno, "No link for physical interface specified");
 
-	/* Note that we're retrieving the container's ifindex in the host's
+	/*
+	 * Note that we're retrieving the container's ifindex in the host's
 	 * network namespace because we need it to move the device from the
 	 * host's network namespace to the container's network namespace later
 	 * on.
@@ -371,39 +779,39 @@ static int instantiate_phys(struct lxc_handler *handler, struct lxc_netdev *netd
 	 * device in the host's namespace.
 	 */
 	netdev->ifindex = if_nametoindex(netdev->link);
-	if (!netdev->ifindex) {
-		ERROR("Failed to retrieve ifindex for \"%s\"", netdev->link);
-		return -1;
-	}
+	if (!netdev->ifindex)
+		return log_error_errno(-1, errno, "Failed to retrieve ifindex for \"%s\"", netdev->link);
 
-	/* Store the ifindex of the host's network device in the host's
+	strlcpy(netdev->created_name, netdev->link, IFNAMSIZ);
+	if (is_empty_string(netdev->name))
+		(void)strlcpy(netdev->name, netdev->link, IFNAMSIZ);
+
+	/*
+	 * Store the ifindex of the host's network device in the host's
 	 * namespace.
 	 */
 	netdev->priv.phys_attr.ifindex = netdev->ifindex;
 
-	/* Get original device MTU setting and store for restoration after container shutdown. */
+	/*
+	 * Get original device MTU setting and store for restoration after
+	 * container shutdown.
+	 */
 	mtu_orig = netdev_get_mtu(netdev->ifindex);
-	if (mtu_orig < 0) {
-		SYSERROR("Failed to get original mtu for interface \"%s\"", netdev->link);
-		return minus_one_set_errno(-mtu_orig);
-	}
+	if (mtu_orig < 0)
+		return log_error_errno(-1, -mtu_orig, "Failed to get original mtu for interface \"%s\"", netdev->link);
 
 	netdev->priv.phys_attr.mtu = mtu_orig;
 
 	if (netdev->mtu) {
+		unsigned int mtu;
+
 		err = lxc_safe_uint(netdev->mtu, &mtu);
-		if (err < 0) {
-			errno = -err;
-			SYSERROR("Failed to parse mtu \"%s\" for interface \"%s\"", netdev->mtu, netdev->link);
-			return -1;
-		}
+		if (err < 0)
+			return log_error_errno(-1, -err, "Failed to parse mtu \"%s\" for interface \"%s\"", netdev->mtu, netdev->link);
 
 		err = lxc_netdev_set_mtu(netdev->link, mtu);
-		if (err < 0) {
-			errno = -err;
-			SYSERROR("Failed to set mtu \"%s\" for interface \"%s\"", netdev->mtu, netdev->link);
-			return -1;
-		}
+		if (err < 0)
+			return log_error_errno(-1, -err, "Failed to set mtu \"%s\" for interface \"%s\"", netdev->mtu, netdev->link);
 	}
 
 	if (netdev->upscript) {
@@ -413,15 +821,14 @@ static int instantiate_phys(struct lxc_handler *handler, struct lxc_netdev *netd
 		    NULL,
 		};
 
-		err = run_script_argv(handler->name,
-				handler->conf->hooks_version, "net",
-				netdev->upscript, "up", argv);
-		if (err < 0) {
+		err = run_script_argv(handler->name, handler->conf->hooks_version,
+				      "net", netdev->upscript, "up", argv);
+		if (err < 0)
 			return -1;
-		}
 	}
 
-	DEBUG("Instantiated phys \"%s\" with ifindex is \"%d\"", netdev->link, netdev->ifindex);
+	DEBUG("Instantiated phys \"%s\" with ifindex is \"%d\"", netdev->link,
+	      netdev->ifindex);
 
 	return 0;
 }
@@ -455,10 +862,102 @@ static int instantiate_none(struct lxc_handler *handler, struct lxc_netdev *netd
 static  instantiate_cb netdev_conf[LXC_NET_MAXCONFTYPE + 1] = {
 	[LXC_NET_VETH]    = instantiate_veth,
 	[LXC_NET_MACVLAN] = instantiate_macvlan,
+	[LXC_NET_IPVLAN]  = instantiate_ipvlan,
 	[LXC_NET_VLAN]    = instantiate_vlan,
 	[LXC_NET_PHYS]    = instantiate_phys,
 	[LXC_NET_EMPTY]   = instantiate_empty,
 	[LXC_NET_NONE]    = instantiate_none,
+};
+
+static int instantiate_ns_veth(struct lxc_netdev *netdev)
+{
+	char current_ifname[IFNAMSIZ];
+
+	netdev->ifindex = if_nametoindex(netdev->created_name);
+	if (!netdev->ifindex)
+		return log_error_errno(-1,
+				       errno, "Failed to retrieve ifindex for network device with name %s",
+				       netdev->created_name);
+
+	if (is_empty_string(netdev->name))
+		(void)strlcpy(netdev->name, "eth%d", IFNAMSIZ);
+
+	if (strcmp(netdev->created_name, netdev->name) != 0) {
+		int ret;
+
+		ret = lxc_netdev_rename_by_name(netdev->created_name, netdev->name);
+		if (ret)
+			return log_error_errno(-1, -ret, "Failed to rename network device \"%s\" to \"%s\"",
+					       netdev->created_name,
+					       netdev->name);
+
+		TRACE("Renamed network device from \"%s\" to \"%s\"", netdev->created_name, netdev->name);
+	}
+
+	/*
+	 * Re-read the name of the interface because its name has changed and
+	 * would be automatically allocated by the system
+	 */
+	if (!if_indextoname(netdev->ifindex, current_ifname))
+		return log_error_errno(-1, errno, "Failed get name for network device with ifindex %d", netdev->ifindex);
+
+	/*
+	 * Now update the recorded name of the network device to reflect the
+	 * name of the network device in the child's network namespace. We will
+	 * later on send this information back to the parent.
+	 */
+	(void)strlcpy(netdev->name, current_ifname, IFNAMSIZ);
+
+	return 0;
+}
+
+static int __instantiate_common(struct lxc_netdev *netdev)
+{
+	netdev->ifindex = if_nametoindex(netdev->name);
+	if (!netdev->ifindex)
+		return log_error_errno(-1, errno, "Failed to retrieve ifindex for network device with name %s", netdev->name);
+
+	return 0;
+}
+
+static int instantiate_ns_macvlan(struct lxc_netdev *netdev)
+{
+	return __instantiate_common(netdev);
+}
+
+static int instantiate_ns_ipvlan(struct lxc_netdev *netdev)
+{
+	return __instantiate_common(netdev);
+}
+
+static int instantiate_ns_vlan(struct lxc_netdev *netdev)
+{
+	return __instantiate_common(netdev);
+}
+
+static int instantiate_ns_phys(struct lxc_netdev *netdev)
+{
+	return __instantiate_common(netdev);
+}
+
+static int instantiate_ns_empty(struct lxc_netdev *netdev)
+{
+	return 0;
+}
+
+static int instantiate_ns_none(struct lxc_netdev *netdev)
+{
+	return 0;
+}
+
+static  instantiate_ns_cb netdev_ns_conf[LXC_NET_MAXCONFTYPE + 1] = {
+	[LXC_NET_VETH]    = instantiate_ns_veth,
+	[LXC_NET_MACVLAN] = instantiate_ns_macvlan,
+	[LXC_NET_IPVLAN]  = instantiate_ns_ipvlan,
+	[LXC_NET_VLAN]    = instantiate_ns_vlan,
+	[LXC_NET_PHYS]    = instantiate_ns_phys,
+	[LXC_NET_EMPTY]   = instantiate_ns_empty,
+	[LXC_NET_NONE]    = instantiate_ns_none,
 };
 
 static int shutdown_veth(struct lxc_handler *handler, struct lxc_netdev *netdev)
@@ -474,7 +973,7 @@ static int shutdown_veth(struct lxc_handler *handler, struct lxc_netdev *netdev)
 	if (!netdev->downscript)
 		return 0;
 
-	if (netdev->priv.veth_attr.pair[0] != '\0')
+	if (!is_empty_string(netdev->priv.veth_attr.pair))
 		argv[2] = netdev->priv.veth_attr.pair;
 	else
 		argv[2] = netdev->priv.veth_attr.veth1;
@@ -493,6 +992,26 @@ static int shutdown_macvlan(struct lxc_handler *handler, struct lxc_netdev *netd
 	int ret;
 	char *argv[] = {
 		"macvlan",
+		netdev->link,
+		NULL,
+	};
+
+	if (!netdev->downscript)
+		return 0;
+
+	ret = run_script_argv(handler->name, handler->conf->hooks_version,
+			      "net", netdev->downscript, "down", argv);
+	if (ret < 0)
+		return -1;
+
+	return 0;
+}
+
+static int shutdown_ipvlan(struct lxc_handler *handler, struct lxc_netdev *netdev)
+{
+	int ret;
+	char *argv[] = {
+		"ipvlan",
 		netdev->link,
 		NULL,
 	};
@@ -575,6 +1094,7 @@ static int shutdown_none(struct lxc_handler *handler, struct lxc_netdev *netdev)
 static  instantiate_cb netdev_deconf[LXC_NET_MAXCONFTYPE + 1] = {
 	[LXC_NET_VETH]    = shutdown_veth,
 	[LXC_NET_MACVLAN] = shutdown_macvlan,
+	[LXC_NET_IPVLAN]  = shutdown_ipvlan,
 	[LXC_NET_VLAN]    = shutdown_vlan,
 	[LXC_NET_PHYS]    = shutdown_phys,
 	[LXC_NET_EMPTY]   = shutdown_empty,
@@ -583,82 +1103,72 @@ static  instantiate_cb netdev_deconf[LXC_NET_MAXCONFTYPE + 1] = {
 
 static int lxc_netdev_move_by_index_fd(int ifindex, int fd, const char *ifname)
 {
-	int err;
+	call_cleaner(nlmsg_free) struct nlmsg *nlmsg = NULL;
 	struct nl_handler nlh;
+	call_cleaner(netlink_close) struct nl_handler *nlh_ptr = &nlh;
+	int err;
 	struct ifinfomsg *ifi;
-	struct nlmsg *nlmsg = NULL;
 
-	err = netlink_open(&nlh, NETLINK_ROUTE);
+	err = netlink_open(nlh_ptr, NETLINK_ROUTE);
 	if (err)
 		return err;
 
-	err = -ENOMEM;
 	nlmsg = nlmsg_alloc(NLMSG_GOOD_SIZE);
 	if (!nlmsg)
-		goto out;
+		return ret_errno(ENOMEM);
 
 	nlmsg->nlmsghdr->nlmsg_flags = NLM_F_REQUEST | NLM_F_ACK;
 	nlmsg->nlmsghdr->nlmsg_type = RTM_NEWLINK;
 
 	ifi = nlmsg_reserve(nlmsg, sizeof(struct ifinfomsg));
 	if (!ifi)
-		goto out;
+		return ret_errno(ENOMEM);
+
 	ifi->ifi_family = AF_UNSPEC;
 	ifi->ifi_index = ifindex;
 
 	if (nla_put_u32(nlmsg, IFLA_NET_NS_FD, fd))
-		goto out;
+		return ret_errno(ENOMEM);
 
-	if (ifname != NULL) {
-		if (nla_put_string(nlmsg, IFLA_IFNAME, ifname))
-			goto out;
-	}
+	if (!is_empty_string(ifname) && nla_put_string(nlmsg, IFLA_IFNAME, ifname))
+		return ret_errno(ENOMEM);
 
-	err = netlink_transaction(&nlh, nlmsg, nlmsg);
-out:
-	netlink_close(&nlh);
-	nlmsg_free(nlmsg);
-	return err;
+	return netlink_transaction(nlh_ptr, nlmsg, nlmsg);
 }
 
 int lxc_netdev_move_by_index(int ifindex, pid_t pid, const char *ifname)
 {
-	int err;
+	call_cleaner(nlmsg_free) struct nlmsg *nlmsg = NULL;
 	struct nl_handler nlh;
+	call_cleaner(netlink_close) struct nl_handler *nlh_ptr = &nlh;
+	int err;
 	struct ifinfomsg *ifi;
-	struct nlmsg *nlmsg = NULL;
 
-	err = netlink_open(&nlh, NETLINK_ROUTE);
+	err = netlink_open(nlh_ptr, NETLINK_ROUTE);
 	if (err)
 		return err;
 
-	err = -ENOMEM;
 	nlmsg = nlmsg_alloc(NLMSG_GOOD_SIZE);
 	if (!nlmsg)
-		goto out;
+		return ret_errno(ENOMEM);
 
 	nlmsg->nlmsghdr->nlmsg_flags = NLM_F_REQUEST | NLM_F_ACK;
 	nlmsg->nlmsghdr->nlmsg_type = RTM_NEWLINK;
 
 	ifi = nlmsg_reserve(nlmsg, sizeof(struct ifinfomsg));
 	if (!ifi)
-		goto out;
+		return ret_errno(ENOMEM);
+
 	ifi->ifi_family = AF_UNSPEC;
 	ifi->ifi_index = ifindex;
 
 	if (nla_put_u32(nlmsg, IFLA_NET_NS_PID, pid))
-		goto out;
+		return ret_errno(ENOMEM);
 
-	if (ifname != NULL) {
-		if (nla_put_string(nlmsg, IFLA_IFNAME, ifname))
-			goto out;
-	}
+	if (!is_empty_string(ifname) && nla_put_string(nlmsg, IFLA_IFNAME, ifname))
+		return ret_errno(ENOMEM);
 
-	err = netlink_transaction(&nlh, nlmsg, nlmsg);
-out:
-	netlink_close(&nlh);
-	nlmsg_free(nlmsg);
-	return err;
+	return netlink_transaction(nlh_ptr, nlmsg, nlmsg);
 }
 
 /* If we are asked to move a wireless interface, then we must actually move its
@@ -668,43 +1178,37 @@ out:
 #define PHYSNAME "/sys/class/net/%s/phy80211/name"
 char *is_wlan(const char *ifname)
 {
-	__do_free char *path = NULL;
+	__do_fclose FILE *f = NULL;
+	__do_free char *path = NULL, *physname = NULL;
 	int i, ret;
 	long physlen;
 	size_t len;
-	FILE *f;
-	char *physname = NULL;
 
 	len = strlen(ifname) + strlen(PHYSNAME) - 1;
 	path = must_realloc(NULL, len + 1);
 	ret = snprintf(path, len, PHYSNAME, ifname);
 	if (ret < 0 || (size_t)ret >= len)
-		goto bad;
+		return NULL;
 
-	f = fopen(path, "r");
+	f = fopen(path, "re");
 	if (!f)
-		goto bad;
+		return NULL;
 
 	/* Feh - sb.st_size is always 4096. */
 	fseek(f, 0, SEEK_END);
 	physlen = ftell(f);
 	fseek(f, 0, SEEK_SET);
-	if (physlen < 0) {
-		fclose(f);
-		goto bad;
-	}
+	if (physlen < 0)
+		return NULL;
 
 	physname = malloc(physlen + 1);
-	if (!physname) {
-		fclose(f);
-		goto bad;
-	}
+	if (!physname)
+		return NULL;
 
 	memset(physname, 0, physlen + 1);
 	ret = fread(physname, 1, physlen, f);
-	fclose(f);
 	if (ret < 0)
-		goto bad;
+		return NULL;
 
 	for (i = 0; i < physlen; i++) {
 		if (physname[i] == '\n')
@@ -714,11 +1218,7 @@ char *is_wlan(const char *ifname)
 			break;
 	}
 
-	return physname;
-
-bad:
-	free(physname);
-	return NULL;
+	return move_ptr(physname);
 }
 
 static int lxc_netdev_rename_by_name_in_netns(pid_t pid, const char *old,
@@ -742,9 +1242,8 @@ static int lxc_netdev_rename_by_name_in_netns(pid_t pid, const char *old,
 int lxc_netdev_move_wlan(char *physname, const char *ifname, pid_t pid,
 				const char *newname)
 {
-	char *cmd;
+	__do_free char *cmd = NULL;
 	pid_t fpid;
-	int err = -1;
 
 	/* Move phyN into the container.  TODO - do this using netlink.
 	 * However, IIUC this involves a bit more complicated work to talk to
@@ -752,37 +1251,32 @@ int lxc_netdev_move_wlan(char *physname, const char *ifname, pid_t pid,
 	 */
 	cmd = on_path("iw", NULL);
 	if (!cmd)
-		goto out1;
-	free(cmd);
+		return -1;
 
 	fpid = fork();
 	if (fpid < 0)
-		goto out1;
+		return -1;
 
 	if (fpid == 0) {
 		char pidstr[30];
 		sprintf(pidstr, "%d", pid);
-		execlp("iw", "iw", "phy", physname, "set", "netns", pidstr,
-		       (char *)NULL);
+		execlp("iw", "iw", "phy", physname, "set", "netns", pidstr, (char *)NULL);
 		_exit(EXIT_FAILURE);
 	}
 
 	if (wait_for_pid(fpid))
-		goto out1;
+		return -1;
 
-	err = 0;
 	if (newname)
-		err = lxc_netdev_rename_by_name_in_netns(pid, ifname, newname);
+		return lxc_netdev_rename_by_name_in_netns(pid, ifname, newname);
 
-out1:
-	free(physname);
-	return err;
+	return 0;
 }
 
 int lxc_netdev_move_by_name(const char *ifname, pid_t pid, const char* newname)
 {
+	__do_free char *physname = NULL;
 	int index;
-	char *physname;
 
 	if (!ifname)
 		return -EINVAL;
@@ -800,39 +1294,35 @@ int lxc_netdev_move_by_name(const char *ifname, pid_t pid, const char* newname)
 
 int lxc_netdev_delete_by_index(int ifindex)
 {
+	call_cleaner(nlmsg_free) struct nlmsg *answer = NULL, *nlmsg = NULL;
+	struct nl_handler nlh;
+	call_cleaner(netlink_close) struct nl_handler *nlh_ptr = &nlh;
 	int err;
 	struct ifinfomsg *ifi;
-	struct nl_handler nlh;
-	struct nlmsg *answer = NULL, *nlmsg = NULL;
 
-	err = netlink_open(&nlh, NETLINK_ROUTE);
+	err = netlink_open(nlh_ptr, NETLINK_ROUTE);
 	if (err)
 		return err;
 
-	err = -ENOMEM;
 	nlmsg = nlmsg_alloc(NLMSG_GOOD_SIZE);
 	if (!nlmsg)
-		goto out;
+		return ret_errno(ENOMEM);
 
 	answer = nlmsg_alloc_reserve(NLMSG_GOOD_SIZE);
 	if (!answer)
-		goto out;
+		return ret_errno(ENOMEM);
 
 	nlmsg->nlmsghdr->nlmsg_flags = NLM_F_ACK | NLM_F_REQUEST;
 	nlmsg->nlmsghdr->nlmsg_type = RTM_DELLINK;
 
 	ifi = nlmsg_reserve(nlmsg, sizeof(struct ifinfomsg));
 	if (!ifi)
-		goto out;
+		return ret_errno(ENOMEM);
+
 	ifi->ifi_family = AF_UNSPEC;
 	ifi->ifi_index = ifindex;
 
-	err = netlink_transaction(&nlh, nlmsg, answer);
-out:
-	netlink_close(&nlh);
-	nlmsg_free(answer);
-	nlmsg_free(nlmsg);
-	return err;
+	return netlink_transaction(nlh_ptr, nlmsg, answer);
 }
 
 int lxc_netdev_delete_by_name(const char *name)
@@ -848,48 +1338,42 @@ int lxc_netdev_delete_by_name(const char *name)
 
 int lxc_netdev_rename_by_index(int ifindex, const char *newname)
 {
+	call_cleaner(nlmsg_free) struct nlmsg *answer = NULL, *nlmsg = NULL;
+	struct nl_handler nlh;
+	call_cleaner(netlink_close) struct nl_handler *nlh_ptr = &nlh;
 	int err, len;
 	struct ifinfomsg *ifi;
-	struct nl_handler nlh;
-	struct nlmsg *answer = NULL, *nlmsg = NULL;
 
-	err = netlink_open(&nlh, NETLINK_ROUTE);
+	err = netlink_open(nlh_ptr, NETLINK_ROUTE);
 	if (err)
 		return err;
 
 	len = strlen(newname);
-	if (len == 1 || len >= IFNAMSIZ) {
-		err = -EINVAL;
-		goto out;
-	}
+	if (len == 1 || len >= IFNAMSIZ)
+		return ret_errno(EINVAL);
 
-	err = -ENOMEM;
 	nlmsg = nlmsg_alloc(NLMSG_GOOD_SIZE);
 	if (!nlmsg)
-		goto out;
+		return ret_errno(ENOMEM);
 
 	answer = nlmsg_alloc_reserve(NLMSG_GOOD_SIZE);
 	if (!answer)
-		goto out;
+		return ret_errno(ENOMEM);
 
 	nlmsg->nlmsghdr->nlmsg_flags = NLM_F_ACK | NLM_F_REQUEST;
 	nlmsg->nlmsghdr->nlmsg_type = RTM_NEWLINK;
 
 	ifi = nlmsg_reserve(nlmsg, sizeof(struct ifinfomsg));
 	if (!ifi)
-		goto out;
+		return ret_errno(ENOMEM);
+
 	ifi->ifi_family = AF_UNSPEC;
 	ifi->ifi_index = ifindex;
 
 	if (nla_put_string(nlmsg, IFLA_IFNAME, newname))
-		goto out;
+		return ret_errno(ENOMEM);
 
-	err = netlink_transaction(&nlh, nlmsg, answer);
-out:
-	netlink_close(&nlh);
-	nlmsg_free(answer);
-	nlmsg_free(nlmsg);
-	return err;
+	return netlink_transaction(nlh_ptr, nlmsg, answer);
 }
 
 int lxc_netdev_rename_by_name(const char *oldname, const char *newname)
@@ -909,110 +1393,95 @@ int lxc_netdev_rename_by_name(const char *oldname, const char *newname)
 
 int netdev_set_flag(const char *name, int flag)
 {
+	call_cleaner(nlmsg_free) struct nlmsg *answer = NULL, *nlmsg = NULL;
+	struct nl_handler nlh;
+	call_cleaner(netlink_close) struct nl_handler *nlh_ptr = &nlh;
 	int err, index, len;
 	struct ifinfomsg *ifi;
-	struct nl_handler nlh;
-	struct nlmsg *answer = NULL, *nlmsg = NULL;
 
-	err = netlink_open(&nlh, NETLINK_ROUTE);
+	err = netlink_open(nlh_ptr, NETLINK_ROUTE);
 	if (err)
 		return err;
 
-	err = -EINVAL;
 	len = strlen(name);
 	if (len == 1 || len >= IFNAMSIZ)
-		goto out;
+		return ret_errno(EINVAL);
 
-	err = -ENOMEM;
 	nlmsg = nlmsg_alloc(NLMSG_GOOD_SIZE);
 	if (!nlmsg)
-		goto out;
+		return ret_errno(ENOMEM);
 
 	answer = nlmsg_alloc_reserve(NLMSG_GOOD_SIZE);
 	if (!answer)
-		goto out;
+		return ret_errno(ENOMEM);
 
-	err = -EINVAL;
 	index = if_nametoindex(name);
 	if (!index)
-		goto out;
+		return ret_errno(EINVAL);
 
 	nlmsg->nlmsghdr->nlmsg_flags = NLM_F_REQUEST | NLM_F_ACK;
 	nlmsg->nlmsghdr->nlmsg_type = RTM_NEWLINK;
 
 	ifi = nlmsg_reserve(nlmsg, sizeof(struct ifinfomsg));
-	if (!ifi) {
-		err = -ENOMEM;
-		goto out;
-	}
+	if (!ifi)
+		return ret_errno(ENOMEM);
+
 	ifi->ifi_family = AF_UNSPEC;
 	ifi->ifi_index = index;
 	ifi->ifi_change |= IFF_UP;
 	ifi->ifi_flags |= flag;
 
-	err = netlink_transaction(&nlh, nlmsg, answer);
-out:
-	netlink_close(&nlh);
-	nlmsg_free(nlmsg);
-	nlmsg_free(answer);
-	return err;
+	return netlink_transaction(nlh_ptr, nlmsg, answer);
 }
 
 int netdev_get_flag(const char *name, int *flag)
 {
+	call_cleaner(nlmsg_free) struct nlmsg *answer = NULL, *nlmsg = NULL;
+	struct nl_handler nlh;
+	call_cleaner(netlink_close) struct nl_handler *nlh_ptr = &nlh;
 	int err, index, len;
 	struct ifinfomsg *ifi;
-	struct nl_handler nlh;
-	struct nlmsg *answer = NULL, *nlmsg = NULL;
 
 	if (!name)
-		return -EINVAL;
+		return ret_errno(EINVAL);
 
-	err = netlink_open(&nlh, NETLINK_ROUTE);
+	err = netlink_open(nlh_ptr, NETLINK_ROUTE);
 	if (err)
 		return err;
 
-	err = -EINVAL;
 	len = strlen(name);
 	if (len == 1 || len >= IFNAMSIZ)
-		goto out;
+		return ret_errno(EINVAL);
 
-	err = -ENOMEM;
 	nlmsg = nlmsg_alloc(NLMSG_GOOD_SIZE);
 	if (!nlmsg)
-		goto out;
+		return ret_errno(ENOMEM);
 
 	answer = nlmsg_alloc_reserve(NLMSG_GOOD_SIZE);
 	if (!answer)
-		goto out;
+		return ret_errno(ENOMEM);
 
-	err = -EINVAL;
 	index = if_nametoindex(name);
 	if (!index)
-		goto out;
+		return ret_errno(EINVAL);
 
 	nlmsg->nlmsghdr->nlmsg_flags = NLM_F_REQUEST;
 	nlmsg->nlmsghdr->nlmsg_type = RTM_GETLINK;
 
 	ifi = nlmsg_reserve(nlmsg, sizeof(struct ifinfomsg));
-	if (!ifi) {
-		err = -ENOMEM;
-		goto out;
-	}
+	if (!ifi)
+		return ret_errno(ENOMEM);
+
 	ifi->ifi_family = AF_UNSPEC;
 	ifi->ifi_index = index;
 
-	err = netlink_transaction(&nlh, nlmsg, answer);
+	err = netlink_transaction(nlh_ptr, nlmsg, answer);
 	if (err)
-		goto out;
+		return ret_set_errno(-1, errno);
 
 	ifi = NLMSG_DATA(answer->nlmsghdr);
 
 	*flag = ifi->ifi_flags;
-out:
-	netlink_close(&nlh);
-	nlmsg_free(nlmsg);
-	nlmsg_free(answer);
 	return err;
 }
 
@@ -1042,25 +1511,25 @@ int lxc_netdev_isup(const char *name)
 
 int netdev_get_mtu(int ifindex)
 {
-	int answer_len, err, res;
+	call_cleaner(nlmsg_free) struct nlmsg *answer = NULL, *nlmsg = NULL;
 	struct nl_handler nlh;
+	call_cleaner(netlink_close) struct nl_handler *nlh_ptr = &nlh;
+	int readmore = 0, recv_len = 0;
+	int answer_len, err, res;
 	struct ifinfomsg *ifi;
 	struct nlmsghdr *msg;
-	int readmore = 0, recv_len = 0;
-	struct nlmsg *answer = NULL, *nlmsg = NULL;
 
-	err = netlink_open(&nlh, NETLINK_ROUTE);
+	err = netlink_open(nlh_ptr, NETLINK_ROUTE);
 	if (err)
 		return err;
 
-	err = -ENOMEM;
 	nlmsg = nlmsg_alloc(NLMSG_GOOD_SIZE);
 	if (!nlmsg)
-		goto out;
+		return ret_errno(ENOMEM);
 
 	answer = nlmsg_alloc_reserve(NLMSG_GOOD_SIZE);
 	if (!answer)
-		goto out;
+		return ret_errno(ENOMEM);
 
 	/* Save the answer buffer length, since it will be overwritten
 	 * on the first receive (and we might need to receive more than
@@ -1073,14 +1542,15 @@ int netdev_get_mtu(int ifindex)
 
 	ifi = nlmsg_reserve(nlmsg, sizeof(struct ifinfomsg));
 	if (!ifi)
-		goto out;
+		return ret_errno(ENOMEM);
+
 	ifi->ifi_family = AF_UNSPEC;
 
 	/* Send the request for addresses, which returns all addresses
 	 * on all interfaces. */
-	err = netlink_send(&nlh, nlmsg);
+	err = netlink_send(nlh_ptr, nlmsg);
 	if (err < 0)
-		goto out;
+		return ret_set_errno(-1, errno);
 
 #pragma GCC diagnostic push
 #pragma GCC diagnostic ignored "-Wcast-align"
@@ -1092,9 +1562,9 @@ int netdev_get_mtu(int ifindex)
 		answer->nlmsghdr->nlmsg_len = answer_len;
 
 		/* Get the (next) batch of reply messages */
-		err = netlink_rcv(&nlh, answer);
+		err = netlink_rcv(nlh_ptr, answer);
 		if (err < 0)
-			goto out;
+			return ret_set_errno(-1, errno);
 
 		recv_len = err;
 
@@ -1102,13 +1572,10 @@ int netdev_get_mtu(int ifindex)
 		msg = answer->nlmsghdr;
 
 		while (NLMSG_OK(msg, recv_len)) {
-
 			/* Stop reading if we see an error message */
 			if (msg->nlmsg_type == NLMSG_ERROR) {
-				struct nlmsgerr *errmsg =
-				    (struct nlmsgerr *)NLMSG_DATA(msg);
-				err = errmsg->error;
-				goto out;
+				struct nlmsgerr *errmsg = (struct nlmsgerr *)NLMSG_DATA(msg);
+				return ret_set_errno(errmsg->error, errno);
 			}
 
 			/* Stop reading if we see a NLMSG_DONE message */
@@ -1120,19 +1587,19 @@ int netdev_get_mtu(int ifindex)
 			ifi = NLMSG_DATA(msg);
 			if (ifi->ifi_index == ifindex) {
 				struct rtattr *rta = IFLA_RTA(ifi);
-				int attr_len =
-				    msg->nlmsg_len - NLMSG_LENGTH(sizeof(*ifi));
+				int attr_len = msg->nlmsg_len - NLMSG_LENGTH(sizeof(*ifi));
+
 				res = 0;
 				while (RTA_OK(rta, attr_len)) {
-					/* Found a local address for the
+					/*
+					 * Found a local address for the
 					 * requested interface, return it.
 					 */
 					if (rta->rta_type == IFLA_MTU) {
-						memcpy(&res, RTA_DATA(rta),
-						       sizeof(int));
-						err = res;
-						goto out;
+						memcpy(&res, RTA_DATA(rta), sizeof(int));
+						return res;
 					}
+
 					rta = RTA_NEXT(rta, attr_len);
 				}
 			}
@@ -1150,65 +1617,49 @@ int netdev_get_mtu(int ifindex)
 #pragma GCC diagnostic pop
 
 	/* If we end up here, we didn't find any result, so signal an error. */
-	err = -1;
-
-out:
-	netlink_close(&nlh);
-	nlmsg_free(answer);
-	nlmsg_free(nlmsg);
-	return err;
+	return -1;
 }
 
 int lxc_netdev_set_mtu(const char *name, int mtu)
 {
-	int err, index, len;
-	struct ifinfomsg *ifi;
+	call_cleaner(nlmsg_free) struct nlmsg *answer = NULL, *nlmsg = NULL;
 	struct nl_handler nlh;
-	struct nlmsg *answer = NULL, *nlmsg = NULL;
+	call_cleaner(netlink_close) struct nl_handler *nlh_ptr = &nlh;
+	int err, len;
+	struct ifinfomsg *ifi;
 
-	err = netlink_open(&nlh, NETLINK_ROUTE);
+	err = netlink_open(nlh_ptr, NETLINK_ROUTE);
 	if (err)
 		return err;
 
-	err = -EINVAL;
 	len = strlen(name);
 	if (len == 1 || len >= IFNAMSIZ)
-		goto out;
+		return ret_errno(EINVAL);
 
-	err = -ENOMEM;
 	nlmsg = nlmsg_alloc(NLMSG_GOOD_SIZE);
 	if (!nlmsg)
-		goto out;
+		return ret_errno(ENOMEM);
 
 	answer = nlmsg_alloc_reserve(NLMSG_GOOD_SIZE);
 	if (!answer)
-		goto out;
-
-	err = -EINVAL;
-	index = if_nametoindex(name);
-	if (!index)
-		goto out;
+		return ret_errno(ENOMEM);
 
 	nlmsg->nlmsghdr->nlmsg_flags = NLM_F_REQUEST | NLM_F_ACK;
 	nlmsg->nlmsghdr->nlmsg_type = RTM_NEWLINK;
 
 	ifi = nlmsg_reserve(nlmsg, sizeof(struct ifinfomsg));
-	if (!ifi) {
-		err = -ENOMEM;
-		goto out;
-	}
+	if (!ifi)
+		return ret_errno(ENOMEM);
+
 	ifi->ifi_family = AF_UNSPEC;
-	ifi->ifi_index = index;
+
+	if (nla_put_string(nlmsg, IFLA_IFNAME, name))
+		return ret_errno(ENOMEM);
 
 	if (nla_put_u32(nlmsg, IFLA_MTU, mtu))
-		goto out;
+		return ret_errno(ENOMEM);
 
-	err = netlink_transaction(&nlh, nlmsg, answer);
-out:
-	netlink_close(&nlh);
-	nlmsg_free(nlmsg);
-	nlmsg_free(answer);
-	return err;
+	return netlink_transaction(nlh_ptr, nlmsg, answer);
 }
 
 int lxc_netdev_up(const char *name)
@@ -1221,225 +1672,207 @@ int lxc_netdev_down(const char *name)
 	return netdev_set_flag(name, 0);
 }
 
-int lxc_veth_create(const char *name1, const char *name2)
+int lxc_veth_create(const char *name1, const char *name2, pid_t pid, unsigned int mtu)
 {
+	call_cleaner(nlmsg_free) struct nlmsg *answer = NULL, *nlmsg = NULL;
+	struct nl_handler nlh;
+	call_cleaner(netlink_close) struct nl_handler *nlh_ptr = &nlh;
 	int err, len;
 	struct ifinfomsg *ifi;
-	struct nl_handler nlh;
 	struct rtattr *nest1, *nest2, *nest3;
-	struct nlmsg *answer = NULL, *nlmsg = NULL;
 
-	err = netlink_open(&nlh, NETLINK_ROUTE);
+	err = netlink_open(nlh_ptr, NETLINK_ROUTE);
 	if (err)
 		return err;
 
-	err = -EINVAL;
 	len = strlen(name1);
 	if (len == 1 || len >= IFNAMSIZ)
-		goto out;
+		return ret_errno(EINVAL);
 
 	len = strlen(name2);
 	if (len == 1 || len >= IFNAMSIZ)
-		goto out;
+		return ret_errno(EINVAL);
 
-	err = -ENOMEM;
 	nlmsg = nlmsg_alloc(NLMSG_GOOD_SIZE);
 	if (!nlmsg)
-		goto out;
+		return ret_errno(ENOMEM);
 
 	answer = nlmsg_alloc_reserve(NLMSG_GOOD_SIZE);
 	if (!answer)
-		goto out;
+		return ret_errno(ENOMEM);
 
-	nlmsg->nlmsghdr->nlmsg_flags =
-	    NLM_F_REQUEST | NLM_F_CREATE | NLM_F_EXCL | NLM_F_ACK;
+	nlmsg->nlmsghdr->nlmsg_flags = NLM_F_REQUEST | NLM_F_CREATE | NLM_F_EXCL | NLM_F_ACK;
 	nlmsg->nlmsghdr->nlmsg_type = RTM_NEWLINK;
 
 	ifi = nlmsg_reserve(nlmsg, sizeof(struct ifinfomsg));
 	if (!ifi)
-		goto out;
+		return ret_errno(ENOMEM);
+
 	ifi->ifi_family = AF_UNSPEC;
 
-	err = -EINVAL;
 	nest1 = nla_begin_nested(nlmsg, IFLA_LINKINFO);
 	if (!nest1)
-		goto out;
+		return ret_errno(EINVAL);
 
 	if (nla_put_string(nlmsg, IFLA_INFO_KIND, "veth"))
-		goto out;
+		return ret_errno(ENOMEM);
 
 	nest2 = nla_begin_nested(nlmsg, IFLA_INFO_DATA);
 	if (!nest2)
-		goto out;
+		return ret_errno(ENOMEM);
 
 	nest3 = nla_begin_nested(nlmsg, VETH_INFO_PEER);
 	if (!nest3)
-		goto out;
+		return ret_errno(ENOMEM);
 
 	ifi = nlmsg_reserve(nlmsg, sizeof(struct ifinfomsg));
-	if (!ifi) {
-		err = -ENOMEM;
-		goto out;
-	}
+	if (!ifi)
+		return ret_errno(ENOMEM);
 
 	if (nla_put_string(nlmsg, IFLA_IFNAME, name2))
-		goto out;
+		return ret_errno(ENOMEM);
+
+	if (mtu > 0 && nla_put_u32(nlmsg, IFLA_MTU, mtu))
+		return ret_errno(ENOMEM);
+
+	if (pid > 0 && nla_put_u32(nlmsg, IFLA_NET_NS_PID, pid))
+		return ret_errno(ENOMEM);
 
 	nla_end_nested(nlmsg, nest3);
 	nla_end_nested(nlmsg, nest2);
 	nla_end_nested(nlmsg, nest1);
 
 	if (nla_put_string(nlmsg, IFLA_IFNAME, name1))
-		goto out;
+		return ret_errno(ENOMEM);
 
-	err = netlink_transaction(&nlh, nlmsg, answer);
-out:
-	netlink_close(&nlh);
-	nlmsg_free(answer);
-	nlmsg_free(nlmsg);
-	return err;
+	return netlink_transaction(nlh_ptr, nlmsg, answer);
 }
 
 /* TODO: merge with lxc_macvlan_create */
 int lxc_vlan_create(const char *master, const char *name, unsigned short vlanid)
 {
+	call_cleaner(nlmsg_free) struct nlmsg *answer = NULL, *nlmsg = NULL;
+	struct nl_handler nlh;
+	call_cleaner(netlink_close) struct nl_handler *nlh_ptr = &nlh;
 	int err, len, lindex;
 	struct ifinfomsg *ifi;
-	struct nl_handler nlh;
 	struct rtattr *nest, *nest2;
-	struct nlmsg *answer = NULL, *nlmsg = NULL;
 
-	err = netlink_open(&nlh, NETLINK_ROUTE);
+	err = netlink_open(nlh_ptr, NETLINK_ROUTE);
 	if (err)
 		return err;
 
-	err = -EINVAL;
 	len = strlen(master);
 	if (len == 1 || len >= IFNAMSIZ)
-		goto err3;
+		return ret_errno(EINVAL);
 
 	len = strlen(name);
 	if (len == 1 || len >= IFNAMSIZ)
-		goto err3;
+		return ret_errno(EINVAL);
 
-	err = -ENOMEM;
 	nlmsg = nlmsg_alloc(NLMSG_GOOD_SIZE);
 	if (!nlmsg)
-		goto err3;
+		return ret_errno(ENOMEM);
 
 	answer = nlmsg_alloc_reserve(NLMSG_GOOD_SIZE);
 	if (!answer)
-		goto err2;
+		return ret_errno(ENOMEM);
 
-	err = -EINVAL;
 	lindex = if_nametoindex(master);
 	if (!lindex)
-		goto err1;
+		return ret_errno(EINVAL);
 
-	nlmsg->nlmsghdr->nlmsg_flags =
-	    NLM_F_REQUEST | NLM_F_CREATE | NLM_F_EXCL | NLM_F_ACK;
+	nlmsg->nlmsghdr->nlmsg_flags = NLM_F_REQUEST | NLM_F_CREATE | NLM_F_EXCL | NLM_F_ACK;
 	nlmsg->nlmsghdr->nlmsg_type = RTM_NEWLINK;
 
 	ifi = nlmsg_reserve(nlmsg, sizeof(struct ifinfomsg));
-	if (!ifi) {
-		err = -ENOMEM;
-		goto err1;
-	}
+	if (!ifi)
+		return ret_errno(ENOMEM);
+
 	ifi->ifi_family = AF_UNSPEC;
 
 	nest = nla_begin_nested(nlmsg, IFLA_LINKINFO);
 	if (!nest)
-		goto err1;
+		return ret_errno(ENOMEM);
 
 	if (nla_put_string(nlmsg, IFLA_INFO_KIND, "vlan"))
-		goto err1;
+		return ret_errno(ENOMEM);
 
 	nest2 = nla_begin_nested(nlmsg, IFLA_INFO_DATA);
 	if (!nest2)
-		goto err1;
+		return ret_errno(ENOMEM);
 
 	if (nla_put_u16(nlmsg, IFLA_VLAN_ID, vlanid))
-		goto err1;
+		return ret_errno(ENOMEM);
 
 	nla_end_nested(nlmsg, nest2);
 	nla_end_nested(nlmsg, nest);
 
 	if (nla_put_u32(nlmsg, IFLA_LINK, lindex))
-		goto err1;
+		return ret_errno(ENOMEM);
 
 	if (nla_put_string(nlmsg, IFLA_IFNAME, name))
-		goto err1;
+		return ret_errno(ENOMEM);
 
-	err = netlink_transaction(&nlh, nlmsg, answer);
-err1:
-	nlmsg_free(answer);
-err2:
-	nlmsg_free(nlmsg);
-err3:
-	netlink_close(&nlh);
-	return err;
+	return netlink_transaction(nlh_ptr, nlmsg, answer);
 }
 
 int lxc_macvlan_create(const char *master, const char *name, int mode)
 {
+	call_cleaner(nlmsg_free) struct nlmsg *answer = NULL, *nlmsg = NULL;
+	struct nl_handler nlh;
+	call_cleaner(netlink_close) struct nl_handler *nlh_ptr = &nlh;
 	int err, index, len;
 	struct ifinfomsg *ifi;
-	struct nl_handler nlh;
 	struct rtattr *nest, *nest2;
-	struct nlmsg *answer = NULL, *nlmsg = NULL;
 
-	err = netlink_open(&nlh, NETLINK_ROUTE);
+	err = netlink_open(nlh_ptr, NETLINK_ROUTE);
 	if (err)
 		return err;
 
-	err = -EINVAL;
 	len = strlen(master);
 	if (len == 1 || len >= IFNAMSIZ)
-		goto out;
+		return ret_errno(EINVAL);
 
 	len = strlen(name);
 	if (len == 1 || len >= IFNAMSIZ)
-		goto out;
+		return ret_errno(EINVAL);
 
-	err = -ENOMEM;
 	nlmsg = nlmsg_alloc(NLMSG_GOOD_SIZE);
 	if (!nlmsg)
-		goto out;
+		return ret_errno(ENOMEM);
 
 	answer = nlmsg_alloc_reserve(NLMSG_GOOD_SIZE);
 	if (!answer)
-		goto out;
+		return ret_errno(ENOMEM);
 
-	err = -EINVAL;
 	index = if_nametoindex(master);
 	if (!index)
-		goto out;
+		return ret_errno(EINVAL);
 
-	nlmsg->nlmsghdr->nlmsg_flags =
-	    NLM_F_REQUEST | NLM_F_CREATE | NLM_F_EXCL | NLM_F_ACK;
+	nlmsg->nlmsghdr->nlmsg_flags = NLM_F_REQUEST | NLM_F_CREATE | NLM_F_EXCL | NLM_F_ACK;
 	nlmsg->nlmsghdr->nlmsg_type = RTM_NEWLINK;
 
 	ifi = nlmsg_reserve(nlmsg, sizeof(struct ifinfomsg));
-	if (!ifi) {
-		err = -ENOMEM;
-		goto out;
-	}
+	if (!ifi)
+		return ret_errno(ENOMEM);
+
 	ifi->ifi_family = AF_UNSPEC;
 
 	nest = nla_begin_nested(nlmsg, IFLA_LINKINFO);
 	if (!nest)
-		goto out;
+		return ret_errno(ENOMEM);
 
 	if (nla_put_string(nlmsg, IFLA_INFO_KIND, "macvlan"))
-		goto out;
+		return ret_errno(ENOMEM);
 
 	if (mode) {
 		nest2 = nla_begin_nested(nlmsg, IFLA_INFO_DATA);
 		if (!nest2)
-			goto out;
+			return ret_errno(ENOMEM);
 
 		if (nla_put_u32(nlmsg, IFLA_MACVLAN_MODE, mode))
-			goto out;
+			return ret_errno(ENOMEM);
 
 		nla_end_nested(nlmsg, nest2);
 	}
@@ -1447,17 +1880,12 @@ int lxc_macvlan_create(const char *master, const char *name, int mode)
 	nla_end_nested(nlmsg, nest);
 
 	if (nla_put_u32(nlmsg, IFLA_LINK, index))
-		goto out;
+		return ret_errno(ENOMEM);
 
 	if (nla_put_string(nlmsg, IFLA_IFNAME, name))
-		goto out;
+		return ret_errno(ENOMEM);
 
-	err = netlink_transaction(&nlh, nlmsg, answer);
-out:
-	netlink_close(&nlh);
-	nlmsg_free(answer);
-	nlmsg_free(nlmsg);
-	return err;
+	return netlink_transaction(nlh_ptr, nlmsg, answer);
 }
 
 static int proc_sys_net_write(const char *path, const char *value)
@@ -1476,6 +1904,32 @@ static int proc_sys_net_write(const char *path, const char *value)
 	return err;
 }
 
+static int ip_forwarding_set(const char *ifname, int family, int flag)
+{
+	int ret;
+	char path[PATH_MAX];
+
+	if (family != AF_INET && family != AF_INET6)
+		return -EINVAL;
+
+	ret = snprintf(path, sizeof(path), "/proc/sys/net/%s/conf/%s/%s",
+		       family == AF_INET ? "ipv4" : "ipv6", ifname, "forwarding");
+	if (ret < 0 || (size_t)ret >= sizeof(path))
+		return -E2BIG;
+
+	return proc_sys_net_write(path, flag ? "1" : "0");
+}
+
+int lxc_ip_forwarding_on(const char *name, int family)
+{
+	return ip_forwarding_set(name, family, 1);
+}
+
+int lxc_ip_forwarding_off(const char *name, int family)
+{
+	return ip_forwarding_set(name, family, 0);
+}
+
 static int neigh_proxy_set(const char *ifname, int family, int flag)
 {
 	int ret;
@@ -1484,13 +1938,31 @@ static int neigh_proxy_set(const char *ifname, int family, int flag)
 	if (family != AF_INET && family != AF_INET6)
 		return -EINVAL;
 
-	ret = snprintf(path, PATH_MAX, "/proc/sys/net/%s/conf/%s/%s",
+	ret = snprintf(path, sizeof(path), "/proc/sys/net/%s/conf/%s/%s",
 		       family == AF_INET ? "ipv4" : "ipv6", ifname,
 		       family == AF_INET ? "proxy_arp" : "proxy_ndp");
-	if (ret < 0 || (size_t)ret >= PATH_MAX)
+	if (ret < 0 || (size_t)ret >= sizeof(path))
 		return -E2BIG;
 
 	return proc_sys_net_write(path, flag ? "1" : "0");
+}
+
+static int lxc_is_ip_neigh_proxy_enabled(const char *ifname, int family)
+{
+	int ret;
+	char path[PATH_MAX];
+	char buf[1] = "";
+
+	if (family != AF_INET && family != AF_INET6)
+		return ret_set_errno(-1, EINVAL);
+
+	ret = snprintf(path, sizeof(path), "/proc/sys/net/%s/conf/%s/%s",
+		       family == AF_INET ? "ipv4" : "ipv6", ifname,
+		       family == AF_INET ? "proxy_arp" : "proxy_ndp");
+	if (ret < 0 || (size_t)ret >= sizeof(path))
+		return ret_set_errno(-1, E2BIG);
+
+	return lxc_read_file_expect(path, buf, 1, "1");
 }
 
 int lxc_neigh_proxy_on(const char *name, int family)
@@ -1551,62 +2023,55 @@ int lxc_convert_mac(char *macaddr, struct sockaddr *sockaddr)
 static int ip_addr_add(int family, int ifindex, void *addr, void *bcast,
 		       void *acast, int prefix)
 {
+	call_cleaner(nlmsg_free) struct nlmsg *answer = NULL, *nlmsg = NULL;
+	struct nl_handler nlh;
+	call_cleaner(netlink_close) struct nl_handler *nlh_ptr = &nlh;
 	int addrlen, err;
 	struct ifaddrmsg *ifa;
-	struct nl_handler nlh;
-	struct nlmsg *answer = NULL, *nlmsg = NULL;
 
 	addrlen = family == AF_INET ? sizeof(struct in_addr)
 				    : sizeof(struct in6_addr);
 
-	err = netlink_open(&nlh, NETLINK_ROUTE);
+	err = netlink_open(nlh_ptr, NETLINK_ROUTE);
 	if (err)
 		return err;
 
-	err = -ENOMEM;
 	nlmsg = nlmsg_alloc(NLMSG_GOOD_SIZE);
 	if (!nlmsg)
-		goto out;
+		return ret_errno(ENOMEM);
 
 	answer = nlmsg_alloc_reserve(NLMSG_GOOD_SIZE);
 	if (!answer)
-		goto out;
+		return ret_errno(ENOMEM);
 
-	nlmsg->nlmsghdr->nlmsg_flags =
-	    NLM_F_ACK | NLM_F_REQUEST | NLM_F_CREATE | NLM_F_EXCL;
+	nlmsg->nlmsghdr->nlmsg_flags = NLM_F_ACK | NLM_F_REQUEST | NLM_F_CREATE | NLM_F_EXCL;
 	nlmsg->nlmsghdr->nlmsg_type = RTM_NEWADDR;
 
 	ifa = nlmsg_reserve(nlmsg, sizeof(struct ifaddrmsg));
 	if (!ifa)
-		goto out;
+		return ret_errno(ENOMEM);
+
 	ifa->ifa_prefixlen = prefix;
 	ifa->ifa_index = ifindex;
 	ifa->ifa_family = family;
 	ifa->ifa_scope = 0;
 
-	err = -EINVAL;
 	if (nla_put_buffer(nlmsg, IFA_LOCAL, addr, addrlen))
-		goto out;
+		return ret_errno(EINVAL);
 
 	if (nla_put_buffer(nlmsg, IFA_ADDRESS, addr, addrlen))
-		goto out;
+		return ret_errno(EINVAL);
 
 	if (nla_put_buffer(nlmsg, IFA_BROADCAST, bcast, addrlen))
-		goto out;
+		return ret_errno(EINVAL);
 
 	/* TODO: multicast, anycast with ipv6 */
-	err = -EPROTONOSUPPORT;
 	if (family == AF_INET6 &&
 	    (memcmp(bcast, &in6addr_any, sizeof(in6addr_any)) ||
 	     memcmp(acast, &in6addr_any, sizeof(in6addr_any))))
-		goto out;
+		return ret_errno(EPROTONOSUPPORT);
 
-	err = netlink_transaction(&nlh, nlmsg, answer);
-out:
-	netlink_close(&nlh);
-	nlmsg_free(answer);
-	nlmsg_free(nlmsg);
-	return err;
+	return netlink_transaction(nlh_ptr, nlmsg, answer);
 }
 
 int lxc_ipv6_addr_add(int ifindex, struct in6_addr *addr,
@@ -1678,25 +2143,25 @@ static int ifa_get_local_ip(int family, struct nlmsghdr *msg, void **res)
 
 static int ip_addr_get(int family, int ifindex, void **res)
 {
+	call_cleaner(nlmsg_free) struct nlmsg *answer = NULL, *nlmsg = NULL;
+	struct nl_handler nlh;
+	call_cleaner(netlink_close) struct nl_handler *nlh_ptr = &nlh;
 	int answer_len, err;
 	struct ifaddrmsg *ifa;
-	struct nl_handler nlh;
 	struct nlmsghdr *msg;
 	int readmore = 0, recv_len = 0;
-	struct nlmsg *answer = NULL, *nlmsg = NULL;
 
-	err = netlink_open(&nlh, NETLINK_ROUTE);
+	err = netlink_open(nlh_ptr, NETLINK_ROUTE);
 	if (err)
 		return err;
 
-	err = -ENOMEM;
 	nlmsg = nlmsg_alloc(NLMSG_GOOD_SIZE);
 	if (!nlmsg)
-		goto out;
+		return ret_errno(ENOMEM);
 
 	answer = nlmsg_alloc_reserve(NLMSG_GOOD_SIZE);
 	if (!answer)
-		goto out;
+		return ret_errno(ENOMEM);
 
 	/* Save the answer buffer length, since it will be overwritten on the
 	 * first receive (and we might need to receive more than once).
@@ -1708,15 +2173,16 @@ static int ip_addr_get(int family, int ifindex, void **res)
 
 	ifa = nlmsg_reserve(nlmsg, sizeof(struct ifaddrmsg));
 	if (!ifa)
-		goto out;
+		return ret_errno(ENOMEM);
+
 	ifa->ifa_family = family;
 
 	/* Send the request for addresses, which returns all addresses on all
 	 * interfaces.
 	 */
-	err = netlink_send(&nlh, nlmsg);
+	err = netlink_send(nlh_ptr, nlmsg);
 	if (err < 0)
-		goto out;
+		return ret_set_errno(err, errno);
 
 #pragma GCC diagnostic push
 #pragma GCC diagnostic ignored "-Wcast-align"
@@ -1728,9 +2194,9 @@ static int ip_addr_get(int family, int ifindex, void **res)
 		answer->nlmsghdr->nlmsg_len = answer_len;
 
 		/* Get the (next) batch of reply messages. */
-		err = netlink_rcv(&nlh, answer);
+		err = netlink_rcv(nlh_ptr, answer);
 		if (err < 0)
-			goto out;
+			return ret_set_errno(err, errno);
 
 		recv_len = err;
 		err = 0;
@@ -1741,10 +2207,8 @@ static int ip_addr_get(int family, int ifindex, void **res)
 		while (NLMSG_OK(msg, recv_len)) {
 			/* Stop reading if we see an error message. */
 			if (msg->nlmsg_type == NLMSG_ERROR) {
-				struct nlmsgerr *errmsg =
-				    (struct nlmsgerr *)NLMSG_DATA(msg);
-				err = errmsg->error;
-				goto out;
+				struct nlmsgerr *errmsg = (struct nlmsgerr *)NLMSG_DATA(msg);
+				return ret_set_errno(errmsg->error, errno);
 			}
 
 			/* Stop reading if we see a NLMSG_DONE message. */
@@ -1753,21 +2217,17 @@ static int ip_addr_get(int family, int ifindex, void **res)
 				break;
 			}
 
-			if (msg->nlmsg_type != RTM_NEWADDR) {
-				err = -1;
-				goto out;
-			}
+			if (msg->nlmsg_type != RTM_NEWADDR)
+				return ret_errno(EINVAL);
 
 			ifa = (struct ifaddrmsg *)NLMSG_DATA(msg);
 			if (ifa->ifa_index == ifindex) {
-				if (ifa_get_local_ip(family, msg, res) < 0) {
-					err = -1;
-					goto out;
-				}
+				if (ifa_get_local_ip(family, msg, res) < 0)
+					return ret_errno(EINVAL);
 
 				/* Found a result, stop searching. */
 				if (*res)
-					goto out;
+					return 0;
 			}
 
 			/* Keep reading more data from the socket if the last
@@ -1785,13 +2245,7 @@ static int ip_addr_get(int family, int ifindex, void **res)
 	/* If we end up here, we didn't find any result, so signal an
 	 * error.
 	 */
-	err = -1;
-
-out:
-	netlink_close(&nlh);
-	nlmsg_free(answer);
-	nlmsg_free(nlmsg);
-	return err;
+	return -1;
 }
 
 int lxc_ipv6_addr_get(int ifindex, struct in6_addr **res)
@@ -1806,34 +2260,34 @@ int lxc_ipv4_addr_get(int ifindex, struct in_addr **res)
 
 static int ip_gateway_add(int family, int ifindex, void *gw)
 {
-	int addrlen, err;
+	call_cleaner(nlmsg_free) struct nlmsg *answer = NULL, *nlmsg = NULL;
 	struct nl_handler nlh;
+	call_cleaner(netlink_close) struct nl_handler *nlh_ptr = &nlh;
+	int addrlen, err;
 	struct rtmsg *rt;
-	struct nlmsg *answer = NULL, *nlmsg = NULL;
 
 	addrlen = family == AF_INET ? sizeof(struct in_addr)
 				    : sizeof(struct in6_addr);
 
-	err = netlink_open(&nlh, NETLINK_ROUTE);
+	err = netlink_open(nlh_ptr, NETLINK_ROUTE);
 	if (err)
 		return err;
 
-	err = -ENOMEM;
 	nlmsg = nlmsg_alloc(NLMSG_GOOD_SIZE);
 	if (!nlmsg)
-		goto out;
+		return ret_errno(ENOMEM);
 
 	answer = nlmsg_alloc_reserve(NLMSG_GOOD_SIZE);
 	if (!answer)
-		goto out;
+		return ret_errno(ENOMEM);
 
-	nlmsg->nlmsghdr->nlmsg_flags =
-	    NLM_F_ACK | NLM_F_REQUEST | NLM_F_CREATE | NLM_F_EXCL;
+	nlmsg->nlmsghdr->nlmsg_flags = NLM_F_ACK | NLM_F_REQUEST | NLM_F_CREATE | NLM_F_EXCL;
 	nlmsg->nlmsghdr->nlmsg_type = RTM_NEWROUTE;
 
 	rt = nlmsg_reserve(nlmsg, sizeof(struct rtmsg));
 	if (!rt)
-		goto out;
+		return ret_errno(ENOMEM);
+
 	rt->rtm_family = family;
 	rt->rtm_table = RT_TABLE_MAIN;
 	rt->rtm_scope = RT_SCOPE_UNIVERSE;
@@ -1842,22 +2296,17 @@ static int ip_gateway_add(int family, int ifindex, void *gw)
 	/* "default" destination */
 	rt->rtm_dst_len = 0;
 
-	err = -EINVAL;
-	if (nla_put_buffer(nlmsg, RTA_GATEWAY, gw, addrlen))
-		goto out;
+	/* If gateway address not supplied, then a device route will be created instead */
+	if (gw && nla_put_buffer(nlmsg, RTA_GATEWAY, gw, addrlen))
+		return ret_errno(ENOMEM);
 
 	/* Adding the interface index enables the use of link-local
 	 * addresses for the gateway.
 	 */
 	if (nla_put_u32(nlmsg, RTA_OIF, ifindex))
-		goto out;
+		return ret_errno(EINVAL);
 
-	err = netlink_transaction(&nlh, nlmsg, answer);
-out:
-	netlink_close(&nlh);
-	nlmsg_free(answer);
-	nlmsg_free(nlmsg);
-	return err;
+	return netlink_transaction(nlh_ptr, nlmsg, answer);
 }
 
 int lxc_ipv4_gateway_add(int ifindex, struct in_addr *gw)
@@ -1869,67 +2318,6 @@ int lxc_ipv6_gateway_add(int ifindex, struct in6_addr *gw)
 {
 	return ip_gateway_add(AF_INET6, ifindex, gw);
 }
-
-static int ip_route_dest_add(int family, int ifindex, void *dest)
-{
-	int addrlen, err;
-	struct nl_handler nlh;
-	struct rtmsg *rt;
-	struct nlmsg *answer = NULL, *nlmsg = NULL;
-
-	addrlen = family == AF_INET ? sizeof(struct in_addr)
-				    : sizeof(struct in6_addr);
-
-	err = netlink_open(&nlh, NETLINK_ROUTE);
-	if (err)
-		return err;
-
-	err = -ENOMEM;
-	nlmsg = nlmsg_alloc(NLMSG_GOOD_SIZE);
-	if (!nlmsg)
-		goto out;
-
-	answer = nlmsg_alloc_reserve(NLMSG_GOOD_SIZE);
-	if (!answer)
-		goto out;
-
-	nlmsg->nlmsghdr->nlmsg_flags =
-	    NLM_F_ACK | NLM_F_REQUEST | NLM_F_CREATE | NLM_F_EXCL;
-	nlmsg->nlmsghdr->nlmsg_type = RTM_NEWROUTE;
-
-	rt = nlmsg_reserve(nlmsg, sizeof(struct rtmsg));
-	if (!rt)
-		goto out;
-	rt->rtm_family = family;
-	rt->rtm_table = RT_TABLE_MAIN;
-	rt->rtm_scope = RT_SCOPE_LINK;
-	rt->rtm_protocol = RTPROT_BOOT;
-	rt->rtm_type = RTN_UNICAST;
-	rt->rtm_dst_len = addrlen * 8;
-
-	err = -EINVAL;
-	if (nla_put_buffer(nlmsg, RTA_DST, dest, addrlen))
-		goto out;
-	if (nla_put_u32(nlmsg, RTA_OIF, ifindex))
-		goto out;
-	err = netlink_transaction(&nlh, nlmsg, answer);
-out:
-	netlink_close(&nlh);
-	nlmsg_free(answer);
-	nlmsg_free(nlmsg);
-	return err;
-}
-
-int lxc_ipv4_dest_add(int ifindex, struct in_addr *dest)
-{
-	return ip_route_dest_add(AF_INET, ifindex, dest);
-}
-
-int lxc_ipv6_dest_add(int ifindex, struct in6_addr *dest)
-{
-	return ip_route_dest_add(AF_INET6, ifindex, dest);
-}
-
 bool is_ovs_bridge(const char *bridge)
 {
 	int ret;
@@ -1960,8 +2348,7 @@ static int lxc_ovs_delete_port_exec(void *data)
 {
 	struct ovs_veth_args *args = data;
 
-	execlp("ovs-vsctl", "ovs-vsctl", "del-port", args->bridge, args->nic,
-	       (char *)NULL);
+	execlp("ovs-vsctl", "ovs-vsctl", "del-port", args->bridge, args->nic, (char *)NULL);
 	return -1;
 }
 
@@ -1975,11 +2362,8 @@ int lxc_ovs_delete_port(const char *bridge, const char *nic)
 	args.nic = nic;
 	ret = run_command(cmd_output, sizeof(cmd_output),
 			  lxc_ovs_delete_port_exec, (void *)&args);
-	if (ret < 0) {
-		ERROR("Failed to delete \"%s\" from openvswitch bridge \"%s\": "
-		      "%s", bridge, nic, cmd_output);
-		return -1;
-	}
+	if (ret < 0)
+		return log_error(-1, "Failed to delete \"%s\" from openvswitch bridge \"%s\": %s", nic, bridge, cmd_output);
 
 	return 0;
 }
@@ -1988,8 +2372,7 @@ static int lxc_ovs_attach_bridge_exec(void *data)
 {
 	struct ovs_veth_args *args = data;
 
-	execlp("ovs-vsctl", "ovs-vsctl", "add-port", args->bridge, args->nic,
-	       (char *)NULL);
+	execlp("ovs-vsctl", "ovs-vsctl", "add-port", args->bridge, args->nic, (char *)NULL);
 	return -1;
 }
 
@@ -2003,11 +2386,8 @@ static int lxc_ovs_attach_bridge(const char *bridge, const char *nic)
 	args.nic = nic;
 	ret = run_command(cmd_output, sizeof(cmd_output),
 			  lxc_ovs_attach_bridge_exec, (void *)&args);
-	if (ret < 0) {
-		ERROR("Failed to attach \"%s\" to openvswitch bridge \"%s\": %s",
-		      bridge, nic, cmd_output);
-		return -1;
-	}
+	if (ret < 0)
+		return log_error(-1, "Failed to attach \"%s\" to openvswitch bridge \"%s\": %s", nic, bridge, cmd_output);
 
 	return 0;
 }
@@ -2052,6 +2432,7 @@ static const char *const lxc_network_types[LXC_NET_MAXCONFTYPE + 1] = {
 	[LXC_NET_EMPTY]   = "empty",
 	[LXC_NET_VETH]    = "veth",
 	[LXC_NET_MACVLAN] = "macvlan",
+	[LXC_NET_IPVLAN]  = "ipvlan",
 	[LXC_NET_PHYS]    = "phys",
 	[LXC_NET_VLAN]    = "vlan",
 	[LXC_NET_NONE]    = "none",
@@ -2065,9 +2446,9 @@ const char *lxc_net_type_to_str(int type)
 	return lxc_network_types[type];
 }
 
-static const char padchar[] = "0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ";
+static const char padchar[] = "0123456789abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ";
 
-char *lxc_mkifname(char *template)
+char *lxc_ifname_alnum_case_sensitive(char *template)
 {
 	int ret;
 	struct netns_ifaddrs *ifa, *ifaddr;
@@ -2088,10 +2469,8 @@ char *lxc_mkifname(char *template)
 
 	/* Get all the network interfaces. */
 	ret = netns_getifaddrs(&ifaddr, -1, &(bool){false});
-	if (ret < 0) {
-		SYSERROR("Failed to get network interfaces");
-		return NULL;
-	}
+	if (ret < 0)
+		return log_error_errno(NULL, errno, "Failed to get network interfaces");
 
 	/* Generate random names until we find one that doesn't exist. */
 	for (;;) {
@@ -2170,15 +2549,11 @@ int lxc_find_gateway_addresses(struct lxc_handler *handler)
 		if (!netdev->ipv4_gateway_auto && !netdev->ipv6_gateway_auto)
 			continue;
 
-		if (netdev->type != LXC_NET_VETH && netdev->type != LXC_NET_MACVLAN) {
-			ERROR("Automatic gateway detection is only supported "
-			      "for veth and macvlan");
-			return -1;
-		}
+		if (netdev->type != LXC_NET_VETH && netdev->type != LXC_NET_MACVLAN)
+			return log_error_errno(-1, EINVAL, "Automatic gateway detection is only supported for veth and macvlan");
 
-		if (netdev->link[0] == '\0') {
-			ERROR("Automatic gateway detection needs a link interface");
-			return -1;
+		if (is_empty_string(netdev->link)) {
+			return log_error_errno(-1, errno, "Automatic gateway detection needs a link interface");
 		}
 
 		link_index = if_nametoindex(netdev->link);
@@ -2186,19 +2561,13 @@ int lxc_find_gateway_addresses(struct lxc_handler *handler)
 			return -EINVAL;
 
 		if (netdev->ipv4_gateway_auto) {
-			if (lxc_ipv4_addr_get(link_index, &netdev->ipv4_gateway)) {
-				ERROR("Failed to automatically find ipv4 gateway "
-				      "address from link interface \"%s\"", netdev->link);
-				return -1;
-			}
+			if (lxc_ipv4_addr_get(link_index, &netdev->ipv4_gateway))
+				return log_error_errno(-1, errno, "Failed to automatically find ipv4 gateway address from link interface \"%s\"", netdev->link);
 		}
 
 		if (netdev->ipv6_gateway_auto) {
-			if (lxc_ipv6_addr_get(link_index, &netdev->ipv6_gateway)) {
-				ERROR("Failed to automatically find ipv6 gateway "
-				      "address from link interface \"%s\"", netdev->link);
-				return -1;
-			}
+			if (lxc_ipv6_addr_get(link_index, &netdev->ipv6_gateway))
+				return log_error_errno(-1, errno, "Failed to automatically find ipv6 gateway address from link interface \"%s\"", netdev->link);
 		}
 	}
 
@@ -2217,23 +2586,18 @@ static int lxc_create_network_unpriv_exec(const char *lxcpath, const char *lxcna
 	char buffer[PATH_MAX] = {0};
 	size_t retlen;
 
-	if (netdev->type != LXC_NET_VETH) {
-		ERROR("Network type %d not support for unprivileged use", netdev->type);
-		return -1;
-	}
+	if (netdev->type != LXC_NET_VETH)
+		return log_error_errno(-1, errno, "Network type %d not support for unprivileged use", netdev->type);
 
 	ret = pipe(pipefd);
-	if (ret < 0) {
-		SYSERROR("Failed to create pipe");
-		return -1;
-	}
+	if (ret < 0)
+		return log_error_errno(-1, errno, "Failed to create pipe");
 
 	child = fork();
 	if (child < 0) {
-		SYSERROR("Failed to create new process");
 		close(pipefd[0]);
 		close(pipefd[1]);
-		return -1;
+		return log_error_errno(-1, errno, "Failed to create new process");
 	}
 
 	if (child == 0) {
@@ -2250,7 +2614,7 @@ static int lxc_create_network_unpriv_exec(const char *lxcpath, const char *lxcna
 			_exit(EXIT_FAILURE);
 		}
 
-		if (netdev->link[0] != '\0')
+		if (!is_empty_string(netdev->link))
 			retlen = strlcpy(netdev_link, netdev->link, IFNAMSIZ);
 		else
 			retlen = strlcpy(netdev_link, "none", IFNAMSIZ);
@@ -2266,8 +2630,8 @@ static int lxc_create_network_unpriv_exec(const char *lxcpath, const char *lxcna
 
 		INFO("Execing lxc-user-nic create %s %s %s veth %s %s", lxcpath,
 		     lxcname, pidstr, netdev_link,
-		     netdev->name[0] != '\0' ? netdev->name : "(null)");
-		if (netdev->name[0] != '\0')
+		     !is_empty_string(netdev->name) ? netdev->name : "(null)");
+		if (!is_empty_string(netdev->name))
 			execlp(LXC_USERNIC_PATH, LXC_USERNIC_PATH, "create",
 			       lxcpath, lxcname, pidstr, "veth", netdev_link,
 			       netdev->name, (char *)NULL);
@@ -2282,7 +2646,7 @@ static int lxc_create_network_unpriv_exec(const char *lxcpath, const char *lxcna
 	/* close the write-end of the pipe */
 	close(pipefd[1]);
 
-	bytes = lxc_read_nointr(pipefd[0], &buffer, PATH_MAX);
+	bytes = lxc_read_nointr(pipefd[0], &buffer, sizeof(buffer));
 	if (bytes < 0) {
 		SYSERROR("Failed to read from pipe file descriptor");
 		close(pipefd[0]);
@@ -2292,64 +2656,52 @@ static int lxc_create_network_unpriv_exec(const char *lxcpath, const char *lxcna
 
 	ret = wait_for_pid(child);
 	close(pipefd[0]);
-	if (ret != 0 || bytes < 0) {
-		ERROR("lxc-user-nic failed to configure requested network: %s",
-		      buffer[0] != '\0' ? buffer : "(null)");
-		return -1;
-	}
+	if (ret != 0 || bytes < 0)
+		return log_error(-1, "lxc-user-nic failed to configure requested network: %s", buffer[0] != '\0' ? buffer : "(null)");
 	TRACE("Received output \"%s\" from lxc-user-nic", buffer);
 
 	/* netdev->name */
 	token = strtok_r(buffer, ":", &saveptr);
-	if (!token) {
-		ERROR("Failed to parse lxc-user-nic output");
-		return -1;
-	}
+	if (!token)
+		return log_error(-1, "Failed to parse lxc-user-nic output");
 
-	memset(netdev->name, 0, IFNAMSIZ);
-	memcpy(netdev->name, token, IFNAMSIZ - 1);
+	/*
+	 * lxc-user-nic will take care of proper network device naming. So
+	 * netdev->name and netdev->created_name need to be identical to not
+	 * trigger another rename later on.
+	 */
+	retlen = strlcpy(netdev->name, token, IFNAMSIZ);
+	if (retlen < IFNAMSIZ)
+		retlen = strlcpy(netdev->created_name, token, IFNAMSIZ);
+	if (retlen >= IFNAMSIZ)
+		return log_error_errno(-1, E2BIG, "Container side veth device name returned by lxc-user-nic is too long");
 
 	/* netdev->ifindex */
 	token = strtok_r(NULL, ":", &saveptr);
-	if (!token) {
-		ERROR("Failed to parse lxc-user-nic output");
-		return -1;
-	}
+	if (!token)
+		return log_error(-1, "Failed to parse lxc-user-nic output");
 
 	ret = lxc_safe_int(token, &netdev->ifindex);
-	if (ret < 0) {
-		errno = -ret;
-		SYSERROR("Failed to convert string \"%s\" to integer", token);
-		return -1;
-	}
+	if (ret < 0)
+		return log_error_errno(-1, -ret, "Failed to convert string \"%s\" to integer", token);
 
 	/* netdev->priv.veth_attr.veth1 */
 	token = strtok_r(NULL, ":", &saveptr);
-	if (!token) {
-		ERROR("Failed to parse lxc-user-nic output");
-		return -1;
-	}
+	if (!token)
+		return log_error(-1, "Failed to parse lxc-user-nic output");
 
 	retlen = strlcpy(netdev->priv.veth_attr.veth1, token, IFNAMSIZ);
-	if (retlen >= IFNAMSIZ) {
-		ERROR("Host side veth device name returned by lxc-user-nic is "
-		      "too long");
-		return -E2BIG;
-	}
+	if (retlen >= IFNAMSIZ)
+		return log_error_errno(-1, E2BIG, "Host side veth device name returned by lxc-user-nic is too long");
 
 	/* netdev->priv.veth_attr.ifindex */
 	token = strtok_r(NULL, ":", &saveptr);
-	if (!token) {
-		ERROR("Failed to parse lxc-user-nic output");
-		return -1;
-	}
+	if (!token)
+		return log_error(-1, "Failed to parse lxc-user-nic output");
 
 	ret = lxc_safe_int(token, &netdev->priv.veth_attr.ifindex);
-	if (ret < 0) {
-		errno = -ret;
-		SYSERROR("Failed to convert string \"%s\" to integer", token);
-		return -1;
-	}
+	if (ret < 0)
+		return log_error_errno(-1, -ret, "Failed to convert string \"%s\" to integer", token);
 
 	if (netdev->upscript) {
 		char *argv[] = {
@@ -2359,9 +2711,8 @@ static int lxc_create_network_unpriv_exec(const char *lxcpath, const char *lxcna
 			NULL,
 		};
 
-		ret = run_script_argv(lxcname,
-				hooks_version, "net",
-				netdev->upscript, "up", argv);
+		ret = run_script_argv(lxcname, hooks_version, "net",
+				      netdev->upscript, "up", argv);
 		if (ret < 0)
 			return -1;
     }
@@ -2378,23 +2729,18 @@ static int lxc_delete_network_unpriv_exec(const char *lxcpath, const char *lxcna
 	int pipefd[2];
 	char buffer[PATH_MAX] = {0};
 
-	if (netdev->type != LXC_NET_VETH) {
-		ERROR("Network type %d not support for unprivileged use", netdev->type);
-		return -1;
-	}
+	if (netdev->type != LXC_NET_VETH)
+		return log_error_errno(-1, EINVAL, "Network type %d not support for unprivileged use", netdev->type);
 
 	ret = pipe(pipefd);
-	if (ret < 0) {
-		SYSERROR("Failed to create pipe");
-		return -1;
-	}
+	if (ret < 0)
+		return log_error_errno(-1, errno, "Failed to create pipe");
 
 	child = fork();
 	if (child < 0) {
-		SYSERROR("Failed to create new process");
 		close(pipefd[0]);
 		close(pipefd[1]);
-		return -1;
+		return log_error_errno(-1, errno, "Failed to create new process");
 	}
 
 	if (child == 0) {
@@ -2411,18 +2757,17 @@ static int lxc_delete_network_unpriv_exec(const char *lxcpath, const char *lxcna
 			_exit(EXIT_FAILURE);
 		}
 
-		if (netdev->priv.veth_attr.pair[0] != '\0')
+		if (!is_empty_string(netdev->priv.veth_attr.pair))
 			hostveth = netdev->priv.veth_attr.pair;
 		else
 			hostveth = netdev->priv.veth_attr.veth1;
-		if (hostveth[0] == '\0') {
+		if (is_empty_string(hostveth)) {
 			SYSERROR("Host side veth device name is missing");
 			_exit(EXIT_FAILURE);
 		}
 
-		if (netdev->link[0] == '\0') {
-			SYSERROR("Network link for network device \"%s\" is "
-				 "missing", netdev->priv.veth_attr.veth1);
+		if (is_empty_string(netdev->link)) {
+			SYSERROR("Network link for network device \"%s\" is missing", netdev->priv.veth_attr.veth1);
 			_exit(EXIT_FAILURE);
 		}
 
@@ -2437,7 +2782,7 @@ static int lxc_delete_network_unpriv_exec(const char *lxcpath, const char *lxcna
 
 	close(pipefd[1]);
 
-	bytes = lxc_read_nointr(pipefd[0], &buffer, PATH_MAX);
+	bytes = lxc_read_nointr(pipefd[0], &buffer, sizeof(buffer));
 	if (bytes < 0) {
 		SYSERROR("Failed to read from pipe file descriptor.");
 		close(pipefd[0]);
@@ -2446,12 +2791,10 @@ static int lxc_delete_network_unpriv_exec(const char *lxcpath, const char *lxcna
 	}
 
 	ret = wait_for_pid(child);
-	close(pipefd[0]);
-	if (ret != 0 || bytes < 0) {
-		ERROR("lxc-user-nic failed to delete requested network: %s",
-		      buffer[0] != '\0' ? buffer : "(null)");
-		return -1;
-	}
+	close_prot_errno_disarm(pipefd[0]);
+	if (ret != 0 || bytes < 0)
+		return log_error_errno(-1, errno, "lxc-user-nic failed to delete requested network: %s",
+				       !is_empty_string(buffer) ? buffer : "(null)");
 
 	return 0;
 }
@@ -2475,11 +2818,8 @@ bool lxc_delete_network_unpriv(struct lxc_handler *handler)
 
 	*netns_path = '\0';
 
-	if (handler->nsfd[LXC_NS_NET] < 0) {
-		DEBUG("Cannot not guarantee safe deletion of network devices. "
-		      "Manual cleanup maybe needed");
-		return false;
-	}
+	if (handler->nsfd[LXC_NS_NET] < 0)
+		return log_debug(false, "Cannot not guarantee safe deletion of network devices. Manual cleanup maybe needed");
 
 	ret = snprintf(netns_path, sizeof(netns_path), "/proc/%d/fd/%d",
 		       lxc_raw_getpid(), handler->nsfd[LXC_NS_NET]);
@@ -2500,12 +2840,10 @@ bool lxc_delete_network_unpriv(struct lxc_handler *handler)
 			ret = lxc_netdev_rename_by_index(netdev->ifindex,
 							 netdev->link);
 			if (ret < 0)
-				WARN("Failed to rename interface with index %d "
-				     "to its initial name \"%s\"",
+				WARN("Failed to rename interface with index %d to its initial name \"%s\"",
 				     netdev->ifindex, netdev->link);
 			else
-				TRACE("Renamed interface with index %d to its "
-				      "initial name \"%s\"",
+				TRACE("Renamed interface with index %d to its initial name \"%s\"",
 				      netdev->ifindex, netdev->link);
 
 			ret = netdev_deconf[netdev->type](handler, netdev);
@@ -2519,31 +2857,30 @@ bool lxc_delete_network_unpriv(struct lxc_handler *handler)
 		if (netdev->type != LXC_NET_VETH)
 			goto clear_ifindices;
 
-		if (netdev->link[0] == '\0' || !is_ovs_bridge(netdev->link))
+		if (is_empty_string(netdev->link) || !is_ovs_bridge(netdev->link))
 			goto clear_ifindices;
 
-		if (netdev->priv.veth_attr.pair[0] != '\0')
+		if (!is_empty_string(netdev->priv.veth_attr.pair))
 			hostveth = netdev->priv.veth_attr.pair;
 		else
 			hostveth = netdev->priv.veth_attr.veth1;
-		if (hostveth[0] == '\0')
+		if (is_empty_string(hostveth))
 			goto clear_ifindices;
 
 		ret = lxc_delete_network_unpriv_exec(handler->lxcpath,
 						     handler->name, netdev,
 						     netns_path);
 		if (ret < 0) {
-			WARN("Failed to remove port \"%s\" from openvswitch "
-			     "bridge \"%s\"", hostveth, netdev->link);
+			WARN("Failed to remove port \"%s\" from openvswitch bridge \"%s\"", hostveth, netdev->link);
 			goto clear_ifindices;
 		}
-		INFO("Removed interface \"%s\" from \"%s\"", hostveth,
-		     netdev->link);
+		INFO("Removed interface \"%s\" from \"%s\"", hostveth, netdev->link);
 
 clear_ifindices:
-		/* We need to clear any ifindices we recorded so liblxc won't
-		 * have cached stale data which would cause it to fail on reboot
-		 * we're we don't re-read the on-disk config file.
+		/*
+		 * We need to clear any ifindices we recorded so liblxc won't
+		 * have cached stale data which would cause it to fail on
+		 * reboot where we don't re-read the on-disk config file.
 		 */
 		netdev->ifindex = 0;
 		if (netdev->type == LXC_NET_PHYS) {
@@ -2557,100 +2894,282 @@ clear_ifindices:
 	return true;
 }
 
-int lxc_create_network_priv(struct lxc_handler *handler)
-{
-	struct lxc_list *iterator;
-	struct lxc_list *network = &handler->conf->network;
+static int lxc_setup_l2proxy(struct lxc_netdev *netdev) {
+	struct lxc_list *cur, *next;
+	struct lxc_inetdev *inet4dev;
+	struct lxc_inet6dev *inet6dev;
+	char bufinet4[INET_ADDRSTRLEN], bufinet6[INET6_ADDRSTRLEN];
+	int err = 0;
+	unsigned int lo_ifindex = 0, link_ifindex = 0;
 
-	if (!handler->am_root)
-		return 0;
+	link_ifindex = if_nametoindex(netdev->link);
+	if (link_ifindex == 0)
+		return log_error_errno(-1, errno, "Failed to retrieve ifindex for \"%s\" l2proxy setup", netdev->link);
 
-	lxc_list_for_each(iterator, network) {
-		struct lxc_netdev *netdev = iterator->elem;
 
-		if (netdev->type < 0 || netdev->type > LXC_NET_MAXCONFTYPE) {
-			ERROR("Invalid network configuration type %d", netdev->type);
-			return -1;
+	/* If IPv4 addresses are specified, then check that sysctl is configured correctly. */
+	if (!lxc_list_empty(&netdev->ipv4)) {
+		/* Check for net.ipv4.conf.[link].forwarding=1 */
+		if (lxc_is_ip_forwarding_enabled(netdev->link, AF_INET) < 0)
+			return log_error_errno(-1, EINVAL, "Requires sysctl net.ipv4.conf.%s.forwarding=1", netdev->link);
+	}
+
+	/* If IPv6 addresses are specified, then check that sysctl is configured correctly. */
+	if (!lxc_list_empty(&netdev->ipv6)) {
+		/* Check for net.ipv6.conf.[link].proxy_ndp=1 */
+		if (lxc_is_ip_neigh_proxy_enabled(netdev->link, AF_INET6) < 0)
+			return log_error_errno(-1, EINVAL, "Requires sysctl net.ipv6.conf.%s.proxy_ndp=1", netdev->link);
+
+		/* Check for net.ipv6.conf.[link].forwarding=1 */
+		if (lxc_is_ip_forwarding_enabled(netdev->link, AF_INET6) < 0)
+			return log_error_errno(-1, EINVAL, "Requires sysctl net.ipv6.conf.%s.forwarding=1", netdev->link);
+	}
+
+	/* Perform IPVLAN specific checks. */
+	if (netdev->type == LXC_NET_IPVLAN) {
+		/* Check mode is l3s as other modes do not work with l2proxy. */
+		if (netdev->priv.ipvlan_attr.mode != IPVLAN_MODE_L3S)
+			return log_error_errno(-1, EINVAL, "Requires ipvlan mode on dev \"%s\" be l3s when used with l2proxy", netdev->link);
+
+		/* Retrieve local-loopback interface index for use with IPVLAN static routes. */
+		lo_ifindex = if_nametoindex(loop_device);
+		if (lo_ifindex == 0)
+			return log_error_errno(-1, EINVAL, "Failed to retrieve ifindex for \"%s\" routing cleanup", loop_device);
+	}
+
+	lxc_list_for_each_safe(cur, &netdev->ipv4, next) {
+		inet4dev = cur->elem;
+		if (!inet_ntop(AF_INET, &inet4dev->addr, bufinet4, sizeof(bufinet4)))
+			return ret_set_errno(-1, -errno);
+
+		if (lxc_ip_neigh_proxy(RTM_NEWNEIGH, AF_INET, link_ifindex, &inet4dev->addr) < 0)
+			return ret_set_errno(-1, EINVAL);
+
+		/* IPVLAN requires a route to local-loopback to trigger l2proxy. */
+		if (netdev->type == LXC_NET_IPVLAN) {
+			err = lxc_ipv4_dest_add(lo_ifindex, &inet4dev->addr, 32);
+			if (err < 0)
+				return log_error_errno(-1, -err, "Failed to add ipv4 dest \"%s\" for network device \"%s\"", bufinet4, loop_device);
 		}
+	}
 
-		if (netdev_conf[netdev->type](handler, netdev)) {
-			ERROR("Failed to create network device");
-			return -1;
+	lxc_list_for_each_safe(cur, &netdev->ipv6, next) {
+		inet6dev = cur->elem;
+		if (!inet_ntop(AF_INET6, &inet6dev->addr, bufinet6, sizeof(bufinet6)))
+			return ret_set_errno(-1, -errno);
+
+		if (lxc_ip_neigh_proxy(RTM_NEWNEIGH, AF_INET6, link_ifindex, &inet6dev->addr) < 0)
+			return ret_set_errno(-1, EINVAL);
+
+		/* IPVLAN requires a route to local-loopback to trigger l2proxy. */
+		if (netdev->type == LXC_NET_IPVLAN) {
+			err = lxc_ipv6_dest_add(lo_ifindex, &inet6dev->addr, 128);
+			if (err < 0)
+				return log_error_errno(-1, -err, "Failed to add ipv6 dest \"%s\" for network device \"%s\"", bufinet6, loop_device);
 		}
-
 	}
 
 	return 0;
 }
 
-int lxc_network_move_created_netdev_priv(const char *lxcpath, const char *lxcname,
-					 struct lxc_list *network, pid_t pid)
+static int lxc_delete_ipv4_l2proxy(struct in_addr *ip, char *link, unsigned int lo_ifindex)
 {
-	int ret;
-	char ifname[IFNAMSIZ];
+	char bufinet4[INET_ADDRSTRLEN];
+	bool had_error = false;
+	unsigned int link_ifindex = 0;
+
+	if (!inet_ntop(AF_INET, ip, bufinet4, sizeof(bufinet4)))
+		return log_error_errno(-1, EINVAL, "Failed to convert IP for l2proxy ipv4 removal on dev \"%s\"", link);
+
+	/* If a local-loopback ifindex supplied remove the static route to the lo device. */
+	if (lo_ifindex > 0) {
+		if (lxc_ipv4_dest_del(lo_ifindex, ip, 32) < 0) {
+			had_error = true;
+			ERROR("Failed to delete ipv4 dest \"%s\" for network ifindex \"%u\"", bufinet4, lo_ifindex);
+		}
+	}
+
+	/* If link is supplied remove the IP neigh proxy entry for this IP on the device. */
+	if (!is_empty_string(link)) {
+		link_ifindex = if_nametoindex(link);
+		if (link_ifindex == 0)
+			return log_error_errno(-1, EINVAL, "Failed to retrieve ifindex for \"%s\" l2proxy cleanup", link);
+
+		if (lxc_ip_neigh_proxy(RTM_DELNEIGH, AF_INET, link_ifindex, ip) < 0)
+			had_error = true;
+	}
+
+	if (had_error)
+		return ret_set_errno(-1, EINVAL);
+
+	return 0;
+}
+
+static int lxc_delete_ipv6_l2proxy(struct in6_addr *ip, char *link, unsigned int lo_ifindex)
+{
+	char bufinet6[INET6_ADDRSTRLEN];
+	bool had_error = false;
+	unsigned int link_ifindex = 0;
+
+	if (!inet_ntop(AF_INET6, ip, bufinet6, sizeof(bufinet6)))
+		return log_error_errno(-1, EINVAL, "Failed to convert IP for l2proxy ipv6 removal on dev \"%s\"", link);
+
+	/* If a local-loopback ifindex supplied remove the static route to the lo device. */
+	if (lo_ifindex > 0) {
+		if (lxc_ipv6_dest_del(lo_ifindex, ip, 128) < 0) {
+			had_error = true;
+			ERROR("Failed to delete ipv6 dest \"%s\" for network ifindex \"%u\"", bufinet6, lo_ifindex);
+		}
+	}
+
+	/* If link is supplied remove the IP neigh proxy entry for this IP on the device. */
+	if (!is_empty_string(link)) {
+		link_ifindex = if_nametoindex(link);
+		if (link_ifindex == 0) {
+			ERROR("Failed to retrieve ifindex for \"%s\" l2proxy cleanup", link);
+			return ret_set_errno(-1, EINVAL);
+		}
+
+		if (lxc_ip_neigh_proxy(RTM_DELNEIGH, AF_INET6, link_ifindex, ip) < 0)
+			had_error = true;
+	}
+
+	if (had_error)
+		return ret_set_errno(-1, EINVAL);
+
+	return 0;
+}
+
+static int lxc_delete_l2proxy(struct lxc_netdev *netdev) {
+	unsigned int lo_ifindex = 0;
+	unsigned int errCount = 0;
+	struct lxc_list *cur, *next;
+	struct lxc_inetdev *inet4dev;
+	struct lxc_inet6dev *inet6dev;
+
+	/* Perform IPVLAN specific checks. */
+	if (netdev->type == LXC_NET_IPVLAN) {
+		/* Retrieve local-loopback interface index for use with IPVLAN static routes. */
+		lo_ifindex = if_nametoindex(loop_device);
+		if (lo_ifindex == 0) {
+			errCount++;
+			ERROR("Failed to retrieve ifindex for \"%s\" routing cleanup", loop_device);
+		}
+	}
+
+	lxc_list_for_each_safe(cur, &netdev->ipv4, next) {
+		inet4dev = cur->elem;
+		if (lxc_delete_ipv4_l2proxy(&inet4dev->addr, netdev->link, lo_ifindex) < 0)
+			errCount++;
+	}
+
+	lxc_list_for_each_safe(cur, &netdev->ipv6, next) {
+		inet6dev = cur->elem;
+		if (lxc_delete_ipv6_l2proxy(&inet6dev->addr, netdev->link, lo_ifindex) < 0)
+			errCount++;
+	}
+
+	if (errCount > 0)
+		return ret_set_errno(-1, EINVAL);
+
+	return 0;
+}
+
+static int lxc_create_network_priv(struct lxc_handler *handler)
+{
+	struct lxc_list *iterator;
+	struct lxc_list *network = &handler->conf->network;
+
+	lxc_list_for_each(iterator, network) {
+		struct lxc_netdev *netdev = iterator->elem;
+
+		if (netdev->type < 0 || netdev->type > LXC_NET_MAXCONFTYPE)
+			return log_error_errno(-1, EINVAL, "Invalid network configuration type %d", netdev->type);
+
+		/* Setup l2proxy entries if enabled and used with a link property */
+		if (netdev->l2proxy && !is_empty_string(netdev->link)) {
+			if (lxc_setup_l2proxy(netdev))
+				return log_error_errno(-1, errno, "Failed to setup l2proxy");
+		}
+
+		if (netdev_conf[netdev->type](handler, netdev))
+			return log_error_errno(-1, errno, "Failed to create network device");
+	}
+
+	return 0;
+}
+
+int lxc_network_move_created_netdev_priv(struct lxc_handler *handler)
+{
+	pid_t pid = handler->pid;
+	struct lxc_list *network = &handler->conf->network;
 	struct lxc_list *iterator;
 
 	if (am_guest_unpriv())
 		return 0;
 
 	lxc_list_for_each(iterator, network) {
+		__do_free char *physname = NULL;
+		int ret;
 		struct lxc_netdev *netdev = iterator->elem;
 
 		if (!netdev->ifindex)
 			continue;
 
-		/* retrieve the name of the interface */
-		if (!if_indextoname(netdev->ifindex, ifname)) {
-			ERROR("No interface corresponding to ifindex \"%d\"",
-			      netdev->ifindex);
-			return -1;
-		}
+		if (netdev->type == LXC_NET_PHYS)
+			physname = is_wlan(netdev->link);
 
-		ret = lxc_netdev_move_by_name(ifname, pid, NULL);
-		if (ret) {
-			errno = -ret;
-			SYSERROR("Failed to move network device \"%s\" to "
-			         "network namespace %d", ifname, pid);
-			return -1;
-		}
+		if (physname)
+			ret = lxc_netdev_move_wlan(physname, netdev->link, pid, netdev->name);
+		else
+			ret = lxc_netdev_move_by_index(netdev->ifindex, pid, netdev->name);
+		if (ret)
+			return log_error_errno(-1, -ret, "Failed to move network device \"%s\" with ifindex %d to network namespace %d",
+					       netdev->created_name,
+					       netdev->ifindex, pid);
 
-		DEBUG("Moved network device \"%s\"/\"%s\" to network namespace "
-		      "of %d",
-		      ifname, netdev->name[0] != '\0' ? netdev->name : "(null)",
-		      pid);
+		DEBUG("Moved network device \"%s\" with ifindex %d to network namespace of %d",
+		      netdev->created_name, netdev->ifindex, pid);
 	}
 
 	return 0;
 }
 
-int lxc_create_network_unpriv(const char *lxcpath, const char *lxcname,
-			      struct lxc_list *network, pid_t pid, unsigned int hooks_version)
+static int network_requires_advanced_setup(int type)
 {
-	struct lxc_list *iterator;
+	if (type == LXC_NET_EMPTY)
+		return false;
 
-	if (!am_guest_unpriv())
-		return 0;
+	if (type == LXC_NET_NONE)
+		return false;
+
+	return true;
+}
+
+static int lxc_create_network_unpriv(struct lxc_handler *handler)
+{
+	int hooks_version = handler->conf->hooks_version;
+	const char *lxcname = handler->name;
+	const char *lxcpath = handler->lxcpath;
+	struct lxc_list *network = &handler->conf->network;
+	pid_t pid = handler->pid;
+	struct lxc_list *iterator;
 
 	lxc_list_for_each(iterator, network) {
 		struct lxc_netdev *netdev = iterator->elem;
 
-		if (netdev->type == LXC_NET_EMPTY)
+		if (!network_requires_advanced_setup(netdev->type))
 			continue;
 
-		if (netdev->type == LXC_NET_NONE)
-			continue;
-
-		if (netdev->type != LXC_NET_VETH) {
-			ERROR("Networks of type %s are not supported by "
-			      "unprivileged containers",
-			      lxc_net_type_to_str(netdev->type));
-			return -1;
-		}
+		if (netdev->type != LXC_NET_VETH)
+			return log_error_errno(-1, EINVAL, "Networks of type %s are not supported by unprivileged containers",
+					       lxc_net_type_to_str(netdev->type));
 
 		if (netdev->mtu)
 			INFO("mtu ignored due to insufficient privilege");
 
-		if (lxc_create_network_unpriv_exec(lxcpath, lxcname, netdev, pid, hooks_version))
+		if (lxc_create_network_unpriv_exec(lxcpath, lxcname, netdev,
+						   pid, hooks_version))
 			return -1;
 	}
 
@@ -2672,6 +3191,19 @@ bool lxc_delete_network_priv(struct lxc_handler *handler)
 		 */
 		if (!netdev->ifindex)
 			continue;
+
+		/*
+		 * If the network device has been moved back from the
+		 * containers network namespace, update the ifindex.
+		 */
+		netdev->ifindex = if_nametoindex(netdev->name);
+
+		/* Delete l2proxy entries if enabled and used with a link property */
+		if (netdev->l2proxy && !is_empty_string(netdev->link)) {
+			if (lxc_delete_l2proxy(netdev))
+				WARN("Failed to delete all l2proxy config");
+				/* Don't return, let the network be cleaned up as normal. */
+		}
 
 		if (netdev->type == LXC_NET_PHYS) {
 			ret = lxc_netdev_rename_by_index(netdev->ifindex, netdev->link);
@@ -2704,62 +3236,32 @@ bool lxc_delete_network_priv(struct lxc_handler *handler)
 		if (ret < 0)
 			WARN("Failed to deconfigure network device");
 
-		/* Recent kernels remove the virtual interfaces when the network
-		 * namespace is destroyed but in case we did not move the
-		 * interface to the network namespace, we have to destroy it.
-		 */
-		ret = lxc_netdev_delete_by_index(netdev->ifindex);
-		if (ret < 0) {
-			if (errno != ENODEV) {
-				WARN("Failed to remove interface \"%s\" with index %d",
-				     netdev->name[0] != '\0' ? netdev->name : "(null)",
-				     netdev->ifindex);
-				goto clear_ifindices;
-			}
-			INFO("Interface \"%s\" with index %d already deleted or existing in different network namespace",
-			     netdev->name[0] != '\0' ? netdev->name : "(null)",
-			     netdev->ifindex);
-		}
-		INFO("Removed interface \"%s\" with index %d",
-		     netdev->name[0] != '\0' ? netdev->name : "(null)",
-		     netdev->ifindex);
-
 		if (netdev->type != LXC_NET_VETH)
 			goto clear_ifindices;
 
 		/* Explicitly delete host veth device to prevent lingering
 		 * devices. We had issues in LXD around this.
 		 */
-		if (netdev->priv.veth_attr.pair[0] != '\0')
+		if (!is_empty_string(netdev->priv.veth_attr.pair))
 			hostveth = netdev->priv.veth_attr.pair;
 		else
 			hostveth = netdev->priv.veth_attr.veth1;
-		if (hostveth[0] == '\0')
+		if (is_empty_string(hostveth))
 			goto clear_ifindices;
 
-		ret = lxc_netdev_delete_by_name(hostveth);
-		if (ret < 0) {
-			WARN("Failed to remove interface \"%s\" from \"%s\"",
-			     hostveth, netdev->link);
-			goto clear_ifindices;
+		if (is_empty_string(netdev->link) || !is_ovs_bridge(netdev->link)) {
+			ret = lxc_netdev_delete_by_name(hostveth);
+			if (ret < 0)
+				WARN("Failed to remove interface \"%s\" from \"%s\"", hostveth, netdev->link);
+
+			INFO("Removed interface \"%s\" from \"%s\"", hostveth, netdev->link);
+		} else if (!is_empty_string(netdev->link)) {
+			ret = lxc_ovs_delete_port(netdev->link, hostveth);
+			if (ret < 0)
+				WARN("Failed to remove port \"%s\" from openvswitch bridge \"%s\"", hostveth, netdev->link);
+
+			INFO("Removed port \"%s\" from openvswitch bridge \"%s\"", hostveth, netdev->link);
 		}
-		INFO("Removed interface \"%s\" from \"%s\"", hostveth, netdev->link);
-
-		if (netdev->link[0] == '\0' || !is_ovs_bridge(netdev->link)) {
-			netdev->priv.veth_attr.veth1[0] = '\0';
-			netdev->ifindex = 0;
-			netdev->priv.veth_attr.ifindex = 0;
-			goto clear_ifindices;
-		}
-
-		/* Delete the openvswitch port. */
-		ret = lxc_ovs_delete_port(netdev->link, hostveth);
-		if (ret < 0)
-			WARN("Failed to remove port \"%s\" from openvswitch "
-			     "bridge \"%s\"", hostveth, netdev->link);
-		else
-			INFO("Removed port \"%s\" from openvswitch bridge \"%s\"",
-			     hostveth, netdev->link);
 
 clear_ifindices:
 		/* We need to clear any ifindices we recorded so liblxc won't
@@ -2787,7 +3289,7 @@ int lxc_requests_empty_network(struct lxc_handler *handler)
 	if (lxc_list_empty(network))
 		return 0;
 
-	lxc_list_for_each(iterator, network) {
+	lxc_list_for_each (iterator, network) {
 		struct lxc_netdev *netdev = iterator->elem;
 
 		if (netdev->type == LXC_NET_NONE)
@@ -2795,20 +3297,22 @@ int lxc_requests_empty_network(struct lxc_handler *handler)
 		else
 			found_nic = true;
 	}
+
 	if (found_none && !found_nic)
 		return 1;
+
 	return 0;
 }
 
 /* try to move physical nics to the init netns */
 int lxc_restore_phys_nics_to_netns(struct lxc_handler *handler)
 {
-	int ret;
-	int oldfd;
-	char ifname[IFNAMSIZ];
-	struct lxc_list *iterator;
+	__do_close int oldfd = -EBADF;
 	int netnsfd = handler->nsfd[LXC_NS_NET];
 	struct lxc_conf *conf = handler->conf;
+	int ret;
+	char ifname[IFNAMSIZ];
+	struct lxc_list *iterator;
 
 	/* We need CAP_NET_ADMIN in the parent namespace in order to setns() to
 	 * the parent network namespace. We won't have this capability if we are
@@ -2820,17 +3324,12 @@ int lxc_restore_phys_nics_to_netns(struct lxc_handler *handler)
 	TRACE("Moving physical network devices back to parent network namespace");
 
 	oldfd = lxc_preserve_ns(handler->monitor_pid, "net");
-	if (oldfd < 0) {
-		SYSERROR("Failed to preserve network namespace");
-		return -1;
-	}
+	if (oldfd < 0)
+		return log_error_errno(-1, errno, "Failed to preserve network namespace");
 
 	ret = setns(netnsfd, CLONE_NEWNET);
-	if (ret < 0) {
-		SYSERROR("Failed to enter network namespace");
-		close(oldfd);
-		return -1;
-	}
+	if (ret < 0)
+		return log_error_errno(-1, errno, "Failed to enter network namespace");
 
 	lxc_list_for_each(iterator, &conf->network) {
 		struct lxc_netdev *netdev = iterator->elem;
@@ -2842,42 +3341,34 @@ int lxc_restore_phys_nics_to_netns(struct lxc_handler *handler)
 		 * namespace.
 		 */
 		if (!if_indextoname(netdev->ifindex, ifname)) {
-			WARN("No interface corresponding to ifindex %d",
-			     netdev->ifindex);
+			WARN("No interface corresponding to ifindex %d", netdev->ifindex);
 			continue;
 		}
 
 		ret = lxc_netdev_move_by_index_fd(netdev->ifindex, oldfd, netdev->link);
 		if (ret < 0)
-			WARN("Error moving network device \"%s\" back to "
-			     "network namespace", ifname);
+			WARN("Error moving network device \"%s\" back to network namespace", ifname);
 		else
-			TRACE("Moved network device \"%s\" back to network "
-			      "namespace", ifname);
+			TRACE("Moved network device \"%s\" back to network namespace", ifname);
 	}
 
 	ret = setns(oldfd, CLONE_NEWNET);
-	close(oldfd);
-	if (ret < 0) {
-		SYSERROR("Failed to enter network namespace");
-		return -1;
-	}
+	if (ret < 0)
+		return log_error_errno(-1, errno, "Failed to enter network namespace");
 
 	return 0;
 }
 
 static int setup_hw_addr(char *hwaddr, const char *ifname)
 {
+	__do_close int fd = -EBADF;
 	struct sockaddr sockaddr;
 	struct ifreq ifr;
-	int ret, fd;
+	int ret;
 
 	ret = lxc_convert_mac(hwaddr, &sockaddr);
-	if (ret) {
-		errno = -ret;
-		SYSERROR("Mac address \"%s\" conversion failed", hwaddr);
-		return -1;
-	}
+	if (ret)
+		return log_error_errno(-1, -ret, "Mac address \"%s\" conversion failed", hwaddr);
 
 	memcpy(ifr.ifr_name, ifname, IFNAMSIZ);
 	ifr.ifr_name[IFNAMSIZ-1] = '\0';
@@ -2891,10 +3382,7 @@ static int setup_hw_addr(char *hwaddr, const char *ifname)
 	if (ret)
 		SYSERROR("Failed to perform ioctl");
 
-	close(fd);
-
-	DEBUG("Mac address \"%s\" on \"%s\" has been setup", hwaddr,
-	      ifr.ifr_name);
+	DEBUG("Mac address \"%s\" on \"%s\" has been setup", hwaddr, ifr.ifr_name);
 
 	return ret;
 }
@@ -2909,12 +3397,8 @@ static int setup_ipv4_addr(struct lxc_list *ip, int ifindex)
 
 		err = lxc_ipv4_addr_add(ifindex, &inetdev->addr,
 					&inetdev->bcast, inetdev->prefix);
-		if (err) {
-			errno = -err;
-			SYSERROR("Failed to setup ipv4 address for network device "
-			         "with eifindex %d", ifindex);
-			return -1;
-		}
+		if (err)
+			return log_error_errno(-1, -err, "Failed to setup ipv4 address for network device with ifindex %d", ifindex);
 	}
 
 	return 0;
@@ -2931,233 +3415,124 @@ static int setup_ipv6_addr(struct lxc_list *ip, int ifindex)
 		err = lxc_ipv6_addr_add(ifindex, &inet6dev->addr,
 					&inet6dev->mcast, &inet6dev->acast,
 					inet6dev->prefix);
-		if (err) {
-			errno = -err;
-			SYSERROR("Failed to setup ipv6 address for network device "
-			         "with eifindex %d", ifindex);
-			return -1;
-		}
+		if (err)
+			return log_error_errno(-1, -err, "Failed to setup ipv6 address for network device with ifindex %d", ifindex);
 	}
 
 	return 0;
 }
 
-static int lxc_setup_netdev_in_child_namespaces(struct lxc_netdev *netdev)
+static int lxc_network_setup_in_child_namespaces_common(struct lxc_netdev *netdev)
 {
-	char ifname[IFNAMSIZ];
 	int err;
-	const char *net_type_name;
-	char *current_ifname = ifname;
+	char bufinet4[INET_ADDRSTRLEN], bufinet6[INET6_ADDRSTRLEN];
 
 	/* empty network namespace */
-	if (!netdev->ifindex) {
-		if (netdev->flags & IFF_UP) {
-			err = lxc_netdev_up("lo");
-			if (err) {
-				errno = -err;
-				SYSERROR("Failed to set the loopback network device up");
-				return -1;
-			}
-		}
-
-		if (netdev->type == LXC_NET_EMPTY)
-			return 0;
-
-		if (netdev->type == LXC_NET_NONE)
-			return 0;
-
-		if (netdev->type != LXC_NET_VETH) {
-			net_type_name = lxc_net_type_to_str(netdev->type);
-			ERROR("%s networks are not supported for containers "
-			      "not setup up by privileged users", net_type_name);
-			return -1;
-		}
-
-		netdev->ifindex = if_nametoindex(netdev->name);
+	if (!netdev->ifindex && netdev->flags & IFF_UP) {
+		err = lxc_netdev_up("lo");
+		if (err)
+			return log_error_errno(-1, -err, "Failed to set the loopback network device up");
 	}
-
-	/* get the new ifindex in case of physical netdev */
-	if (netdev->type == LXC_NET_PHYS) {
-		netdev->ifindex = if_nametoindex(netdev->link);
-		if (!netdev->ifindex) {
-			ERROR("Failed to get ifindex for network device \"%s\"",
-			      netdev->link);
-			return -1;
-		}
-	}
-
-	/* retrieve the name of the interface */
-	if (!if_indextoname(netdev->ifindex, current_ifname)) {
-		ERROR("Failed get name for network device with ifindex %d",
-		      netdev->ifindex);
-		return -1;
-	}
-
-	/* Default: let the system to choose one interface name.
-	 * When the IFLA_IFNAME attribute is passed something like "<prefix>%d"
-	 * netlink will replace the format specifier with an appropriate index.
-	 */
-	if (netdev->name[0] == '\0') {
-		if (netdev->type == LXC_NET_PHYS)
-			(void)strlcpy(netdev->name, netdev->link, IFNAMSIZ);
-		else
-			(void)strlcpy(netdev->name, "eth%d", IFNAMSIZ);
-	}
-
-	/* rename the interface name */
-	if (strcmp(ifname, netdev->name) != 0) {
-		err = lxc_netdev_rename_by_name(ifname, netdev->name);
-		if (err) {
-			errno = -err;
-			SYSERROR("Failed to rename network device \"%s\" to \"%s\"",
-			         ifname, netdev->name);
-			return -1;
-		}
-	}
-
-	/* Re-read the name of the interface because its name has changed
-	 * and would be automatically allocated by the system
-	 */
-	if (!if_indextoname(netdev->ifindex, current_ifname)) {
-		ERROR("Failed get name for network device with ifindex %d",
-		      netdev->ifindex);
-		return -1;
-	}
-
-	/* Now update the recorded name of the network device to reflect the
-	 * name of the network device in the child's network namespace. We will
-	 * later on send this information back to the parent.
-	 */
-	(void)strlcpy(netdev->name, current_ifname, IFNAMSIZ);
 
 	/* set a mac address */
-	if (netdev->hwaddr) {
-		if (setup_hw_addr(netdev->hwaddr, current_ifname)) {
-			ERROR("Failed to setup hw address for network device \"%s\"",
-			      current_ifname);
-			return -1;
-		}
-	}
+	if (netdev->hwaddr && setup_hw_addr(netdev->hwaddr, netdev->name))
+		return log_error_errno(-1, errno, "Failed to setup hw address for network device \"%s\"", netdev->name);
 
 	/* setup ipv4 addresses on the interface */
-	if (setup_ipv4_addr(&netdev->ipv4, netdev->ifindex)) {
-		ERROR("Failed to setup ip addresses for network device \"%s\"",
-		      ifname);
-		return -1;
-	}
+	if (setup_ipv4_addr(&netdev->ipv4, netdev->ifindex))
+		return log_error_errno(-1, errno, "Failed to setup ip addresses for network device \"%s\"", netdev->name);
 
 	/* setup ipv6 addresses on the interface */
-	if (setup_ipv6_addr(&netdev->ipv6, netdev->ifindex)) {
-		ERROR("Failed to setup ipv6 addresses for network device \"%s\"",
-		      ifname);
-		return -1;
-	}
+	if (setup_ipv6_addr(&netdev->ipv6, netdev->ifindex))
+		return log_error_errno(-1, errno, "Failed to setup ipv6 addresses for network device \"%s\"", netdev->name);
 
 	/* set the network device up */
 	if (netdev->flags & IFF_UP) {
-		err = lxc_netdev_up(current_ifname);
-		if (err) {
-			errno = -err;
-			SYSERROR("Failed to set network device \"%s\" up",
-			         current_ifname);
-			return -1;
-		}
+		err = lxc_netdev_up(netdev->name);
+		if (err)
+			return log_error_errno(-1, -err, "Failed to set network device \"%s\" up", netdev->name);
 
 		/* the network is up, make the loopback up too */
 		err = lxc_netdev_up("lo");
-		if (err) {
-			errno = -err;
-			SYSERROR("Failed to set the loopback network device up");
-			return -1;
-		}
+		if (err)
+			return log_error_errno(-1, -err, "Failed to set the loopback network device up");
 	}
 
-	/* We can only set up the default routes after bringing
-	 * up the interface, sine bringing up the interface adds
-	 * the link-local routes and we can't add a default
-	 * route if the gateway is not reachable. */
-
 	/* setup ipv4 gateway on the interface */
-	if (netdev->ipv4_gateway) {
-		if (!(netdev->flags & IFF_UP)) {
-			ERROR("Cannot add ipv4 gateway for network device "
-			      "\"%s\" when not bringing up the interface", ifname);
-			return -1;
-		}
+	if (netdev->ipv4_gateway || netdev->ipv4_gateway_dev) {
+		if (!(netdev->flags & IFF_UP))
+			return log_error(-1, "Cannot add ipv4 gateway for network device \"%s\" when not bringing up the interface", netdev->name);
 
-		if (lxc_list_empty(&netdev->ipv4)) {
-			ERROR("Cannot add ipv4 gateway for network device "
-			      "\"%s\" when not assigning an address", ifname);
-			return -1;
-		}
+		if (lxc_list_empty(&netdev->ipv4))
+			return log_error(-1, "Cannot add ipv4 gateway for network device \"%s\" when not assigning an address", netdev->name);
 
-		err = lxc_ipv4_gateway_add(netdev->ifindex, netdev->ipv4_gateway);
-		if (err) {
-			err = lxc_ipv4_dest_add(netdev->ifindex, netdev->ipv4_gateway);
-			if (err) {
-				errno = -err;
-				SYSERROR("Failed to add ipv4 dest for network device \"%s\"",
-				         ifname);
-			}
+		/* Setup device route if ipv4_gateway_dev is enabled */
+		if (netdev->ipv4_gateway_dev) {
+			err = lxc_ipv4_gateway_add(netdev->ifindex, NULL);
+			if (err < 0)
+				return log_error_errno(-1, -err, "Failed to setup ipv4 gateway to network device \"%s\"", netdev->name);
+		} else {
+			/* Check the gateway address is valid */
+			if (!inet_ntop(AF_INET, netdev->ipv4_gateway, bufinet4, sizeof(bufinet4)))
+				return ret_set_errno(-1, errno);
 
+			/* Try adding a default route to the gateway address */
 			err = lxc_ipv4_gateway_add(netdev->ifindex, netdev->ipv4_gateway);
-			if (err) {
-				errno = -err;
-				SYSERROR("Failed to setup ipv4 gateway for network device \"%s\"",
-				         ifname);
+			if (err < 0) {
+				/* If adding the default route fails, this could be because the
+				 * gateway address is in a different subnet to the container's address.
+				 * To work around this, we try adding a static device route to the
+				 * gateway address first, and then try again.
+				 */
+				err = lxc_ipv4_dest_add(netdev->ifindex, netdev->ipv4_gateway, 32);
+				if (err < 0)
+					return log_error_errno(-1, -err, "Failed to add ipv4 dest \"%s\" for network device \"%s\"", bufinet4, netdev->name);
 
-				if (netdev->ipv4_gateway_auto) {
-					char buf[INET_ADDRSTRLEN];
-					inet_ntop(AF_INET, netdev->ipv4_gateway, buf, sizeof(buf));
-					ERROR("Tried to set autodetected ipv4 gateway \"%s\"", buf);
-				}
-				return -1;
+				err = lxc_ipv4_gateway_add(netdev->ifindex, netdev->ipv4_gateway);
+				if (err < 0)
+					return log_error_errno(-1, -err, "Failed to setup ipv4 gateway \"%s\" for network device \"%s\"", bufinet4, netdev->name);
 			}
 		}
 	}
 
 	/* setup ipv6 gateway on the interface */
-	if (netdev->ipv6_gateway) {
-		if (!(netdev->flags & IFF_UP)) {
-			ERROR("Cannot add ipv6 gateway for network device "
-			      "\"%s\" when not bringing up the interface", ifname);
-			return -1;
-		}
+	if (netdev->ipv6_gateway || netdev->ipv6_gateway_dev) {
+		if (!(netdev->flags & IFF_UP))
+			return log_error(-1, "Cannot add ipv6 gateway for network device \"%s\" when not bringing up the interface", netdev->name);
 
-		if (lxc_list_empty(&netdev->ipv6) && !IN6_IS_ADDR_LINKLOCAL(netdev->ipv6_gateway)) {
-			ERROR("Cannot add ipv6 gateway for network device "
-			      "\"%s\" when not assigning an address", ifname);
-			return -1;
-		}
+		if (lxc_list_empty(&netdev->ipv6) && !IN6_IS_ADDR_LINKLOCAL(netdev->ipv6_gateway))
+			return log_error(-1, "Cannot add ipv6 gateway for network device \"%s\" when not assigning an address", netdev->name);
 
-		err = lxc_ipv6_gateway_add(netdev->ifindex, netdev->ipv6_gateway);
-		if (err) {
-			err = lxc_ipv6_dest_add(netdev->ifindex, netdev->ipv6_gateway);
-			if (err) {
-				errno = -err;
-				SYSERROR("Failed to add ipv6 dest for network device \"%s\"",
-				         ifname);
-			}
+		/* Setup device route if ipv6_gateway_dev is enabled */
+		if (netdev->ipv6_gateway_dev) {
+			err = lxc_ipv6_gateway_add(netdev->ifindex, NULL);
+			if (err < 0)
+				return log_error_errno(-1, -err, "Failed to setup ipv6 gateway to network device \"%s\"", netdev->name);
+		} else {
+			/* Check the gateway address is valid */
+			if (!inet_ntop(AF_INET6, netdev->ipv6_gateway, bufinet6, sizeof(bufinet6)))
+				return ret_set_errno(-1, errno);
 
+			/* Try adding a default route to the gateway address */
 			err = lxc_ipv6_gateway_add(netdev->ifindex, netdev->ipv6_gateway);
-			if (err) {
-				errno = -err;
-				SYSERROR("Failed to setup ipv6 gateway for network device \"%s\"",
-				         ifname);
+			if (err < 0) {
+				/* If adding the default route fails, this could be because the
+				 * gateway address is in a different subnet to the container's address.
+				 * To work around this, we try adding a static device route to the
+				 * gateway address first, and then try again.
+				 */
+				err = lxc_ipv6_dest_add(netdev->ifindex, netdev->ipv6_gateway, 128);
+				if (err < 0)
+					return log_error_errno(-1, errno, "Failed to add ipv6 dest \"%s\" for network device \"%s\"", bufinet6, netdev->name);
 
-				if (netdev->ipv6_gateway_auto) {
-					char buf[INET6_ADDRSTRLEN];
-					inet_ntop(AF_INET6, netdev->ipv6_gateway, buf, sizeof(buf));
-					ERROR("Tried to set autodetected ipv6 "
-					      "gateway for network device "
-					      "\"%s\"", buf);
-				}
-				return -1;
+				err = lxc_ipv6_gateway_add(netdev->ifindex, netdev->ipv6_gateway);
+				if (err < 0)
+					return log_error_errno(-1, -err, "Failed to setup ipv6 gateway \"%s\" for network device \"%s\"", bufinet6, netdev->name);
 			}
 		}
 	}
 
-	DEBUG("Network device \"%s\" has been setup", current_ifname);
+	DEBUG("Network device \"%s\" has been setup", netdev->name);
 
 	return 0;
 }
@@ -3166,68 +3541,73 @@ int lxc_setup_network_in_child_namespaces(const struct lxc_conf *conf,
 					  struct lxc_list *network)
 {
 	struct lxc_list *iterator;
-	struct lxc_netdev *netdev;
 
-	lxc_list_for_each(iterator, network) {
-		netdev = iterator->elem;
+	lxc_list_for_each (iterator, network) {
+		struct lxc_netdev *netdev = iterator->elem;
+		int ret;
 
-		if (lxc_setup_netdev_in_child_namespaces(netdev)) {
-			ERROR("failed to setup netdev");
-			return -1;
-		}
+		ret = netdev_ns_conf[netdev->type](netdev);
+		if (!ret)
+			ret = lxc_network_setup_in_child_namespaces_common(netdev);
+		if (ret)
+			return log_error_errno(-1, errno, "Failed to setup netdev");
 	}
 
 	if (!lxc_list_empty(network))
-		INFO("network has been setup");
+		INFO("Network has been setup");
 
 	return 0;
 }
 
-int lxc_network_send_veth_names_to_child(struct lxc_handler *handler)
+int lxc_network_send_to_child(struct lxc_handler *handler)
 {
 	struct lxc_list *iterator;
 	struct lxc_list *network = &handler->conf->network;
 	int data_sock = handler->data_sock[0];
 
-	if (handler->am_root)
-		return 0;
-
 	lxc_list_for_each(iterator, network) {
 		int ret;
 		struct lxc_netdev *netdev = iterator->elem;
 
-		if (netdev->type != LXC_NET_VETH)
+		if (!network_requires_advanced_setup(netdev->type))
 			continue;
 
 		ret = lxc_send_nointr(data_sock, netdev->name, IFNAMSIZ, MSG_NOSIGNAL);
 		if (ret < 0)
 			return -1;
-		TRACE("Sent network device name \"%s\" to child", netdev->name);
+
+		ret = lxc_send_nointr(data_sock, netdev->created_name, IFNAMSIZ, MSG_NOSIGNAL);
+		if (ret < 0)
+			return -1;
+
+		TRACE("Sent network device name \"%s\" to child", netdev->created_name);
 	}
 
 	return 0;
 }
 
-int lxc_network_recv_veth_names_from_parent(struct lxc_handler *handler)
+int lxc_network_recv_from_parent(struct lxc_handler *handler)
 {
 	struct lxc_list *iterator;
 	struct lxc_list *network = &handler->conf->network;
 	int data_sock = handler->data_sock[1];
 
-	if (handler->am_root)
-		return 0;
-
 	lxc_list_for_each(iterator, network) {
 		int ret;
 		struct lxc_netdev *netdev = iterator->elem;
 
-		if (netdev->type != LXC_NET_VETH)
+		if (!network_requires_advanced_setup(netdev->type))
 			continue;
 
 		ret = lxc_recv_nointr(data_sock, netdev->name, IFNAMSIZ, 0);
 		if (ret < 0)
 			return -1;
-		TRACE("Received network device name \"%s\" from parent", netdev->name);
+
+		ret = lxc_recv_nointr(data_sock, netdev->created_name, IFNAMSIZ, 0);
+		if (ret < 0)
+			return -1;
+
+		TRACE("Received network device name \"%s\" from parent", netdev->created_name);
 	}
 
 	return 0;
@@ -3259,7 +3639,9 @@ int lxc_network_send_name_and_ifindex_to_parent(struct lxc_handler *handler)
 			return -1;
 	}
 
-	TRACE("Sent network device names and ifindices to parent");
+	if (!lxc_list_empty(network))
+		TRACE("Sent network device names and ifindices to parent");
+
 	return 0;
 }
 
@@ -3315,13 +3697,13 @@ int lxc_netns_set_nsid(int fd)
 		 NLMSG_ALIGN(sizeof(struct rtgenmsg)) +
 		 NLMSG_ALIGN(1024)];
 	struct nl_handler nlh;
+	call_cleaner(netlink_close) struct nl_handler *nlh_ptr = &nlh;
 	struct nlmsghdr *hdr;
 	struct rtgenmsg *msg;
-	int saved_errno;
 	const __s32 ns_id = -1;
 	const __u32 netns_fd = fd;
 
-	ret = netlink_open(&nlh, NETLINK_ROUTE);
+	ret = netlink_open(nlh_ptr, NETLINK_ROUTE);
 	if (ret < 0)
 		return -1;
 
@@ -3342,20 +3724,13 @@ int lxc_netns_set_nsid(int fd)
 
 	ret = addattr(hdr, 1024, __LXC_NETNSA_FD, &netns_fd, sizeof(netns_fd));
 	if (ret < 0)
-		goto on_error;
+		return ret_errno(ENOMEM);
 
 	ret = addattr(hdr, 1024, __LXC_NETNSA_NSID, &ns_id, sizeof(ns_id));
 	if (ret < 0)
-		goto on_error;
+		return ret_errno(ENOMEM);
 
-	ret = __netlink_transaction(&nlh, hdr, hdr);
-
-on_error:
-	saved_errno = errno;
-	netlink_close(&nlh);
-	errno = saved_errno;
-
-	return ret;
+	return __netlink_transaction(nlh_ptr, hdr, hdr);
 }
 
 static int parse_rtattr(struct rtattr *tb[], int max, struct rtattr *rta, int len)
@@ -3390,19 +3765,19 @@ static inline __s32 rta_getattr_s32(const struct rtattr *rta)
 
 int lxc_netns_get_nsid(int fd)
 {
+	struct nl_handler nlh;
+	call_cleaner(netlink_close) struct nl_handler *nlh_ptr = &nlh;
 	int ret;
 	ssize_t len;
 	char buf[NLMSG_ALIGN(sizeof(struct nlmsghdr)) +
 		 NLMSG_ALIGN(sizeof(struct rtgenmsg)) +
 		 NLMSG_ALIGN(1024)];
 	struct rtattr *tb[__LXC_NETNSA_MAX + 1];
-	struct nl_handler nlh;
 	struct nlmsghdr *hdr;
 	struct rtgenmsg *msg;
-	int saved_errno;
 	__u32 netns_fd = fd;
 
-	ret = netlink_open(&nlh, NETLINK_ROUTE);
+	ret = netlink_open(nlh_ptr, NETLINK_ROUTE);
 	if (ret < 0)
 		return -1;
 
@@ -3422,20 +3797,17 @@ int lxc_netns_get_nsid(int fd)
 	msg->rtgen_family = AF_UNSPEC;
 
 	ret = addattr(hdr, 1024, __LXC_NETNSA_FD, &netns_fd, sizeof(netns_fd));
-	if (ret == 0)
-		ret = __netlink_transaction(&nlh, hdr, hdr);
+	if (ret < 0)
+		return ret_errno(ENOMEM);
 
-	saved_errno = errno;
-	netlink_close(&nlh);
-	errno = saved_errno;
+	ret = __netlink_transaction(nlh_ptr, hdr, hdr);
 	if (ret < 0)
 		return -1;
 
-	errno = EINVAL;
 	msg = NLMSG_DATA(hdr);
 	len = hdr->nlmsg_len - NLMSG_SPACE(sizeof(*msg));
 	if (len < 0)
-		return -1;
+		return ret_errno(EINVAL);
 
 #pragma GCC diagnostic push
 #pragma GCC diagnostic ignored "-Wcast-align"
@@ -3445,4 +3817,19 @@ int lxc_netns_get_nsid(int fd)
 #pragma GCC diagnostic pop
 
 	return -1;
+}
+
+int lxc_create_network(struct lxc_handler *handler)
+{
+	int ret;
+
+	if (handler->am_root) {
+		ret = lxc_create_network_priv(handler);
+		if (ret)
+			return -1;
+
+		return lxc_network_move_created_netdev_priv(handler);
+	}
+
+	return lxc_create_network_unpriv(handler);
 }

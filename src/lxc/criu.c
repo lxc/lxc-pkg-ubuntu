@@ -1,25 +1,4 @@
-/*
- * lxc: linux Container library
- *
- * Copyright © 2014-2015 Canonical Ltd.
- *
- * Authors:
- * Tycho Andersen <tycho.andersen@canonical.com>
- *
- * This library is free software; you can redistribute it and/or
- * modify it under the terms of the GNU Lesser General Public
- * License as published by the Free Software Foundation; either
- * version 2.1 of the License, or (at your option) any later version.
- *
- * This library is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
- * Lesser General Public License for more details.
- *
- * You should have received a copy of the GNU Lesser General Public
- * License along with this library; if not, write to the Free Software
- * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA
- */
+/* SPDX-License-Identifier: LGPL-2.1+ */
 
 #ifndef _GNU_SOURCE
 #define _GNU_SOURCE 1
@@ -110,7 +89,7 @@ static int load_tty_major_minor(char *directory, char *output, int len)
 		return -1;
 	}
 
-	f = fopen(path, "r");
+	f = fopen(path, "re");
 	if (!f) {
 		/* This means we're coming from a liblxc which didn't export
 		 * the tty info. In this case they had to have lxc.console.path
@@ -382,7 +361,8 @@ static void exec_criu(struct cgroup_ops *cgroup_ops, struct lxc_conf *conf,
 		DECLARE_ARG(opts->user->action_script);
 	}
 
-	mnts = make_anonymous_mount_file(&opts->c->lxc_conf->mount_list);
+	mnts = make_anonymous_mount_file(&opts->c->lxc_conf->mount_list,
+	                                 opts->c->lxc_conf->lsm_aa_allow_nesting);
 	if (!mnts)
 		goto err;
 
@@ -813,7 +793,7 @@ static bool criu_version_ok(char **version)
 			return false;
 		}
 
-		f = fdopen(pipes[0], "r");
+		f = fdopen(pipes[0], "re");
 		if (!f) {
 			close(pipes[0]);
 			return false;
@@ -923,7 +903,7 @@ static bool restore_net_info(struct lxc_container *c)
 
 		if (netdev->priv.veth_attr.pair[0] == '\0' &&
 		    netdev->priv.veth_attr.veth1[0] == '\0') {
-			if (!lxc_mkifname(template))
+			if (!lxc_ifname_alnum_case_sensitive(template))
 				goto out_unlock;
 
 			(void)strlcpy(netdev->priv.veth_attr.veth1, template, IFNAMSIZ);
@@ -1105,7 +1085,7 @@ static void do_restore(struct lxc_container *c, int status_pipe, struct migrate_
 					goto out_fini_handler;
 				}
 
-				FILE *f = fopen(buf, "r");
+				FILE *f = fopen(buf, "re");
 				if (!f) {
 					SYSERROR("couldn't read restore's children file %s", buf);
 					goto out_fini_handler;
@@ -1154,8 +1134,8 @@ static void do_restore(struct lxc_container *c, int status_pipe, struct migrate_
 
 		ret = lxc_poll(c->name, handler);
 		if (ret)
-			lxc_abort(c->name, handler);
-		lxc_fini(c->name, handler);
+			lxc_abort(handler);
+		lxc_end(handler);
 		_exit(ret);
 	}
 
@@ -1165,7 +1145,7 @@ out_fini_handler:
 	if (pipes[1] >= 0)
 		close(pipes[1]);
 
-	lxc_fini(c->name, handler);
+	lxc_end(handler);
 
 out:
 	if (status_pipe >= 0) {
@@ -1222,7 +1202,7 @@ static int save_tty_major_minor(char *directory, struct lxc_container *c, char *
 		return -1;
 	}
 
-	f = fopen(path, "w");
+	f = fopen(path, "we");
 	if (!f) {
 		SYSERROR("failed to open %s", path);
 		return -1;
