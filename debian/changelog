@@ -1,3 +1,9 @@
+lxc (3.0.4-0ubuntu3) focal; urgency=medium
+
+  * No-change rebuild for libgcc-s1 package name change.
+
+ -- Matthias Klose <doko@ubuntu.com>  Sun, 22 Mar 2020 16:48:35 +0100
+
 lxc (3.0.4-0ubuntu2) focal; urgency=medium
 
   * Cherry-pick upstream bugfixes (LP: #1848587):
