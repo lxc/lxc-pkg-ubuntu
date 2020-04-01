@@ -1,0 +1,23 @@
+From 22482f66ffd997a81cd2be66509413fc20437430 Mon Sep 17 00:00:00 2001
+From: Christian Brauner <christian.brauner@ubuntu.com>
+Date: Fri, 27 Mar 2020 11:04:34 +0100
+Subject: commands: log actual errno when lxc_cmd_get_cgroup2_fd() fails
+
+Signed-off-by: Christian Brauner <christian.brauner@ubuntu.com>
+---
+ src/lxc/commands.c | 2 +-
+ 1 file changed, 1 insertion(+), 1 deletion(-)
+
+diff --git a/src/lxc/commands.c b/src/lxc/commands.c
+index 9c73bb53a..20890a719 100644
+--- a/src/lxc/commands.c
++++ b/src/lxc/commands.c
+@@ -1328,7 +1328,7 @@ int lxc_cmd_get_cgroup2_fd(const char *name, const char *lxcpath)
+ 		return -1;
+ 
+ 	if (cmd.rsp.ret < 0)
+-		return log_debug_errno(-1, errno, "Failed to receive cgroup2 fd");
++		return log_debug_errno(cmd.rsp.ret, -cmd.rsp.ret, "Failed to receive cgroup2 fd");
+ 
+ 	return PTR_TO_INT(cmd.rsp.data);
+ }

@@ -1,0 +1,102 @@
+From 0354728e14b7fb611a0c09b201923788a70440ed Mon Sep 17 00:00:00 2001
+From: Wolfgang Bumiller <w.bumiller@proxmox.com>
+Date: Fri, 27 Mar 2020 14:15:12 +0100
+Subject: fixup i/o handler return values
+
+Particularly important for lxc_cmd_handler() handles client
+input and should not be capable of canceling the main loop,
+some syscall return values leaked through overlapping with
+LXC_MAINLOOP_ERROR, causing unauthorized clients connecting
+to the command socket to shutdown the main loop.
+
+In turn, signal_handler() receiving unexpected
+`signalfd_siginfo` struct sizes seems like a reason to bail
+(since it's a kernel interface).
+
+Signed-off-by: Wolfgang Bumiller <w.bumiller@proxmox.com>
+Signed-off-by: Christian Brauner <christian.brauner@ubuntu.com>
+---
+ src/lxc/commands.c | 9 ++-------
+ src/lxc/seccomp.c  | 4 +---
+ src/lxc/start.c    | 2 +-
+ 3 files changed, 4 insertions(+), 11 deletions(-)
+
+diff --git a/src/lxc/commands.c b/src/lxc/commands.c
+index 20890a719..8b2d0e0b7 100644
+--- a/src/lxc/commands.c
++++ b/src/lxc/commands.c
+@@ -1450,7 +1450,7 @@ static int lxc_cmd_handler(int fd, uint32_t events, void *data,
+ 		if (errno == EACCES) {
+ 			/* We don't care for the peer, just send and close. */
+ 			struct lxc_cmd_rsp rsp = {
+-				.ret = ret,
++				.ret = -EPERM,
+ 			};
+ 
+ 			lxc_cmd_rsp_send(fd, &rsp);
+@@ -1464,14 +1464,11 @@ static int lxc_cmd_handler(int fd, uint32_t events, void *data,
+ 
+ 	if (ret != sizeof(req)) {
+ 		WARN("Failed to receive full command request. Ignoring request for \"%s\"", lxc_cmd_str(req.cmd));
+-		ret = -1;
+ 		goto out_close;
+ 	}
+ 
+ 	if ((req.datalen > LXC_CMD_DATA_MAX) && (req.cmd != LXC_CMD_CONSOLE_LOG)) {
+ 		ERROR("Received command data length %d is too large for command \"%s\"", req.datalen, lxc_cmd_str(req.cmd));
+-		errno = EFBIG;
+-		ret = -EFBIG;
+ 		goto out_close;
+ 	}
+ 
+@@ -1480,7 +1477,6 @@ static int lxc_cmd_handler(int fd, uint32_t events, void *data,
+ 		ret = lxc_recv_nointr(fd, reqdata, req.datalen, 0);
+ 		if (ret != req.datalen) {
+ 			WARN("Failed to receive full command request. Ignoring request for \"%s\"", lxc_cmd_str(req.cmd));
+-			ret = LXC_MAINLOOP_ERROR;
+ 			goto out_close;
+ 		}
+ 
+@@ -1490,12 +1486,11 @@ static int lxc_cmd_handler(int fd, uint32_t events, void *data,
+ 	ret = lxc_cmd_process(fd, &req, handler, descr);
+ 	if (ret) {
+ 		/* This is not an error, but only a request to close fd. */
+-		ret = LXC_MAINLOOP_CONTINUE;
+ 		goto out_close;
+ 	}
+ 
+ out:
+-	return ret;
++	return LXC_MAINLOOP_CONTINUE;
+ 
+ out_close:
+ 	lxc_cmd_fd_cleanup(fd, handler, descr, req.cmd);
+diff --git a/src/lxc/seccomp.c b/src/lxc/seccomp.c
+index 916b1aa1a..081d315ab 100644
+--- a/src/lxc/seccomp.c
++++ b/src/lxc/seccomp.c
+@@ -1478,10 +1478,8 @@ retry:
+ 		SYSERROR("Failed to send seccomp notification");
+ 
+ out:
+-	return 0;
+-#else
+-	return -ENOSYS;
+ #endif
++	return LXC_MAINLOOP_CONTINUE;
+ }
+ 
+ void seccomp_conf_init(struct lxc_conf *conf)
+diff --git a/src/lxc/start.c b/src/lxc/start.c
+index 62152a6f6..c8ebe7726 100644
+--- a/src/lxc/start.c
++++ b/src/lxc/start.c
+@@ -335,7 +335,7 @@ static int signal_handler(int fd, uint32_t events, void *data,
+ 		return log_error(LXC_MAINLOOP_ERROR, "Failed to read signal info from signal file descriptor %d", fd);
+ 
+ 	if (ret != sizeof(siginfo))
+-		return log_error(-EINVAL, "Unexpected size for struct signalfd_siginfo");
++		return log_error(LXC_MAINLOOP_ERROR, "Unexpected size for struct signalfd_siginfo");
+ 
+ 	/* Check whether init is running. */
+ 	info.si_pid = 0;

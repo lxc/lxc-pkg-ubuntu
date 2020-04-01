@@ -1,0 +1,24 @@
+From 0c66760d1d2c62128c2cfceb9c0e3dcb99e7ca2e Mon Sep 17 00:00:00 2001
+From: Christian Brauner <christian.brauner@ubuntu.com>
+Date: Fri, 27 Mar 2020 11:52:44 +0100
+Subject: attach: use close_prot_errno_disarm()
+
+Signed-off-by: Christian Brauner <christian.brauner@ubuntu.com>
+---
+ src/lxc/attach.c | 3 +--
+ 1 file changed, 1 insertion(+), 2 deletions(-)
+
+diff --git a/src/lxc/attach.c b/src/lxc/attach.c
+index ca1fd2bd6..15cc5f379 100644
+--- a/src/lxc/attach.c
++++ b/src/lxc/attach.c
+@@ -1326,8 +1326,7 @@ int lxc_attach(struct lxc_container *container, lxc_attach_exec_t exec_function,
+ 	}
+ 
+ 	/* close unneeded file descriptors */
+-	close(ipc_sockets[0]);
+-	ipc_sockets[0] = -EBADF;
++	close_prot_errno_disarm(ipc_sockets[0]);
+ 
+ 	if (options->attach_flags & LXC_ATTACH_TERMINAL) {
+ 		lxc_attach_terminal_close_master(&terminal);

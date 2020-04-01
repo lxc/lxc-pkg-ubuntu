@@ -1,0 +1,27 @@
+From 4c428e5f39aed243e316a648d1d3dd49d68c856d Mon Sep 17 00:00:00 2001
+From: Christian Brauner <christian.brauner@ubuntu.com>
+Date: Sat, 28 Mar 2020 00:27:00 +0100
+Subject: cgroups: please compilers
+
+Signed-off-by: Christian Brauner <christian.brauner@ubuntu.com>
+---
+ src/lxc/cgroups/cgfsng.c | 6 ++++--
+ 1 file changed, 4 insertions(+), 2 deletions(-)
+
+diff --git a/src/lxc/cgroups/cgfsng.c b/src/lxc/cgroups/cgfsng.c
+index effbf11a8..b80d826f0 100644
+--- a/src/lxc/cgroups/cgfsng.c
++++ b/src/lxc/cgroups/cgfsng.c
+@@ -2085,8 +2085,10 @@ static int cgroup_attach_leaf(const struct lxc_conf *conf, int unified_fd, pid_t
+ 		char attach_cgroup[STRLITERALLEN(".lxc-1000/cgroup.procs") + 1];
+ 		char *slash;
+ 
+-		snprintf(attach_cgroup, STRLITERALLEN(".lxc-%d/cgroup.procs"),
+-			 ".lxc-%d/cgroup.procs", idx);
++		ret = snprintf(attach_cgroup, sizeof(attach_cgroup), ".lxc-%d/cgroup.procs", idx);
++		if (ret < 0 || (size_t)ret >= sizeof(attach_cgroup))
++			return ret_errno(EIO);
++
+ 		slash = &attach_cgroup[ret] - STRLITERALLEN("/cgroup.procs");
+ 		*slash = '\0';
+ 

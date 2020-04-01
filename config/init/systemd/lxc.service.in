@@ -1,6 +1,6 @@
 [Unit]
 Description=LXC Container Initialization and Autoboot Code
-After=network.target lxc-net.service
+After=network.target lxc-net.service remote-fs.target
 Wants=lxc-net.service
 Documentation=man:lxc-autostart man:lxc
 
@@ -10,6 +10,7 @@ RemainAfterExit=yes
 ExecStartPre=@LIBEXECDIR@/lxc/lxc-apparmor-load
 ExecStart=@LIBEXECDIR@/lxc/lxc-containers start
 ExecStop=@LIBEXECDIR@/lxc/lxc-containers stop
+ExecReload=@LIBEXECDIR@/lxc/lxc-apparmor-load
 # Environment=BOOTUP=serial
 # Environment=CONSOLETYPE=serial
 Delegate=yes

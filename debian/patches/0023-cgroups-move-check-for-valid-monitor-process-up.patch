@@ -1,0 +1,45 @@
+From 9b81fdccb958d86fa464df88f2b3ac978cf8fc35 Mon Sep 17 00:00:00 2001
+From: Christian Brauner <christian.brauner@ubuntu.com>
+Date: Sat, 28 Mar 2020 14:56:51 +0100
+Subject: cgroups: move check for valid monitor process up
+
+Cc: cenxianlong <cenxianlong@huawei.com>
+Signed-off-by: Christian Brauner <christian.brauner@ubuntu.com>
+---
+ src/lxc/cgroups/cgfsng.c | 16 ++++++++++------
+ 1 file changed, 10 insertions(+), 6 deletions(-)
+
+diff --git a/src/lxc/cgroups/cgfsng.c b/src/lxc/cgroups/cgfsng.c
+index 0df850695..68d158aa3 100644
+--- a/src/lxc/cgroups/cgfsng.c
++++ b/src/lxc/cgroups/cgfsng.c
+@@ -1082,6 +1082,12 @@ __cgfsng_ops static void cgfsng_monitor_destroy(struct cgroup_ops *ops,
+ 		if (!h->monitor_full_path)
+ 			continue;
+ 
++		/* Monitor might have died before we entered the cgroup. */
++		if (handler->monitor_pid <= 0) {
++			WARN("No valid monitor process found while destroying cgroups");
++			goto try_recursive_destroy;
++		}
++
+ 		if (conf && conf->cgroup_meta.dir)
+ 			pivot_path = must_make_path(h->mountpoint,
+ 						    h->container_base_path,
+@@ -1098,12 +1104,10 @@ __cgfsng_ops static void cgfsng_monitor_destroy(struct cgroup_ops *ops,
+ 			goto try_recursive_destroy;
+ 		}
+ 
+-		if (handler->monitor_pid != 0) {
+-			ret = lxc_write_openat(pivot_path, "cgroup.procs", pidstr, len);
+-			if (ret != 0) {
+-				SYSWARN("Failed to move monitor %s to \"%s\"", pidstr, pivot_path);
+-				continue;
+-			}
++		ret = lxc_write_openat(pivot_path, "cgroup.procs", pidstr, len);
++		if (ret != 0) {
++			SYSWARN("Failed to move monitor %s to \"%s\"", pidstr, pivot_path);
++			continue;
+ 		}
+ 
+ try_recursive_destroy:

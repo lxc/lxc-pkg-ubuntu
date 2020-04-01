@@ -1440,7 +1440,7 @@ static int lxc_setup_rootfs_switch_root(const struct lxc_rootfs *rootfs)
 	return lxc_pivot_root(rootfs->mount);
 }
 
-static const struct id_map *find_mapped_nsid_entry(struct lxc_conf *conf,
+static const struct id_map *find_mapped_nsid_entry(const struct lxc_conf *conf,
 						   unsigned id,
 						   enum idtype idtype)
 {
@@ -1694,61 +1694,70 @@ static int lxc_setup_console(const struct lxc_rootfs *rootfs,
 	return lxc_setup_ttydir_console(rootfs, console, ttydir);
 }
 
-static void parse_mntopt(char *opt, unsigned long *flags, char **data, size_t size)
+static int parse_mntopt(char *opt, unsigned long *flags, char **data, size_t size)
 {
-	struct mount_opt *mo;
+	ssize_t ret;
 
 	/* If '=' is contained in opt, the option must go into data. */
 	if (!strchr(opt, '=')) {
-
-		/* If opt is found in mount_opt, set or clear flags.
-		 * Otherwise append it to data. */
+		/*
+		 * If opt is found in mount_opt, set or clear flags.
+		 * Otherwise append it to data.
+		 */
 		size_t opt_len = strlen(opt);
-		for (mo = &mount_opt[0]; mo->name != NULL; mo++) {
+		for (struct mount_opt *mo = &mount_opt[0]; mo->name != NULL; mo++) {
 			size_t mo_name_len = strlen(mo->name);
+
 			if (opt_len == mo_name_len && strncmp(opt, mo->name, mo_name_len) == 0) {
 				if (mo->clear)
 					*flags &= ~mo->flag;
 				else
 					*flags |= mo->flag;
-				return;
+				return 0;
 			}
 		}
 	}
 
-	if (strlen(*data))
-		(void)strlcat(*data, ",", size);
+	if (strlen(*data)) {
+		ret = strlcat(*data, ",", size);
+		if (ret < 0)
+			return log_error_errno(ret, errno, "Failed to append \",\" to %s", *data);
+	}
 
-	(void)strlcat(*data, opt, size);
+	ret = strlcat(*data, opt, size);
+	if (ret < 0)
+		return log_error_errno(ret, errno, "Failed to append \"%s\" to %s", opt, *data);
+
+	return 0;
 }
 
 int parse_mntopts(const char *mntopts, unsigned long *mntflags, char **mntdata)
 {
-	__do_free char *data = NULL, *s = NULL;
-	char *p;
+	__do_free char *mntopts_new = NULL, *mntopts_dup = NULL;
+	char *mntopt_cur = NULL;
 	size_t size;
 
-	*mntdata = NULL;
-	*mntflags = 0L;
+	if (*mntdata || *mntflags)
+		return ret_errno(EINVAL);
 
 	if (!mntopts)
 		return 0;
 
-	s = strdup(mntopts);
-	if (!s)
-		return -1;
+	mntopts_dup = strdup(mntopts);
+	if (!mntopts_dup)
+		return ret_errno(ENOMEM);
 
-	size = strlen(s) + 1;
-	data = malloc(size);
-	if (!data)
-		return -1;
-	*data = 0;
+	size = strlen(mntopts_dup) + 1;
+	mntopts_new = zalloc(size);
+	if (!mntopts_new)
+		return ret_errno(ENOMEM);
 
-	lxc_iterate_parts(p, s, ",")
-		parse_mntopt(p, mntflags, &data, size);
+	lxc_iterate_parts(mntopt_cur, mntopts_dup, ",")
+		if (parse_mntopt(mntopt_cur, mntflags, &mntopts_new, size) < 0)
+			return ret_errno(EINVAL);
 
-	if (*data)
-		*mntdata = move_ptr(data);
+	if (*mntopts_new)
+		*mntdata = move_ptr(mntopts_new);
 
 	return 0;
 }
@@ -2001,11 +2010,10 @@ static inline int mount_entry_on_generic(struct mntent *mntent,
 					 const char *lxc_path)
 {
 	__do_free char *mntdata = NULL;
-	int ret;
-	unsigned long mntflags;
-	bool dev, optional, relative;
-	unsigned long pflags = 0;
+	unsigned long mntflags = 0, pflags = 0;
 	char *rootfs_path = NULL;
+	int ret;
+	bool dev, optional, relative;
 
 	optional = hasmntopt(mntent, "optional") != NULL;
 	dev = hasmntopt(mntent, "dev") != NULL;
@@ -2030,7 +2038,7 @@ static inline int mount_entry_on_generic(struct mntent *mntent,
 
 	ret = parse_mntopts(mntent->mnt_opts, &mntflags, &mntdata);
 	if (ret < 0)
-		return -1;
+		return ret;
 
 	ret = mount_entry(mntent->mnt_fsname, path, mntent->mnt_type, mntflags,
 			  pflags, mntdata, optional, dev, relative, rootfs_path);
@@ -2837,7 +2845,7 @@ int mapped_hostid(unsigned id, const struct lxc_conf *conf, enum idtype idtype)
 	return -1;
 }
 
-int find_unmapped_nsid(struct lxc_conf *conf, enum idtype idtype)
+int find_unmapped_nsid(const struct lxc_conf *conf, enum idtype idtype)
 {
 	struct id_map *map;
 	struct lxc_list *it;
@@ -3488,6 +3496,7 @@ static int lxc_free_idmap(struct lxc_list *id_map)
 
 	return 0;
 }
+define_cleanup_function(struct lxc_list *, lxc_free_idmap);
 
 int lxc_clear_idmaps(struct lxc_conf *c)
 {
@@ -3838,19 +3847,18 @@ struct userns_fn_data {
 
 static int run_userns_fn(void *data)
 {
+	struct userns_fn_data *d = data;
 	int ret;
 	char c;
-	struct userns_fn_data *d = data;
 
-	/* Close write end of the pipe. */
-	close(d->p[1]);
+	close_prot_errno_disarm(d->p[1]);
 
-	/* Wait for parent to finish establishing a new mapping in the user
+	/*
+	 * Wait for parent to finish establishing a new mapping in the user
 	 * namespace we are executing in.
 	 */
 	ret = lxc_read_nointr(d->p[0], &c, 1);
-	/* Close read end of the pipe. */
-	close(d->p[0]);
+	close_prot_errno_disarm(d->p[0]);
 	if (ret != 1)
 		return -1;
 
@@ -3861,7 +3869,7 @@ static int run_userns_fn(void *data)
 	return d->fn(d->arg);
 }
 
-static struct id_map *mapped_nsid_add(struct lxc_conf *conf, unsigned id,
+static struct id_map *mapped_nsid_add(const struct lxc_conf *conf, unsigned id,
 				      enum idtype idtype)
 {
 	const struct id_map *map;
@@ -3879,7 +3887,7 @@ static struct id_map *mapped_nsid_add(struct lxc_conf *conf, unsigned id,
 	return retmap;
 }
 
-static struct id_map *find_mapped_hostid_entry(struct lxc_conf *conf,
+static struct id_map *find_mapped_hostid_entry(const struct lxc_conf *conf,
 					       unsigned id, enum idtype idtype)
 {
 	struct id_map *map;
@@ -3903,7 +3911,7 @@ static struct id_map *find_mapped_hostid_entry(struct lxc_conf *conf,
 /* Allocate a new {g,u}id mapping for the given {g,u}id. Re-use an already
  * existing one or establish a new one.
  */
-static struct id_map *mapped_hostid_add(struct lxc_conf *conf, uid_t id,
+static struct id_map *mapped_hostid_add(const struct lxc_conf *conf, uid_t id,
 					enum idtype type)
 {
 	__do_free struct id_map *entry = NULL;
@@ -3932,7 +3940,8 @@ static struct id_map *mapped_hostid_add(struct lxc_conf *conf, uid_t id,
 	return move_ptr(entry);
 }
 
-struct lxc_list *get_minimal_idmap(struct lxc_conf *conf)
+static struct lxc_list *get_minimal_idmap(const struct lxc_conf *conf,
+					  uid_t *resuid, gid_t *resgid)
 {
 	__do_free struct id_map *container_root_uid = NULL,
 				*container_root_gid = NULL,
@@ -4021,11 +4030,17 @@ struct lxc_list *get_minimal_idmap(struct lxc_conf *conf)
 	/* idmap will now keep track of that memory. */
 	move_ptr(host_gid_map);
 
-	TRACE("Allocated minimal idmapping");
+	TRACE("Allocated minimal idmapping for ns uid %d and ns gid %d", nsuid, nsgid);
+
+	if (resuid)
+		*resuid = nsuid;
+	if (resgid)
+		*resgid = nsgid;
 	return move_ptr(idmap);
 }
 
-/* Run a function in a new user namespace.
+/*
+ * Run a function in a new user namespace.
  * The caller's euid/egid will be mapped if it is not already.
  * Afaict, userns_exec_1() is only used to operate based on privileges for the
  * user's own {g,u}id on the host and for the container root's unmapped {g,u}id.
@@ -4036,33 +4051,32 @@ struct lxc_list *get_minimal_idmap(struct lxc_conf *conf)
  * retrieve from the container's configured {g,u}id mappings as it must have been
  * there to start the container in the first place.
  */
-int userns_exec_1(struct lxc_conf *conf, int (*fn)(void *), void *data,
+int userns_exec_1(const struct lxc_conf *conf, int (*fn)(void *), void *data,
 		  const char *fn_name)
 {
-	pid_t pid;
-	int p[2];
-	struct userns_fn_data d;
-	struct lxc_list *idmap;
+	call_cleaner(lxc_free_idmap) struct lxc_list *idmap = NULL;
 	int ret = -1, status = -1;
 	char c = '1';
+	pid_t pid;
+	int pipe_fds[2];
+	struct userns_fn_data d;
 
 	if (!conf)
 		return -EINVAL;
 
-	idmap = get_minimal_idmap(conf);
+	idmap = get_minimal_idmap(conf, NULL, NULL);
 	if (!idmap)
-		return -1;
+		return ret_errno(ENOENT);
 
-	ret = pipe2(p, O_CLOEXEC);
-	if (ret < 0) {
-		SYSERROR("Failed to create pipe");
-		return -1;
-	}
-	d.fn = fn;
-	d.fn_name = fn_name;
-	d.arg = data;
-	d.p[0] = p[0];
-	d.p[1] = p[1];
+	ret = pipe2(pipe_fds, O_CLOEXEC);
+	if (ret < 0)
+		return -errno;
+
+	d.fn		= fn;
+	d.fn_name	= fn_name;
+	d.arg		= data;
+	d.p[0]		= pipe_fds[0];
+	d.p[1]		= pipe_fds[1];
 
 	/* Clone child in new user namespace. */
 	pid = lxc_raw_clone_cb(run_userns_fn, &d, CLONE_NEWUSER, NULL);
@@ -4071,21 +4085,17 @@ int userns_exec_1(struct lxc_conf *conf, int (*fn)(void *), void *data,
 		goto on_error;
 	}
 
-	close(p[0]);
-	p[0] = -1;
+	close_prot_errno_disarm(pipe_fds[0]);
 
 	if (lxc_log_get_level() == LXC_LOG_LEVEL_TRACE ||
 	    conf->loglevel == LXC_LOG_LEVEL_TRACE) {
 		struct id_map *map;
 		struct lxc_list *it;
 
-		lxc_list_for_each (it, idmap) {
+		lxc_list_for_each(it, idmap) {
 			map = it->elem;
-			TRACE("Establishing %cid mapping for \"%d\" in new "
-			      "user namespace: nsuid %lu - hostid %lu - range "
-			      "%lu",
-			      (map->idtype == ID_TYPE_UID) ? 'u' : 'g', pid,
-			      map->nsid, map->hostid, map->range);
+			TRACE("Establishing %cid mapping for \"%d\" in new user namespace: nsuid %lu - hostid %lu - range %lu",
+			      (map->idtype == ID_TYPE_UID) ? 'u' : 'g', pid, map->nsid, map->hostid, map->range);
 		}
 	}
 
@@ -4097,15 +4107,14 @@ int userns_exec_1(struct lxc_conf *conf, int (*fn)(void *), void *data,
 	}
 
 	/* Tell child to proceed. */
-	if (lxc_write_nointr(p[1], &c, 1) != 1) {
+	if (lxc_write_nointr(pipe_fds[1], &c, 1) != 1) {
 		SYSERROR("Failed telling child process \"%d\" to proceed", pid);
 		goto on_error;
 	}
 
 on_error:
-	if (p[0] != -1)
-		close(p[0]);
-	close(p[1]);
+	close_prot_errno_disarm(pipe_fds[0]);
+	close_prot_errno_disarm(pipe_fds[1]);
 
 	/* Wait for child to finish. */
 	if (pid > 0)
@@ -4115,6 +4124,130 @@ on_error:
 		ret = -1;
 
 	return ret;
+}
+
+int userns_exec_minimal(const struct lxc_conf *conf,
+			int (*fn_parent)(void *), void *fn_parent_data,
+			int (*fn_child)(void *), void *fn_child_data)
+{
+	call_cleaner(lxc_free_idmap) struct lxc_list *idmap = NULL;
+	uid_t resuid = LXC_INVALID_UID;
+	gid_t resgid = LXC_INVALID_GID;
+	char c = '1';
+	ssize_t ret;
+	pid_t pid;
+	int sock_fds[2];
+
+	if (!conf || !fn_child)
+		return ret_errno(EINVAL);
+
+	idmap = get_minimal_idmap(conf, &resuid, &resgid);
+	if (!idmap)
+		return ret_errno(ENOENT);
+
+	ret = socketpair(PF_LOCAL, SOCK_STREAM | SOCK_CLOEXEC, 0, sock_fds);
+	if (ret < 0)
+		return -errno;
+
+	pid = fork();
+	if (pid < 0) {
+		SYSERROR("Failed to create new process");
+		goto on_error;
+	}
+
+	if (pid == 0) {
+		close_prot_errno_disarm(sock_fds[1]);
+
+		ret = unshare(CLONE_NEWUSER);
+		if (ret < 0) {
+			SYSERROR("Failed to unshare new user namespace");
+			_exit(EXIT_FAILURE);
+		}
+
+		ret = lxc_write_nointr(sock_fds[0], &c, 1);
+		if (ret != 1)
+			_exit(EXIT_FAILURE);
+
+		ret = lxc_read_nointr(sock_fds[0], &c, 1);
+		if (ret != 1)
+			_exit(EXIT_FAILURE);
+
+		close_prot_errno_disarm(sock_fds[0]);
+
+		if (!lxc_setgroups(0, NULL) && errno != EPERM)
+			_exit(EXIT_FAILURE);
+
+		ret = setresgid(resgid, resgid, resgid);
+		if (ret < 0) {
+			SYSERROR("Failed to setresgid(%d, %d, %d)",
+				 resgid, resgid, resgid);
+			_exit(EXIT_FAILURE);
+		}
+
+		ret = setresuid(resuid, resuid, resuid);
+		if (ret < 0) {
+			SYSERROR("Failed to setresuid(%d, %d, %d)",
+				 resuid, resuid, resuid);
+			_exit(EXIT_FAILURE);
+		}
+
+		ret = fn_child(fn_child_data);
+		if (ret) {
+			SYSERROR("Running function in new user namespace failed");
+			_exit(EXIT_FAILURE);
+		}
+
+		_exit(EXIT_SUCCESS);
+	}
+
+	close_prot_errno_disarm(sock_fds[0]);
+
+	if (lxc_log_get_level() == LXC_LOG_LEVEL_TRACE ||
+	    conf->loglevel == LXC_LOG_LEVEL_TRACE) {
+		struct id_map *map;
+		struct lxc_list *it;
+
+		lxc_list_for_each(it, idmap) {
+			map = it->elem;
+			TRACE("Establishing %cid mapping for \"%d\" in new user namespace: nsuid %lu - hostid %lu - range %lu",
+			      (map->idtype == ID_TYPE_UID) ? 'u' : 'g', pid, map->nsid, map->hostid, map->range);
+		}
+	}
+
+	ret = lxc_read_nointr(sock_fds[1], &c, 1);
+	if (ret != 1) {
+		SYSERROR("Failed waiting for child process %d\" to tell us to proceed", pid);
+		goto on_error;
+	}
+
+	/* Set up {g,u}id mapping for user namespace of child process. */
+	ret = lxc_map_ids(idmap, pid);
+	if (ret < 0) {
+		ERROR("Error setting up {g,u}id mappings for child process \"%d\"", pid);
+		goto on_error;
+	}
+
+	/* Tell child to proceed. */
+	ret = lxc_write_nointr(sock_fds[1], &c, 1);
+	if (ret != 1) {
+		SYSERROR("Failed telling child process \"%d\" to proceed", pid);
+		goto on_error;
+	}
+
+	if (fn_parent && fn_parent(fn_parent_data)) {
+		SYSERROR("Running parent function failed");
+		_exit(EXIT_FAILURE);
+	}
+
+on_error:
+	close_prot_errno_disarm(sock_fds[0]);
+	close_prot_errno_disarm(sock_fds[1]);
+
+	/* Wait for child to finish. */
+	if (pid < 0)
+		return -1;
+
+	return wait_for_pid(pid);
 }
 
 int userns_exec_full(struct lxc_conf *conf, int (*fn)(void *), void *data,

@@ -1,0 +1,54 @@
+From 04bb243227176f7519bf862d9a05a25860540e10 Mon Sep 17 00:00:00 2001
+From: Christian Brauner <christian.brauner@ubuntu.com>
+Date: Fri, 27 Mar 2020 11:05:50 +0100
+Subject: cgroups: rework __cg_unified_attach()
+
+We didn't account for cgroup_attach() succeeding and just tried to attach to
+the same cgroup again which doesn't make sense.
+
+Signed-off-by: Christian Brauner <christian.brauner@ubuntu.com>
+---
+ src/lxc/cgroups/cgfsng.c | 22 +++++++++++++---------
+ 1 file changed, 13 insertions(+), 9 deletions(-)
+
+diff --git a/src/lxc/cgroups/cgfsng.c b/src/lxc/cgroups/cgfsng.c
+index 387350b43..4bcdf0c92 100644
+--- a/src/lxc/cgroups/cgfsng.c
++++ b/src/lxc/cgroups/cgfsng.c
+@@ -2194,23 +2194,27 @@ static int __cg_unified_attach(const struct hierarchy *h,
+ 			       const char *controller)
+ {
+ 	__do_close int unified_fd = -EBADF;
++	__do_free char *path = NULL, *cgroup = NULL;
+ 	int ret;
+ 
+ 	if (!conf || !name || !lxcpath || pid <= 0)
+ 		return ret_errno(EINVAL);
+ 
+ 	ret = cgroup_attach(conf, name, lxcpath, pid);
+-	if (ret < 0) {
+-		__do_free char *path = NULL, *cgroup = NULL;
++	if (ret == 0)
++		return log_trace(0, "Attached to unified cgroup via command handler");
++	if (ret != -EBADF)
++		return log_error_errno(ret, errno, "Failed to attach to unified cgroup");
+ 
+-		cgroup = lxc_cmd_get_cgroup_path(name, lxcpath, controller);
+-		/* not running */
+-		if (!cgroup)
+-			return 0;
++	/* Fall back to retrieving the path for the unified cgroup. */
++	cgroup = lxc_cmd_get_cgroup_path(name, lxcpath, controller);
++	/* not running */
++	if (!cgroup)
++		return 0;
+ 
+-		path = must_make_path(h->mountpoint, cgroup, NULL);
+-		unified_fd = open(path, O_DIRECTORY | O_RDONLY | O_CLOEXEC);
+-	}
++	path = must_make_path(h->mountpoint, cgroup, NULL);
++
++	unified_fd = open(path, O_PATH | O_DIRECTORY | O_CLOEXEC);
+ 	if (unified_fd < 0)
+ 		return ret_errno(EBADF);
+ 

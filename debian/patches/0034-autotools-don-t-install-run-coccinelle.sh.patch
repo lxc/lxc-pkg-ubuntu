@@ -1,0 +1,20 @@
+From f601296a5fd819dadcd024eac12b624a07bb8cf7 Mon Sep 17 00:00:00 2001
+From: Christian Brauner <christian.brauner@ubuntu.com>
+Date: Wed, 1 Apr 2020 22:25:53 +0200
+Subject: autotools: don't install run-coccinelle.sh
+
+Signed-off-by: Christian Brauner <christian.brauner@ubuntu.com>
+---
+ coccinelle/Makefile.am | 2 --
+ 1 file changed, 2 deletions(-)
+
+diff --git a/coccinelle/Makefile.am b/coccinelle/Makefile.am
+index a3c8b03d9..059f5df41 100644
+--- a/coccinelle/Makefile.am
++++ b/coccinelle/Makefile.am
+@@ -3,5 +3,3 @@
+ EXTRA_DIST = exit.cocci \
+ 	     run-coccinelle.sh \
+ 	     while-true.cocci
+-
+-bin_SCRIPTS = run-coccinelle.sh

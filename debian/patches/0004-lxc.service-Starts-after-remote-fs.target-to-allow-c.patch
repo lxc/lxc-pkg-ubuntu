@@ -1,0 +1,26 @@
+From 9baf2f189961cee88808148d5b3c3d6fc806adf3 Mon Sep 17 00:00:00 2001
+From: =?UTF-8?q?Pierre-Elliott=20B=C3=A9cue?= <becue@crans.org>
+Date: Wed, 25 Mar 2020 17:50:27 +0100
+Subject: [lxc.service] Starts after remote-fs.target to allow containers
+ relying on remote FS to work
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+Signed-off-by: Pierre-Elliott Bécue <becue@crans.org>
+---
+ config/init/systemd/lxc.service.in | 2 +-
+ 1 file changed, 1 insertion(+), 1 deletion(-)
+
+diff --git a/config/init/systemd/lxc.service.in b/config/init/systemd/lxc.service.in
+index cd6199671..7d7bfb3ea 100644
+--- a/config/init/systemd/lxc.service.in
++++ b/config/init/systemd/lxc.service.in
+@@ -1,6 +1,6 @@
+ [Unit]
+ Description=LXC Container Initialization and Autoboot Code
+-After=network.target lxc-net.service
++After=network.target lxc-net.service remote-fs.target
+ Wants=lxc-net.service
+ Documentation=man:lxc-autostart man:lxc
+ 

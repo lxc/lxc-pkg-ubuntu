@@ -1,0 +1,328 @@
+From 417a533d0f619dc4a3b90683654675e313bd716a Mon Sep 17 00:00:00 2001
+From: Christian Brauner <christian.brauner@ubuntu.com>
+Date: Thu, 26 Mar 2020 12:51:31 +0100
+Subject: tree-wide: harden mount option parsing
+
+Signed-off-by: Christian Brauner <christian.brauner@ubuntu.com>
+---
+ src/include/strlcat.c           | 12 +++---
+ src/include/strlcat.h           |  2 +-
+ src/lxc/conf.c                  | 68 ++++++++++++++++++---------------
+ src/lxc/confile.c               |  2 +-
+ src/lxc/criu.c                  |  4 +-
+ src/lxc/storage/btrfs.c         |  4 +-
+ src/lxc/storage/dir.c           |  4 +-
+ src/lxc/storage/overlay.c       |  7 ++--
+ src/lxc/storage/storage_utils.c |  5 +--
+ src/lxc/storage/zfs.c           |  5 ++-
+ src/lxc/string_utils.h          | 15 ++++++++
+ 11 files changed, 76 insertions(+), 52 deletions(-)
+
+diff --git a/src/include/strlcat.c b/src/include/strlcat.c
+index 42fa3f32c..ded647c6f 100644
+--- a/src/include/strlcat.c
++++ b/src/include/strlcat.c
+@@ -27,11 +27,13 @@
+ #include "strlcpy.h"
+ #endif
+ 
+-size_t strlcat(char *d, const char *s, size_t n)
++size_t strlcat(char *src, const char *append, size_t len)
+ {
+-	size_t l = strnlen(d, n);
+-	if (l == n)
+-		return l + strlen(s);
++	size_t src_len;
+ 
+-	return l + strlcpy(d + l, s, n - l);
++	src_len = strnlen(src, len);
++	if (src_len == len)
++		return src_len + strlen(append);
++
++	return src_len + strlcpy(src + src_len, append, len - src_len);
+ }
+diff --git a/src/include/strlcat.h b/src/include/strlcat.h
+index 1b51e00e6..60f7d8e05 100644
+--- a/src/include/strlcat.h
++++ b/src/include/strlcat.h
+@@ -24,6 +24,6 @@
+ 
+ #include <stdio.h>
+ 
+-extern size_t strlcat(char *d, const char *s, size_t n);
++extern size_t strlcat(char *src, const char *append, size_t len);
+ 
+ #endif
+diff --git a/src/lxc/conf.c b/src/lxc/conf.c
+index 0c36737c6..4bab3ee67 100644
+--- a/src/lxc/conf.c
++++ b/src/lxc/conf.c
+@@ -1694,61 +1694,70 @@ static int lxc_setup_console(const struct lxc_rootfs *rootfs,
+ 	return lxc_setup_ttydir_console(rootfs, console, ttydir);
+ }
+ 
+-static void parse_mntopt(char *opt, unsigned long *flags, char **data, size_t size)
++static int parse_mntopt(char *opt, unsigned long *flags, char **data, size_t size)
+ {
+-	struct mount_opt *mo;
++	ssize_t ret;
+ 
+ 	/* If '=' is contained in opt, the option must go into data. */
+ 	if (!strchr(opt, '=')) {
+-
+-		/* If opt is found in mount_opt, set or clear flags.
+-		 * Otherwise append it to data. */
++		/*
++		 * If opt is found in mount_opt, set or clear flags.
++		 * Otherwise append it to data.
++		 */
+ 		size_t opt_len = strlen(opt);
+-		for (mo = &mount_opt[0]; mo->name != NULL; mo++) {
++		for (struct mount_opt *mo = &mount_opt[0]; mo->name != NULL; mo++) {
+ 			size_t mo_name_len = strlen(mo->name);
++
+ 			if (opt_len == mo_name_len && strncmp(opt, mo->name, mo_name_len) == 0) {
+ 				if (mo->clear)
+ 					*flags &= ~mo->flag;
+ 				else
+ 					*flags |= mo->flag;
+-				return;
++				return 0;
+ 			}
+ 		}
+ 	}
+ 
+-	if (strlen(*data))
+-		(void)strlcat(*data, ",", size);
++	if (strlen(*data)) {
++		ret = strlcat(*data, ",", size);
++		if (ret < 0)
++			return log_error_errno(ret, errno, "Failed to append \",\" to %s", *data);
++	}
++
++	ret = strlcat(*data, opt, size);
++	if (ret < 0)
++		return log_error_errno(ret, errno, "Failed to append \"%s\" to %s", opt, *data);
+ 
+-	(void)strlcat(*data, opt, size);
++	return 0;
+ }
+ 
+ int parse_mntopts(const char *mntopts, unsigned long *mntflags, char **mntdata)
+ {
+-	__do_free char *data = NULL, *s = NULL;
+-	char *p;
++	__do_free char *mntopts_new = NULL, *mntopts_dup = NULL;
++	char *mntopt_cur = NULL;
+ 	size_t size;
+ 
+-	*mntdata = NULL;
+-	*mntflags = 0L;
++	if (*mntdata || *mntflags)
++		return ret_errno(EINVAL);
+ 
+ 	if (!mntopts)
+ 		return 0;
+ 
+-	s = strdup(mntopts);
+-	if (!s)
+-		return -1;
++	mntopts_dup = strdup(mntopts);
++	if (!mntopts_dup)
++		return ret_errno(ENOMEM);
+ 
+-	size = strlen(s) + 1;
+-	data = malloc(size);
+-	if (!data)
+-		return -1;
+-	*data = 0;
++	size = strlen(mntopts_dup) + 1;
++	mntopts_new = zalloc(size);
++	if (!mntopts_new)
++		return ret_errno(ENOMEM);
+ 
+-	lxc_iterate_parts(p, s, ",")
+-		parse_mntopt(p, mntflags, &data, size);
++	lxc_iterate_parts(mntopt_cur, mntopts_dup, ",")
++		if (parse_mntopt(mntopt_cur, mntflags, &mntopts_new, size) < 0)
++			return ret_errno(EINVAL);
+ 
+-	if (*data)
+-		*mntdata = move_ptr(data);
++	if (*mntopts_new)
++		*mntdata = move_ptr(mntopts_new);
+ 
+ 	return 0;
+ }
+@@ -2001,11 +2010,10 @@ static inline int mount_entry_on_generic(struct mntent *mntent,
+ 					 const char *lxc_path)
+ {
+ 	__do_free char *mntdata = NULL;
++	unsigned long mntflags = 0, pflags = 0;
++	char *rootfs_path = NULL;
+ 	int ret;
+-	unsigned long mntflags;
+ 	bool dev, optional, relative;
+-	unsigned long pflags = 0;
+-	char *rootfs_path = NULL;
+ 
+ 	optional = hasmntopt(mntent, "optional") != NULL;
+ 	dev = hasmntopt(mntent, "dev") != NULL;
+@@ -2030,7 +2038,7 @@ static inline int mount_entry_on_generic(struct mntent *mntent,
+ 
+ 	ret = parse_mntopts(mntent->mnt_opts, &mntflags, &mntdata);
+ 	if (ret < 0)
+-		return -1;
++		return ret;
+ 
+ 	ret = mount_entry(mntent->mnt_fsname, path, mntent->mnt_type, mntflags,
+ 			  pflags, mntdata, optional, dev, relative, rootfs_path);
+diff --git a/src/lxc/confile.c b/src/lxc/confile.c
+index a24bcff74..0ca577fa3 100644
+--- a/src/lxc/confile.c
++++ b/src/lxc/confile.c
+@@ -2572,9 +2572,9 @@ static int set_config_rootfs_mount(const char *key, const char *value,
+ static int set_config_rootfs_options(const char *key, const char *value,
+ 				     struct lxc_conf *lxc_conf, void *data)
+ {
+-	int ret;
+ 	unsigned long mflags = 0, pflags = 0;
+ 	char *mdata = NULL, *opts = NULL;
++	int ret;
+ 	struct lxc_rootfs *rootfs = &lxc_conf->rootfs;
+ 
+ 	ret = parse_mntopts(value, &mflags, &mdata);
+diff --git a/src/lxc/criu.c b/src/lxc/criu.c
+index 421da8941..1a909bb6c 100644
+--- a/src/lxc/criu.c
++++ b/src/lxc/criu.c
+@@ -367,9 +367,9 @@ static void exec_criu(struct cgroup_ops *cgroup_ops, struct lxc_conf *conf,
+ 		goto err;
+ 
+ 	while (getmntent_r(mnts, &mntent, buf, sizeof(buf))) {
+-		char *mntdata;
++		unsigned long flags = 0;
++		char *mntdata = NULL;
+ 		char arg[2 * PATH_MAX + 2];
+-		unsigned long flags;
+ 
+ 		if (parse_mntopts(mntent.mnt_opts, &flags, &mntdata) < 0)
+ 			goto err;
+diff --git a/src/lxc/storage/btrfs.c b/src/lxc/storage/btrfs.c
+index 47f2dd3c4..092930519 100644
+--- a/src/lxc/storage/btrfs.c
++++ b/src/lxc/storage/btrfs.c
+@@ -192,8 +192,8 @@ bool btrfs_detect(const char *path)
+ 
+ int btrfs_mount(struct lxc_storage *bdev)
+ {
+-	unsigned long mntflags;
+-	char *mntdata;
++	unsigned long mntflags = 0;
++	char *mntdata = NULL;
+ 	const char *src;
+ 	int ret;
+ 
+diff --git a/src/lxc/storage/dir.c b/src/lxc/storage/dir.c
+index 9b3e673b3..d09e570ec 100644
+--- a/src/lxc/storage/dir.c
++++ b/src/lxc/storage/dir.c
+@@ -138,9 +138,9 @@ bool dir_detect(const char *path)
+ 
+ int dir_mount(struct lxc_storage *bdev)
+ {
+-	int ret;
++	char *mntdata = NULL;
+ 	unsigned long mflags = 0, mntflags = 0, pflags = 0;
+-	char *mntdata;
++	int ret;
+ 	const char *src;
+ 
+ 	if (strcmp(bdev->type, "dir"))
+diff --git a/src/lxc/storage/overlay.c b/src/lxc/storage/overlay.c
+index a18b947fa..770785cfd 100644
+--- a/src/lxc/storage/overlay.c
++++ b/src/lxc/storage/overlay.c
+@@ -342,13 +342,12 @@ bool ovl_detect(const char *path)
+ 
+ int ovl_mount(struct lxc_storage *bdev)
+ {
+-	__do_free char *options = NULL,
+-							 *options_work = NULL;
++	__do_free char *options = NULL, *options_work = NULL;
++	unsigned long mntflags = 0;
++	char *mntdata = NULL;
+ 	char *tmp, *dup, *lower, *upper;
+ 	char *work, *lastslash;
+ 	size_t len, len2;
+-	unsigned long mntflags;
+-	char *mntdata;
+ 	int ret, ret2;
+ 
+ 	if (strcmp(bdev->type, "overlay") && strcmp(bdev->type, "overlayfs"))
+diff --git a/src/lxc/storage/storage_utils.c b/src/lxc/storage/storage_utils.c
+index 79ee62ecb..a3ee353e5 100644
+--- a/src/lxc/storage/storage_utils.c
++++ b/src/lxc/storage/storage_utils.c
+@@ -315,9 +315,8 @@ int find_fstype_cb(char *buffer, void *data)
+ 		const char *target;
+ 		const char *options;
+ 	} *cbarg = data;
+-
+-	unsigned long mntflags;
+-	char *mntdata;
++	unsigned long mntflags = 0;
++	char *mntdata = NULL;
+ 	char *fstype;
+ 
+ 	/* we don't try 'nodev' entries */
+diff --git a/src/lxc/storage/zfs.c b/src/lxc/storage/zfs.c
+index d745f2e39..4cc171fd8 100644
+--- a/src/lxc/storage/zfs.c
++++ b/src/lxc/storage/zfs.c
+@@ -159,11 +159,12 @@ bool zfs_detect(const char *path)
+ 
+ int zfs_mount(struct lxc_storage *bdev)
+ {
++	unsigned long mntflags = 0;
++	char *mntdata = NULL;
+ 	int ret;
+ 	size_t oldlen, newlen, totallen;
+-	char *mntdata, *tmp;
++	char *tmp;
+ 	const char *src;
+-	unsigned long mntflags;
+ 	char cmd_output[PATH_MAX] = {0};
+ 
+ 	if (strcmp(bdev->type, "zfs"))
+diff --git a/src/lxc/string_utils.h b/src/lxc/string_utils.h
+index 2720f1097..0f7d2ff21 100644
+--- a/src/lxc/string_utils.h
++++ b/src/lxc/string_utils.h
+@@ -10,6 +10,10 @@
+ #include "initutils.h"
+ #include "macro.h"
+ 
++#ifndef HAVE_STRLCAT
++#include "include/strlcat.h"
++#endif
++
+ /* convert variadic argument lists to arrays (for execl type argument lists) */
+ extern char **lxc_va_arg_list_to_argv(va_list ap, size_t skip, int do_strdup);
+ extern const char **lxc_va_arg_list_to_argv_const(va_list ap, size_t skip);
+@@ -103,4 +107,15 @@ static inline bool is_empty_string(const char *s)
+ 	return !s || strcmp(s, "") == 0;
+ }
+ 
++static inline ssize_t safe_strlcat(char *src, const char *append, size_t len)
++{
++	size_t new_len;
++
++	new_len = strlcat(src, append, len);
++	if (new_len >= len)
++		return ret_errno(EINVAL);
++
++	return (ssize_t)new_len;
++}
++
+ #endif /* __LXC_STRING_UTILS_H */

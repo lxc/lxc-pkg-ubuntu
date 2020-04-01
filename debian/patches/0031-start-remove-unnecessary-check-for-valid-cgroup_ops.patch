@@ -1,0 +1,27 @@
+From 50633aa8a9448c3f39c0a8e020f94757ffc103f4 Mon Sep 17 00:00:00 2001
+From: Christian Brauner <christian.brauner@ubuntu.com>
+Date: Mon, 30 Mar 2020 22:26:10 +0200
+Subject: start: remove unnecessary check for valid cgroup_ops
+
+Signed-off-by: Christian Brauner <christian.brauner@ubuntu.com>
+---
+ src/lxc/start.c | 6 ++----
+ 1 file changed, 2 insertions(+), 4 deletions(-)
+
+diff --git a/src/lxc/start.c b/src/lxc/start.c
+index 328516c97..5f70bf237 100644
+--- a/src/lxc/start.c
++++ b/src/lxc/start.c
+@@ -933,10 +933,8 @@ void lxc_end(struct lxc_handler *handler)
+ 
+ 	lsm_process_cleanup(handler->conf, handler->lxcpath);
+ 
+-	if (cgroup_ops) {
+-		cgroup_ops->payload_destroy(cgroup_ops, handler);
+-		cgroup_ops->monitor_destroy(cgroup_ops, handler);
+-	}
++	cgroup_ops->payload_destroy(cgroup_ops, handler);
++	cgroup_ops->monitor_destroy(cgroup_ops, handler);
+ 
+ 	if (handler->conf->reboot == REBOOT_NONE) {
+ 		/* For all new state clients simply close the command socket.

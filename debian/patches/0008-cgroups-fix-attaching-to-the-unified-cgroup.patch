@@ -1,0 +1,336 @@
+From cfeed595995e40609c813a3c5e7e2f4e4f81bf8c Mon Sep 17 00:00:00 2001
+From: Christian Brauner <christian.brauner@ubuntu.com>
+Date: Thu, 26 Mar 2020 19:27:07 +0100
+Subject: cgroups: fix attaching to the unified cgroup
+
+Signed-off-by: Christian Brauner <christian.brauner@ubuntu.com>
+---
+ src/lxc/attach.c         |   4 +-
+ src/lxc/cgroups/cgfsng.c | 102 ++++++++++++++++++++++++++++++++++-----
+ src/lxc/cgroups/cgroup.h |   7 +--
+ src/lxc/conf.c           |  14 +++---
+ src/lxc/conf.h           |   6 +--
+ 5 files changed, 105 insertions(+), 28 deletions(-)
+
+diff --git a/src/lxc/attach.c b/src/lxc/attach.c
+index 083f709bb..ca1fd2bd6 100644
+--- a/src/lxc/attach.c
++++ b/src/lxc/attach.c
+@@ -1174,7 +1174,7 @@ int lxc_attach(struct lxc_container *container, lxc_attach_exec_t exec_function,
+ 			 * If this is the unified hierarchy cgroup_attach() is
+ 			 * enough.
+ 			 */
+-			ret = cgroup_attach(name, lxcpath, pid);
++			ret = cgroup_attach(conf, name, lxcpath, pid);
+ 			if (ret) {
+ 				call_cleaner(cgroup_exit) struct cgroup_ops *cgroup_ops = NULL;
+ 
+@@ -1182,7 +1182,7 @@ int lxc_attach(struct lxc_container *container, lxc_attach_exec_t exec_function,
+ 				if (!cgroup_ops)
+ 					goto on_error;
+ 
+-				if (!cgroup_ops->attach(cgroup_ops, name, lxcpath, pid))
++				if (!cgroup_ops->attach(cgroup_ops, conf, name, lxcpath, pid))
+ 					goto on_error;
+ 			}
+ 			TRACE("Moved intermediate process %d into container's cgroups", pid);
+diff --git a/src/lxc/cgroups/cgfsng.c b/src/lxc/cgroups/cgfsng.c
+index 440a19efa..ad37291e9 100644
+--- a/src/lxc/cgroups/cgfsng.c
++++ b/src/lxc/cgroups/cgfsng.c
+@@ -2057,12 +2057,11 @@ static inline char *build_full_cgpath_from_monitorpath(struct hierarchy *h,
+ 	return must_make_path(h->mountpoint, inpath, filename, NULL);
+ }
+ 
+-static int cgroup_attach_leaf(int unified_fd, int64_t pid)
++static int cgroup_attach_leaf(const struct lxc_conf *conf, int unified_fd, pid_t pid)
+ {
+ 	int idx = 1;
+ 	int ret;
+ 	char pidstr[INTTYPE_TO_STRLEN(int64_t) + 1];
+-	char attach_cgroup[STRLITERALLEN("lxc-1000/cgroup.procs") + 1];
+ 	size_t pidstr_len;
+ 
+ 	/* Create leaf cgroup. */
+@@ -2070,7 +2069,7 @@ static int cgroup_attach_leaf(int unified_fd, int64_t pid)
+ 	if (ret < 0 && errno != EEXIST)
+ 		return log_error_errno(-1, errno, "Failed to create leaf cgroup \"lxc\"");
+ 
+-	pidstr_len = sprintf(pidstr, INT64_FMT, pid);
++	pidstr_len = sprintf(pidstr, INT64_FMT, (int64_t)pid);
+ 	ret = lxc_writeat(unified_fd, "lxc/cgroup.procs", pidstr, pidstr_len);
+ 	if (ret < 0)
+ 		ret = lxc_writeat(unified_fd, "cgroup.procs", pidstr, pidstr_len);
+@@ -2082,6 +2081,8 @@ static int cgroup_attach_leaf(int unified_fd, int64_t pid)
+ 		return log_error_errno(-1, errno, "Failed to attach to unified cgroup");
+ 
+ 	do {
++		bool rm = false;
++		char attach_cgroup[STRLITERALLEN("lxc-1000/cgroup.procs") + 1];
+ 		char *slash;
+ 
+ 		sprintf(attach_cgroup, "lxc-%d/cgroup.procs", idx);
+@@ -2091,6 +2092,8 @@ static int cgroup_attach_leaf(int unified_fd, int64_t pid)
+ 		ret = mkdirat(unified_fd, attach_cgroup, 0755);
+ 		if (ret < 0 && errno != EEXIST)
+ 			return log_error_errno(-1, errno, "Failed to create cgroup %s", attach_cgroup);
++		if (ret == 0)
++			rm = true;
+ 
+ 		*slash = '/';
+ 
+@@ -2098,6 +2101,9 @@ static int cgroup_attach_leaf(int unified_fd, int64_t pid)
+ 		if (ret == 0)
+ 			return 0;
+ 
++		if (rm && unlinkat(unified_fd, attach_cgroup, AT_REMOVEDIR))
++			SYSERROR("Failed to remove cgroup \"%d(%s)\"", unified_fd, attach_cgroup);
++
+ 		/* this is a non-leaf node */
+ 		if (errno != EBUSY)
+ 			return log_error_errno(-1, errno, "Failed to attach to unified cgroup");
+@@ -2108,15 +2114,66 @@ static int cgroup_attach_leaf(int unified_fd, int64_t pid)
+ 	return log_error_errno(-1, errno, "Failed to attach to unified cgroup");
+ }
+ 
+-int cgroup_attach(const char *name, const char *lxcpath, int64_t pid)
++struct userns_exec_unified_attach_data {
++	const struct lxc_conf *conf;
++	int unified_fd;
++	pid_t pid;
++	uid_t origuid;
++};
++
++static int cgroup_unified_attach_wrapper(void *data)
++{
++	struct userns_exec_unified_attach_data *args = data;
++	uid_t nsuid = (args->conf->root_nsuid_map != NULL) ? 0 : args->conf->init_uid;
++	gid_t nsgid = (args->conf->root_nsgid_map != NULL) ? 0 : args->conf->init_gid;
++	int ret;
++
++	if (!args->conf || args->unified_fd < 0 || args->pid <= 0)
++		return ret_errno(EINVAL);
++
++	if (!lxc_setgroups(0, NULL) && errno != EPERM)
++		return log_error_errno(-1, errno, "Failed to setgroups(0, NULL)");
++
++	ret = setresgid(nsgid, nsgid, nsgid);
++	if (ret < 0)
++		return log_error_errno(-1, errno, "Failed to setresgid(%d, %d, %d)",
++				       (int)nsgid, (int)nsgid, (int)nsgid);
++
++	ret = setresuid(nsuid, nsuid, nsuid);
++	if (ret < 0)
++		return log_error_errno(-1, errno, "Failed to setresuid(%d, %d, %d)",
++				       (int)nsuid, (int)nsuid, (int)nsuid);
++
++	return cgroup_attach_leaf(args->conf, args->unified_fd, args->pid);
++}
++
++int cgroup_attach(const struct lxc_conf *conf, const char *name,
++		  const char *lxcpath, pid_t pid)
+ {
+ 	__do_close int unified_fd = -EBADF;
++	int ret;
++
++	if (!conf || !name || !lxcpath || pid <= 0)
++		return ret_errno(EINVAL);
+ 
+ 	unified_fd = lxc_cmd_get_cgroup2_fd(name, lxcpath);
+ 	if (unified_fd < 0)
+-		return -1;
++		return ret_errno(EBADF);
++
++	if (!lxc_list_empty(&conf->id_map)) {
++		struct userns_exec_unified_attach_data args = {
++			.conf		= conf,
++			.unified_fd	= unified_fd,
++			.pid		= pid,
++		};
++
++		ret = userns_exec_1(conf, cgroup_unified_attach_wrapper, &args,
++				    "cgroup_unified_attach_wrapper");
++	} else {
++		ret = cgroup_attach_leaf(conf, unified_fd, pid);
++	}
+ 
+-	return cgroup_attach_leaf(unified_fd, pid);
++	return ret;
+ }
+ 
+ /* Technically, we're always at a delegation boundary here (This is especially
+@@ -2128,14 +2185,18 @@ int cgroup_attach(const char *name, const char *lxcpath, int64_t pid)
+  * created when we started the container in the latter case we create our own
+  * cgroup for the attaching process.
+  */
+-static int __cg_unified_attach(const struct hierarchy *h, const char *name,
++static int __cg_unified_attach(const struct hierarchy *h,
++			       const struct lxc_conf *conf, const char *name,
+ 			       const char *lxcpath, pid_t pid,
+ 			       const char *controller)
+ {
+ 	__do_close int unified_fd = -EBADF;
+ 	int ret;
+ 
+-	ret = cgroup_attach(name, lxcpath, pid);
++	if (!conf || !name || !lxcpath || pid <= 0)
++		return ret_errno(EINVAL);
++
++	ret = cgroup_attach(conf, name, lxcpath, pid);
+ 	if (ret < 0) {
+ 		__do_free char *path = NULL, *cgroup = NULL;
+ 
+@@ -2148,13 +2209,28 @@ static int __cg_unified_attach(const struct hierarchy *h, const char *name,
+ 		unified_fd = open(path, O_DIRECTORY | O_RDONLY | O_CLOEXEC);
+ 	}
+ 	if (unified_fd < 0)
+-		return -1;
++		return ret_errno(EBADF);
+ 
+-	return cgroup_attach_leaf(unified_fd, pid);
++	if (!lxc_list_empty(&conf->id_map)) {
++		struct userns_exec_unified_attach_data args = {
++			.conf		= conf,
++			.unified_fd	= unified_fd,
++			.pid		= pid,
++		};
++
++		ret = userns_exec_1(conf, cgroup_unified_attach_wrapper, &args,
++				    "cgroup_unified_attach_wrapper");
++	} else {
++		ret = cgroup_attach_leaf(conf, unified_fd, pid);
++	}
++
++	return ret;
+ }
+ 
+-__cgfsng_ops static bool cgfsng_attach(struct cgroup_ops *ops, const char *name,
+-					 const char *lxcpath, pid_t pid)
++__cgfsng_ops static bool cgfsng_attach(struct cgroup_ops *ops,
++				       const struct lxc_conf *conf,
++				       const char *name, const char *lxcpath,
++				       pid_t pid)
+ {
+ 	int len, ret;
+ 	char pidstr[INTTYPE_TO_STRLEN(pid_t)];
+@@ -2174,7 +2250,7 @@ __cgfsng_ops static bool cgfsng_attach(struct cgroup_ops *ops, const char *name,
+ 		struct hierarchy *h = ops->hierarchies[i];
+ 
+ 		if (h->version == CGROUP2_SUPER_MAGIC) {
+-			ret = __cg_unified_attach(h, name, lxcpath, pid,
++			ret = __cg_unified_attach(h, conf, name, lxcpath, pid,
+ 						  h->controllers[0]);
+ 			if (ret < 0)
+ 				return false;
+diff --git a/src/lxc/cgroups/cgroup.h b/src/lxc/cgroups/cgroup.h
+index 9f44ad51b..1e08a017a 100644
+--- a/src/lxc/cgroups/cgroup.h
++++ b/src/lxc/cgroups/cgroup.h
+@@ -160,8 +160,8 @@ struct cgroup_ops {
+ 				    struct lxc_conf *conf, bool with_devices);
+ 	bool (*setup_limits)(struct cgroup_ops *ops, struct lxc_handler *handler);
+ 	bool (*chown)(struct cgroup_ops *ops, struct lxc_conf *conf);
+-	bool (*attach)(struct cgroup_ops *ops, const char *name,
+-		       const char *lxcpath, pid_t pid);
++	bool (*attach)(struct cgroup_ops *ops, const struct lxc_conf *conf,
++		       const char *name, const char *lxcpath, pid_t pid);
+ 	bool (*mount)(struct cgroup_ops *ops, struct lxc_handler *handler,
+ 		      const char *root, int type);
+ 	bool (*devices_activate)(struct cgroup_ops *ops,
+@@ -178,7 +178,8 @@ define_cleanup_function(struct cgroup_ops *, cgroup_exit);
+ 
+ extern void prune_init_scope(char *cg);
+ 
+-extern int cgroup_attach(const char *name, const char *lxcpath, int64_t pid);
++extern int cgroup_attach(const struct lxc_conf *conf, const char *name,
++			 const char *lxcpath, pid_t pid);
+ 
+ static inline bool pure_unified_layout(const struct cgroup_ops *ops)
+ {
+diff --git a/src/lxc/conf.c b/src/lxc/conf.c
+index 4bab3ee67..8cd06abf9 100644
+--- a/src/lxc/conf.c
++++ b/src/lxc/conf.c
+@@ -1440,7 +1440,7 @@ static int lxc_setup_rootfs_switch_root(const struct lxc_rootfs *rootfs)
+ 	return lxc_pivot_root(rootfs->mount);
+ }
+ 
+-static const struct id_map *find_mapped_nsid_entry(struct lxc_conf *conf,
++static const struct id_map *find_mapped_nsid_entry(const struct lxc_conf *conf,
+ 						   unsigned id,
+ 						   enum idtype idtype)
+ {
+@@ -2845,7 +2845,7 @@ int mapped_hostid(unsigned id, const struct lxc_conf *conf, enum idtype idtype)
+ 	return -1;
+ }
+ 
+-int find_unmapped_nsid(struct lxc_conf *conf, enum idtype idtype)
++int find_unmapped_nsid(const struct lxc_conf *conf, enum idtype idtype)
+ {
+ 	struct id_map *map;
+ 	struct lxc_list *it;
+@@ -3869,7 +3869,7 @@ static int run_userns_fn(void *data)
+ 	return d->fn(d->arg);
+ }
+ 
+-static struct id_map *mapped_nsid_add(struct lxc_conf *conf, unsigned id,
++static struct id_map *mapped_nsid_add(const struct lxc_conf *conf, unsigned id,
+ 				      enum idtype idtype)
+ {
+ 	const struct id_map *map;
+@@ -3887,7 +3887,7 @@ static struct id_map *mapped_nsid_add(struct lxc_conf *conf, unsigned id,
+ 	return retmap;
+ }
+ 
+-static struct id_map *find_mapped_hostid_entry(struct lxc_conf *conf,
++static struct id_map *find_mapped_hostid_entry(const struct lxc_conf *conf,
+ 					       unsigned id, enum idtype idtype)
+ {
+ 	struct id_map *map;
+@@ -3911,7 +3911,7 @@ static struct id_map *find_mapped_hostid_entry(struct lxc_conf *conf,
+ /* Allocate a new {g,u}id mapping for the given {g,u}id. Re-use an already
+  * existing one or establish a new one.
+  */
+-static struct id_map *mapped_hostid_add(struct lxc_conf *conf, uid_t id,
++static struct id_map *mapped_hostid_add(const struct lxc_conf *conf, uid_t id,
+ 					enum idtype type)
+ {
+ 	__do_free struct id_map *entry = NULL;
+@@ -3940,7 +3940,7 @@ static struct id_map *mapped_hostid_add(struct lxc_conf *conf, uid_t id,
+ 	return move_ptr(entry);
+ }
+ 
+-struct lxc_list *get_minimal_idmap(struct lxc_conf *conf)
++static struct lxc_list *get_minimal_idmap(const struct lxc_conf *conf)
+ {
+ 	__do_free struct id_map *container_root_uid = NULL,
+ 				*container_root_gid = NULL,
+@@ -4044,7 +4044,7 @@ struct lxc_list *get_minimal_idmap(struct lxc_conf *conf)
+  * retrieve from the container's configured {g,u}id mappings as it must have been
+  * there to start the container in the first place.
+  */
+-int userns_exec_1(struct lxc_conf *conf, int (*fn)(void *), void *data,
++int userns_exec_1(const struct lxc_conf *conf, int (*fn)(void *), void *data,
+ 		  const char *fn_name)
+ {
+ 	pid_t pid;
+diff --git a/src/lxc/conf.h b/src/lxc/conf.h
+index 7f91c9fb9..f37e09e4a 100644
+--- a/src/lxc/conf.h
++++ b/src/lxc/conf.h
+@@ -436,12 +436,12 @@ extern int lxc_setup_rootfs_prepare_root(struct lxc_conf *conf,
+ extern int lxc_setup(struct lxc_handler *handler);
+ extern int lxc_setup_parent(struct lxc_handler *handler);
+ extern int setup_resource_limits(struct lxc_list *limits, pid_t pid);
+-extern int find_unmapped_nsid(struct lxc_conf *conf, enum idtype idtype);
++extern int find_unmapped_nsid(const struct lxc_conf *conf, enum idtype idtype);
+ extern int mapped_hostid(unsigned id, const struct lxc_conf *conf,
+ 			 enum idtype idtype);
+ extern int chown_mapped_root(const char *path, const struct lxc_conf *conf);
+-extern int userns_exec_1(struct lxc_conf *conf, int (*fn)(void *), void *data,
+-			 const char *fn_name);
++extern int userns_exec_1(const struct lxc_conf *conf, int (*fn)(void *),
++			 void *data, const char *fn_name);
+ extern int userns_exec_full(struct lxc_conf *conf, int (*fn)(void *),
+ 			    void *data, const char *fn_name);
+ extern int parse_mntopts(const char *mntopts, unsigned long *mntflags,

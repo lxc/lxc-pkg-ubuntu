@@ -30,6 +30,7 @@
 #include <sys/types.h>
 #include <unistd.h>
 
+#include "af_unix.h"
 #include "caps.h"
 #include "cgroup.h"
 #include "cgroup2_devices.h"
@@ -945,7 +946,7 @@ static void lxc_cgfsng_print_basecg_debuginfo(char *basecginfo, char **klist,
 		TRACE("named subsystem %d: %s", k, *it);
 }
 
-static int cgroup_rmdir(struct hierarchy **hierarchies,
+static int cgroup_tree_remove(struct hierarchy **hierarchies,
 			const char *container_cgroup)
 {
 	if (!container_cgroup || !hierarchies)
@@ -958,7 +959,7 @@ static int cgroup_rmdir(struct hierarchy **hierarchies,
 		if (!h->container_full_path)
 			continue;
 
-		ret = recursive_destroy(h->container_full_path);
+		ret = lxc_rm_rf(h->container_full_path);
 		if (ret < 0)
 			WARN("Failed to destroy \"%s\"", h->container_full_path);
 
@@ -976,7 +977,7 @@ struct generic_userns_exec_data {
 	char *path;
 };
 
-static int cgroup_rmdir_wrapper(void *data)
+static int cgroup_tree_remove_wrapper(void *data)
 {
 	struct generic_userns_exec_data *arg = data;
 	uid_t nsuid = (arg->conf->root_nsuid_map != NULL) ? 0 : arg->conf->init_uid;
@@ -996,7 +997,7 @@ static int cgroup_rmdir_wrapper(void *data)
 		return log_error_errno(-1, errno, "Failed to setresuid(%d, %d, %d)",
 				       (int)nsuid, (int)nsuid, (int)nsuid);
 
-	return cgroup_rmdir(arg->hierarchies, arg->container_cgroup);
+	return cgroup_tree_remove(arg->hierarchies, arg->container_cgroup);
 }
 
 __cgfsng_ops static void cgfsng_payload_destroy(struct cgroup_ops *ops,
@@ -1035,10 +1036,10 @@ __cgfsng_ops static void cgfsng_payload_destroy(struct cgroup_ops *ops,
 			.hierarchies		= ops->hierarchies,
 			.origuid		= 0,
 		};
-		ret = userns_exec_1(handler->conf, cgroup_rmdir_wrapper, &wrap,
-				    "cgroup_rmdir_wrapper");
+		ret = userns_exec_1(handler->conf, cgroup_tree_remove_wrapper,
+				    &wrap, "cgroup_tree_remove_wrapper");
 	} else {
-		ret = cgroup_rmdir(ops->hierarchies, ops->container_cgroup);
+		ret = cgroup_tree_remove(ops->hierarchies, ops->container_cgroup);
 	}
 	if (ret < 0)
 		SYSWARN("Failed to destroy cgroups");
@@ -1082,6 +1083,12 @@ __cgfsng_ops static void cgfsng_monitor_destroy(struct cgroup_ops *ops,
 		if (!h->monitor_full_path)
 			continue;
 
+		/* Monitor might have died before we entered the cgroup. */
+		if (handler->monitor_pid <= 0) {
+			WARN("No valid monitor process found while destroying cgroups");
+			goto try_lxc_rm_rf;
+		}
+
 		if (conf && conf->cgroup_meta.dir)
 			pivot_path = must_make_path(h->mountpoint,
 						    h->container_base_path,
@@ -1095,7 +1102,7 @@ __cgfsng_ops static void cgfsng_monitor_destroy(struct cgroup_ops *ops,
 		ret = mkdir_p(pivot_path, 0755);
 		if (ret < 0 && errno != EEXIST) {
 			ERROR("Failed to create %s", pivot_path);
-			goto try_recursive_destroy;
+			goto try_lxc_rm_rf;
 		}
 
 		ret = lxc_write_openat(pivot_path, "cgroup.procs", pidstr, len);
@@ -1104,8 +1111,8 @@ __cgfsng_ops static void cgfsng_monitor_destroy(struct cgroup_ops *ops,
 			continue;
 		}
 
-try_recursive_destroy:
-		ret = recursive_destroy(h->monitor_full_path);
+try_lxc_rm_rf:
+		ret = lxc_rm_rf(h->monitor_full_path);
 		if (ret < 0)
 			WARN("Failed to destroy \"%s\"", h->monitor_full_path);
 	}
@@ -1139,7 +1146,7 @@ static int mkdir_eexist_on_last(const char *dir, mode_t mode)
 	return 0;
 }
 
-static bool create_cgroup_tree(struct hierarchy *h, const char *cgroup_tree,
+static bool cgroup_tree_create(struct hierarchy *h, const char *cgroup_tree,
 			       const char *cgroup_leaf, bool payload)
 {
 	__do_free char *path = NULL;
@@ -1179,7 +1186,7 @@ static bool create_cgroup_tree(struct hierarchy *h, const char *cgroup_tree,
 	return true;
 }
 
-static void cgroup_remove_leaf(struct hierarchy *h, bool payload)
+static void cgroup_tree_leaf_remove(struct hierarchy *h, bool payload)
 {
 	__do_free char *full_path = NULL;
 
@@ -1251,12 +1258,12 @@ __cgfsng_ops static inline bool cgfsng_monitor_create(struct cgroup_ops *ops,
 			sprintf(suffix, "-%d", idx);
 
 		for (i = 0; ops->hierarchies[i]; i++) {
-			if (create_cgroup_tree(ops->hierarchies[i], cgroup_tree, monitor_cgroup, false))
+			if (cgroup_tree_create(ops->hierarchies[i], cgroup_tree, monitor_cgroup, false))
 				continue;
 
 			ERROR("Failed to create cgroup \"%s\"", ops->hierarchies[i]->monitor_full_path ?: "(null)");
 			for (int j = 0; j < i; j++)
-				cgroup_remove_leaf(ops->hierarchies[j], false);
+				cgroup_tree_leaf_remove(ops->hierarchies[j], false);
 
 			idx++;
 			break;
@@ -1330,12 +1337,12 @@ __cgfsng_ops static inline bool cgfsng_payload_create(struct cgroup_ops *ops,
 			sprintf(suffix, "-%d", idx);
 
 		for (i = 0; ops->hierarchies[i]; i++) {
-			if (create_cgroup_tree(ops->hierarchies[i], cgroup_tree, container_cgroup, true))
+			if (cgroup_tree_create(ops->hierarchies[i], cgroup_tree, container_cgroup, true))
 				continue;
 
 			ERROR("Failed to create cgroup \"%s\"", ops->hierarchies[i]->container_full_path ?: "(null)");
 			for (int j = 0; j < i; j++)
-				cgroup_remove_leaf(ops->hierarchies[j], true);
+				cgroup_tree_leaf_remove(ops->hierarchies[j], true);
 
 			idx++;
 			break;
@@ -2057,21 +2064,20 @@ static inline char *build_full_cgpath_from_monitorpath(struct hierarchy *h,
 	return must_make_path(h->mountpoint, inpath, filename, NULL);
 }
 
-static int cgroup_attach_leaf(int unified_fd, int64_t pid)
+static int cgroup_attach_leaf(const struct lxc_conf *conf, int unified_fd, pid_t pid)
 {
 	int idx = 1;
 	int ret;
 	char pidstr[INTTYPE_TO_STRLEN(int64_t) + 1];
-	char attach_cgroup[STRLITERALLEN("lxc-1000/cgroup.procs") + 1];
 	size_t pidstr_len;
 
 	/* Create leaf cgroup. */
-	ret = mkdirat(unified_fd, "lxc", 0755);
+	ret = mkdirat(unified_fd, ".lxc", 0755);
 	if (ret < 0 && errno != EEXIST)
-		return log_error_errno(-1, errno, "Failed to create leaf cgroup \"lxc\"");
+		return log_error_errno(-1, errno, "Failed to create leaf cgroup \".lxc\"");
 
-	pidstr_len = sprintf(pidstr, INT64_FMT, pid);
-	ret = lxc_writeat(unified_fd, "lxc/cgroup.procs", pidstr, pidstr_len);
+	pidstr_len = sprintf(pidstr, INT64_FMT, (int64_t)pid);
+	ret = lxc_writeat(unified_fd, ".lxc/cgroup.procs", pidstr, pidstr_len);
 	if (ret < 0)
 		ret = lxc_writeat(unified_fd, "cgroup.procs", pidstr, pidstr_len);
 	if (ret == 0)
@@ -2082,21 +2088,31 @@ static int cgroup_attach_leaf(int unified_fd, int64_t pid)
 		return log_error_errno(-1, errno, "Failed to attach to unified cgroup");
 
 	do {
+		bool rm = false;
+		char attach_cgroup[STRLITERALLEN(".lxc-1000/cgroup.procs") + 1];
 		char *slash;
 
-		sprintf(attach_cgroup, "lxc-%d/cgroup.procs", idx);
+		ret = snprintf(attach_cgroup, sizeof(attach_cgroup), ".lxc-%d/cgroup.procs", idx);
+		if (ret < 0 || (size_t)ret >= sizeof(attach_cgroup))
+			return ret_errno(EIO);
+
 		slash = &attach_cgroup[ret] - STRLITERALLEN("/cgroup.procs");
 		*slash = '\0';
 
 		ret = mkdirat(unified_fd, attach_cgroup, 0755);
 		if (ret < 0 && errno != EEXIST)
 			return log_error_errno(-1, errno, "Failed to create cgroup %s", attach_cgroup);
+		if (ret == 0)
+			rm = true;
 
 		*slash = '/';
 
 		ret = lxc_writeat(unified_fd, attach_cgroup, pidstr, pidstr_len);
 		if (ret == 0)
 			return 0;
+
+		if (rm && unlinkat(unified_fd, attach_cgroup, AT_REMOVEDIR))
+			SYSERROR("Failed to remove cgroup \"%d(%s)\"", unified_fd, attach_cgroup);
 
 		/* this is a non-leaf node */
 		if (errno != EBUSY)
@@ -2108,15 +2124,132 @@ static int cgroup_attach_leaf(int unified_fd, int64_t pid)
 	return log_error_errno(-1, errno, "Failed to attach to unified cgroup");
 }
 
-int cgroup_attach(const char *name, const char *lxcpath, int64_t pid)
+static int cgroup_attach_create_leaf(const struct lxc_conf *conf,
+				     int unified_fd, int *sk_fd)
+{
+	__do_close int sk = *sk_fd, target_fd0 = -EBADF, target_fd1 = -EBADF;
+	int target_fds[2];
+	ssize_t ret;
+
+	/* Create leaf cgroup. */
+	ret = mkdirat(unified_fd, ".lxc", 0755);
+	if (ret < 0 && errno != EEXIST)
+		return log_error_errno(-1, errno, "Failed to create leaf cgroup \".lxc\"");
+
+	target_fd0 = openat(unified_fd, ".lxc/cgroup.procs", O_WRONLY | O_CLOEXEC | O_NOFOLLOW);
+	if (target_fd0 < 0)
+		return log_error_errno(-errno, errno, "Failed to open \".lxc/cgroup.procs\"");
+	target_fds[0] = target_fd0;
+
+	target_fd1 = openat(unified_fd, "cgroup.procs", O_WRONLY | O_CLOEXEC | O_NOFOLLOW);
+	if (target_fd1 < 0)
+		return log_error_errno(-errno, errno, "Failed to open \".lxc/cgroup.procs\"");
+	target_fds[1] = target_fd1;
+
+	ret = lxc_abstract_unix_send_fds(sk, target_fds, 2, NULL, 0);
+	if (ret <= 0)
+		return log_error_errno(-errno, errno, "Failed to send \".lxc/cgroup.procs\" fds %d and %d",
+				       target_fd0, target_fd1);
+
+	return log_debug(0, "Sent target cgroup fds %d and %d", target_fd0, target_fd1);
+}
+
+static int cgroup_attach_move_into_leaf(const struct lxc_conf *conf,
+					int *sk_fd, pid_t pid)
+{
+	__do_close int sk = *sk_fd, target_fd0 = -EBADF, target_fd1 = -EBADF;
+	int target_fds[2];
+	char pidstr[INTTYPE_TO_STRLEN(int64_t) + 1];
+	size_t pidstr_len;
+	ssize_t ret;
+
+	ret = lxc_abstract_unix_recv_fds(sk, target_fds, 2, NULL, 0);
+	if (ret <= 0)
+		return log_error_errno(-1, errno, "Failed to receive target cgroup fd");
+	target_fd0 = target_fds[0];
+	target_fd1 = target_fds[1];
+
+	pidstr_len = sprintf(pidstr, INT64_FMT, (int64_t)pid);
+
+	ret = lxc_write_nointr(target_fd0, pidstr, pidstr_len);
+	if (ret > 0 && ret == pidstr_len)
+		return log_debug(0, "Moved process into target cgroup via fd %d", target_fd0);
+
+	ret = lxc_write_nointr(target_fd1, pidstr, pidstr_len);
+	if (ret > 0 && ret == pidstr_len)
+		return log_debug(0, "Moved process into target cgroup via fd %d", target_fd1);
+
+	return log_debug_errno(-1, errno, "Failed to move process into target cgroup via fd %d and %d",
+			       target_fd0, target_fd1);
+}
+
+struct userns_exec_unified_attach_data {
+	const struct lxc_conf *conf;
+	int unified_fd;
+	int sk_pair[2];
+	pid_t pid;
+};
+
+static int cgroup_unified_attach_child_wrapper(void *data)
+{
+	struct userns_exec_unified_attach_data *args = data;
+
+	if (!args->conf || args->unified_fd < 0 || args->pid <= 0 ||
+	    args->sk_pair[0] < 0 || args->sk_pair[1] < 0)
+		return ret_errno(EINVAL);
+
+	close_prot_errno_disarm(args->sk_pair[0]);
+	return cgroup_attach_create_leaf(args->conf, args->unified_fd,
+					 &args->sk_pair[1]);
+}
+
+static int cgroup_unified_attach_parent_wrapper(void *data)
+{
+	struct userns_exec_unified_attach_data *args = data;
+
+	if (!args->conf || args->unified_fd < 0 || args->pid <= 0 ||
+	    args->sk_pair[0] < 0 || args->sk_pair[1] < 0)
+		return ret_errno(EINVAL);
+
+	close_prot_errno_disarm(args->sk_pair[1]);
+	return cgroup_attach_move_into_leaf(args->conf, &args->sk_pair[0],
+					    args->pid);
+}
+
+int cgroup_attach(const struct lxc_conf *conf, const char *name,
+		  const char *lxcpath, pid_t pid)
 {
 	__do_close int unified_fd = -EBADF;
+	int ret;
+
+	if (!conf || !name || !lxcpath || pid <= 0)
+		return ret_errno(EINVAL);
 
 	unified_fd = lxc_cmd_get_cgroup2_fd(name, lxcpath);
 	if (unified_fd < 0)
-		return -1;
+		return ret_errno(EBADF);
 
-	return cgroup_attach_leaf(unified_fd, pid);
+	if (!lxc_list_empty(&conf->id_map)) {
+		struct userns_exec_unified_attach_data args = {
+			.conf		= conf,
+			.unified_fd	= unified_fd,
+			.pid		= pid,
+		};
+
+		ret = socketpair(PF_LOCAL, SOCK_STREAM | SOCK_CLOEXEC, 0, args.sk_pair);
+		if (ret < 0)
+			return -errno;
+
+		ret = userns_exec_minimal(conf,
+					  cgroup_unified_attach_parent_wrapper,
+					  &args,
+					  cgroup_unified_attach_child_wrapper,
+					  &args);
+	} else {
+		ret = cgroup_attach_leaf(conf, unified_fd, pid);
+	}
+
+	return ret;
 }
 
 /* Technically, we're always at a delegation boundary here (This is especially
@@ -2128,33 +2261,63 @@ int cgroup_attach(const char *name, const char *lxcpath, int64_t pid)
  * created when we started the container in the latter case we create our own
  * cgroup for the attaching process.
  */
-static int __cg_unified_attach(const struct hierarchy *h, const char *name,
+static int __cg_unified_attach(const struct hierarchy *h,
+			       const struct lxc_conf *conf, const char *name,
 			       const char *lxcpath, pid_t pid,
 			       const char *controller)
 {
 	__do_close int unified_fd = -EBADF;
+	__do_free char *path = NULL, *cgroup = NULL;
 	int ret;
 
-	ret = cgroup_attach(name, lxcpath, pid);
-	if (ret < 0) {
-		__do_free char *path = NULL, *cgroup = NULL;
+	if (!conf || !name || !lxcpath || pid <= 0)
+		return ret_errno(EINVAL);
 
-		cgroup = lxc_cmd_get_cgroup_path(name, lxcpath, controller);
-		/* not running */
-		if (!cgroup)
-			return 0;
+	ret = cgroup_attach(conf, name, lxcpath, pid);
+	if (ret == 0)
+		return log_trace(0, "Attached to unified cgroup via command handler");
+	if (ret != -EBADF)
+		return log_error_errno(ret, errno, "Failed to attach to unified cgroup");
 
-		path = must_make_path(h->mountpoint, cgroup, NULL);
-		unified_fd = open(path, O_DIRECTORY | O_RDONLY | O_CLOEXEC);
-	}
+	/* Fall back to retrieving the path for the unified cgroup. */
+	cgroup = lxc_cmd_get_cgroup_path(name, lxcpath, controller);
+	/* not running */
+	if (!cgroup)
+		return 0;
+
+	path = must_make_path(h->mountpoint, cgroup, NULL);
+
+	unified_fd = open(path, O_PATH | O_DIRECTORY | O_CLOEXEC);
 	if (unified_fd < 0)
-		return -1;
+		return ret_errno(EBADF);
 
-	return cgroup_attach_leaf(unified_fd, pid);
+	if (!lxc_list_empty(&conf->id_map)) {
+		struct userns_exec_unified_attach_data args = {
+			.conf		= conf,
+			.unified_fd	= unified_fd,
+			.pid		= pid,
+		};
+
+		ret = socketpair(PF_LOCAL, SOCK_STREAM | SOCK_CLOEXEC, 0, args.sk_pair);
+		if (ret < 0)
+			return -errno;
+
+		ret = userns_exec_minimal(conf,
+					  cgroup_unified_attach_parent_wrapper,
+					  &args,
+					  cgroup_unified_attach_child_wrapper,
+					  &args);
+	} else {
+		ret = cgroup_attach_leaf(conf, unified_fd, pid);
+	}
+
+	return ret;
 }
 
-__cgfsng_ops static bool cgfsng_attach(struct cgroup_ops *ops, const char *name,
-					 const char *lxcpath, pid_t pid)
+__cgfsng_ops static bool cgfsng_attach(struct cgroup_ops *ops,
+				       const struct lxc_conf *conf,
+				       const char *name, const char *lxcpath,
+				       pid_t pid)
 {
 	int len, ret;
 	char pidstr[INTTYPE_TO_STRLEN(pid_t)];
@@ -2174,7 +2337,7 @@ __cgfsng_ops static bool cgfsng_attach(struct cgroup_ops *ops, const char *name,
 		struct hierarchy *h = ops->hierarchies[i];
 
 		if (h->version == CGROUP2_SUPER_MAGIC) {
-			ret = __cg_unified_attach(h, name, lxcpath, pid,
+			ret = __cg_unified_attach(h, conf, name, lxcpath, pid,
 						  h->controllers[0]);
 			if (ret < 0)
 				return false;
