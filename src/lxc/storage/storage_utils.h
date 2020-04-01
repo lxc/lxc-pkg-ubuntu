@@ -1,34 +1,23 @@
-/*
- * lxc: linux Container library
- *
- * Copyright © 2017 Canonical Ltd.
- *
- * Authors:
- * Christian Brauner <christian.brauner@ubuntu.com>
- *
- * This program is free software; you can redistribute it and/or
- * modify it under the terms of the GNU Lesser General Public
- * License as published by the Free Software Foundation; either
- * version 2.1 of the License, or (at your option) any later version.
- *
- * This program is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
- * Lesser General Public License for more details.
- *
- * You should have received a copy of the GNU Lesser General Public
- * License along with this program; if not, write to the Free Software
- * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA
- */
+/* SPDX-License-Identifier: LGPL-2.1+ */
 
 #ifndef __LXC_STORAGE_UTILS_H
 #define __LXC_STORAGE_UTILS_H
 
 #include <stdbool.h>
 #include <stdint.h>
+#include <string.h>
 #include <stdio.h>
 
 #include "conf.h"
+#include "macro.h"
+
+#define LXC_OVERLAY_PRIVATE_DIR "overlay"
+#define LXC_OVERLAY_DELTA_DIR "delta"
+#define LXC_OVERLAY_WORK_DIR "work"
+#define LXC_OVERLAY_DELTA_PATH LXC_OVERLAY_PRIVATE_DIR "/" LXC_OVERLAY_DELTA_DIR
+#define LXC_OVERLAY_WORK_PATH LXC_OVERLAY_PRIVATE_DIR "/" LXC_OVERLAY_WORK_DIR
+#define LXC_OVERLAY_PATH_LEN \
+	(STRLITERALLEN(LXC_OVERLAY_PRIVATE_DIR) + STRLITERALLEN("/") + 256 + 1)
 
 struct lxc_storage;
 struct lxc_conf;

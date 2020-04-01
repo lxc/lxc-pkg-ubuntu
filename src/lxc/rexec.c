@@ -1,22 +1,4 @@
-/* liblxcapi
- *
- * Copyright © 2019 Christian Brauner <christian.brauner@ubuntu.com>.
- * Copyright © 2019 Canonical Ltd.
- *
- * This library is free software; you can redistribute it and/or
- * modify it under the terms of the GNU Lesser General Public
- * License as published by the Free Software Foundation; either
- * version 2.1 of the License, or (at your option) any later version.
-
- * This library is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
- * Lesser General Public License for more details.
-
- * You should have received a copy of the GNU Lesser General Public License
- * along with this library; if not, write to the Free Software Foundation,
- * Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301  USA
- */
+/* SPDX-License-Identifier: LGPL-2.1+ */
 
 #ifndef _GNU_SOURCE
 #define _GNU_SOURCE 1
@@ -83,7 +65,7 @@ static int parse_argv(char ***argv)
 
 static int is_memfd(void)
 {
-	__do_close_prot_errno int fd = -EBADF;
+	__do_close int fd = -EBADF;
 	int seals;
 
 	fd = open("/proc/self/exe", O_RDONLY | O_CLOEXEC);
@@ -105,7 +87,7 @@ static int is_memfd(void)
 
 static void lxc_rexec_as_memfd(char **argv, char **envp, const char *memfd_name)
 {
-	__do_close_prot_errno int execfd = -EBADF, fd = -EBADF, memfd = -EBADF,
+	__do_close int execfd = -EBADF, fd = -EBADF, memfd = -EBADF,
 				  tmpfd = -EBADF;
 	int ret;
 	ssize_t bytes_sent = 0;

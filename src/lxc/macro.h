@@ -1,26 +1,12 @@
-/* liblxcapi
- *
- * Copyright © 2018 Christian Brauner <christian.brauner@ubuntu.com>.
- * Copyright © 2018 Canonical Ltd.
- *
- * This library is free software; you can redistribute it and/or
- * modify it under the terms of the GNU Lesser General Public
- * License as published by the Free Software Foundation; either
- * version 2.1 of the License, or (at your option) any later version.
-
- * This library is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
- * Lesser General Public License for more details.
-
- * You should have received a copy of the GNU Lesser General Public License
- * along with this library; if not, write to the Free Software Foundation,
- * Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301  USA
- */
+/* SPDX-License-Identifier: LGPL-2.1+ */
 
 #ifndef __LXC_MACRO_H
 #define __LXC_MACRO_H
 
+#ifndef _GNU_SOURCE
+#define _GNU_SOURCE 1
+#endif
+#define __STDC_FORMAT_MACROS
 #include <asm/types.h>
 #include <limits.h>
 #include <linux/if_link.h>
@@ -38,6 +24,8 @@
 #ifndef PATH_MAX
 #define PATH_MAX 4096
 #endif
+
+#define INT64_FMT "%" PRId64
 
 /* Define __S_ISTYPE if missing from the C library. */
 #ifndef __S_ISTYPE
@@ -281,8 +269,24 @@ extern int __build_bug_on_failed;
 #define VETH_INFO_PEER 1
 #endif
 
+#ifndef VETH_MODE_BRIDGE
+#define VETH_MODE_BRIDGE 1
+#endif
+
+#ifndef VETH_MODE_ROUTER
+#define VETH_MODE_ROUTER 2
+#endif
+
 #ifndef IFLA_MACVLAN_MODE
 #define IFLA_MACVLAN_MODE 1
+#endif
+
+#ifndef IFLA_IPVLAN_MODE
+#define IFLA_IPVLAN_MODE 1
+#endif
+
+#ifndef IFLA_IPVLAN_ISOLATION
+#define IFLA_IPVLAN_ISOLATION 2
 #endif
 
 #ifndef IFLA_NEW_NETNSID
@@ -338,6 +342,30 @@ extern int __build_bug_on_failed;
 #define MACVLAN_MODE_PASSTHRU 8
 #endif
 
+#ifndef IPVLAN_MODE_L2
+#define IPVLAN_MODE_L2 0
+#endif
+
+#ifndef IPVLAN_MODE_L3
+#define IPVLAN_MODE_L3 1
+#endif
+
+#ifndef IPVLAN_MODE_L3S
+#define IPVLAN_MODE_L3S 2
+#endif
+
+#ifndef IPVLAN_ISOLATION_BRIDGE
+#define IPVLAN_ISOLATION_BRIDGE 0
+#endif
+
+#ifndef IPVLAN_ISOLATION_PRIVATE
+#define IPVLAN_ISOLATION_PRIVATE 1
+#endif
+
+#ifndef IPVLAN_ISOLATION_VEPA
+#define IPVLAN_ISOLATION_VEPA 2
+#endif
+
 /* Attributes of RTM_NEWNSID/RTM_GETNSID messages */
 enum {
 	__LXC_NETNSA_NONE,
@@ -386,8 +414,10 @@ enum {
 #define PTR_TO_INT(p) ((int)((intptr_t)(p)))
 #define INT_TO_PTR(u) ((void *)((intptr_t)(u)))
 
-#define PTR_TO_INTMAX(p) ((intmax_t)((intptr_t)(p)))
-#define INTMAX_TO_PTR(u) ((void *)((intptr_t)(u)))
+#define PTR_TO_PID(p) ((pid_t)((intptr_t)(p)))
+#define PID_TO_PTR(u) ((void *)((intptr_t)(u)))
+
+#define PTR_TO_UINT64(p) ((uint64_t)((intptr_t)(p)))
 
 #define LXC_INVALID_UID ((uid_t)-1)
 #define LXC_INVALID_GID ((gid_t)-1)
@@ -412,10 +442,35 @@ enum {
 		__internal_fd__;            \
 	})
 
-#define minus_one_set_errno(__errno__) \
-	({                             \
-		errno = __errno__;     \
-		-1;                    \
+#define ret_set_errno(__ret__, __errno__)                     \
+	({                                                    \
+		typeof(__ret__) __internal_ret__ = (__ret__); \
+		errno = (__errno__);                          \
+		__internal_ret__;                             \
 	})
+
+#define ret_errno(__errno__)         \
+	({                           \
+		errno = (__errno__); \
+		-(__errno__);        \
+	})
+
+#define free_move_ptr(a, b)          \
+	({                           \
+		free(a);             \
+		(a) = move_ptr((b)); \
+	})
+
+/* Container's specific file/directory names */
+#define LXC_CONFIG_FNAME      "config"
+#define LXC_PARTIAL_FNAME     "partial"
+#define LXC_ROOTFS_DNAME      "rootfs"
+#define LXC_TIMESTAMP_FNAME   "ts"
+#define LXC_COMMENT_FNAME     "comment"
+
+#define ARRAY_SIZE(x)                                                        \
+	(__builtin_choose_expr(!__builtin_types_compatible_p(typeof(x),      \
+							     typeof(&*(x))), \
+			       sizeof(x) / sizeof((x)[0]), ((void)0)))
 
 #endif /* __LXC_MACRO_H */

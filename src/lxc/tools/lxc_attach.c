@@ -1,25 +1,4 @@
-/*
- * lxc: linux Container library
- *
- * (C) Copyright IBM Corp. 2007, 2010
- *
- * Authors:
- * Daniel Lezcano <daniel.lezcano at free.fr>
- *
- * This library is free software; you can redistribute it and/or
- * modify it under the terms of the GNU Lesser General Public
- * License as published by the Free Software Foundation; either
- * version 2.1 of the License, or (at your option) any later version.
- *
- * This library is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
- * Lesser General Public License for more details.
- *
- * You should have received a copy of the GNU Lesser General Public
- * License along with this library; if not, write to the Free Software
- * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA
- */
+/* SPDX-License-Identifier: LGPL-2.1+ */
 
 #ifndef _GNU_SOURCE
 #define _GNU_SOURCE 1
@@ -93,6 +72,8 @@ static const struct option my_longopts[] = {
 	{"set-var", required_argument, 0, 'v'},
 	{"pty-log", required_argument, 0, 'L'},
 	{"rcfile", required_argument, 0, 'f'},
+	{"uid", required_argument, 0, 'u'},
+	{"gid", required_argument, 0, 'g'},
 	LXC_COMMON_OPTIONS
 };
 
@@ -143,12 +124,16 @@ Options :\n\
                     multiple times.\n\
   -f, --rcfile=FILE\n\
                     Load configuration file FILE\n\
+  -u, --uid=UID     Execute COMMAND with UID inside the container\n\
+  -g, --gid=GID     Execute COMMAND with GID inside the container\n\
 ",
 	.options      = my_longopts,
 	.parser       = my_parser,
 	.checker      = NULL,
 	.log_priority = "ERROR",
 	.log_file     = "none",
+	.uid          = LXC_INVALID_UID,
+	.gid          = LXC_INVALID_GID,
 };
 
 static int my_parser(struct lxc_arguments *args, int c, char *arg)
@@ -207,6 +192,14 @@ static int my_parser(struct lxc_arguments *args, int c, char *arg)
 		break;
 	case 'f':
 		args->rcfile = arg;
+		break;
+	case 'u':
+		if (lxc_safe_uint(arg, &args->uid) < 0)
+			return -1;
+		break;
+	case 'g':
+		if (lxc_safe_uint(arg, &args->gid) < 0)
+			return -1;
 		break;
 	}
 
@@ -354,6 +347,12 @@ int main(int argc, char *argv[])
 			goto out;
 	}
 
+	if (my_args.uid != LXC_INVALID_UID)
+		attach_options.uid = my_args.uid;
+
+	if (my_args.gid != LXC_INVALID_GID)
+		attach_options.gid = my_args.gid;
+
 	if (command.program) {
 		ret = c->attach_run_wait(c, &attach_options, command.program,
 					 (const char **)command.argv);
@@ -367,10 +366,9 @@ int main(int argc, char *argv[])
 		ret = lxc_wait_for_pid_status(pid);
 		if (ret < 0)
 			goto out;
-
-		if (WIFEXITED(ret))
-			wexit = WEXITSTATUS(ret);
 	}
+	if (WIFEXITED(ret))
+		wexit = WEXITSTATUS(ret);
 
 out:
 	lxc_container_put(c);

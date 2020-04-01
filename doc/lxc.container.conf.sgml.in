@@ -375,7 +375,7 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA
           <listitem>
             <para>
               The only allowed values are 0 and 1. Set this to 1 to destroy a
-              container on shutdown. 
+              container on shutdown.
             </para>
           </listitem>
         </varlistentry>
@@ -443,14 +443,23 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA
             <para>
               <option>veth:</option> a virtual ethernet pair
               device is created with one side assigned to the container
-              and the other side attached to a bridge specified by
+              and the other side on the host.
+              <option>lxc.net.[i].veth.mode</option> specifies the
+              mode the veth parent will use on the host.
+              The accepted  modes are <option>bridge</option> and <option>router</option>.
+              The mode defaults to bridge if not specified.
+              In <option>bridge</option> mode the host side is attached to a bridge specified by
               the <option>lxc.net.[i].link</option> option.
-              If the bridge is not specified, then the veth pair device
+              If the bridge link is not specified, then the veth pair device
               will be created but not attached to any bridge.
               Otherwise, the bridge has to be created on the system
               before starting the container.
               <command>lxc</command> won't handle any
               configuration outside of the container.
+              In <option>router</option> mode static routes are created on the host for the
+              container's IP addresses pointing to the host side veth interface.
+              Additionally Proxy ARP and Proxy NDP entries are added on the host side veth interface
+              for the gateway IPs defined in the container to allow the container to reach the host.
               By default, <command>lxc</command> chooses a name for the
               network device belonging to the outside of the
               container, but if you wish to handle
@@ -459,6 +468,12 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA
               the <option>lxc.net.[i].veth.pair</option> option (except for
               unprivileged containers where this option is ignored for security
               reasons).
+
+              Static routes can be added on the host pointing to the container using the
+              <option>lxc.net.[i].veth.ipv4.route</option> and
+              <option>lxc.net.[i].veth.ipv6.route</option> options.
+              Several lines specify several routes.
+              The route is in format x.y.z.t/m, eg. 192.168.1.0/24.
             </para>
 
             <para>
@@ -479,7 +494,7 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA
               different macvlan on the same upper device. The accepted
               modes are <option>private</option>, <option>vepa</option>,
               <option>bridge</option> and <option>passthru</option>.
-	      In <option>private</option> mode, the device never
+              In <option>private</option> mode, the device never
               communicates with any other device on the same upper_dev (default).
               In <option>vepa</option> mode, the new Virtual Ethernet Port
               Aggregator (VEPA) mode, it assumes that the adjacent
@@ -502,6 +517,41 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA
               the physical interface are forwarded to the macvlan
               interface. Only one macvlan interface in <option>passthru</option>
               mode is possible for one physical interface.
+            </para>
+
+            <para>
+              <option>ipvlan:</option> an ipvlan interface is linked
+              with the interface specified by
+              the <option>lxc.net.[i].link</option> and assigned to
+              the container.
+              <option>lxc.net.[i].ipvlan.mode</option> specifies the
+              mode the ipvlan will use to communicate between
+              different ipvlan on the same upper device. The accepted
+              modes are <option>l3</option>, <option>l3s</option> and
+              <option>l2</option>. It defaults to <option>l3</option> mode.
+              In <option>l3</option> mode TX processing up to L3 happens on the stack instance
+              attached to the slave device and packets are switched to the stack instance of the
+              master device for the L2 processing and routing from that instance will be
+              used before packets are queued on the outbound device. In this mode the slaves
+              will not receive nor can send multicast / broadcast traffic.
+              In <option>l3s</option> mode TX processing is very similar to the L3 mode except that
+              iptables (conn-tracking) works in this mode and hence it is L3-symmetric (L3s).
+              This will have slightly less performance but that shouldn't matter since you are
+              choosing this mode over plain-L3 mode to make conn-tracking work.
+              In <option>l2</option> mode TX processing happens on the stack instance attached to
+              the slave device and packets are switched and queued to the master device to send
+              out. In this mode the slaves will RX/TX multicast and broadcast (if applicable) as well.
+              <option>lxc.net.[i].ipvlan.isolation</option> specifies the isolation mode.
+              The accepted isolation values are <option>bridge</option>,
+              <option>private</option> and <option>vepa</option>.
+              It defaults to <option>bridge</option>.
+              In <option>bridge</option> isolation mode slaves can cross-talk among themselves
+              apart from talking through the master device.
+              In <option>private</option> isolation mode the port is set in private mode.
+              i.e. port won't allow cross communication between slaves.
+              In <option>vepa</option> isolation mode the port is set in VEPA mode.
+              i.e. port will offload switching functionality to the external entity as
+              described in 802.1Qbg.
             </para>
 
             <para>
@@ -533,6 +583,24 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA
           <listitem>
             <para>
               Specify the interface to be used for real network traffic.
+              </para>
+          </listitem>
+        </varlistentry>
+
+        <varlistentry>
+          <term>
+            <option>lxc.net.[i].l2proxy</option>
+          </term>
+          <listitem>
+            <para>
+              Controls whether layer 2 IP neighbour proxy entries will be added to the
+              lxc.net.[i].link interface for the IP addresses of the container.
+              Can be set to 0 or 1. Defaults to 0.
+              When used with IPv4 addresses, the following sysctl values need to be set:
+              net.ipv4.conf.[link].forwarding=1
+              When used with IPv6 addresses, the following sysctl values need to be set:
+              net.ipv6.conf.[link].proxy_ndp=1
+              net.ipv6.conf.[link].forwarding=1
               </para>
           </listitem>
         </varlistentry>
@@ -604,8 +672,11 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA
               interface (as specified by the
               <option>lxc.net.[i].link</option> option) and use that as
               the gateway. <option>auto</option> is only available when
-              using the <option>veth</option> and
-              <option>macvlan</option> network types.
+              using the <option>veth</option>,
+              <option>macvlan</option> and <option>ipvlan</option> network types.
+              Can also have the special value of <option>dev</option>,
+              which means to set the default gateway as a device route.
+              This is primarily for use with layer 3 network modes, such as IPVLAN.
             </para>
           </listitem>
         </varlistentry>
@@ -638,8 +709,11 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA
               interface (as specified by the
               <option>lxc.net.[i].link</option> option) and use that as
               the gateway. <option>auto</option> is only available when
-              using the <option>veth</option> and
-              <option>macvlan</option> network types.
+              using the <option>veth</option>,
+              <option>macvlan</option> and <option>ipvlan</option> network types.
+              Can also have the special value of <option>dev</option>,
+              which means to set the default gateway as a device route.
+              This is primarily for use with layer 3 network modes, such as IPVLAN.
             </para>
           </listitem>
         </varlistentry>
@@ -674,7 +748,7 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA
                 <listitem>
                  <para>
                  LXC_NET_TYPE: the network type. This is one of the valid
-                 network types listed here (e.g. 'macvlan', 'veth').
+                 network types listed here (e.g. 'vlan', 'macvlan', 'ipvlan', 'veth').
                   </para>
                 </listitem>
 
@@ -740,7 +814,7 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA
                 <listitem>
                  <para>
                  LXC_NET_TYPE: the network type. This is one of the valid
-                 network types listed here (e.g. 'macvlan', 'veth').
+                 network types listed here (e.g. 'vlan', 'macvlan', 'ipvlan', 'veth').
                   </para>
                 </listitem>
 
@@ -855,7 +929,7 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA
             When manually specifying a size for the log file the value should
             be a power of 2 when converted to bytes. Valid size prefixes are
             'KB', 'MB', 'GB'. (Note that all conversions are based on multiples
-            of 1024. That means 'KB' == 'KiB', 'MB' == 'MiB', 'GB' == 'GiB'. 
+            of 1024. That means 'KB' == 'KiB', 'MB' == 'MiB', 'GB' == 'GiB'.
             Additionally, the case of the suffix is ignored, i.e. 'kB', 'KB' and
             'Kb' are treated equally.)
 
@@ -990,7 +1064,8 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA
         <filename>/dev</filename> to be set up as needed in the container
         rootfs.  If lxc.autodev is set to 1, then after mounting the container's
         rootfs LXC will mount a fresh tmpfs under <filename>/dev</filename>
-        (limited to 500k) and fill in a minimal set of initial devices.
+        (limited to 500K by default, unless defined in lxc.autodev.tmpfs.size)
+        and fill in a minimal set of initial devices.
         This is generally required when starting a container containing
         a "systemd" based "init" but may be optional at other times.  Additional
         devices in the containers /dev directory may be created through the
@@ -1005,6 +1080,19 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA
             <para>
               Set this to 0 to stop LXC from mounting and populating a minimal
               <filename>/dev</filename> when starting the container.
+            </para>
+          </listitem>
+        </varlistentry>
+
+        <varlistentry>
+          <term>
+            <option>lxc.autodev.tmpfs.size</option>
+          </term>
+          <listitem>
+            <para>
+              Set this to define the size of the /dev tmpfs.
+              The default value is 500000 (500K). If the parameter is used
+              but without value, the default value is used.
             </para>
           </listitem>
         </varlistentry>
@@ -1084,9 +1172,9 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA
               <option>relative</option> source path is taken to be relative to
               the mounted container root. For instance,
              </para>
-<screen>
-dev/null proc/kcore none bind,relative 0 0
-</screen>
+             <programlisting>
+             dev/null proc/kcore none bind,relative 0 0
+             </programlisting>
              <para>
               Will expand dev/null to ${<option>LXC_ROOTFS_MOUNT</option>}/dev/null,
               and mount it to proc/kcore inside the container.
@@ -1407,6 +1495,19 @@ dev/null proc/kcore none bind,relative 0 0
           </listitem>
         </varlistentry>
 
+        <varlistentry>
+          <term>
+            <option>lxc.rootfs.managed</option>
+          </term>
+          <listitem>
+            <para>
+              Set this to 0 to indicate that LXC is not managing the
+              container storage, then LXC will not modify the
+              container storage. The default is 1.
+            </para>
+          </listitem>
+        </varlistentry>
+
       </variablelist>
     </refsect2>
 
@@ -1467,6 +1568,20 @@ dev/null proc/kcore none bind,relative 0 0
               "/sys/fs/cgroup/cpuset/my-user/my-cgroup/first/c1" for the
               container. Any missing cgroups will be created by LXC. This
               presupposes that the user has write access to its current cgroup.
+            </para>
+          </listitem>
+        </varlistentry>
+        <varlistentry>
+          <term>
+            <option>lxc.cgroup.relative</option>
+          </term>
+          <listitem>
+            <para>
+              Set this to 1 to instruct LXC to never escape to the
+              root cgroup. This makes it easy for users to adhere to
+              restrictions enforced by cgroup2 and
+              systemd. Specifically, this makes it possible to run LXC
+              containers as systemd services.
             </para>
           </listitem>
         </varlistentry>
@@ -1602,7 +1717,7 @@ dev/null proc/kcore none bind,relative 0 0
             </para>
 
             <para>
-            To inherit the namespace from another container set the 
+            To inherit the namespace from another container set the
             <option>lxc.namespace.share.[namespace identifier]</option> to the name of
             the container, e.g. <option>lxc.namespace.share.pid=c3</option>.
             </para>
@@ -1687,7 +1802,7 @@ dev/null proc/kcore none bind,relative 0 0
           </term>
           <listitem>
             <para>
-              Specify the kernel parameters to be set. The parameters available 
+              Specify the kernel parameters to be set. The parameters available
               are those listed under /proc/sys/.
               Note that not all sysctls are namespaced. Changing Non-namespaced
               sysctls will cause the system-wide setting to be modified.
@@ -1695,7 +1810,7 @@ dev/null proc/kcore none bind,relative 0 0
                 <refentrytitle><command>sysctl</command></refentrytitle>
                 <manvolnum>8</manvolnum>
               </citerefentry>.
-              If used with no value, lxc will clear the parameters specified up 
+              If used with no value, lxc will clear the parameters specified up
               to this point.
             </para>
           </listitem>
@@ -1730,6 +1845,11 @@ dev/null proc/kcore none bind,relative 0 0
 	      are nesting containers and are already confined), then use
             </para>
               <programlisting>lxc.apparmor.profile = unchanged</programlisting>
+            <para>
+              If you instruct LXC to generate the apparmor profile,
+              then use
+            </para>
+              <programlisting>lxc.apparmor.profile = generated</programlisting>
           </listitem>
         </varlistentry>
         <varlistentry>
@@ -1753,6 +1873,38 @@ dev/null proc/kcore none bind,relative 0 0
             </para>
           </listitem>
         </varlistentry>
+
+        <varlistentry>
+          <term>
+            <option>lxc.apparmor.allow_nesting</option>
+          </term>
+          <listitem>
+            <para>
+              If set this to 1, causes the following changes. When
+              generated apparmor profiles are used, they will contain
+              the necessary changes to allow creating a nested
+              container. In addition to the usual mount points,
+              <filename>/dev/.lxc/proc</filename>
+              and <filename>/dev/.lxc/sys</filename> will contain
+              procfs and sysfs mount points without the lxcfs
+              overlays, which, if generated apparmor profiles are
+              being used, will not be read/writable directly.
+            </para>
+          </listitem>
+        </varlistentry>
+
+        <varlistentry>
+          <term>
+            <option>lxc.apparmor.raw</option>
+          </term>
+          <listitem>
+            <para>
+              A list of raw AppArmor profile lines to append to the
+              profile. Only valid when using generated profiles.
+            </para>
+          </listitem>
+        </varlistentry>
+
       </variablelist>
     </refsect2>
 
@@ -1778,6 +1930,44 @@ dev/null proc/kcore none bind,relative 0 0
               be run or <command>unconfined_t</command>. For example
             </para>
             <programlisting>lxc.selinux.context = system_u:system_r:lxc_t:s0:c22</programlisting>
+          </listitem>
+        </varlistentry>
+        <varlistentry>
+          <term>
+            <option>lxc.selinux.context.keyring</option>
+          </term>
+          <listitem>
+            <para>
+              Specify the SELinux context under which the container's keyring
+              should be created. By default this the same as lxc.selinux.context, or
+              the context lxc is executed under if lxc.selinux.context has not been set.
+            </para>
+            <programlisting>lxc.selinux.context.keyring = system_u:system_r:lxc_t:s0:c22</programlisting>
+          </listitem>
+        </varlistentry>
+      </variablelist>
+    </refsect2>
+
+    <refsect2>
+      <title>Kernel Keyring</title>
+      <para>
+        The Linux Keyring facility is primarily a way for various
+        kernel components to retain or cache security data, authentication
+        keys, encryption keys, and other data in the kernel. By default lxc
+        will create a new session keyring for the started application.
+      </para>
+      <variablelist>
+        <varlistentry>
+          <term>
+            <option>lxc.keyring.session</option>
+          </term>
+          <listitem>
+            <para>
+              Disable the creation of new session keyring by lxc. The started
+              application will then inherit the current session keyring.
+              By default, or when passing the value 1, a new keyring will be created.
+            </para>
+            <programlisting>lxc.keyring.session = 0</programlisting>
           </listitem>
         </varlistentry>
       </variablelist>
@@ -1815,7 +2005,26 @@ dev/null proc/kcore none bind,relative 0 0
       2
       blacklist
       mknod errno 0
+      ioctl notify
       </programlisting>
+
+      <para>
+      Specifying "errno" as action will cause LXC to register a seccomp filter
+      that will cause a specific errno to be returned to the caller. The errno
+      value can be specified after the "errno" action word.
+      </para>
+
+      <para>
+      Specifying "notify" as action will cause LXC to register a seccomp
+      listener and retrieve a listener file descriptor from the kernel. When a
+      syscall is made that is registered as "notify" the kernel will generate a
+      poll event and send a message over the file descriptor. The caller can
+      read this message, inspect the syscalls including its arguments. Based on
+      this information the caller is expected to send back a message informing
+      the kernel which action to take. Until that message is sent the kernel
+      will block the calling process. The format of the messages to read and
+      sent is documented in seccomp itself.
+      </para>
 
       <variablelist>
         <varlistentry>
@@ -1827,6 +2036,44 @@ dev/null proc/kcore none bind,relative 0 0
               Specify a file containing the seccomp configuration to
               load before the container starts.
              </para>
+          </listitem>
+        </varlistentry>
+        <varlistentry>
+          <term>
+            <option>lxc.seccomp.allow_nesting</option>
+          </term>
+          <listitem>
+            <para>
+	      If this flag is set to 1, then seccomp filters will be stacked
+	      regardless of whether a seccomp profile is already loaded.
+	      This allows nested containers to load their own seccomp profile.
+	      The default setting is 0.
+             </para>
+          </listitem>
+        </varlistentry>
+        <varlistentry>
+          <term>
+            <option>lxc.seccomp.notify.proxy</option>
+          </term>
+          <listitem>
+            <para>
+	      Specify a unix socket to which LXC will connect and forward
+	      seccomp events to. The path must be in the form
+	      unix:/path/to/socket or unix:@socket. The former specifies a
+	      path-bound unix domain socket while the latter specifies an
+	      abstract unix domain socket.
+            </para>
+          </listitem>
+        </varlistentry>
+        <varlistentry>
+          <term>
+            <option>lxc.seccomp.notify.cookie</option>
+          </term>
+          <listitem>
+            <para>
+	      An additional string sent along with proxied seccomp notification
+	      requests.
+            </para>
           </listitem>
         </varlistentry>
       </variablelist>
@@ -2369,7 +2616,8 @@ dev/null proc/kcore none bind,relative 0 0
           <listitem>
             <para>
               An integer used to sort the containers when auto-starting
-              a series of containers at once.
+              a series of containers at once. A lower value means an
+              earlier start.
             </para>
           </listitem>
         </varlistentry>
@@ -2383,6 +2631,21 @@ dev/null proc/kcore none bind,relative 0 0
               before initializing the container (before running any pre-start
               hooks). This requires the CAP_SYS_ADMIN capability at startup.
               Default is 0.
+            </para>
+          </listitem>
+        </varlistentry>
+        <varlistentry>
+          <term>
+            <option>lxc.monitor.signal.pdeath</option>
+          </term>
+          <listitem>
+            <para>
+              Set the signal to be sent to the container's init when the lxc
+              monitor exits. By default it is set to SIGKILL which will cause
+              all container processes to be killed when the lxc monitor process
+              dies.
+              To ensure that containers stay alive even if lxc monitor dies set
+              this to 0.
             </para>
           </listitem>
         </varlistentry>
@@ -2456,6 +2719,13 @@ dev/null proc/kcore none bind,relative 0 0
             <programlisting>
               lxc.environment = APP_ENV=production
               lxc.environment = SYSLOG_SERVER=192.0.2.42
+            </programlisting>
+            <para>
+            It is possible to inherit host environment variables by setting the
+            name of the variable without a "=" sign. For example:
+            </para>
+            <programlisting>
+              lxc.environment = PATH
             </programlisting>
           </listitem>
         </varlistentry>

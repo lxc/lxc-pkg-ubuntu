@@ -1,29 +1,11 @@
-/*
- * lxc: linux Container library
- *
- * (C) Copyright IBM Corp. 2007, 2008
- *
- * Authors:
- * Daniel Lezcano <daniel.lezcano at free.fr>
- *
- * This library is free software; you can redistribute it and/or
- * modify it under the terms of the GNU Lesser General Public
- * License as published by the Free Software Foundation; either
- * version 2.1 of the License, or (at your option) any later version.
- *
- * This library is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
- * Lesser General Public License for more details.
- *
- * You should have received a copy of the GNU Lesser General Public
- * License along with this library; if not, write to the Free Software
- * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA
- */
+/* SPDX-License-Identifier: LGPL-2.1+ */
+
 #ifndef __LXC_NL_H
 #define __LXC_NL_H
 
 #include <stdio.h>
+
+#include "memory_utils.h"
 
 /*
  * Use this as a good size to allocate generic netlink messages
@@ -84,10 +66,9 @@ int netlink_open(struct nl_handler *handler, int protocol);
  *  the handler is no longer valid
  *
  * @handler: a handler to the netlink socket
- *
- * Returns 0 on success, < 0 otherwise
  */
-int netlink_close(struct nl_handler *handler);
+void netlink_close(struct nl_handler *handler);
+define_cleanup_function(struct nl_handler *, netlink_close);
 
 /*
  * netlink_rcv : receive a netlink message from the kernel.
@@ -251,6 +232,7 @@ void *nlmsg_reserve(struct nlmsg *nlmsg, size_t len);
  * @nlmsg: the netlink message to be freed
  */
 void nlmsg_free(struct nlmsg *nlmsg);
+define_cleanup_function(struct nlmsg *, nlmsg_free);
 
 /*
  * nlmsg_data : returns a pointer to the data contained in the netlink message

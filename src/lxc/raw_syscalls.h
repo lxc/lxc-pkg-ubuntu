@@ -1,21 +1,4 @@
-/* liblxcapi
- *
- * Copyright © 2018 Christian Brauner <christian.brauner@ubuntu.com>.
- * Copyright © 2018 Canonical Ltd.
- *
- * This program is free software; you can redistribute it and/or modify
- * it under the terms of the GNU General Public License version 2, as
- * published by the Free Software Foundation.
- *
- * This program is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
- * GNU General Public License for more details.
- *
- * You should have received a copy of the GNU General Public License along
- * with this program; if not, write to the Free Software Foundation, Inc.,
- * 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
- */
+/* SPDX-License-Identifier: LGPL-2.1+ */
 
 #ifndef __LXC_RAW_SYSCALL_H
 #define __LXC_RAW_SYSCALL_H
@@ -24,6 +7,7 @@
 #define _GNU_SOURCE 1
 #endif
 #include <sched.h>
+#include <stdbool.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <signal.h>
@@ -33,6 +17,11 @@
 /* clone */
 #ifndef CLONE_PIDFD
 #define CLONE_PIDFD 0x00001000
+#endif
+
+/* waitid */
+#ifndef P_PIDFD
+#define P_PIDFD 3
 #endif
 
 /*
@@ -92,7 +81,7 @@ static inline pid_t lxc_raw_getpid(void)
 
 static inline pid_t lxc_raw_gettid(void)
 {
-#ifdef __NR_gettid
+#if __NR_gettid > 0
 	return syscall(__NR_gettid);
 #else
 	return lxc_raw_getpid();

@@ -1,22 +1,4 @@
-/* liblxcapi
- *
- * Copyright © 2012 Serge Hallyn <serge.hallyn@ubuntu.com>.
- * Copyright © 2012 Canonical Ltd.
- *
- *  This library is free software; you can redistribute it and/or
- *  modify it under the terms of the GNU Lesser General Public
- *  License as published by the Free Software Foundation; either
- *  version 2.1 of the License, or (at your option) any later version.
-
- *  This library is distributed in the hope that it will be useful,
- *  but WITHOUT ANY WARRANTY; without even the implied warranty of
- *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
- *  Lesser General Public License for more details.
-
- *  You should have received a copy of the GNU Lesser General Public
- *  License along with this library; if not, write to the Free Software
- *  Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301  USA
- */
+/* SPDX-License-Identifier: LGPL-2.1+ */
 
 #ifndef _GNU_SOURCE
 #define _GNU_SOURCE 1
@@ -32,9 +14,11 @@
 #include <stdarg.h>
 #include <stdint.h>
 #include <stdio.h>
+#include <stdlib.h>
 #include <sys/file.h>
 #include <sys/mman.h>
 #include <sys/mount.h>
+#include <sys/stat.h>
 #include <sys/syscall.h>
 #include <sys/sysmacros.h>
 #include <sys/types.h>
@@ -43,8 +27,10 @@
 
 #include "../include/netns_ifaddrs.h"
 #include "af_unix.h"
+#include "api_extensions.h"
 #include "attach.h"
 #include "cgroup.h"
+#include "macro.h"
 #include "commands.h"
 #include "commands_utils.h"
 #include "conf.h"
@@ -95,19 +81,6 @@
 #include "include/strlcpy.h"
 #endif
 
-/* Define faccessat() if missing from the C library */
-#ifndef HAVE_FACCESSAT
-static int faccessat(int __fd, const char *__file, int __type, int __flag)
-{
-#ifdef __NR_faccessat
-	return syscall(__NR_faccessat, __fd, __file, __type, __flag);
-#else
-	errno = ENOSYS;
-	return -1;
-#endif
-}
-#endif
-
 lxc_log_define(lxccontainer, lxc);
 
 static bool do_lxcapi_destroy(struct lxc_container *c);
@@ -127,9 +100,9 @@ static bool config_file_exists(const char *lxcpath, const char *cname)
 	size_t len;
 
 	/* $lxcpath + '/' + $cname + '/config' + \0 */
-	len = strlen(lxcpath) + strlen(cname) + 9;
+	len = strlen(lxcpath) + 1 + strlen(cname) + 1 + strlen(LXC_CONFIG_FNAME) + 1;
 	fname = must_realloc(NULL, len);
-	ret = snprintf(fname, len, "%s/%s/config", lxcpath, cname);
+	ret = snprintf(fname, len, "%s/%s/%s", lxcpath, cname, LXC_CONFIG_FNAME);
 	if (ret < 0 || (size_t)ret >= len)
 		return false;
 
@@ -154,15 +127,15 @@ enum {
 
 static int ongoing_create(struct lxc_container *c)
 {
-	__do_close_prot_errno int fd = -EBADF;
+	__do_close int fd = -EBADF;
 	__do_free char *path = NULL;
 	struct flock lk = {0};
 	int ret;
 	size_t len;
 
-	len = strlen(c->config_path) + strlen(c->name) + 10;
+	len = strlen(c->config_path) + 1 + strlen(c->name) + 1 + strlen(LXC_PARTIAL_FNAME) + 1;
 	path = must_realloc(NULL, len);
-	ret = snprintf(path, len, "%s/%s/partial", c->config_path, c->name);
+	ret = snprintf(path, len, "%s/%s/%s", c->config_path, c->name, LXC_PARTIAL_FNAME);
 	if (ret < 0 || (size_t)ret >= len)
 		return LXC_CREATE_FAILED;
 
@@ -206,9 +179,9 @@ static int create_partial(struct lxc_container *c)
 	struct flock lk = {0};
 
 	/* $lxcpath + '/' + $name + '/partial' + \0 */
-	len = strlen(c->config_path) + strlen(c->name) + 10;
+	len = strlen(c->config_path) + 1 + strlen(c->name) + 1 + strlen(LXC_PARTIAL_FNAME) + 1;
 	path = must_realloc(NULL, len);
-	ret = snprintf(path, len, "%s/%s/partial", c->config_path, c->name);
+	ret = snprintf(path, len, "%s/%s/%s", c->config_path, c->name, LXC_PARTIAL_FNAME);
 	if (ret < 0 || (size_t)ret >= len)
 		return -1;
 
@@ -244,9 +217,9 @@ static void remove_partial(struct lxc_container *c, int fd)
 	close(fd);
 
 	/* $lxcpath + '/' + $name + '/partial' + \0 */
-	len = strlen(c->config_path) + strlen(c->name) + 10;
+	len = strlen(c->config_path) + 1 + strlen(c->name) + 1 + strlen(LXC_PARTIAL_FNAME) + 1;
 	path = must_realloc(NULL, len);
-	ret = snprintf(path, len, "%s/%s/partial", c->config_path, c->name);
+	ret = snprintf(path, len, "%s/%s/%s", c->config_path, c->name, LXC_PARTIAL_FNAME);
 	if (ret < 0 || (size_t)ret >= len)
 		return;
 
@@ -480,6 +453,25 @@ static rettype fnname(struct lxc_container *c, t1 a1, t2 a2, t3 a3)	\
 	return ret;							\
 }
 
+#define WRAP_API_6(rettype, fnname, t1, t2, t3, t4, t5, t6)				\
+static rettype fnname(struct lxc_container *c, t1 a1, t2 a2, t3 a3,	\
+						t4 a4, t5 a5, t6 a6)	\
+{									\
+	rettype ret;							\
+	bool reset_config = false;					\
+									\
+	if (!current_config && c && c->lxc_conf) {			\
+		current_config = c->lxc_conf;				\
+		reset_config = true;					\
+	}								\
+									\
+	ret = do_##fnname(c, a1, a2, a3, a4, a5, a6);				\
+	if (reset_config)						\
+		current_config = NULL;					\
+									\
+	return ret;							\
+}
+
 WRAP_API(bool, lxcapi_is_defined)
 
 static const char *do_lxcapi_state(struct lxc_container *c)
@@ -606,6 +598,16 @@ static pid_t do_lxcapi_init_pid(struct lxc_container *c)
 
 WRAP_API(pid_t, lxcapi_init_pid)
 
+static int do_lxcapi_init_pidfd(struct lxc_container *c)
+{
+	if (!c)
+		return ret_errno(EBADF);
+
+	return lxc_cmd_get_init_pidfd(c->name, c->config_path);
+}
+
+WRAP_API(int, lxcapi_init_pidfd)
+
 static bool load_config_locked(struct lxc_container *c, const char *fname)
 {
 	if (!c->lxc_conf)
@@ -714,7 +716,7 @@ WRAP_API_2(bool, lxcapi_wait, const char *, int)
 
 static bool am_single_threaded(void)
 {
-	DIR *dir;
+	__do_closedir DIR *dir = NULL;
 	struct dirent *direntp;
 	int count = 0;
 
@@ -733,7 +735,6 @@ static bool am_single_threaded(void)
 		if (count > 1)
 			break;
 	}
-	closedir(dir);
 
 	return count == 1;
 }
@@ -819,6 +820,15 @@ static bool wait_on_daemonized_start(struct lxc_handler *handler, int pid)
 {
 	int ret, state;
 
+	/* The first child is going to fork() again and then exits. So we reap
+	 * the first child here.
+	 */
+	ret = wait_for_pid(pid);
+	if (ret < 0)
+		DEBUG("Failed waiting on first child %d", pid);
+	else
+		DEBUG("First child %d exited", pid);
+
 	/* Close write end of the socket pair. */
 	close(handler->state_socket_pair[1]);
 	handler->state_socket_pair[1] = -1;
@@ -828,15 +838,6 @@ static bool wait_on_daemonized_start(struct lxc_handler *handler, int pid)
 	/* Close read end of the socket pair. */
 	close(handler->state_socket_pair[0]);
 	handler->state_socket_pair[0] = -1;
-
-	/* The first child is going to fork() again and then exits. So we reap
-	 * the first child here.
-	 */
-	ret = wait_for_pid(pid);
-	if (ret < 0)
-		DEBUG("Failed waiting on first child %d", pid);
-	else
-		DEBUG("First child %d exited", pid);
 
 	if (state < 0) {
 		SYSERROR("Failed to receive the container state");
@@ -930,17 +931,17 @@ static bool do_lxcapi_start(struct lxc_container *c, int useinit, char * const a
 	if (c->daemonize) {
 		bool started;
 		char title[2048];
-		pid_t pid;
+		pid_t pid_first, pid_second;
 
-		pid = fork();
-		if (pid < 0) {
+		pid_first = fork();
+		if (pid_first < 0) {
 			free_init_cmd(init_cmd);
 			lxc_free_handler(handler);
 			return false;
 		}
 
 		/* first parent */
-		if (pid != 0) {
+		if (pid_first != 0) {
 			/* Set to NULL because we don't want father unlink
 			 * the PID file, child will do the free and unlink.
 			 */
@@ -949,7 +950,7 @@ static bool do_lxcapi_start(struct lxc_container *c, int useinit, char * const a
 			/* Wait for container to tell us whether it started
 			 * successfully.
 			 */
-			started = wait_on_daemonized_start(handler, pid);
+			started = wait_on_daemonized_start(handler, pid_first);
 
 			free_init_cmd(init_cmd);
 			lxc_free_handler(handler);
@@ -975,14 +976,14 @@ static bool do_lxcapi_start(struct lxc_container *c, int useinit, char * const a
 		 * POSIX's daemon() function we change to "/" and redirect
 		 * std{in,out,err} to /dev/null.
 		 */
-		pid = fork();
-		if (pid < 0) {
+		pid_second = fork();
+		if (pid_second < 0) {
 			SYSERROR("Failed to fork first child process");
 			_exit(EXIT_FAILURE);
 		}
 
 		/* second parent */
-		if (pid != 0) {
+		if (pid_second != 0) {
 			free_init_cmd(init_cmd);
 			lxc_free_handler(handler);
 			_exit(EXIT_SUCCESS);
@@ -1103,8 +1104,8 @@ reboot:
 		ret = lxc_execute(c->name, argv, 1, handler, c->config_path,
 				  c->daemonize, &c->error_num);
 	else
-		ret = lxc_start(c->name, argv, handler, c->config_path,
-				c->daemonize, &c->error_num);
+		ret = lxc_start(argv, handler, c->config_path, c->daemonize,
+				&c->error_num);
 
 	if (conf->reboot == REBOOT_REQ) {
 		INFO("Container requested reboot");
@@ -1267,14 +1268,14 @@ static struct lxc_storage *do_storage_create(struct lxc_container *c,
 		ret = snprintf(dest, len, "%s", rpath);
 	} else {
 		const char *lxcpath = do_lxcapi_get_config_path(c);
-		len = strlen(c->name) + strlen(lxcpath) + 9;
+		len = strlen(c->name) + 1 + strlen(lxcpath) + 1 + strlen(LXC_ROOTFS_DNAME) + 1;
 		dest = must_realloc(NULL, len);
-		ret = snprintf(dest, len, "%s/%s/rootfs", lxcpath, c->name);
+		ret = snprintf(dest, len, "%s/%s/%s", lxcpath, c->name, LXC_ROOTFS_DNAME);
 	}
 	if (ret < 0 || (size_t)ret >= len)
 		return NULL;
 
-	bdev = storage_create(dest, type, c->name, specs);
+	bdev = storage_create(dest, type, c->name, specs, c->lxc_conf);
 	if (!bdev) {
 		ERROR("Failed to create \"%s\" storage", type);
 		return NULL;
@@ -1282,14 +1283,14 @@ static struct lxc_storage *do_storage_create(struct lxc_container *c,
 
 	if (!c->set_config_item(c, "lxc.rootfs.path", bdev->src)) {
 		ERROR("Failed to set \"lxc.rootfs.path = %s\"", bdev->src);
+		storage_put(bdev);
 		return NULL;
 	}
 
 	/* If we are not root, chown the rootfs dir to root in the target user
 	 * namespace.
 	 */
-	ret = geteuid();
-	if (ret != 0 || (c->lxc_conf && !lxc_list_empty(&c->lxc_conf->id_map))) {
+	if (am_guest_unpriv() || !lxc_list_empty(&c->lxc_conf->id_map)) {
 		ret = chown_mapped_root(bdev->dest, c->lxc_conf);
 		if (ret < 0) {
 			ERROR("Error chowning \"%s\" to container root", bdev->dest);
@@ -1381,7 +1382,7 @@ static bool create_run_template(struct lxc_container *c, char *tpath,
 				 * rsync the contents into
 				 * <container-path>/<container-name>/rootfs.
 				 * However, the overlay mount function will
-				 * mount will mount
+				 * mount
 				 * <container-path>/<container-name>/delta0
 				 * over
 				 * <container-path>/<container-name>/rootfs
@@ -1637,12 +1638,13 @@ static bool prepend_lxc_header(char *path, const char *t, char *const argv[])
 	FILE *f;
 	int ret = -1;
 #if HAVE_OPENSSL
-	int i, md_len = 0;
+	int i;
+	unsigned int md_len = 0;
 	unsigned char md_value[EVP_MAX_MD_SIZE];
 	char *tpath;
 #endif
 
-	f = fopen(path, "r");
+	f = fopen(path, "re");
 	if (f == NULL)
 		return false;
 
@@ -1695,7 +1697,7 @@ static bool prepend_lxc_header(char *path, const char *t, char *const argv[])
 	free(tpath);
 #endif
 
-	f = fopen(path, "w");
+	f = fopen(path, "we");
 	if (f == NULL) {
 		SYSERROR("Reopening config for writing");
 		free(contents);
@@ -1782,7 +1784,7 @@ static bool do_lxcapi_create(struct lxc_container *c, const char *t,
 	int partial_fd;
 	mode_t mask;
 	pid_t pid;
-	bool ret = false;
+	bool ret = false, rootfs_managed = true;
 	char *tpath = NULL;
 
 	if (!c)
@@ -1817,6 +1819,9 @@ static bool do_lxcapi_create(struct lxc_container *c, const char *t,
 
 	if (!create_container_dir(c))
 		goto free_tpath;
+
+	if (c->lxc_conf->rootfs.path)
+		rootfs_managed = false;
 
 	/* If both template and rootfs.path are set, template is setup as
 	 * rootfs.path. The container is already created if we have a config and
@@ -1924,8 +1929,18 @@ out_unlock:
 	remove_partial(c, partial_fd);
 
 out:
-	if (!ret)
+	if (!ret) {
+		bool reset_managed = c->lxc_conf->rootfs.managed;
+
+		/*
+		 * Ensure that we don't destroy storage we didn't create
+		 * ourselves.
+		 */
+		if (!rootfs_managed)
+			c->lxc_conf->rootfs.managed = false;
 		container_destroy(c, NULL);
+		c->lxc_conf->rootfs.managed = reset_managed;
+	}
 
 free_tpath:
 	free(tpath);
@@ -1947,8 +1962,9 @@ static bool lxcapi_create(struct lxc_container *c, const char *t,
 
 static bool do_lxcapi_reboot(struct lxc_container *c)
 {
+	__do_close int pidfd = -EBADF;
+	pid_t pid = -1;
 	int ret;
-	pid_t pid;
 	int rebootsignal = SIGINT;
 
 	if (!c)
@@ -1957,18 +1973,23 @@ static bool do_lxcapi_reboot(struct lxc_container *c)
 	if (!do_lxcapi_is_running(c))
 		return false;
 
-	pid = do_lxcapi_init_pid(c);
-	if (pid <= 0)
-		return false;
+	pidfd = do_lxcapi_init_pidfd(c);
+	if (pidfd < 0) {
+		pid = do_lxcapi_init_pid(c);
+		if (pid <= 0)
+			return false;
+	}
 
 	if (c->lxc_conf && c->lxc_conf->rebootsignal)
 		rebootsignal = c->lxc_conf->rebootsignal;
 
-	ret = kill(pid, rebootsignal);
-	if (ret < 0) {
-		WARN("Failed to send signal %d to pid %d", rebootsignal, pid);
-		return false;
-	}
+	if (pidfd >= 0)
+		ret = lxc_raw_pidfd_send_signal(pidfd, rebootsignal, NULL, 0);
+	else
+		ret = kill(pid, rebootsignal);
+	if (ret < 0)
+		return log_warn(false, "Failed to send signal %d to pid %d",
+				rebootsignal, pid);
 
 	return true;
 }
@@ -1977,10 +1998,11 @@ WRAP_API(bool, lxcapi_reboot)
 
 static bool do_lxcapi_reboot2(struct lxc_container *c, int timeout)
 {
-	int killret, ret;
-	pid_t pid;
-	int rebootsignal = SIGINT, state_client_fd = -1;
+	__do_close int pidfd = -EBADF, state_client_fd = -EBADF;
+	int rebootsignal = SIGINT;
+	pid_t pid = -1;
 	lxc_state_t states[MAX_STATE] = {0};
+	int killret, ret;
 
 	if (!c)
 		return false;
@@ -1988,9 +2010,12 @@ static bool do_lxcapi_reboot2(struct lxc_container *c, int timeout)
 	if (!do_lxcapi_is_running(c))
 		return true;
 
-	pid = do_lxcapi_init_pid(c);
-	if (pid <= 0)
-		return true;
+	pidfd = do_lxcapi_init_pidfd(c);
+	if (pidfd < 0) {
+		pid = do_lxcapi_init_pid(c);
+		if (pid <= 0)
+			return true;
+	}
 
 	if (c->lxc_conf && c->lxc_conf->rebootsignal)
 		rebootsignal = c->lxc_conf->rebootsignal;
@@ -2016,21 +2041,18 @@ static bool do_lxcapi_reboot2(struct lxc_container *c, int timeout)
 	}
 
 	/* Send reboot signal to container. */
-	killret = kill(pid, rebootsignal);
-	if (killret < 0) {
-		if (state_client_fd >= 0)
-			close(state_client_fd);
-
-		WARN("Failed to send signal %d to pid %d", rebootsignal, pid);
-		return false;
-	}
+	if (pidfd >= 0)
+		killret = lxc_raw_pidfd_send_signal(pidfd, rebootsignal, NULL, 0);
+	else
+		killret = kill(pid, rebootsignal);
+	if (killret < 0)
+		return log_warn(false, "Failed to send signal %d to pid %d", rebootsignal, pid);
 	TRACE("Sent signal %d to pid %d", rebootsignal, pid);
 
 	if (timeout == 0)
 		return true;
 
 	ret = lxc_cmd_sock_rcv_state(state_client_fd, timeout);
-	close(state_client_fd);
 	if (ret < 0)
 		return false;
 
@@ -2045,10 +2067,11 @@ WRAP_API_1(bool, lxcapi_reboot2, int)
 
 static bool do_lxcapi_shutdown(struct lxc_container *c, int timeout)
 {
-	int killret, ret;
-	pid_t pid;
-	int haltsignal = SIGPWR, state_client_fd = -EBADF;
+	__do_close int pidfd = -EBADF, state_client_fd = -EBADF;
+	int haltsignal = SIGPWR;
+	pid_t pid = -1;
 	lxc_state_t states[MAX_STATE] = {0};
+	int killret, ret;
 
 	if (!c)
 		return false;
@@ -2056,6 +2079,7 @@ static bool do_lxcapi_shutdown(struct lxc_container *c, int timeout)
 	if (!do_lxcapi_is_running(c))
 		return true;
 
+	pidfd = do_lxcapi_init_pidfd(c);
 	pid = do_lxcapi_init_pid(c);
 	if (pid <= 0)
 		return true;
@@ -2066,8 +2090,10 @@ static bool do_lxcapi_shutdown(struct lxc_container *c, int timeout)
 	else if (task_blocks_signal(pid, (SIGRTMIN + 3)))
 		haltsignal = (SIGRTMIN + 3);
 
-	/* Add a new state client before sending the shutdown signal so that we
-	 * don't miss a state.
+
+	/*
+	 * Add a new state client before sending the shutdown signal so
+	 * that we don't miss a state.
 	 */
 	if (timeout != 0) {
 		states[STOPPED] = 1;
@@ -2084,24 +2110,47 @@ static bool do_lxcapi_shutdown(struct lxc_container *c, int timeout)
 
 		if (ret < MAX_STATE)
 			return false;
-	}
 
-	/* Send shutdown signal to container. */
-	killret = kill(pid, haltsignal);
-	if (killret < 0) {
-		if (state_client_fd >= 0)
-			close(state_client_fd);
+		if (pidfd >= 0) {
+			struct pollfd pidfd_poll = {
+			    .events = POLLIN,
+			    .fd = pidfd,
+			};
 
-		WARN("Failed to send signal %d to pid %d", haltsignal, pid);
-		return false;
+			killret = lxc_raw_pidfd_send_signal(pidfd, haltsignal,
+							    NULL, 0);
+			if (killret < 0)
+				return log_warn(false, "Failed to send signal %d to pidfd %d",
+						haltsignal, pidfd);
+
+			TRACE("Sent signal %d to pidfd %d", haltsignal, pidfd);
+
+			/*
+			 * No need for going through all of the state server
+			 * complications anymore. We can just poll on pidfds. :)
+			 */
+
+			if (timeout != 0) {
+				ret = poll(&pidfd_poll, 1, timeout);
+				if (ret < 0 || !(pidfd_poll.revents & POLLIN))
+					return false;
+
+				TRACE("Pidfd polling detected container exit");
+			}
+		} else {
+			killret = kill(pid, haltsignal);
+			if (killret < 0)
+				return log_warn(false, "Failed to send signal %d to pid %d",
+						haltsignal, pid);
+
+			TRACE("Sent signal %d to pid %d", haltsignal, pid);
+		}
 	}
-	TRACE("Sent signal %d to pid %d", haltsignal, pid);
 
 	if (timeout == 0)
 		return true;
 
 	ret = lxc_cmd_sock_rcv_state(state_client_fd, timeout);
-	close(state_client_fd);
 	if (ret < 0)
 		return false;
 
@@ -2679,7 +2728,7 @@ static bool mod_rdep(struct lxc_container *c0, struct lxc_container *c, bool inc
 
 	/* If we find an lxc-snapshot file using the old format only listing the
 	 * number of snapshots we will keep using it. */
-	f1 = fopen(path, "r");
+	f1 = fopen(path, "re");
 	if (f1) {
 		n = fscanf(f1, "%d", &v);
 		fclose(f1);
@@ -2694,7 +2743,7 @@ static bool mod_rdep(struct lxc_container *c0, struct lxc_container *c, bool inc
 
 	if (n == 1) {
 		v += inc ? 1 : -1;
-		f1 = fopen(path, "w");
+		f1 = fopen(path, "we");
 		if (!f1)
 			goto out;
 
@@ -2713,7 +2762,7 @@ static bool mod_rdep(struct lxc_container *c0, struct lxc_container *c, bool inc
 		/* Here we know that we have or can use an lxc-snapshot file
 		 * using the new format. */
 		if (inc) {
-			f1 = fopen(path, "a");
+			f1 = fopen(path, "ae");
 			if (!f1)
 				goto out;
 
@@ -2784,10 +2833,11 @@ out:
 
 void mod_all_rdeps(struct lxc_container *c, bool inc)
 {
-	struct lxc_container *p;
-	char *lxcpath = NULL, *lxcname = NULL, path[PATH_MAX];
+	__do_free char *lxcpath = NULL, *lxcname = NULL;
+	__do_fclose FILE *f = NULL;
 	size_t pathlen = 0, namelen = 0;
-	FILE *f;
+	struct lxc_container *p;
+	char path[PATH_MAX];
 	int ret;
 
 	ret = snprintf(path, PATH_MAX, "%s/%s/lxc_rdepends",
@@ -2797,14 +2847,14 @@ void mod_all_rdeps(struct lxc_container *c, bool inc)
 		return;
 	}
 
-	f = fopen(path, "r");
-	if (f == NULL)
+	f = fopen(path, "re");
+	if (!f)
 		return;
 
 	while (getline(&lxcpath, &pathlen, f) != -1) {
 		if (getline(&lxcname, &namelen, f) == -1) {
 			ERROR("badly formatted file %s", path);
-			goto out;
+			return;
 		}
 
 		remove_trailing_newlines(lxcpath);
@@ -2822,55 +2872,44 @@ void mod_all_rdeps(struct lxc_container *c, bool inc)
 
 		lxc_container_put(p);
 	}
-
-out:
-	free(lxcpath);
-	free(lxcname);
-	fclose(f);
 }
 
 static bool has_fs_snapshots(struct lxc_container *c)
 {
-	FILE *f;
+	__do_fclose FILE *f = NULL;
 	char path[PATH_MAX];
 	int ret, v;
 	struct stat fbuf;
-	bool bret = false;
 
 	ret = snprintf(path, PATH_MAX, "%s/%s/lxc_snapshots", c->config_path,
 			c->name);
 	if (ret < 0 || ret > PATH_MAX)
-		goto out;
+		return false;
 
 	/* If the file doesn't exist there are no snapshots. */
 	if (stat(path, &fbuf) < 0)
-		goto out;
+		return false;
 
 	v = fbuf.st_size;
 	if (v != 0) {
-		f = fopen(path, "r");
+		f = fopen(path, "re");
 		if (!f)
-			goto out;
+			return false;
 
 		ret = fscanf(f, "%d", &v);
-		fclose(f);
-		/* TODO: Figure out what to do with the return value of fscanf. */
 		if (ret != 1)
 			INFO("Container uses new lxc-snapshots format %s", path);
 	}
 
-	bret = v != 0;
-
-out:
-	return bret;
+	return v != 0;
 }
 
 static bool has_snapshots(struct lxc_container *c)
 {
+	__do_closedir DIR *dir = NULL;
 	char path[PATH_MAX];
 	struct dirent *direntp;
-	int count=0;
-	DIR *dir;
+	int count = 0;
 
 	if (!get_snappath_dir(c, path))
 		return false;
@@ -2889,7 +2928,6 @@ static bool has_snapshots(struct lxc_container *c)
 		break;
 	}
 
-	closedir(dir);
 	return count > 0;
 }
 
@@ -2979,6 +3017,10 @@ static bool container_destroy(struct lxc_container *c,
 		}
 	}
 
+	/* LXC is not managing the storage of the container. */
+	if (conf && !conf->rootfs.managed)
+		goto on_success;
+
 	if (conf && conf->rootfs.path && conf->rootfs.mount) {
 		if (!do_destroy_container(conf)) {
 			ERROR("Error destroying rootfs for %s", c->name);
@@ -3002,7 +3044,7 @@ static bool container_destroy(struct lxc_container *c,
 	 * +
 	 * \0
 	 */
-	len = strlen(p1) + 1 + strlen(c->name) + 1 + 6 + 1;
+	len = strlen(p1) + 1 + strlen(c->name) + 1 + strlen(LXC_CONFIG_FNAME) + 1;
 	path = malloc(len);
 	if (!path) {
 		ERROR("Failed to allocate memory");
@@ -3015,7 +3057,7 @@ static bool container_destroy(struct lxc_container *c,
 	if (storage && (!strcmp(storage->type, "overlay") ||
 			!strcmp(storage->type, "overlayfs")) &&
 	    (storage->flags & LXC_STORAGE_INTERNAL_OVERLAY_RESTORE)) {
-		ret = snprintf(path, len, "%s/%s/config", p1, c->name);
+		ret = snprintf(path, len, "%s/%s/%s", p1, c->name, LXC_CONFIG_FNAME);
 		if (ret < 0 || (size_t)ret >= len)
 			goto out;
 
@@ -3051,6 +3093,7 @@ static bool container_destroy(struct lxc_container *c,
 	}
 	INFO("Destroyed directory \"%s\" for \"%s\"", path, c->name);
 
+on_success:
 	bret = true;
 
 out:
@@ -3066,14 +3109,16 @@ static bool do_lxcapi_destroy(struct lxc_container *c)
 	if (!c || !lxcapi_is_defined(c))
 		return false;
 
-	if (has_snapshots(c)) {
-		ERROR("Container %s has snapshots;  not removing", c->name);
-		return false;
-	}
+	if (c->lxc_conf && c->lxc_conf->rootfs.managed) {
+		if (has_snapshots(c)) {
+			ERROR("Container %s has snapshots;  not removing", c->name);
+			return false;
+		}
 
-	if (has_fs_snapshots(c)) {
-		ERROR("container %s has snapshots on its rootfs", c->name);
-		return false;
+		if (has_fs_snapshots(c)) {
+			ERROR("container %s has snapshots on its rootfs", c->name);
+			return false;
+		}
 	}
 
 	return container_destroy(c, NULL);
@@ -3188,12 +3233,12 @@ static bool set_config_filename(struct lxc_container *c)
 		return false;
 
 	/* $lxc_path + "/" + c->name + "/" + "config" + '\0' */
-	len = strlen(c->config_path) + strlen(c->name) + strlen("config") + 3;
+	len = strlen(c->config_path) + 1 + strlen(c->name) + 1 + strlen(LXC_CONFIG_FNAME) + 1;
 	newpath = malloc(len);
 	if (!newpath)
 		return false;
 
-	ret = snprintf(newpath, len, "%s/%s/config", c->config_path, c->name);
+	ret = snprintf(newpath, len, "%s/%s/%s", c->config_path, c->name, LXC_CONFIG_FNAME);
 	if (ret < 0 || ret >= len) {
 		fprintf(stderr, "Error printing out config file name\n");
 		free(newpath);
@@ -3249,8 +3294,7 @@ WRAP_API_1(bool, lxcapi_set_config_path, const char *)
 
 static bool do_lxcapi_set_cgroup_item(struct lxc_container *c, const char *subsys, const char *value)
 {
-	int ret;
-	struct cgroup_ops *cgroup_ops;
+	call_cleaner(cgroup_exit) struct cgroup_ops *cgroup_ops = NULL;
 
 	if (!c)
 		return false;
@@ -3262,19 +3306,15 @@ static bool do_lxcapi_set_cgroup_item(struct lxc_container *c, const char *subsy
 	if (!cgroup_ops)
 		return false;
 
-	ret = cgroup_ops->set(cgroup_ops, subsys, value, c->name, c->config_path);
-
-	cgroup_exit(cgroup_ops);
-
-	return ret == 0;
+	return cgroup_ops->set(cgroup_ops, subsys, value, c->name,
+			       c->config_path) == 0;
 }
 
 WRAP_API_2(bool, lxcapi_set_cgroup_item, const char *, const char *)
 
 static int do_lxcapi_get_cgroup_item(struct lxc_container *c, const char *subsys, char *retv, int inlen)
 {
-	int ret;
-	struct cgroup_ops *cgroup_ops;
+	call_cleaner(cgroup_exit) struct cgroup_ops *cgroup_ops = NULL;
 
 	if (!c)
 		return -1;
@@ -3286,12 +3326,8 @@ static int do_lxcapi_get_cgroup_item(struct lxc_container *c, const char *subsys
 	if (!cgroup_ops)
 		return -1;
 
-	ret = cgroup_ops->get(cgroup_ops, subsys, retv, inlen, c->name,
-			      c->config_path);
-
-	cgroup_exit(cgroup_ops);
-
-	return ret;
+	return cgroup_ops->get(cgroup_ops, subsys, retv, inlen, c->name,
+			       c->config_path);
 }
 
 WRAP_API_3(int, lxcapi_get_cgroup_item, const char *, char *, int)
@@ -3503,30 +3539,20 @@ static void copy_rdepends(struct lxc_container *c, struct lxc_container *c0)
 
 static bool add_rdepends(struct lxc_container *c, struct lxc_container *c0)
 {
+	__do_fclose FILE *f = NULL;
 	int ret;
 	char path[PATH_MAX];
-	FILE *f;
-	bool bret;
 
-	ret = snprintf(path, PATH_MAX, "%s/%s/lxc_rdepends", c->config_path,
-		c->name);
-	if (ret < 0 || ret >= PATH_MAX)
+	ret = snprintf(path, sizeof(path), "%s/%s/lxc_rdepends", c->config_path, c->name);
+	if (ret < 0 || ret >= sizeof(path))
 		return false;
 
-	f = fopen(path, "a");
+	f = fopen(path, "ae");
 	if (!f)
 		return false;
 
-	bret = true;
-
 	/* If anything goes wrong, just return an error. */
-	if (fprintf(f, "%s\n%s\n", c0->config_path, c0->name) < 0)
-		bret = false;
-
-	if (fclose(f) != 0)
-		bret = false;
-
-	return bret;
+	return fprintf(f, "%s\n%s\n", c0->config_path, c0->name) > 0;
 }
 
 /*
@@ -3633,6 +3659,8 @@ static int clone_update_rootfs(struct clone_update_data *data)
 	/* update hostname in rootfs */
 	/* we're going to mount, so run in a clean namespace to simplify cleanup */
 
+	(void)lxc_setgroups(0, NULL);
+
 	if (setgid(0) < 0) {
 		ERROR("Failed to setgid to 0");
 		return -1;
@@ -3642,9 +3670,6 @@ static int clone_update_rootfs(struct clone_update_data *data)
 		ERROR("Failed to setuid to 0");
 		return -1;
 	}
-
-	if (setgroups(0, NULL) < 0)
-		WARN("Failed to clear groups");
 
 	if (unshare(CLONE_NEWNS) < 0)
 		return -1;
@@ -3710,7 +3735,7 @@ static int clone_update_rootfs(struct clone_update_data *data)
 		if (!file_exists(path))
 			return 0;
 
-		if (!(fout = fopen(path, "w"))) {
+		if (!(fout = fopen(path, "we"))) {
 			SYSERROR("unable to open %s: ignoring", path);
 			return 0;
 		}
@@ -3780,9 +3805,8 @@ static struct lxc_container *do_lxcapi_clone(struct lxc_container *c, const char
 
 	if (container_mem_lock(c))
 		return NULL;
-
-	if (!is_stopped(c)) {
-		ERROR("error: Original container (%s) is running", c->name);
+	if (!is_stopped(c) && !(flags & LXC_CLONE_ALLOW_RUNNING)) {
+		ERROR("error: Original container (%s) is running. Use --allowrunning if you want to force a snapshot of the running container.", c->name);
 		goto out;
 	}
 
@@ -3793,7 +3817,7 @@ static struct lxc_container *do_lxcapi_clone(struct lxc_container *c, const char
 	if (!lxcpath)
 		lxcpath = do_lxcapi_get_config_path(c);
 
-	ret = snprintf(newpath, PATH_MAX, "%s/%s/config", lxcpath, newname);
+	ret = snprintf(newpath, PATH_MAX, "%s/%s/%s", lxcpath, newname, LXC_CONFIG_FNAME);
 	if (ret < 0 || ret >= PATH_MAX) {
 		SYSERROR("clone: failed making config pathname");
 		goto out;
@@ -3842,7 +3866,7 @@ static struct lxc_container *do_lxcapi_clone(struct lxc_container *c, const char
 	saved_unexp_conf = NULL;
 	c->lxc_conf->unexpanded_len = saved_unexp_len;
 
-	ret = snprintf(newpath, PATH_MAX, "%s/%s/rootfs", lxcpath, newname);
+	ret = snprintf(newpath, PATH_MAX, "%s/%s/%s", lxcpath, newname, LXC_ROOTFS_DNAME);
 	if (ret < 0 || ret >= PATH_MAX) {
 		SYSERROR("clone: failed making rootfs pathname");
 		goto out;
@@ -4124,6 +4148,7 @@ static bool get_snappath_dir(struct lxc_container *c, char *snappath)
 static int do_lxcapi_snapshot(struct lxc_container *c, const char *commentfile)
 {
 	__do_free char *dfnam = NULL;
+        int len;
 	int i, flags, ret;
 	time_t timer;
 	struct tm tm_info;
@@ -4187,9 +4212,10 @@ static int do_lxcapi_snapshot(struct lxc_container *c, const char *commentfile)
 
 	strftime(buffer, 25, "%Y:%m:%d %H:%M:%S", &tm_info);
 
-	dfnam = must_realloc(NULL, strlen(snappath) + strlen(newname) + 5);
-	sprintf(dfnam, "%s/%s/ts", snappath, newname);
-	f = fopen(dfnam, "w");
+	len = strlen(snappath) + 1 + strlen(newname) + 1 + strlen(LXC_TIMESTAMP_FNAME) + 1;
+	dfnam = must_realloc(NULL, len);
+	snprintf(dfnam, len, "%s/%s/%s", snappath, newname, LXC_TIMESTAMP_FNAME);
+	f = fopen(dfnam, "we");
 	if (!f) {
 		ERROR("Failed to open %s", dfnam);
 		return -1;
@@ -4210,10 +4236,10 @@ static int do_lxcapi_snapshot(struct lxc_container *c, const char *commentfile)
 	if (commentfile) {
 		__do_free char *path = NULL;
 		/* $p / $name / comment \0 */
-		int len = strlen(snappath) + strlen(newname) + 10;
+		len = strlen(snappath) + 1 + strlen(newname) + 1 + strlen(LXC_COMMENT_FNAME) + 1;
 
 		path = must_realloc(NULL, len);
-		sprintf(path, "%s/%s/comment", snappath, newname);
+		snprintf(path, len, "%s/%s/%s", snappath, newname, LXC_COMMENT_FNAME);
 		return copy_file(commentfile, path) < 0 ? -1 : i;
 	}
 
@@ -4249,15 +4275,16 @@ static char *get_snapcomment_path(char* snappath, char *name)
 
 static char *get_timestamp(char* snappath, char *name)
 {
-	char path[PATH_MAX], *s = NULL;
+	__do_free char *s = NULL;
+	__do_fclose FILE *fin = NULL;
+	char path[PATH_MAX];
 	int ret, len;
-	FILE *fin;
 
 	ret = snprintf(path, PATH_MAX, "%s/%s/ts", snappath, name);
 	if (ret < 0 || ret >= PATH_MAX)
 		return NULL;
 
-	fin = fopen(path, "r");
+	fin = fopen(path, "re");
 	if (!fin)
 		return NULL;
 
@@ -4268,25 +4295,21 @@ static char *get_timestamp(char* snappath, char *name)
 		s = malloc(len+1);
 		if (s) {
 			s[len] = '\0';
-			if (fread(s, 1, len, fin) != len) {
-				SYSERROR("reading timestamp");
-				free(s);
-				s = NULL;
-			}
+			if (fread(s, 1, len, fin) != len)
+				return log_error_errno(NULL, errno, "reading timestamp");
 		}
 	}
 
-	fclose(fin);
-	return s;
+	return move_ptr(s);
 }
 
 static int do_lxcapi_snapshot_list(struct lxc_container *c, struct lxc_snapshot **ret_snaps)
 {
+	__do_closedir DIR *dir = NULL;
 	char snappath[PATH_MAX], path2[PATH_MAX];
 	int count = 0, ret;
 	struct dirent *direntp;
 	struct lxc_snapshot *snaps =NULL, *nsnaps;
-	DIR *dir;
 
 	if (!c || !lxcapi_is_defined(c))
 		return -1;
@@ -4309,7 +4332,7 @@ static int do_lxcapi_snapshot_list(struct lxc_container *c, struct lxc_snapshot 
 		if (!strcmp(direntp->d_name, ".."))
 			continue;
 
-		ret = snprintf(path2, PATH_MAX, "%s/%s/config", snappath, direntp->d_name);
+		ret = snprintf(path2, PATH_MAX, "%s/%s/%s", snappath, direntp->d_name, LXC_CONFIG_FNAME);
 		if (ret < 0 || ret >= PATH_MAX) {
 			ERROR("pathname too long");
 			goto out_free;
@@ -4341,24 +4364,16 @@ static int do_lxcapi_snapshot_list(struct lxc_container *c, struct lxc_snapshot 
 		count++;
 	}
 
-	if (closedir(dir))
-		WARN("Failed to close directory");
-
 	*ret_snaps = snaps;
 	return count;
 
 out_free:
 	if (snaps) {
-		int i;
-
-		for (i=0; i<count; i++)
+		for (int i = 0; i < count; i++)
 			lxcsnap_free(&snaps[i]);
 
 		free(snaps);
 	}
-
-	if (closedir(dir))
-		WARN("Failed to close directory");
 
 	return -1;
 }
@@ -4472,7 +4487,7 @@ err:
 
 static bool remove_all_snapshots(const char *path)
 {
-	DIR *dir;
+	__do_closedir DIR *dir = NULL;
 	struct dirent *direntp;
 	bool bret = true;
 
@@ -4494,8 +4509,6 @@ static bool remove_all_snapshots(const char *path)
 			continue;
 		}
 	}
-
-	closedir(dir);
 
 	if (rmdir(path))
 		SYSERROR("Error removing directory %s", path);
@@ -4751,6 +4764,7 @@ static bool do_lxcapi_detach_interface(struct lxc_container *c,
 {
 	int ret;
 	pid_t pid, pid_outside;
+	__do_free char *physname = NULL;
 
 	/*
 	 * TODO - if this is a physical device, then we need am_host_unpriv.
@@ -4786,6 +4800,19 @@ static bool do_lxcapi_detach_interface(struct lxc_container *c,
 			_exit(EXIT_FAILURE);
 		}
 
+		/* create new mount namespace for use with remounting /sys and is_wlan() below. */
+		ret = unshare(CLONE_NEWNS);
+		if (ret < 0) {
+			ERROR("Failed to unshare mount namespace");
+			_exit(EXIT_FAILURE);
+		}
+
+		/* set / recursively as private so that mount propagation doesn't affect us.  */
+		if (mount(NULL, "/", NULL, MS_REC | MS_PRIVATE, 0) < 0) {
+			ERROR("Failed to recursively set / as private in mount namespace");
+			_exit(EXIT_FAILURE);
+		}
+
 		ret = lxc_netdev_isup(ifname);
 		if (ret < 0) {
 			ERROR("Failed to determine whether network device \"%s\" is up", ifname);
@@ -4801,7 +4828,14 @@ static bool do_lxcapi_detach_interface(struct lxc_container *c,
 			}
 		}
 
-		ret = lxc_netdev_move_by_name(ifname, pid_outside, dst_ifname);
+		/* remount /sys so is_wlan() can check if this device is a wlan device. */
+		lxc_attach_remount_sys_proc();
+		physname = is_wlan(ifname);
+		if (physname)
+			ret = lxc_netdev_move_wlan(physname, ifname, pid_outside, dst_ifname);
+		else
+			ret = lxc_netdev_move_by_name(ifname, pid_outside, dst_ifname);
+
 		/* -EINVAL means there is no netdev named as ifname. */
 		if (ret < 0) {
 			if (ret == -EINVAL)
@@ -4938,6 +4972,248 @@ static bool do_lxcapi_restore(struct lxc_container *c, char *directory, bool ver
 
 WRAP_API_2(bool, lxcapi_restore, char *, bool)
 
+/* @st_mode is the st_mode field of the stat(source) return struct */
+static int create_mount_target(const char *dest, mode_t st_mode)
+{
+	char *dirdup, *destdirname;
+	int ret;
+
+	dirdup = strdup(dest);
+	if (!dirdup) {
+		SYSERROR("Failed to duplicate target name \"%s\"", dest);
+		return -1;
+	}
+	destdirname = dirname(dirdup);
+
+	ret = mkdir_p(destdirname, 0755);
+	if (ret < 0) {
+		SYSERROR("Failed to create \"%s\"", destdirname);
+		free(dirdup);
+		return ret;
+	}
+	free(dirdup);
+
+	(void)remove(dest);
+
+	if (S_ISDIR(st_mode))
+		ret = mkdir(dest, 0000);
+	else
+		ret = mknod(dest, S_IFREG | 0000, 0);
+
+	if (ret == 0)
+		TRACE("Created mount target \"%s\"", dest);
+	else if (ret < 0 && errno != EEXIST) {
+		SYSERROR("Failed to create mount target \"%s\"", dest);
+		return -1;
+	}
+
+	return 0;
+}
+
+static int do_lxcapi_mount(struct lxc_container *c, const char *source,
+			   const char *target, const char *filesystemtype,
+			   unsigned long mountflags, const void *data,
+			   struct lxc_mount *mnt)
+{
+	char *suff, *sret;
+	char template[PATH_MAX], path[PATH_MAX];
+	pid_t pid, init_pid;
+	struct stat sb;
+	bool is_dir;
+	int ret = -1, fd = -EBADF;
+
+	if (!c || !c->lxc_conf) {
+		ERROR("Container or configuration is NULL");
+		return -EINVAL;
+	}
+
+	if (!c->lxc_conf->shmount.path_host) {
+		ERROR("Host path to shared mountpoint must be specified in the config\n");
+		return -EINVAL;
+	}
+
+	ret = snprintf(template, sizeof(template), "%s/.lxcmount_XXXXXX", c->lxc_conf->shmount.path_host);
+	if (ret < 0 || (size_t)ret >= sizeof(template)) {
+		SYSERROR("Error writing shmounts tempdir name");
+		goto out;
+	}
+
+	/* Create a temporary file / dir under the shared mountpoint */
+	if (!source || strcmp(source, "") == 0) {
+		/* If source is not specified, maybe we want to mount a filesystem? */
+		sb.st_mode = S_IFDIR;
+	} else {
+		ret = stat(source, &sb);
+		if (ret < 0) {
+			SYSERROR("Error getting stat info about the source \"%s\"", source);
+			goto out;
+		}
+	}
+
+	is_dir = (S_ISDIR(sb.st_mode) != 0);
+	if (is_dir) {
+		sret = mkdtemp(template);
+		if (!sret) {
+			SYSERROR("Could not create shmounts temporary dir");
+			goto out;
+		}
+	} else {
+		fd = lxc_make_tmpfile(template, false);
+		if (fd < 0) {
+			SYSERROR("Could not create shmounts temporary file");
+			goto out;
+		}
+	}
+
+	/* Do the fork */
+	pid = fork();
+	if (pid < 0) {
+		SYSERROR("Could not fork");
+		goto out;
+	}
+
+	if (pid == 0) {
+		/* Do the mount */
+		ret = mount(source, template, filesystemtype, mountflags, data);
+		if (ret < 0) {
+			SYSERROR("Failed to mount onto \"%s\"", template);
+			_exit(EXIT_FAILURE);
+		}
+		TRACE("Mounted \"%s\" onto \"%s\"", source, template);
+
+		init_pid = do_lxcapi_init_pid(c);
+		if (init_pid < 0) {
+			ERROR("Failed to obtain container's init pid");
+			_exit(EXIT_FAILURE);
+		}
+
+		/* Enter the container namespaces */
+		if (!lxc_list_empty(&c->lxc_conf->id_map)) {
+			if (!switch_to_ns(init_pid, "user")) {
+				ERROR("Failed to enter user namespace");
+				_exit(EXIT_FAILURE);
+			}
+
+			if (!lxc_switch_uid_gid(0, 0))
+				_exit(EXIT_FAILURE);
+		}
+
+		if (!switch_to_ns(init_pid, "mnt")) {
+			ERROR("Failed to enter mount namespace");
+			_exit(EXIT_FAILURE);
+		}
+
+		ret = create_mount_target(target, sb.st_mode);
+		if (ret < 0)
+			_exit(EXIT_FAILURE);
+
+		suff = strrchr(template, '/');
+		if (!suff)
+			goto cleanup_target_in_child;
+
+		ret = snprintf(path, sizeof(path), "%s%s", c->lxc_conf->shmount.path_cont, suff);
+		if (ret < 0 || (size_t)ret >= sizeof(path)) {
+			SYSERROR("Error writing container mountpoint name");
+			goto cleanup_target_in_child;
+		}
+
+		ret = mount(path, target, NULL, MS_MOVE | MS_REC, NULL);
+		if (ret < 0) {
+			SYSERROR("Failed to move the mount from \"%s\" to \"%s\"", path, target);
+			goto cleanup_target_in_child;
+		}
+		TRACE("Moved mount from \"%s\" to \"%s\"", path, target);
+
+		_exit(EXIT_SUCCESS);
+
+	cleanup_target_in_child:
+		(void)remove(target);
+		_exit(EXIT_FAILURE);
+	}
+
+	ret = wait_for_pid(pid);
+	if (ret < 0)
+		SYSERROR("Wait for the child with pid %ld failed", (long)pid);
+	else
+		ret = 0;
+
+	if (umount2(template, MNT_DETACH))
+		SYSWARN("Failed to remove temporary mount \"%s\"", template);
+
+	if (is_dir)
+		(void)rmdir(template);
+	else
+		(void)unlink(template);
+
+out:
+	if (fd >= 0)
+		close(fd);
+
+	return ret;
+}
+
+WRAP_API_6(int, lxcapi_mount, const char *, const char *, const char *,
+	   unsigned long, const void *, struct lxc_mount *)
+
+static int do_lxcapi_umount(struct lxc_container *c, const char *target,
+				unsigned long flags, struct lxc_mount *mnt)
+{
+	pid_t pid, init_pid;
+	int ret = -1;
+
+	if (!c || !c->lxc_conf) {
+		ERROR("Container or configuration is NULL");
+		return -EINVAL;
+	}
+
+	/* Do the fork */
+	pid = fork();
+	if (pid < 0) {
+		SYSERROR("Could not fork");
+		return -1;
+	}
+
+	if (pid == 0) {
+		init_pid = do_lxcapi_init_pid(c);
+		if (init_pid < 0) {
+			ERROR("Failed to obtain container's init pid");
+			_exit(EXIT_FAILURE);
+		}
+
+		/* Enter the container namespaces */
+		if (!lxc_list_empty(&c->lxc_conf->id_map)) {
+			if (!switch_to_ns(init_pid, "user")) {
+				ERROR("Failed to enter user namespace");
+				_exit(EXIT_FAILURE);
+			}
+		}
+
+		if (!switch_to_ns(init_pid, "mnt")) {
+			ERROR("Failed to enter mount namespace");
+			_exit(EXIT_FAILURE);
+		}
+
+		/* Do the unmount */
+		ret = umount2(target, flags);
+		if (ret < 0) {
+			SYSERROR("Failed to umount \"%s\"", target);
+			_exit(EXIT_FAILURE);
+		}
+
+		_exit(EXIT_SUCCESS);
+	}
+
+	ret = wait_for_pid(pid);
+	if (ret < 0) {
+		SYSERROR("Wait for the child with pid %ld failed", (long)pid);
+		return -ret;
+	}
+
+	return 0;
+}
+
+WRAP_API_3(int, lxcapi_umount, const char *, unsigned long, struct lxc_mount*)
+
 static int lxcapi_attach_run_waitl(struct lxc_container *c, lxc_attach_options_t *options, const char *program, const char *arg, ...)
 {
 	va_list ap;
@@ -4967,6 +5243,16 @@ out:
 	current_config = NULL;
 	return ret;
 }
+
+static int do_lxcapi_seccomp_notify_fd(struct lxc_container *c)
+{
+	if (!c || !c->lxc_conf)
+		return ret_set_errno(-1, -EINVAL);
+
+	return lxc_seccomp_get_notify_fd(&c->lxc_conf->seccomp);
+}
+
+WRAP_API(int, lxcapi_seccomp_notify_fd)
 
 struct lxc_container *lxc_container_new(const char *name, const char *configpath)
 {
@@ -5058,6 +5344,7 @@ struct lxc_container *lxc_container_new(const char *name, const char *configpath
 	c->console = lxcapi_console;
 	c->console_getfd = lxcapi_console_getfd;
 	c->init_pid = lxcapi_init_pid;
+	c->init_pidfd = lxcapi_init_pidfd;
 	c->load_config = lxcapi_load_config;
 	c->want_daemonize = lxcapi_want_daemonize;
 	c->want_close_all_fds = lxcapi_want_close_all_fds;
@@ -5105,6 +5392,9 @@ struct lxc_container *lxc_container_new(const char *name, const char *configpath
 	c->restore = lxcapi_restore;
 	c->migrate = lxcapi_migrate;
 	c->console_log = lxcapi_console_log;
+	c->mount = lxcapi_mount;
+	c->umount = lxcapi_umount;
+	c->seccomp_notify_fd = lxcapi_seccomp_notify_fd;
 
 	return c;
 
@@ -5130,7 +5420,7 @@ int lxc_get_wait_states(const char **states)
  */
 int list_defined_containers(const char *lxcpath, char ***names, struct lxc_container ***cret)
 {
-	DIR *dir;
+	__do_closedir DIR *dir = NULL;
 	int i, cfound = 0, nfound = 0;
 	struct dirent *direntp;
 	struct lxc_container *c;
@@ -5201,32 +5491,31 @@ int list_defined_containers(const char *lxcpath, char ***names, struct lxc_conta
 		nfound++;
 	}
 
-	closedir(dir);
 	return nfound;
 
 free_bad:
 	if (names && *names) {
-		for (i=0; i<cfound; i++)
+		for (i = 0; i < cfound; i++)
 			free((*names)[i]);
 		free(*names);
 	}
 
 	if (cret && *cret) {
-		for (i=0; i<nfound; i++)
+		for (i = 0; i < nfound; i++)
 			lxc_container_put((*cret)[i]);
 		free(*cret);
 	}
 
-	closedir(dir);
 	return -1;
 }
 
 int list_active_containers(const char *lxcpath, char ***nret,
 			   struct lxc_container ***cret)
 {
+	__do_free char *line = NULL;
+	__do_fclose FILE *f = NULL;
 	int i, ret = -1, cret_cnt = 0, ct_name_cnt = 0;
 	int lxcpath_len;
-	char *line = NULL;
 	char **ct_name = NULL;
 	size_t len = 0;
 	struct lxc_container *c = NULL;
@@ -5242,7 +5531,7 @@ int list_active_containers(const char *lxcpath, char ***nret,
 	if (nret)
 		*nret = NULL;
 
-	FILE *f = fopen("/proc/net/unix", "r");
+	f = fopen("/proc/net/unix", "re");
 	if (!f)
 		return -1;
 
@@ -5370,8 +5659,6 @@ free_ct_name:
 	}
 
 out:
-	free(line);
-	fclose(f);
 	return ret;
 }
 
@@ -5465,4 +5752,17 @@ free_ct_name:
 bool lxc_config_item_is_supported(const char *key)
 {
 	return !!lxc_get_config(key);
+}
+
+bool lxc_has_api_extension(const char *extension)
+{
+	/* The NULL API extension is always present. :) */
+	if (!extension)
+		return true;
+
+	for (size_t i = 0; i < nr_api_extensions; i++)
+		if (strcmp(api_extensions[i], extension) == 0)
+			return true;
+
+	return false;
 }

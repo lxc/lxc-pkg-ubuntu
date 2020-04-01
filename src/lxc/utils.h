@@ -1,25 +1,5 @@
-/*
- * lxc: linux Container library
- *
- * (C) Copyright IBM Corp. 2007, 2008
- *
- * Authors:
- * Daniel Lezcano <daniel.lezcano at free.fr>
- *
- * This library is free software; you can redistribute it and/or
- * modify it under the terms of the GNU Lesser General Public
- * License as published by the Free Software Foundation; either
- * version 2.1 of the License, or (at your option) any later version.
- *
- * This library is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
- * Lesser General Public License for more details.
- *
- * You should have received a copy of the GNU Lesser General Public
- * License along with this library; if not, write to the Free Software
- * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA
- */
+/* SPDX-License-Identifier: LGPL-2.1+ */
+
 #ifndef __LXC_UTILS_H
 #define __LXC_UTILS_H
 
@@ -44,6 +24,7 @@
 #include "file_utils.h"
 #include "initutils.h"
 #include "macro.h"
+#include "memory_utils.h"
 #include "raw_syscalls.h"
 #include "string_utils.h"
 
@@ -92,14 +73,22 @@ extern struct lxc_popen_FILE *lxc_popen(const char *command);
  */
 extern int lxc_pclose(struct lxc_popen_FILE *fp);
 
+static inline void __auto_lxc_pclose__(struct lxc_popen_FILE **f)
+{
+	if (*f)
+		lxc_pclose(*f);
+}
+#define __do_lxc_pclose __attribute__((__cleanup__(__auto_lxc_pclose__)))
+
 /*
  * wait on a child we forked
  */
 extern int wait_for_pid(pid_t pid);
 extern int lxc_wait_for_pid_status(pid_t pid);
+extern int wait_for_pidfd(int pidfd);
 
 #if HAVE_OPENSSL
-extern int sha1sum_file(char *fnam, unsigned char *md_value, int *md_len);
+extern int sha1sum_file(char *fnam, unsigned char *md_value, unsigned int *md_len);
 #endif
 
 /* initialize rand with urandom */
@@ -113,7 +102,7 @@ inline static bool am_guest_unpriv(void) {
 /* are we unprivileged with respect to init_user_ns */
 inline static bool am_host_unpriv(void)
 {
-	FILE *f;
+	__do_fclose FILE *f = NULL;
 	uid_t user, host, count;
 	int ret;
 
@@ -123,20 +112,15 @@ inline static bool am_host_unpriv(void)
 	/* Now: are we in a user namespace? Because then we're also
 	 * unprivileged.
 	 */
-	f = fopen("/proc/self/uid_map", "r");
-	if (!f) {
+	f = fopen("/proc/self/uid_map", "re");
+	if (!f)
 		return false;
-	}
 
 	ret = fscanf(f, "%u %u %u", &user, &host, &count);
-	fclose(f);
-	if (ret != 3) {
+	if (ret != 3)
 		return false;
-	}
 
-	if (user != 0 || host != 0 || count != UINT32_MAX)
-		return true;
-	return false;
+	return user != 0 || host != 0 || count != UINT32_MAX;
 }
 
 /*
@@ -153,6 +137,7 @@ extern bool dir_exists(const char *path);
 #define FNV1A_64_INIT ((uint64_t)0xcbf29ce484222325ULL)
 extern uint64_t fnv_64a_buf(void *buf, size_t len, uint64_t hval);
 
+extern bool is_shared_mountpoint(const char *path);
 extern int detect_shared_rootfs(void);
 extern bool detect_ramfs_rootfs(void);
 extern char *on_path(const char *cmd, const char *rootfs);
@@ -218,13 +203,6 @@ extern int run_command(char *buf, size_t buf_size, int (*child_fn)(void *),
 extern int run_command_status(char *buf, size_t buf_size, int (*child_fn)(void *),
 		       void *args);
 
-/* Concatenate all passed-in strings into one path. Do not fail. If any piece
- * is not prefixed with '/', add a '/'.
- */
-__attribute__((sentinel)) extern char *must_concat(const char *first, ...);
-__attribute__((sentinel)) extern char *must_make_path(const char *first, ...);
-__attribute__((sentinel)) extern char *must_append_path(char *first, ...);
-
 /* return copy of string @entry;  do not fail. */
 extern char *must_copy_string(const char *entry);
 
@@ -255,9 +233,10 @@ static inline uint64_t lxc_getpagesize(void)
 extern uint64_t lxc_find_next_power2(uint64_t n);
 
 /* Set a signal the child process will receive after the parent has died. */
-extern int lxc_set_death_signal(int signal, pid_t parent);
+extern int lxc_set_death_signal(int signal, pid_t parent, int parent_status_fd);
 extern int fd_cloexec(int fd, bool cloexec);
-extern int recursive_destroy(char *dirname);
-extern int lxc_setup_keyring(void);
+extern int recursive_destroy(const char *dirname);
+extern int lxc_setup_keyring(char *keyring_label);
+extern bool lxc_can_use_pidfd(int pidfd);
 
 #endif /* __LXC_UTILS_H */

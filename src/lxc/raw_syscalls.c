@@ -1,3 +1,5 @@
+/* SPDX-License-Identifier: LGPL-2.1+ */
+
 #ifndef _GNU_SOURCE
 #define _GNU_SOURCE 1
 #endif
@@ -13,16 +15,12 @@
 #include "config.h"
 #include "macro.h"
 #include "raw_syscalls.h"
+#include "syscall_numbers.h"
 
 int lxc_raw_execveat(int dirfd, const char *pathname, char *const argv[],
 		     char *const envp[], int flags)
 {
-#ifdef __NR_execveat
-	syscall(__NR_execveat, dirfd, pathname, argv, envp, flags);
-#else
-	errno = ENOSYS;
-#endif
-	return -1;
+	return syscall(__NR_execveat, dirfd, pathname, argv, envp, flags);
 }
 
 /*
@@ -74,7 +72,7 @@ __returns_twice pid_t lxc_raw_clone(unsigned long flags, int *pidfd)
 		     * processor status register (psr) is used instead of a
 		     * full register.
 		     */
-		    "addx %%g0, 0, %g1"
+		    "addx %%g0, 0, %%g1"
 		    : "=r"(g1), "=r"(o0), "=r"(o1), "=r"(o2) /* outputs */
 		    : "r"(g1), "r"(o0), "r"(o1), "r"(o2)     /* inputs */
 		    : "%cc");				     /* clobbers */
@@ -124,10 +122,5 @@ pid_t lxc_raw_clone_cb(int (*fn)(void *), void *args, unsigned long flags,
 int lxc_raw_pidfd_send_signal(int pidfd, int sig, siginfo_t *info,
 			      unsigned int flags)
 {
-#ifdef __NR_pidfd_send_signal
-	syscall(__NR_pidfd_send_signal, pidfd, sig, info, flags);
-#else
-	errno = ENOSYS;
-#endif
-	return -1;
+	return syscall(__NR_pidfd_send_signal, pidfd, sig, info, flags);
 }

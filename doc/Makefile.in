@@ -113,7 +113,8 @@ host_triplet = @host@
 @ENABLE_DOCBOOK_TRUE@@ENABLE_TOOLS_TRUE@	    lxc-unshare.1 \
 @ENABLE_DOCBOOK_TRUE@@ENABLE_TOOLS_TRUE@	    lxc-wait.1
 
-@ENABLE_COMMANDS_TRUE@@ENABLE_DOCBOOK_TRUE@am__append_4 = lxc-update-config.1 \
+@ENABLE_DOCBOOK_TRUE@@ENABLE_PAM_TRUE@am__append_4 = pam_cgfs.8
+@ENABLE_COMMANDS_TRUE@@ENABLE_DOCBOOK_TRUE@am__append_5 = lxc-update-config.1 \
 @ENABLE_COMMANDS_TRUE@@ENABLE_DOCBOOK_TRUE@	    lxc-user-nic.1 \
 @ENABLE_COMMANDS_TRUE@@ENABLE_DOCBOOK_TRUE@	    lxc-usernsexec.1
 
@@ -142,8 +143,9 @@ CONFIG_CLEAN_FILES = lxc-attach.sgml lxc-autostart.sgml \
 	lxc-snapshot.sgml lxc-start.sgml lxc-stop.sgml lxc-top.sgml \
 	lxc-unfreeze.sgml lxc-unshare.sgml lxc-update-config.sgml \
 	lxc-user-nic.sgml lxc-usernsexec.sgml lxc-wait.sgml \
-	lxc.conf.sgml lxc.container.conf.sgml lxc.system.conf.sgml \
-	lxc-usernet.sgml lxc.sgml common_options.sgml see_also.sgml
+	pam_cgfs.sgml lxc.conf.sgml lxc.container.conf.sgml \
+	lxc.system.conf.sgml lxc-usernet.sgml lxc.sgml \
+	common_options.sgml see_also.sgml
 CONFIG_CLEAN_VPATH_FILES =
 AM_V_P = $(am__v_P_@AM_V@)
 am__v_P_ = $(am__v_P_@AM_DEFAULT_V@)
@@ -201,9 +203,10 @@ am__uninstall_files_from_dir = { \
   }
 man1dir = $(mandir)/man1
 am__installdirs = "$(DESTDIR)$(man1dir)" "$(DESTDIR)$(man5dir)" \
-	"$(DESTDIR)$(man7dir)"
+	"$(DESTDIR)$(man7dir)" "$(DESTDIR)$(man8dir)"
 man5dir = $(mandir)/man5
 man7dir = $(mandir)/man7
+man8dir = $(mandir)/man8
 NROFF = nroff
 MANS = $(man_MANS)
 RECURSIVE_CLEAN_TARGETS = mostlyclean-recursive clean-recursive	\
@@ -251,7 +254,8 @@ am__DIST_COMMON = $(srcdir)/Makefile.in \
 	$(srcdir)/lxc-usernsexec.sgml.in $(srcdir)/lxc-wait.sgml.in \
 	$(srcdir)/lxc.conf.sgml.in \
 	$(srcdir)/lxc.container.conf.sgml.in $(srcdir)/lxc.sgml.in \
-	$(srcdir)/lxc.system.conf.sgml.in $(srcdir)/see_also.sgml.in
+	$(srcdir)/lxc.system.conf.sgml.in $(srcdir)/pam_cgfs.sgml.in \
+	$(srcdir)/see_also.sgml.in
 DISTFILES = $(DIST_COMMON) $(DIST_SOURCES) $(TEXINFOS) $(EXTRA_DIST)
 am__relativize = \
   dir0=`pwd`; \
@@ -281,6 +285,7 @@ am__relativize = \
 ACLOCAL = @ACLOCAL@
 AMTAR = @AMTAR@
 AM_DEFAULT_VERBOSITY = @AM_DEFAULT_VERBOSITY@
+APPARMOR_CACHE_DIR = @APPARMOR_CACHE_DIR@
 AR = @AR@
 AUTOCONF = @AUTOCONF@
 AUTOHEADER = @AUTOHEADER@
@@ -299,6 +304,8 @@ DEFAULT_CGROUP_PATTERN = @DEFAULT_CGROUP_PATTERN@
 DEFS = @DEFS@
 DEPDIR = @DEPDIR@
 DLLTOOL = @DLLTOOL@
+DLOG_CFLAGS = @DLOG_CFLAGS@
+DLOG_LIBS = @DLOG_LIBS@
 DOCDIR = @DOCDIR@
 DSYMUTIL = @DSYMUTIL@
 DUMPBIN = @DUMPBIN@
@@ -454,14 +461,15 @@ top_builddir = @top_builddir@
 top_srcdir = @top_srcdir@
 SUBDIRS = examples rootfs $(am__append_1) $(am__append_2)
 DIST_SUBDIRS = examples rootfs ja ko api
-EXTRA_DIST = \
-	lxc.container.conf \
-	lxc.system.conf \
-	FAQ.txt
+EXTRA_DIST = api-extensions.md \
+	     lxc.container.conf \
+	     lxc.system.conf \
+	     FAQ.txt
 
 @ENABLE_DOCBOOK_TRUE@man_MANS = lxc.conf.5 lxc.container.conf.5 \
 @ENABLE_DOCBOOK_TRUE@	lxc.system.conf.5 lxc-usernet.5 lxc.7 \
-@ENABLE_DOCBOOK_TRUE@	$(am__append_3) $(am__append_4)
+@ENABLE_DOCBOOK_TRUE@	$(am__append_3) $(am__append_4) \
+@ENABLE_DOCBOOK_TRUE@	$(am__append_5)
 all: all-recursive
 
 .SUFFIXES:
@@ -545,6 +553,8 @@ lxc-user-nic.sgml: $(top_builddir)/config.status $(srcdir)/lxc-user-nic.sgml.in
 lxc-usernsexec.sgml: $(top_builddir)/config.status $(srcdir)/lxc-usernsexec.sgml.in
 	cd $(top_builddir) && $(SHELL) ./config.status $(subdir)/$@
 lxc-wait.sgml: $(top_builddir)/config.status $(srcdir)/lxc-wait.sgml.in
+	cd $(top_builddir) && $(SHELL) ./config.status $(subdir)/$@
+pam_cgfs.sgml: $(top_builddir)/config.status $(srcdir)/pam_cgfs.sgml.in
 	cd $(top_builddir) && $(SHELL) ./config.status $(subdir)/$@
 lxc.conf.sgml: $(top_builddir)/config.status $(srcdir)/lxc.conf.sgml.in
 	cd $(top_builddir) && $(SHELL) ./config.status $(subdir)/$@
@@ -695,6 +705,49 @@ uninstall-man7:
 	} | sed -e 's,.*/,,;h;s,.*\.,,;s,^[^7][0-9a-z]*$$,7,;x' \
 	      -e 's,\.[0-9a-z]*$$,,;$(transform);G;s,\n,.,'`; \
 	dir='$(DESTDIR)$(man7dir)'; $(am__uninstall_files_from_dir)
+install-man8: $(man_MANS)
+	@$(NORMAL_INSTALL)
+	@list1=''; \
+	list2='$(man_MANS)'; \
+	test -n "$(man8dir)" \
+	  && test -n "`echo $$list1$$list2`" \
+	  || exit 0; \
+	echo " $(MKDIR_P) '$(DESTDIR)$(man8dir)'"; \
+	$(MKDIR_P) "$(DESTDIR)$(man8dir)" || exit 1; \
+	{ for i in $$list1; do echo "$$i"; done;  \
+	if test -n "$$list2"; then \
+	  for i in $$list2; do echo "$$i"; done \
+	    | sed -n '/\.8[a-z]*$$/p'; \
+	fi; \
+	} | while read p; do \
+	  if test -f $$p; then d=; else d="$(srcdir)/"; fi; \
+	  echo "$$d$$p"; echo "$$p"; \
+	done | \
+	sed -e 'n;s,.*/,,;p;h;s,.*\.,,;s,^[^8][0-9a-z]*$$,8,;x' \
+	      -e 's,\.[0-9a-z]*$$,,;$(transform);G;s,\n,.,' | \
+	sed 'N;N;s,\n, ,g' | { \
+	list=; while read file base inst; do \
+	  if test "$$base" = "$$inst"; then list="$$list $$file"; else \
+	    echo " $(INSTALL_DATA) '$$file' '$(DESTDIR)$(man8dir)/$$inst'"; \
+	    $(INSTALL_DATA) "$$file" "$(DESTDIR)$(man8dir)/$$inst" || exit $$?; \
+	  fi; \
+	done; \
+	for i in $$list; do echo "$$i"; done | $(am__base_list) | \
+	while read files; do \
+	  test -z "$$files" || { \
+	    echo " $(INSTALL_DATA) $$files '$(DESTDIR)$(man8dir)'"; \
+	    $(INSTALL_DATA) $$files "$(DESTDIR)$(man8dir)" || exit $$?; }; \
+	done; }
+
+uninstall-man8:
+	@$(NORMAL_UNINSTALL)
+	@list=''; test -n "$(man8dir)" || exit 0; \
+	files=`{ for i in $$list; do echo "$$i"; done; \
+	l2='$(man_MANS)'; for i in $$l2; do echo "$$i"; done | \
+	  sed -n '/\.8[a-z]*$$/p'; \
+	} | sed -e 's,.*/,,;h;s,.*\.,,;s,^[^8][0-9a-z]*$$,8,;x' \
+	      -e 's,\.[0-9a-z]*$$,,;$(transform);G;s,\n,.,'`; \
+	dir='$(DESTDIR)$(man8dir)'; $(am__uninstall_files_from_dir)
 
 # This directory's subdirectories are mostly independent; you can cd
 # into them and run 'make' without going through this Makefile.
@@ -858,7 +911,7 @@ check: check-recursive
 all-am: Makefile $(MANS)
 installdirs: installdirs-recursive
 installdirs-am:
-	for dir in "$(DESTDIR)$(man1dir)" "$(DESTDIR)$(man5dir)" "$(DESTDIR)$(man7dir)"; do \
+	for dir in "$(DESTDIR)$(man1dir)" "$(DESTDIR)$(man5dir)" "$(DESTDIR)$(man7dir)" "$(DESTDIR)$(man8dir)"; do \
 	  test -z "$$dir" || $(MKDIR_P) "$$dir"; \
 	done
 install: install-recursive
@@ -928,7 +981,7 @@ install-info: install-info-recursive
 
 install-info-am:
 
-install-man: install-man1 install-man5 install-man7
+install-man: install-man1 install-man5 install-man7 install-man8
 
 install-pdf: install-pdf-recursive
 
@@ -958,7 +1011,8 @@ ps-am:
 
 uninstall-am: uninstall-man
 
-uninstall-man: uninstall-man1 uninstall-man5 uninstall-man7
+uninstall-man: uninstall-man1 uninstall-man5 uninstall-man7 \
+	uninstall-man8
 
 .MAKE: $(am__recursive_targets) install-am install-strip
 
@@ -970,13 +1024,13 @@ uninstall-man: uninstall-man1 uninstall-man5 uninstall-man7
 	install-data-am install-dvi install-dvi-am install-exec \
 	install-exec-am install-html install-html-am install-info \
 	install-info-am install-man install-man1 install-man5 \
-	install-man7 install-pdf install-pdf-am install-ps \
-	install-ps-am install-strip installcheck installcheck-am \
-	installdirs installdirs-am maintainer-clean \
+	install-man7 install-man8 install-pdf install-pdf-am \
+	install-ps install-ps-am install-strip installcheck \
+	installcheck-am installdirs installdirs-am maintainer-clean \
 	maintainer-clean-generic mostlyclean mostlyclean-generic \
 	mostlyclean-libtool pdf pdf-am ps ps-am tags tags-am uninstall \
 	uninstall-am uninstall-man uninstall-man1 uninstall-man5 \
-	uninstall-man7
+	uninstall-man7 uninstall-man8
 
 .PRECIOUS: Makefile
 
@@ -993,10 +1047,14 @@ uninstall-man: uninstall-man1 uninstall-man5 uninstall-man7
 @ENABLE_DOCBOOK_TRUE@	$(db2xman) $<
 @ENABLE_DOCBOOK_TRUE@	test "$(shell basename $@)" != "$@" && mv $(shell basename $@) $@ || true
 
+@ENABLE_DOCBOOK_TRUE@%.8 : %.sgml
+@ENABLE_DOCBOOK_TRUE@	$(db2xman) $<
+@ENABLE_DOCBOOK_TRUE@	test "$(shell basename $@)" != "$@" && mv $(shell basename $@) $@ || true
+
 @ENABLE_DOCBOOK_TRUE@lxc-%.sgml : common_options.sgml see_also.sgml
 
 @ENABLE_DOCBOOK_TRUE@clean-local:
-@ENABLE_DOCBOOK_TRUE@	$(RM) manpage.* *.7 *.5 *.1 $(man_MANS)
+@ENABLE_DOCBOOK_TRUE@	$(RM) manpage.* *.7 *.5 *.1 *.8 $(man_MANS)
 
 # Tell versions [3.59,3.63) of GNU make to not export all variables.
 # Otherwise a system limit (for SysV at least) may be exceeded.

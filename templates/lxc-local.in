@@ -51,8 +51,13 @@ in_userns() {
     fi
   done < /proc/self/uid_map
 
-  [ "$(cat /proc/self/uid_map)" = "$(cat /proc/1/uid_map)" ] && { echo userns-root; return; }
-    echo yes
+  if [ -e /proc/1/uid_map ]; then
+    if [ "$(cat /proc/self/uid_map)" = "$(cat /proc/1/uid_map)" ]; then
+      echo userns-root
+      return
+    fi
+  fi
+  echo yes
 }
 
 usage() {
@@ -61,7 +66,6 @@ LXC container image downloader
 
 Special arguments:
 [ -h | --help ]: Print this help message and exit.
-[ -l | --list ]: List all available images and exit.
 [ -m | --metadata ]: Path to the metadata for the image.
 [ -f | --fstree ]: Path to the filesystem tree for the image.
 

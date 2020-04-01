@@ -90,7 +90,10 @@ POST_UNINSTALL = :
 build_triplet = @build@
 host_triplet = @host@
 @ENABLE_APPARMOR_TRUE@@ENABLE_TESTS_TRUE@am__append_1 = -DHAVE_APPARMOR
-@ENABLE_SELINUX_TRUE@@ENABLE_TESTS_TRUE@am__append_2 = -DHAVE_SELINUX
+@ENABLE_SECCOMP_TRUE@@ENABLE_TESTS_TRUE@am__append_2 = -DHAVE_SECCOMP \
+@ENABLE_SECCOMP_TRUE@@ENABLE_TESTS_TRUE@	     $(SECCOMP_CFLAGS)
+
+@ENABLE_SELINUX_TRUE@@ENABLE_TESTS_TRUE@am__append_3 = -DHAVE_SELINUX
 @ENABLE_TESTS_TRUE@bin_PROGRAMS = lxc-test-api-reboot$(EXEEXT) \
 @ENABLE_TESTS_TRUE@	lxc-test-apparmor$(EXEEXT) \
 @ENABLE_TESTS_TRUE@	lxc-test-attach$(EXEEXT) \
@@ -113,6 +116,7 @@ host_triplet = @host@
 @ENABLE_TESTS_TRUE@	lxc-test-locktests$(EXEEXT) \
 @ENABLE_TESTS_TRUE@	lxc-test-lxcpath$(EXEEXT) \
 @ENABLE_TESTS_TRUE@	lxc-test-may-control$(EXEEXT) \
+@ENABLE_TESTS_TRUE@	lxc-test-mount-injection$(EXEEXT) \
 @ENABLE_TESTS_TRUE@	lxc-test-parse-config-file$(EXEEXT) \
 @ENABLE_TESTS_TRUE@	lxc-test-raw-clone$(EXEEXT) \
 @ENABLE_TESTS_TRUE@	lxc-test-reboot$(EXEEXT) \
@@ -124,15 +128,17 @@ host_triplet = @host@
 @ENABLE_TESTS_TRUE@	lxc-test-startone$(EXEEXT) \
 @ENABLE_TESTS_TRUE@	lxc-test-state-server$(EXEEXT) \
 @ENABLE_TESTS_TRUE@	lxc-test-utils$(EXEEXT)
-@ENABLE_TESTS_TRUE@@ENABLE_TOOLS_TRUE@am__append_3 = lxc-test-automount \
+@ENABLE_TESTS_TRUE@@ENABLE_TOOLS_TRUE@am__append_4 = lxc-test-automount \
 @ENABLE_TESTS_TRUE@@ENABLE_TOOLS_TRUE@	       lxc-test-autostart \
 @ENABLE_TESTS_TRUE@@ENABLE_TOOLS_TRUE@	       lxc-test-cloneconfig \
 @ENABLE_TESTS_TRUE@@ENABLE_TOOLS_TRUE@	       lxc-test-createconfig \
+@ENABLE_TESTS_TRUE@@ENABLE_TOOLS_TRUE@	       lxc-test-exit-code \
 @ENABLE_TESTS_TRUE@@ENABLE_TOOLS_TRUE@	       lxc-test-no-new-privs \
 @ENABLE_TESTS_TRUE@@ENABLE_TOOLS_TRUE@	       lxc-test-rootfs
 
-@DISTRO_UBUNTU_TRUE@@ENABLE_TESTS_TRUE@@ENABLE_TOOLS_TRUE@am__append_4 = lxc-test-lxc-attach \
+@DISTRO_UBUNTU_TRUE@@ENABLE_TESTS_TRUE@@ENABLE_TOOLS_TRUE@am__append_5 = lxc-test-lxc-attach \
 @DISTRO_UBUNTU_TRUE@@ENABLE_TESTS_TRUE@@ENABLE_TOOLS_TRUE@	       lxc-test-apparmor-mount \
+@DISTRO_UBUNTU_TRUE@@ENABLE_TESTS_TRUE@@ENABLE_TOOLS_TRUE@	       lxc-test-apparmor-generated \
 @DISTRO_UBUNTU_TRUE@@ENABLE_TESTS_TRUE@@ENABLE_TOOLS_TRUE@	       lxc-test-checkpoint-restore \
 @DISTRO_UBUNTU_TRUE@@ENABLE_TESTS_TRUE@@ENABLE_TOOLS_TRUE@	       lxc-test-snapdeps \
 @DISTRO_UBUNTU_TRUE@@ENABLE_TESTS_TRUE@@ENABLE_TOOLS_TRUE@	       lxc-test-symlink \
@@ -304,6 +310,15 @@ lxc_test_may_control_OBJECTS = $(am_lxc_test_may_control_OBJECTS)
 lxc_test_may_control_LDADD = $(LDADD)
 @ENABLE_TESTS_TRUE@lxc_test_may_control_DEPENDENCIES =  \
 @ENABLE_TESTS_TRUE@	../lxc/liblxc.la
+am__lxc_test_mount_injection_SOURCES_DIST = mount_injection.c \
+	lxctest.h
+@ENABLE_TESTS_TRUE@am_lxc_test_mount_injection_OBJECTS =  \
+@ENABLE_TESTS_TRUE@	mount_injection.$(OBJEXT)
+lxc_test_mount_injection_OBJECTS =  \
+	$(am_lxc_test_mount_injection_OBJECTS)
+lxc_test_mount_injection_LDADD = $(LDADD)
+@ENABLE_TESTS_TRUE@lxc_test_mount_injection_DEPENDENCIES =  \
+@ENABLE_TESTS_TRUE@	../lxc/liblxc.la
 am__lxc_test_parse_config_file_SOURCES_DIST = parse_config_file.c \
 	lxctest.h
 @ENABLE_TESTS_TRUE@am_lxc_test_parse_config_file_OBJECTS =  \
@@ -336,7 +351,8 @@ lxc_test_saveconfig_OBJECTS = $(am_lxc_test_saveconfig_OBJECTS)
 lxc_test_saveconfig_LDADD = $(LDADD)
 @ENABLE_TESTS_TRUE@lxc_test_saveconfig_DEPENDENCIES =  \
 @ENABLE_TESTS_TRUE@	../lxc/liblxc.la
-am__lxc_test_share_ns_SOURCES_DIST = share_ns.c lxctest.h
+am__lxc_test_share_ns_SOURCES_DIST = share_ns.c lxctest.h \
+	../lxc/compiler.h
 @ENABLE_TESTS_TRUE@am_lxc_test_share_ns_OBJECTS = share_ns.$(OBJEXT)
 lxc_test_share_ns_OBJECTS = $(am_lxc_test_share_ns_OBJECTS)
 lxc_test_share_ns_LDADD = $(LDADD)
@@ -365,7 +381,8 @@ am__lxc_test_startone_SOURCES_DIST = startone.c
 lxc_test_startone_OBJECTS = $(am_lxc_test_startone_OBJECTS)
 lxc_test_startone_LDADD = $(LDADD)
 @ENABLE_TESTS_TRUE@lxc_test_startone_DEPENDENCIES = ../lxc/liblxc.la
-am__lxc_test_state_server_SOURCES_DIST = state_server.c lxctest.h
+am__lxc_test_state_server_SOURCES_DIST = state_server.c lxctest.h \
+	../lxc/compiler.h
 @ENABLE_TESTS_TRUE@am_lxc_test_state_server_OBJECTS =  \
 @ENABLE_TESTS_TRUE@	state_server.$(OBJEXT)
 lxc_test_state_server_OBJECTS = $(am_lxc_test_state_server_OBJECTS)
@@ -434,11 +451,12 @@ am__depfiles_remade = ../lxc/$(DEPDIR)/namespace.Po \
 	./$(DEPDIR)/getkeys.Po ./$(DEPDIR)/list.Po \
 	./$(DEPDIR)/locktests.Po ./$(DEPDIR)/lxc-test-utils.Po \
 	./$(DEPDIR)/lxc_raw_clone.Po ./$(DEPDIR)/lxcpath.Po \
-	./$(DEPDIR)/may_control.Po ./$(DEPDIR)/parse_config_file.Po \
-	./$(DEPDIR)/reboot.Po ./$(DEPDIR)/saveconfig.Po \
-	./$(DEPDIR)/share_ns.Po ./$(DEPDIR)/shortlived.Po \
-	./$(DEPDIR)/shutdowntest.Po ./$(DEPDIR)/snapshot.Po \
-	./$(DEPDIR)/startone.Po ./$(DEPDIR)/state_server.Po
+	./$(DEPDIR)/may_control.Po ./$(DEPDIR)/mount_injection.Po \
+	./$(DEPDIR)/parse_config_file.Po ./$(DEPDIR)/reboot.Po \
+	./$(DEPDIR)/saveconfig.Po ./$(DEPDIR)/share_ns.Po \
+	./$(DEPDIR)/shortlived.Po ./$(DEPDIR)/shutdowntest.Po \
+	./$(DEPDIR)/snapshot.Po ./$(DEPDIR)/startone.Po \
+	./$(DEPDIR)/state_server.Po
 am__mv = mv -f
 COMPILE = $(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) \
 	$(CPPFLAGS) $(AM_CFLAGS) $(CFLAGS)
@@ -473,6 +491,7 @@ SOURCES = $(lxc_test_api_reboot_SOURCES) $(lxc_test_apparmor_SOURCES) \
 	$(lxc_test_get_item_SOURCES) $(lxc_test_getkeys_SOURCES) \
 	$(lxc_test_list_SOURCES) $(lxc_test_locktests_SOURCES) \
 	$(lxc_test_lxcpath_SOURCES) $(lxc_test_may_control_SOURCES) \
+	$(lxc_test_mount_injection_SOURCES) \
 	$(lxc_test_parse_config_file_SOURCES) \
 	$(lxc_test_raw_clone_SOURCES) $(lxc_test_reboot_SOURCES) \
 	$(lxc_test_saveconfig_SOURCES) $(lxc_test_share_ns_SOURCES) \
@@ -502,6 +521,7 @@ DIST_SOURCES = $(am__lxc_test_api_reboot_SOURCES_DIST) \
 	$(am__lxc_test_locktests_SOURCES_DIST) \
 	$(am__lxc_test_lxcpath_SOURCES_DIST) \
 	$(am__lxc_test_may_control_SOURCES_DIST) \
+	$(am__lxc_test_mount_injection_SOURCES_DIST) \
 	$(am__lxc_test_parse_config_file_SOURCES_DIST) \
 	$(am__lxc_test_raw_clone_SOURCES_DIST) \
 	$(am__lxc_test_reboot_SOURCES_DIST) \
@@ -543,6 +563,7 @@ DISTFILES = $(DIST_COMMON) $(DIST_SOURCES) $(TEXINFOS) $(EXTRA_DIST)
 ACLOCAL = @ACLOCAL@
 AMTAR = @AMTAR@
 AM_DEFAULT_VERBOSITY = @AM_DEFAULT_VERBOSITY@
+APPARMOR_CACHE_DIR = @APPARMOR_CACHE_DIR@
 AR = @AR@
 AUTOCONF = @AUTOCONF@
 AUTOHEADER = @AUTOHEADER@
@@ -561,6 +582,8 @@ DEFAULT_CGROUP_PATTERN = @DEFAULT_CGROUP_PATTERN@
 DEFS = @DEFS@
 DEPDIR = @DEPDIR@
 DLLTOOL = @DLLTOOL@
+DLOG_CFLAGS = @DLOG_CFLAGS@
+DLOG_LIBS = @DLOG_LIBS@
 DOCDIR = @DOCDIR@
 DSYMUTIL = @DSYMUTIL@
 DUMPBIN = @DUMPBIN@
@@ -737,7 +760,10 @@ top_srcdir = @top_srcdir@
 @ENABLE_TESTS_TRUE@lxc_test_locktests_SOURCES = locktests.c
 @ENABLE_TESTS_TRUE@lxc_test_lxcpath_SOURCES = lxcpath.c
 @ENABLE_TESTS_TRUE@lxc_test_may_control_SOURCES = may_control.c
-@ENABLE_TESTS_TRUE@lxc_test_parse_config_file_SOURCES = parse_config_file.c lxctest.h
+@ENABLE_TESTS_TRUE@lxc_test_mount_injection_SOURCES = mount_injection.c lxctest.h
+@ENABLE_TESTS_TRUE@lxc_test_parse_config_file_SOURCES = parse_config_file.c \
+@ENABLE_TESTS_TRUE@				     lxctest.h
+
 @ENABLE_TESTS_TRUE@lxc_test_raw_clone_SOURCES = lxc_raw_clone.c \
 @ENABLE_TESTS_TRUE@			     lxctest.h \
 @ENABLE_TESTS_TRUE@			     ../lxc/namespace.c ../lxc/namespace.h \
@@ -745,12 +771,18 @@ top_srcdir = @top_srcdir@
 
 @ENABLE_TESTS_TRUE@lxc_test_reboot_SOURCES = reboot.c
 @ENABLE_TESTS_TRUE@lxc_test_saveconfig_SOURCES = saveconfig.c
-@ENABLE_TESTS_TRUE@lxc_test_share_ns_SOURCES = share_ns.c lxctest.h
+@ENABLE_TESTS_TRUE@lxc_test_share_ns_SOURCES = share_ns.c \
+@ENABLE_TESTS_TRUE@			    lxctest.h \
+@ENABLE_TESTS_TRUE@			    ../lxc/compiler.h
+
 @ENABLE_TESTS_TRUE@lxc_test_shortlived_SOURCES = shortlived.c
 @ENABLE_TESTS_TRUE@lxc_test_shutdowntest_SOURCES = shutdowntest.c
 @ENABLE_TESTS_TRUE@lxc_test_snapshot_SOURCES = snapshot.c
 @ENABLE_TESTS_TRUE@lxc_test_startone_SOURCES = startone.c
-@ENABLE_TESTS_TRUE@lxc_test_state_server_SOURCES = state_server.c lxctest.h
+@ENABLE_TESTS_TRUE@lxc_test_state_server_SOURCES = state_server.c \
+@ENABLE_TESTS_TRUE@				lxctest.h \
+@ENABLE_TESTS_TRUE@				../lxc/compiler.h
+
 @ENABLE_TESTS_TRUE@lxc_test_utils_SOURCES = lxc-test-utils.c lxctest.h
 @ENABLE_TESTS_TRUE@AM_CFLAGS = -DLXCROOTFSMOUNT=\"$(LXCROOTFSMOUNT)\" \
 @ENABLE_TESTS_TRUE@	-DLXCPATH=\"$(LXCPATH)\" \
@@ -761,8 +793,9 @@ top_srcdir = @top_srcdir@
 @ENABLE_TESTS_TRUE@	$(top_srcdir)/src -I $(top_srcdir)/src/lxc \
 @ENABLE_TESTS_TRUE@	-I $(top_srcdir)/src/lxc/cgroups -I \
 @ENABLE_TESTS_TRUE@	$(top_srcdir)/src/lxc/tools -pthread \
-@ENABLE_TESTS_TRUE@	$(am__append_1) $(am__append_2)
-@ENABLE_TESTS_TRUE@bin_SCRIPTS = $(am__append_3) $(am__append_4)
+@ENABLE_TESTS_TRUE@	$(am__append_1) $(am__append_2) \
+@ENABLE_TESTS_TRUE@	$(am__append_3)
+@ENABLE_TESTS_TRUE@bin_SCRIPTS = $(am__append_4) $(am__append_5)
 EXTRA_DIST = basic.c \
 	     cgpath.c \
 	     clonetest.c \
@@ -787,15 +820,18 @@ EXTRA_DIST = basic.c \
 	     lxc-test-rootfs \
 	     lxc-test-autostart \
 	     lxc-test-apparmor-mount \
+	     lxc-test-apparmor-generated \
 	     lxc-test-checkpoint-restore \
 	     lxc-test-cloneconfig \
 	     lxc-test-createconfig \
+	     lxc-test-exit-code \
 	     lxc-test-no-new-privs \
 	     lxc-test-snapdeps \
 	     lxc-test-symlink \
 	     lxc-test-unpriv \
 	     lxc-test-utils.c \
 	     may_control.c \
+	     mount_injection.c \
 	     parse_config_file.c \
 	     saveconfig.c \
 	     shortlived.c \
@@ -803,7 +839,8 @@ EXTRA_DIST = basic.c \
 	     snapshot.c \
 	     startone.c \
 	     state_server.c \
-	     share_ns.c
+	     share_ns.c \
+	     travis.sh
 
 all: all-am
 
@@ -978,6 +1015,10 @@ lxc-test-may-control$(EXEEXT): $(lxc_test_may_control_OBJECTS) $(lxc_test_may_co
 	@rm -f lxc-test-may-control$(EXEEXT)
 	$(AM_V_CCLD)$(LINK) $(lxc_test_may_control_OBJECTS) $(lxc_test_may_control_LDADD) $(LIBS)
 
+lxc-test-mount-injection$(EXEEXT): $(lxc_test_mount_injection_OBJECTS) $(lxc_test_mount_injection_DEPENDENCIES) $(EXTRA_lxc_test_mount_injection_DEPENDENCIES) 
+	@rm -f lxc-test-mount-injection$(EXEEXT)
+	$(AM_V_CCLD)$(LINK) $(lxc_test_mount_injection_OBJECTS) $(lxc_test_mount_injection_LDADD) $(LIBS)
+
 lxc-test-parse-config-file$(EXEEXT): $(lxc_test_parse_config_file_OBJECTS) $(lxc_test_parse_config_file_DEPENDENCIES) $(EXTRA_lxc_test_parse_config_file_DEPENDENCIES) 
 	@rm -f lxc-test-parse-config-file$(EXEEXT)
 	$(AM_V_CCLD)$(LINK) $(lxc_test_parse_config_file_OBJECTS) $(lxc_test_parse_config_file_LDADD) $(LIBS)
@@ -1100,6 +1141,7 @@ distclean-compile:
 @AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/lxc_raw_clone.Po@am__quote@ # am--include-marker
 @AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/lxcpath.Po@am__quote@ # am--include-marker
 @AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/may_control.Po@am__quote@ # am--include-marker
+@AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/mount_injection.Po@am__quote@ # am--include-marker
 @AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/parse_config_file.Po@am__quote@ # am--include-marker
 @AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/reboot.Po@am__quote@ # am--include-marker
 @AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/saveconfig.Po@am__quote@ # am--include-marker
@@ -1302,6 +1344,7 @@ distclean: distclean-am
 	-rm -f ./$(DEPDIR)/lxc_raw_clone.Po
 	-rm -f ./$(DEPDIR)/lxcpath.Po
 	-rm -f ./$(DEPDIR)/may_control.Po
+	-rm -f ./$(DEPDIR)/mount_injection.Po
 	-rm -f ./$(DEPDIR)/parse_config_file.Po
 	-rm -f ./$(DEPDIR)/reboot.Po
 	-rm -f ./$(DEPDIR)/saveconfig.Po
@@ -1382,6 +1425,7 @@ maintainer-clean: maintainer-clean-am
 	-rm -f ./$(DEPDIR)/lxc_raw_clone.Po
 	-rm -f ./$(DEPDIR)/lxcpath.Po
 	-rm -f ./$(DEPDIR)/may_control.Po
+	-rm -f ./$(DEPDIR)/mount_injection.Po
 	-rm -f ./$(DEPDIR)/parse_config_file.Po
 	-rm -f ./$(DEPDIR)/reboot.Po
 	-rm -f ./$(DEPDIR)/saveconfig.Po
