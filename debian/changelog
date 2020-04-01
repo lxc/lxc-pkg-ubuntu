@@ -1,6 +1,8 @@
-lxc (4.0.0-0ubuntu1) focal; urgency=medium
+lxc (1:4.0.0-0ubuntu1) focal; urgency=medium
 
-  * New upstream release (4.0.0) (LP: #1867535):
+  * Bump epoch to match Debian. (LP: #1837537)
+  * New upstream release (4.0.0):
+    - Fixes (LP: #1867535, LP: #1861880, LP: #1858799, LP: #1831258)
     - cgroups: Full cgroup2 support
     - cgroups: Freezer support in CGroup2
     - cgroups: eBPF device controller support in CGroup2

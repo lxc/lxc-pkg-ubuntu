@@ -6,3 +6,6 @@ lxc source: intra-source-package-circular-dependency liblxc-common liblxc1
 
 # Required for backports
 lxc source: package-uses-old-debhelper-compat-version 10
+
+# Unlike Debian, Ubuntu didn't need an epoch bump
+lxc source: epoch-changed-but-upstream-version-did-not-go-backwards 3.0.4-0ubuntu3 -> 1:4.0.0-0ubuntu1
