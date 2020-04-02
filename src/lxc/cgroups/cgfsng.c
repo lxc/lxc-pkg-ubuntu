@@ -1360,7 +1360,7 @@ __cgfsng_ops static inline bool cgfsng_payload_create(struct cgroup_ops *ops,
 __cgfsng_ops static bool cgfsng_monitor_enter(struct cgroup_ops *ops,
 					      struct lxc_handler *handler)
 {
-	int monitor_len, transient_len;
+	int monitor_len, transient_len = 0;
 	char monitor[INTTYPE_TO_STRLEN(pid_t)],
 	    transient[INTTYPE_TO_STRLEN(pid_t)];
 
@@ -1388,7 +1388,7 @@ __cgfsng_ops static bool cgfsng_monitor_enter(struct cgroup_ops *ops,
 		if (ret)
 			return log_error_errno(false, errno, "Failed to enter cgroup \"%s\"", h->monitor_full_path);
 
-                if (handler->transient_pid < 0)
+		if (handler->transient_pid <= 0)
 			return true;
 
 		ret = lxc_writeat(h->cgfd_mon, "cgroup.procs", transient, transient_len);

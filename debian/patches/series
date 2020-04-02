@@ -33,3 +33,9 @@
 0033-apparmor-generate-ro-bind-remount-rule-list.patch
 0034-autotools-don-t-install-run-coccinelle.sh.patch
 0035-systemd-Add-Documentation-key.patch
+0036-fix-non-root-user-cannot-write-dev-stdout.patch
+0037-cgroups-fix-uninitialized-transient_len-warning.patch
+0038-utils-rework-fix_stdio_permissions.patch
+0039-utils-use-setres-u-g-id-in-lxc_switch_uid_gid.patch
+0040-cgroups-fix-build-warning-on-GCC-7.patch
+0041-lxccontainer-poll-takes-millisecond-not-seconds.patch

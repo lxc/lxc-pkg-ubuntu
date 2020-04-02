@@ -1,0 +1,106 @@
+From 43c6fed52037db36503232eaa92788095637e22e Mon Sep 17 00:00:00 2001
+From: gaohuatao <gaohuatao@huawei.com>
+Date: Wed, 1 Apr 2020 09:36:44 -0400
+Subject: fix non-root user cannot write /dev/stdout
+
+Signed-off-by: gaohuatao <gaohuatao@huawei.com>
+---
+ src/lxc/attach.c |  3 +++
+ src/lxc/start.c  |  3 +++
+ src/lxc/utils.c  | 45 +++++++++++++++++++++++++++++++++++++++++++++
+ src/lxc/utils.h  |  3 +++
+ 4 files changed, 54 insertions(+)
+
+diff --git a/src/lxc/attach.c b/src/lxc/attach.c
+index 15cc5f379..07eb814c9 100644
+--- a/src/lxc/attach.c
++++ b/src/lxc/attach.c
+@@ -875,6 +875,9 @@ static int attach_child_main(struct attach_clone_payload *payload)
+ 
+ 	if (new_gid == ns_root_gid)
+ 		new_gid = LXC_INVALID_GID;
++	
++	/* Make sure that the processes STDIO is correctly owned by the user that we are switching to */
++	fix_stdio_permissions(new_uid);
+ 
+ 	if (!lxc_switch_uid_gid(new_uid, new_gid))
+ 		goto on_error;
+diff --git a/src/lxc/start.c b/src/lxc/start.c
+index 5f70bf237..e4c8712e1 100644
+--- a/src/lxc/start.c
++++ b/src/lxc/start.c
+@@ -1363,6 +1363,9 @@ static int do_start(void *data)
+ 
+ 	if (new_gid == nsgid)
+ 		new_gid = LXC_INVALID_GID;
++	
++	/* Make sure that the processes STDIO is correctly owned by the user that we are switching to */
++	fix_stdio_permissions(new_uid);
+ 
+ 	/* If we are in a new user namespace we already dropped all groups when
+ 	 * we switched to root in the new user namespace further above. Only
+diff --git a/src/lxc/utils.c b/src/lxc/utils.c
+index 97507fe64..96c35e808 100644
+--- a/src/lxc/utils.c
++++ b/src/lxc/utils.c
+@@ -1860,3 +1860,48 @@ bool lxc_can_use_pidfd(int pidfd)
+ 
+ 	return log_trace(true, "Kernel supports pidfds");
+ }
++
++void fix_stdio_permissions(uid_t uid)
++{
++	int std_fds[3] = {STDIN_FILENO, STDOUT_FILENO, STDERR_FILENO};
++	int devnull_fd = -1;
++	int ret;
++	int i = 0;
++	struct stat st;
++	struct stat null_st;
++
++	devnull_fd = open_devnull();
++	if (devnull_fd < 0) {
++		ERROR("Open /dev/null failed");
++		goto out;
++	}
++	
++	ret = fstat(devnull_fd, &null_st);
++
++	for (; i < 3; i++) {
++		ret = fstat(std_fds[i], &st);
++		if (ret != 0) {
++			ERROR("Failed to get fd %d stat", std_fds[i]);
++			continue;
++		}
++
++		if (st.st_rdev == null_st.st_rdev) {
++			continue;
++		}
++
++		ret = fchown(std_fds[i], uid, st.st_gid);
++		if (ret != 0) {
++			ERROR("Failed to change fd %d owner", std_fds[i]);
++		}
++
++		ret = fchmod(std_fds[i], 0700);
++		if (ret != 0) {
++			ERROR("Failed to change fd %d mode", std_fds[i]);
++		}
++	}
++
++out:
++	if (devnull_fd >= 0) {
++		close(devnull_fd);
++	}
++}
+diff --git a/src/lxc/utils.h b/src/lxc/utils.h
+index 4ab41bf1f..bd7a86136 100644
+--- a/src/lxc/utils.h
++++ b/src/lxc/utils.h
+@@ -239,4 +239,7 @@ extern int lxc_rm_rf(const char *dirname);
+ extern int lxc_setup_keyring(char *keyring_label);
+ extern bool lxc_can_use_pidfd(int pidfd);
+ 
++/* Fix the permissions of init PID's STDIO within the container to the specified user */
++extern void fix_stdio_permissions(uid_t uid);
++
+ #endif /* __LXC_UTILS_H */

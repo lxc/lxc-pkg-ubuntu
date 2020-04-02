@@ -1,0 +1,138 @@
+From bfa6fe67b5707e248ca7eab6b8ec1ddc198b8709 Mon Sep 17 00:00:00 2001
+From: Christian Brauner <christian.brauner@ubuntu.com>
+Date: Thu, 2 Apr 2020 11:50:27 +0200
+Subject: utils: rework fix_stdio_permissions()
+
+Signed-off-by: Christian Brauner <christian.brauner@ubuntu.com>
+---
+ src/lxc/attach.c |  6 ++++--
+ src/lxc/start.c  |  6 ++++--
+ src/lxc/utils.c  | 49 ++++++++++++++++++++++++------------------------
+ src/lxc/utils.h  |  3 +--
+ 4 files changed, 33 insertions(+), 31 deletions(-)
+
+diff --git a/src/lxc/attach.c b/src/lxc/attach.c
+index 07eb814c9..406b8ec74 100644
+--- a/src/lxc/attach.c
++++ b/src/lxc/attach.c
+@@ -875,9 +875,11 @@ static int attach_child_main(struct attach_clone_payload *payload)
+ 
+ 	if (new_gid == ns_root_gid)
+ 		new_gid = LXC_INVALID_GID;
+-	
++
+ 	/* Make sure that the processes STDIO is correctly owned by the user that we are switching to */
+-	fix_stdio_permissions(new_uid);
++	ret = fix_stdio_permissions(new_uid);
++	if (ret)
++		WARN("Failed to ajust stdio permissions");
+ 
+ 	if (!lxc_switch_uid_gid(new_uid, new_gid))
+ 		goto on_error;
+diff --git a/src/lxc/start.c b/src/lxc/start.c
+index e4c8712e1..9d800e30b 100644
+--- a/src/lxc/start.c
++++ b/src/lxc/start.c
+@@ -1363,9 +1363,11 @@ static int do_start(void *data)
+ 
+ 	if (new_gid == nsgid)
+ 		new_gid = LXC_INVALID_GID;
+-	
++
+ 	/* Make sure that the processes STDIO is correctly owned by the user that we are switching to */
+-	fix_stdio_permissions(new_uid);
++	ret = fix_stdio_permissions(new_uid);
++	if (ret)
++		WARN("Failed to ajust stdio permissions");
+ 
+ 	/* If we are in a new user namespace we already dropped all groups when
+ 	 * we switched to root in the new user namespace further above. Only
+diff --git a/src/lxc/utils.c b/src/lxc/utils.c
+index 96c35e808..70414f812 100644
+--- a/src/lxc/utils.c
++++ b/src/lxc/utils.c
+@@ -1861,47 +1861,46 @@ bool lxc_can_use_pidfd(int pidfd)
+ 	return log_trace(true, "Kernel supports pidfds");
+ }
+ 
+-void fix_stdio_permissions(uid_t uid)
++int fix_stdio_permissions(uid_t uid)
+ {
+-	int std_fds[3] = {STDIN_FILENO, STDOUT_FILENO, STDERR_FILENO};
+-	int devnull_fd = -1;
++	__do_close int devnull_fd = -EBADF;
++	int fret = 0;
++	int std_fds[] = {STDIN_FILENO, STDOUT_FILENO, STDERR_FILENO};
+ 	int ret;
+-	int i = 0;
+-	struct stat st;
+-	struct stat null_st;
++	struct stat st, st_null;
+ 
+ 	devnull_fd = open_devnull();
+-	if (devnull_fd < 0) {
+-		ERROR("Open /dev/null failed");
+-		goto out;
+-	}
+-	
+-	ret = fstat(devnull_fd, &null_st);
++	if (devnull_fd < 0)
++		return log_warn_errno(-1, errno, "Failed to open \"/dev/null\"");
++
++	ret = fstat(devnull_fd, &st_null);
++	if (ret)
++		return log_warn_errno(-errno, errno, "Failed to stat \"/dev/null\"");
+ 
+-	for (; i < 3; i++) {
++	for (int i = 0; i < ARRAY_SIZE(std_fds); i++) {
+ 		ret = fstat(std_fds[i], &st);
+-		if (ret != 0) {
+-			ERROR("Failed to get fd %d stat", std_fds[i]);
++		if (ret) {
++			SYSWARN("Failed to stat standard I/O file descriptor %d", std_fds[i]);
++			fret = -1;
+ 			continue;
+ 		}
+ 
+-		if (st.st_rdev == null_st.st_rdev) {
++		if (st.st_rdev == st_null.st_rdev)
+ 			continue;
+-		}
+ 
+ 		ret = fchown(std_fds[i], uid, st.st_gid);
+-		if (ret != 0) {
+-			ERROR("Failed to change fd %d owner", std_fds[i]);
++		if (ret) {
++			SYSWARN("Failed to chown standard I/O file descriptor %d to uid %d and gid %d",
++				std_fds[i], uid, st.st_gid);
++			fret = -1;
+ 		}
+ 
+ 		ret = fchmod(std_fds[i], 0700);
+-		if (ret != 0) {
+-			ERROR("Failed to change fd %d mode", std_fds[i]);
++		if (ret) {
++			SYSWARN("Failed to chmod standard I/O file descriptor %d", std_fds[i]);
++			fret = -1;
+ 		}
+ 	}
+ 
+-out:
+-	if (devnull_fd >= 0) {
+-		close(devnull_fd);
+-	}
++	return fret;
+ }
+diff --git a/src/lxc/utils.h b/src/lxc/utils.h
+index bd7a86136..339217c50 100644
+--- a/src/lxc/utils.h
++++ b/src/lxc/utils.h
+@@ -239,7 +239,6 @@ extern int lxc_rm_rf(const char *dirname);
+ extern int lxc_setup_keyring(char *keyring_label);
+ extern bool lxc_can_use_pidfd(int pidfd);
+ 
+-/* Fix the permissions of init PID's STDIO within the container to the specified user */
+-extern void fix_stdio_permissions(uid_t uid);
++extern int fix_stdio_permissions(uid_t uid);
+ 
+ #endif /* __LXC_UTILS_H */

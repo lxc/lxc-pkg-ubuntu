@@ -1,0 +1,32 @@
+From 30c38f47b39de3b1aad8bb0313f07e6c34ae462d Mon Sep 17 00:00:00 2001
+From: Christian Brauner <christian.brauner@ubuntu.com>
+Date: Thu, 2 Apr 2020 11:51:13 +0200
+Subject: utils: use setres{u,g}id() in lxc_switch_uid_gid()
+
+Signed-off-by: Christian Brauner <christian.brauner@ubuntu.com>
+---
+ src/lxc/utils.c | 4 ++--
+ 1 file changed, 2 insertions(+), 2 deletions(-)
+
+diff --git a/src/lxc/utils.c b/src/lxc/utils.c
+index 70414f812..2cf99945f 100644
+--- a/src/lxc/utils.c
++++ b/src/lxc/utils.c
+@@ -1336,7 +1336,7 @@ bool lxc_switch_uid_gid(uid_t uid, gid_t gid)
+ 	int ret = 0;
+ 
+ 	if (gid != LXC_INVALID_GID) {
+-		ret = setgid(gid);
++		ret = setresgid(gid, gid, gid);
+ 		if (ret < 0) {
+ 			SYSERROR("Failed to switch to gid %d", gid);
+ 			return false;
+@@ -1345,7 +1345,7 @@ bool lxc_switch_uid_gid(uid_t uid, gid_t gid)
+ 	}
+ 
+ 	if (uid != LXC_INVALID_UID) {
+-		ret = setuid(uid);
++		ret = setresuid(uid, uid, uid);
+ 		if (ret < 0) {
+ 			SYSERROR("Failed to switch to uid %d", uid);
+ 			return false;
