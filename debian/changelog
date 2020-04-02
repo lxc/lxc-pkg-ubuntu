@@ -1,3 +1,15 @@
+lxc (1:4.0.0-0ubuntu2) focal; urgency=medium
+
+  * Cherry-pick upstream bugfixes:
+    - 0036-fix-non-root-user-cannot-write-dev-stdout.patch
+    - 0037-cgroups-fix-uninitialized-transient_len-warning.patch
+    - 0038-utils-rework-fix_stdio_permissions.patch
+    - 0039-utils-use-setres-u-g-id-in-lxc_switch_uid_gid.patch
+    - 0040-cgroups-fix-build-warning-on-GCC-7.patch
+    - 0041-lxccontainer-poll-takes-millisecond-not-seconds.patch
+
+ -- Stéphane Graber <stgraber@ubuntu.com>  Thu, 02 Apr 2020 12:25:20 -0400
+
 lxc (1:4.0.0-0ubuntu1) focal; urgency=medium
 
   * Bump epoch to match Debian. (LP: #1837537)
