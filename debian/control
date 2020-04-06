@@ -81,10 +81,10 @@ Depends: liblxc1 (= ${binary:Version}),
 Conflicts: lxc-common
 Replaces: lxc-common,
           lxc-templates (<< 3.0.0~beta1-0ubuntu1~),
-          lxc-utils (<< 3.0.0~beta2-0ubuntu2~),
+          lxc-utils (<< 1:4.0.0-0ubuntu1~),
           lxc1 (<< 3.0.0~beta2-0ubuntu2~)
 Breaks: lxc-templates (<< 3.0.0~beta1-0ubuntu1~),
-        lxc-utils (<< 3.0.0~beta2-0ubuntu2~),
+        lxc-utils (<< 1:4.0.0-0ubuntu1~),
         lxc1 (<< 3.0.0~beta2-0ubuntu2~)
 Provides: lxc-common
 Description: Linux Containers userspace tools (common tools)
@@ -135,6 +135,8 @@ Depends: libpam-runtime (>= 1.0.1-6),
          ${lxcfs:Depends},
          ${misc:Depends},
          ${shlibs:Depends}
+Replaces: lxc-utils (<< 1:4.0.0-0ubuntu1~)
+Breaks: lxc-utils (<< 1:4.0.0-0ubuntu1~)
 Conflicts: libpam-cgm
 Description: PAM module for managing cgroups for LXC
  Containers are insulated areas inside a system, which have their own namespace
