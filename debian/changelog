@@ -1,3 +1,18 @@
+lxc (1:4.0.1-0ubuntu1) focal; urgency=medium
+
+  * New upstream bugfix release (4.0.1):
+    - Tweak systemd ordering (start after remote-fs.target)
+    - Fix various issues around attach and cgroups
+    - Fix shutdown timeout not working on pidfd systems
+    - Fix cgroup issue on 4.9 kernel
+    - Fix write issues in /dev/stdout
+  * Fix upgrade ordering (LP: #1870483)
+  * Update lintian overrides:
+    - Drop epoch bump override (no longer detecting it)
+    - Add /usr/libexec override (LXC only uses /usr/lib)
+
+ -- Stéphane Graber <stgraber@ubuntu.com>  Mon, 06 Apr 2020 16:24:28 -0400
+
 lxc (1:4.0.0-0ubuntu2) focal; urgency=medium
 
   * Cherry-pick upstream bugfixes:
