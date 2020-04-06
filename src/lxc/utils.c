@@ -1336,7 +1336,7 @@ bool lxc_switch_uid_gid(uid_t uid, gid_t gid)
 	int ret = 0;
 
 	if (gid != LXC_INVALID_GID) {
-		ret = setgid(gid);
+		ret = setresgid(gid, gid, gid);
 		if (ret < 0) {
 			SYSERROR("Failed to switch to gid %d", gid);
 			return false;
@@ -1345,7 +1345,7 @@ bool lxc_switch_uid_gid(uid_t uid, gid_t gid)
 	}
 
 	if (uid != LXC_INVALID_UID) {
-		ret = setuid(uid);
+		ret = setresuid(uid, uid, uid);
 		if (ret < 0) {
 			SYSERROR("Failed to switch to uid %d", uid);
 			return false;
@@ -1747,7 +1747,7 @@ int fd_cloexec(int fd, bool cloexec)
 	return 0;
 }
 
-int recursive_destroy(const char *dirname)
+int lxc_rm_rf(const char *dirname)
 {
 	__do_closedir DIR *dir = NULL;
 	int fret = 0;
@@ -1779,7 +1779,7 @@ int recursive_destroy(const char *dirname)
 		if (!S_ISDIR(mystat.st_mode))
 			continue;
 
-		ret = recursive_destroy(pathname);
+		ret = lxc_rm_rf(pathname);
 		if (ret < 0)
 			fret = -1;
 	}
@@ -1859,4 +1859,48 @@ bool lxc_can_use_pidfd(int pidfd)
 		return log_error_errno(false, errno, "Kernel does not support sending singals through pidfds");
 
 	return log_trace(true, "Kernel supports pidfds");
+}
+
+int fix_stdio_permissions(uid_t uid)
+{
+	__do_close int devnull_fd = -EBADF;
+	int fret = 0;
+	int std_fds[] = {STDIN_FILENO, STDOUT_FILENO, STDERR_FILENO};
+	int ret;
+	struct stat st, st_null;
+
+	devnull_fd = open_devnull();
+	if (devnull_fd < 0)
+		return log_warn_errno(-1, errno, "Failed to open \"/dev/null\"");
+
+	ret = fstat(devnull_fd, &st_null);
+	if (ret)
+		return log_warn_errno(-errno, errno, "Failed to stat \"/dev/null\"");
+
+	for (int i = 0; i < ARRAY_SIZE(std_fds); i++) {
+		ret = fstat(std_fds[i], &st);
+		if (ret) {
+			SYSWARN("Failed to stat standard I/O file descriptor %d", std_fds[i]);
+			fret = -1;
+			continue;
+		}
+
+		if (st.st_rdev == st_null.st_rdev)
+			continue;
+
+		ret = fchown(std_fds[i], uid, st.st_gid);
+		if (ret) {
+			SYSWARN("Failed to chown standard I/O file descriptor %d to uid %d and gid %d",
+				std_fds[i], uid, st.st_gid);
+			fret = -1;
+		}
+
+		ret = fchmod(std_fds[i], 0700);
+		if (ret) {
+			SYSWARN("Failed to chmod standard I/O file descriptor %d", std_fds[i]);
+			fret = -1;
+		}
+	}
+
+	return fret;
 }

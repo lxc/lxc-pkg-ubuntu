@@ -335,7 +335,7 @@ static int signal_handler(int fd, uint32_t events, void *data,
 		return log_error(LXC_MAINLOOP_ERROR, "Failed to read signal info from signal file descriptor %d", fd);
 
 	if (ret != sizeof(siginfo))
-		return log_error(-EINVAL, "Unexpected size for struct signalfd_siginfo");
+		return log_error(LXC_MAINLOOP_ERROR, "Unexpected size for struct signalfd_siginfo");
 
 	/* Check whether init is running. */
 	info.si_pid = 0;
@@ -1366,6 +1366,11 @@ static int do_start(void *data)
 	if (new_gid == nsgid)
 		new_gid = LXC_INVALID_GID;
 
+	/* Make sure that the processes STDIO is correctly owned by the user that we are switching to */
+	ret = fix_stdio_permissions(new_uid);
+	if (ret)
+		WARN("Failed to ajust stdio permissions");
+
 	/* If we are in a new user namespace we already dropped all groups when
 	 * we switched to root in the new user namespace further above. Only
 	 * drop groups if we can, so ensure that we have necessary privilege.
@@ -1703,6 +1708,7 @@ static int lxc_spawn(struct lxc_handler *handler)
 	}
 
 	if (!cgroup_ops->payload_enter(cgroup_ops, handler)) {
+		ERROR("Failed to enter cgroups");
 		goto out_delete_net;
 	}
 

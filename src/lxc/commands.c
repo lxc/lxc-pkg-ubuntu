@@ -325,6 +325,34 @@ int lxc_try_cmd(const char *name, const char *lxcpath)
 	return 0;
 }
 
+/*
+ * Validate that the input is a proper string parameter. If not,
+ * send an EINVAL response and return -1.
+ *
+ * Precondition: there is non-zero-length data available.
+ */
+static int validate_string_request(int fd, const struct lxc_cmd_req *req)
+{
+	int ret;
+	size_t maxlen = req->datalen - 1;
+	const char *data = req->data;
+
+	if (data[maxlen] == 0 && strnlen(data, maxlen) == maxlen)
+		return 0;
+
+	struct lxc_cmd_rsp rsp = {
+		.ret = -EINVAL,
+		.datalen = 0,
+		.data = NULL,
+	};
+
+	ret = lxc_cmd_rsp_send(fd, &rsp);
+	if (ret < 0)
+		return LXC_CMD_REAP_CLIENT_FD;
+
+	return -1;
+}
+
 /* Implementations of the commands and their callbacks */
 
 /*
@@ -506,10 +534,15 @@ static int lxc_cmd_get_cgroup_callback(int fd, struct lxc_cmd_req *req,
 	struct lxc_cmd_rsp rsp;
 	struct cgroup_ops *cgroup_ops = handler->cgroup_ops;
 
-	if (req->datalen > 0)
+	if (req->datalen > 0) {
+		ret = validate_string_request(fd, req);
+		if (ret != 0)
+			return ret;
+
 		path = cgroup_ops->get_cgroup(cgroup_ops, req->data);
-	else
+	} else {
 		path = cgroup_ops->get_cgroup(cgroup_ops, NULL);
+	}
 	if (!path)
 		return -1;
 
@@ -1328,7 +1361,7 @@ int lxc_cmd_get_cgroup2_fd(const char *name, const char *lxcpath)
 		return -1;
 
 	if (cmd.rsp.ret < 0)
-		return log_debug_errno(-1, errno, "Failed to receive cgroup2 fd");
+		return log_debug_errno(cmd.rsp.ret, -cmd.rsp.ret, "Failed to receive cgroup2 fd");
 
 	return PTR_TO_INT(cmd.rsp.data);
 }
@@ -1450,7 +1483,7 @@ static int lxc_cmd_handler(int fd, uint32_t events, void *data,
 		if (errno == EACCES) {
 			/* We don't care for the peer, just send and close. */
 			struct lxc_cmd_rsp rsp = {
-				.ret = ret,
+				.ret = -EPERM,
 			};
 
 			lxc_cmd_rsp_send(fd, &rsp);
@@ -1464,14 +1497,11 @@ static int lxc_cmd_handler(int fd, uint32_t events, void *data,
 
 	if (ret != sizeof(req)) {
 		WARN("Failed to receive full command request. Ignoring request for \"%s\"", lxc_cmd_str(req.cmd));
-		ret = -1;
 		goto out_close;
 	}
 
 	if ((req.datalen > LXC_CMD_DATA_MAX) && (req.cmd != LXC_CMD_CONSOLE_LOG)) {
 		ERROR("Received command data length %d is too large for command \"%s\"", req.datalen, lxc_cmd_str(req.cmd));
-		errno = EFBIG;
-		ret = -EFBIG;
 		goto out_close;
 	}
 
@@ -1480,7 +1510,6 @@ static int lxc_cmd_handler(int fd, uint32_t events, void *data,
 		ret = lxc_recv_nointr(fd, reqdata, req.datalen, 0);
 		if (ret != req.datalen) {
 			WARN("Failed to receive full command request. Ignoring request for \"%s\"", lxc_cmd_str(req.cmd));
-			ret = LXC_MAINLOOP_ERROR;
 			goto out_close;
 		}
 
@@ -1490,12 +1519,11 @@ static int lxc_cmd_handler(int fd, uint32_t events, void *data,
 	ret = lxc_cmd_process(fd, &req, handler, descr);
 	if (ret) {
 		/* This is not an error, but only a request to close fd. */
-		ret = LXC_MAINLOOP_CONTINUE;
 		goto out_close;
 	}
 
 out:
-	return ret;
+	return LXC_MAINLOOP_CONTINUE;
 
 out_close:
 	lxc_cmd_fd_cleanup(fd, handler, descr, req.cmd);
