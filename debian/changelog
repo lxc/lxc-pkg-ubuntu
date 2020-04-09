@@ -1,3 +1,16 @@
+lxc (1:4.0.1-0ubuntu2) focal; urgency=medium
+
+  * Cherry-pick upstream fixes:
+    - 0001-Allocate-new-lxcbr0-subnet-at-startup-time.patch
+    - 0002-start-ensure-all-file-descriptors-are-closed-during-.patch
+    - 0003-syscall_numbers-handle-riscv.patch
+    - 0004-lxc_user_nic-simplify-group-retrieval.patch
+    - 0005-lxc_user_nic-continue-when-we-failed-to-find-a-group.patch
+    - 0006-cgroups-whitespace-fixes.patch
+    - 0007-seccomp-newer-kernels-require-the-buffer-to-be-zeroe.patch
+
+ -- Stéphane Graber <stgraber@ubuntu.com>  Wed, 08 Apr 2020 23:33:44 -0400
+
 lxc (1:4.0.1-0ubuntu1) focal; urgency=medium
 
   * New upstream bugfix release (4.0.1):
