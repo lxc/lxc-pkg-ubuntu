@@ -1,3 +1,14 @@
+lxc (1:4.0.2-0ubuntu1) focal; urgency=medium
+
+  * New ypstream bugfix release (4.0.2):
+    - RISC-V 64bit support
+    - Better group handling in lxc-user-nic
+    - Seccomp syscall interception fix for newer kernels
+    - CGroup v1 limits are now automatically skipped on v2 systems
+    - Fix a variety of issues identified by the Coverity Scan service
+
+ -- Stéphane Graber <stgraber@ubuntu.com>  Thu, 16 Apr 2020 15:52:36 -0400
+
 lxc (1:4.0.1-0ubuntu2) focal; urgency=medium
 
   * Cherry-pick upstream fixes:
