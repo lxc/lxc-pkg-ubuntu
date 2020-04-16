@@ -2605,6 +2605,9 @@ static int device_cgroup_rule_parse_devpath(struct device_item *device,
 			return ret_set_errno(-1, EINVAL);
 	}
 
+	if (!mode)
+		return ret_errno(EINVAL);
+
 	if (device_cgroup_parse_access(device, mode) < 0)
 		return -1;
 
@@ -2708,6 +2711,9 @@ __cgfsng_ops static bool cgfsng_setup_limits_legacy(struct cgroup_ops *ops,
 
 	if (!ops->hierarchies)
 		return ret_set_errno(false, EINVAL);
+
+	if (pure_unified_layout(ops))
+		return log_warn_errno(true, EINVAL, "Ignoring legacy cgroup limits on pure cgroup2 system");
 
 	sorted_cgroup_settings = sort_cgroup_settings(cgroup_settings);
 	if (!sorted_cgroup_settings)

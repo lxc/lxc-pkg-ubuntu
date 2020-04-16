@@ -3,8 +3,14 @@
 /* "Prefix for shared files." */
 #undef DATADIR
 
+/* build for use with Coverity */
+#undef ENABLE_COVERITY_BUILD
+
 /* Rexec liblxc as memfd */
 #undef ENFORCE_MEMFD_REXEC
+
+/* enforce thread-safety otherwise fail the build */
+#undef ENFORCE_THREAD_SAFETY
 
 /* Define to 1 if you have the `confstr' function. */
 #undef HAVE_CONFSTR
