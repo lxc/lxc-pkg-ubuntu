@@ -67,8 +67,12 @@ EOF
     chmod +x /usr/bin/dirmngr
 fi
 
+# Override the GPG server
+sed -i '/^DOWNLOAD_URL=$/a DOWNLOAD_KEYSERVER="hkp://keyserver.ubuntu.com:80"' /usr/share/lxc/templates/lxc-download
+
 # Build the tests (don't install anything, we want the system lib and tools)
 MULTIARCH=$(gcc -print-multiarch)
+autoreconf -f -i
 ./configure --enable-tests --disable-rpath --disable-doc --with-distro=ubuntu \
     --prefix=/usr --sysconfdir=/etc --localstatedir=/var \
     --libdir=\${prefix}/lib/${MULTIARCH} \

@@ -52,7 +52,21 @@ override_dh_install:
 		ln -s lxc-utils debian/tmp/usr/share/bash-completion/completions/$${cmd}; \
 	done
 
-	dh_install --fail-missing
+	# move the special manpages
+	mkdir -p debian/libpam-cgfs/usr/share/man/man8/
+	mkdir -p debian/libpam-cgfs/usr/share/man/ja/man8/
+	mv debian/tmp/usr/share/man/man8/pam_cgfs.8 debian/libpam-cgfs/usr/share/man/man8/
+	mv debian/tmp/usr/share/man/ja/man8/pam_cgfs.8 debian/libpam-cgfs/usr/share/man/ja/man8/
+	rmdir debian/tmp/usr/share/man/man8 debian/tmp/usr/share/man/ja/man8
+
+	mkdir -p debian/liblxc-common/usr/share/man/man1/
+	mkdir -p debian/liblxc-common/usr/share/man/ja/man1/
+	mkdir -p debian/liblxc-common/usr/share/man/ko/man1/
+	mv debian/tmp/usr/share/man/man1/lxc-user-nic.1 debian/liblxc-common/usr/share/man/man1/
+	mv debian/tmp/usr/share/man/ja/man1/lxc-user-nic.1 debian/liblxc-common/usr/share/man/ja/man1/
+	mv debian/tmp/usr/share/man/ko/man1/lxc-user-nic.1 debian/liblxc-common/usr/share/man/ko/man1/
+
+	dh_install
 
 override_dh_fixperms:
 	dh_fixperms

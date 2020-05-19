@@ -15,10 +15,6 @@ Files: src/include/getline.c src/include/getline.h
 Copyright: 2006 SPARTA, Inc.
 License: BSD-2-clause
 
-Files: src/include/ifaddrs.c src/include/ifaddrs.h
-Copyright: 2013 Kenneth MacKay
-License: BSD-2-clause
-
 Files: src/include/lxcmntent.c src/include/lxcmntent.h src/include/openpty.c src/include/openpty.h
 Copyright: 1995-2013 Free Software Foundation, Inc.
 License: LGPL-2.1+

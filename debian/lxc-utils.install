@@ -3,7 +3,7 @@ etc/dnsmasq.d-available
 etc/init
 etc/lxc
 lib/systemd
-usr/bin
+usr/bin/lxc-*
 usr/lib/*/lxc/lxc-containers
 usr/lib/*/lxc/lxc-net
 usr/share/apport
