@@ -7,6 +7,7 @@
 #include <seccomp.h>
 #include <stdio.h>
 #include <stdlib.h>
+#include <sys/epoll.h>
 #include <sys/mount.h>
 #include <sys/utsname.h>
 
@@ -99,7 +100,7 @@ static uint32_t get_v2_default_action(char *line)
 	while (*line == ' ')
 		line++;
 
-	/* After 'whitelist' or 'blacklist' comes default behavior. */
+	/* After 'allowlist' or 'denylist' comes default behavior. */
 	if (strncmp(line, "kill", 4) == 0) {
 		ret_action = SCMP_ACT_KILL;
 	} else if (strncmp(line, "errno", 5) == 0) {
@@ -317,7 +318,7 @@ enum lxc_hostarch_t {
 	lxc_seccomp_arch_unknown = 999,
 };
 
-int get_hostarch(void)
+static int get_hostarch(void)
 {
 	struct utsname uts;
 	if (uname(&uts) < 0) {
@@ -351,8 +352,8 @@ int get_hostarch(void)
 	return lxc_seccomp_arch_unknown;
 }
 
-scmp_filter_ctx get_new_ctx(enum lxc_hostarch_t n_arch,
-			    uint32_t default_policy_action, bool *needs_merge)
+static scmp_filter_ctx get_new_ctx(enum lxc_hostarch_t n_arch, uint32_t default_policy_action,
+				   bool *needs_merge)
 {
 	int ret;
 	uint32_t arch;
@@ -485,8 +486,8 @@ scmp_filter_ctx get_new_ctx(enum lxc_hostarch_t n_arch,
 	return ctx;
 }
 
-bool do_resolve_add_rule(uint32_t arch, char *line, scmp_filter_ctx ctx,
-			 struct seccomp_v2_rule *rule)
+static bool do_resolve_add_rule(uint32_t arch, char *line, scmp_filter_ctx ctx,
+				struct seccomp_v2_rule *rule)
 {
 	int i, nr, ret;
 	struct scmp_arg_cmp arg_cmp[6];
@@ -562,6 +563,27 @@ bool do_resolve_add_rule(uint32_t arch, char *line, scmp_filter_ctx ctx,
 }
 
 /*
+ * It is unfortunate, but we can't simply remove those terms since this would
+ * break way too many users.
+ */
+#define BACKWARDCOMPAT_TERMINOLOGY_DENYLIST "blacklist"
+#define BACKWARDCOMPAT_TERMINOLOGY_ALLOWLIST "whitelist"
+
+static inline bool is_denylist(const char *type)
+{
+	return strnequal(type, "denylist", STRLITERALLEN("denylist")) ||
+	       strnequal(type, BACKWARDCOMPAT_TERMINOLOGY_DENYLIST,
+			 STRLITERALLEN(BACKWARDCOMPAT_TERMINOLOGY_DENYLIST));
+}
+
+static inline bool is_allowlist(const char *type)
+{
+	return strnequal(type, "allowlist", STRLITERALLEN("allowlist")) ||
+	       strnequal(type, BACKWARDCOMPAT_TERMINOLOGY_ALLOWLIST,
+			 STRLITERALLEN(BACKWARDCOMPAT_TERMINOLOGY_ALLOWLIST));
+}
+
+/*
  * v2 consists of
  * [x86]
  * open
@@ -580,7 +602,7 @@ static int parse_config_v2(FILE *f, char *line, size_t *line_bufsz, struct lxc_c
 	int ret;
 	char *p;
 	enum lxc_hostarch_t cur_rule_arch, native_arch;
-	bool blacklist = false;
+	bool denylist = false;
 	uint32_t default_policy_action = -1, default_rule_action = -1;
 	struct seccomp_v2_rule rule;
 	struct scmp_ctx_info {
@@ -589,12 +611,10 @@ static int parse_config_v2(FILE *f, char *line, size_t *line_bufsz, struct lxc_c
 		bool needs_merge[3];
 	} ctx;
 
-	if (strncmp(line, "blacklist", 9) == 0)
-		blacklist = true;
-	else if (strncmp(line, "whitelist", 9) != 0) {
-		ERROR("Bad seccomp policy style \"%s\"", line);
-		return -1;
-	}
+	if (is_denylist(line))
+		denylist = true;
+	else if (!is_allowlist(line))
+		return log_error(-EINVAL, "Bad seccomp policy style \"%s\"", line);
 
 	p = strchr(line, ' ');
 	if (p) {
@@ -603,8 +623,8 @@ static int parse_config_v2(FILE *f, char *line, size_t *line_bufsz, struct lxc_c
 			return -1;
 	}
 
-	/* for blacklist, allow any syscall which has no rule */
-	if (blacklist) {
+	/* for denylist, allow any syscall which has no rule */
+	if (denylist) {
 		if (default_policy_action == -1)
 			default_policy_action = SCMP_ACT_ALLOW;
 
@@ -1079,7 +1099,7 @@ static int parse_config_v2(FILE *f, char *line, struct lxc_conf *conf)
  * the second line has some directives
  * then comes policy subject to the directives
  * right now version must be '1' or '2'
- * the directives must include 'whitelist'(version == 1 or 2) or 'blacklist'
+ * the directives must include 'allowlist'(version == 1 or 2) or 'denylist'
  * (version == 2) and can include 'debug' (though debug is not yet supported).
  */
 static int parse_config(FILE *f, struct lxc_conf *conf)
@@ -1099,8 +1119,8 @@ static int parse_config(FILE *f, struct lxc_conf *conf)
 		goto bad_line;
 	}
 
-	if (version == 1 && !strstr(line, "whitelist")) {
-		ERROR("Only whitelist policy is supported");
+	if (version == 1 && !strstr(line, "allowlist")) {
+		ERROR("Only allowlist policy is supported");
 		goto bad_line;
 	}
 
@@ -1353,6 +1373,9 @@ int seccomp_notify_handler(int fd, uint32_t events, void *data,
 	struct seccomp_notify_proxy_msg msg = {0};
 	char *cookie = conf->seccomp.notifier.cookie;
 	uint64_t req_id;
+
+	if (events & EPOLLHUP)
+		return log_trace(LXC_MAINLOOP_CLOSE, "Syscall supervisee already exited");
 
 	memset(req, 0, sizeof(*req));
 	ret = seccomp_notify_receive(fd, req);

@@ -12,6 +12,9 @@
 /* enforce thread-safety otherwise fail the build */
 #undef ENFORCE_THREAD_SAFETY
 
+/* Define to 1 if you have the `clone3' function. */
+#undef HAVE_CLONE3
+
 /* Define to 1 if you have the `confstr' function. */
 #undef HAVE_CONFSTR
 
@@ -45,6 +48,9 @@
 /* Define to 1 if you have the `endmntent' function. */
 #undef HAVE_ENDMNTENT
 
+/* Define to 1 if you have the `execveat' function. */
+#undef HAVE_EXECVEAT
+
 /* Define to 1 if you have the `faccessat' function. */
 #undef HAVE_FACCESSAT
 
@@ -53,6 +59,18 @@
 
 /* Define to 1 if you have the `fmemopen' function. */
 #undef HAVE_FMEMOPEN
+
+/* Define to 1 if you have the `fsconfig' function. */
+#undef HAVE_FSCONFIG
+
+/* Define to 1 if you have the `fsmount' function. */
+#undef HAVE_FSMOUNT
+
+/* Define to 1 if you have the `fsopen' function. */
+#undef HAVE_FSOPEN
+
+/* Define to 1 if you have the `fspick' function. */
+#undef HAVE_FSPICK
 
 /* Define to 1 if you have the `getgrgid_r' function. */
 #undef HAVE_GETGRGID_R
@@ -111,11 +129,17 @@
 /* Define to 1 if you have the <memory.h> header file. */
 #undef HAVE_MEMORY_H
 
+/* Define to 1 if you have the `move_mount' function. */
+#undef HAVE_MOVE_MOUNT
+
 /* Have %m format */
 #undef HAVE_M_FORMAT
 
 /* Define to 1 if you have the `openpty' function. */
 #undef HAVE_OPENPTY
+
+/* Define to 1 if you have the `open_tree' function. */
+#undef HAVE_OPEN_TREE
 
 /* Define to 1 if you have the `pivot_root' function. */
 #undef HAVE_PIVOT_ROOT
@@ -182,6 +206,15 @@
 
 /* Define to 1 if the system has the type `struct bpf_cgroup_dev_ctx'. */
 #undef HAVE_STRUCT_BPF_CGROUP_DEV_CTX
+
+/* Define to 1 if the system has the type `struct clone_args'. */
+#undef HAVE_STRUCT_CLONE_ARGS
+
+/* Define to 1 if `cgroup' is a member of `struct clone_args'. */
+#undef HAVE_STRUCT_CLONE_ARGS_CGROUP
+
+/* Define to 1 if `set_tid' is a member of `struct clone_args'. */
+#undef HAVE_STRUCT_CLONE_ARGS_SET_TID
 
 /* Define to 1 if the system has the type `struct rtnl_link_stats64'. */
 #undef HAVE_STRUCT_RTNL_LINK_STATS64

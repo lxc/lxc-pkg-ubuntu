@@ -8,13 +8,13 @@
 #include <linux/magic.h>
 #include <stdio.h>
 #include <stdlib.h>
-#include <sys/stat.h>
 #include <sys/sendfile.h>
+#include <sys/stat.h>
 #include <sys/types.h>
+#include <time.h>
 
 #include "config.h"
 #include "file_utils.h"
-#include "log.h"
 #include "macro.h"
 #include "memory_utils.h"
 #include "string_utils.h"

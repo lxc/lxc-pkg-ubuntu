@@ -713,25 +713,25 @@ by KATOH Yasufumi <karma at jazz.email.ne.jp>
               modes are <option>l3</option>, <option>l3s</option> and
               <option>l2</option>. It defaults to <option>l3</option> mode.
               In <option>l3</option> mode TX processing up to L3 happens on the stack instance
-              attached to the slave device and packets are switched to the stack instance of the
-              master device for the L2 processing and routing from that instance will be
-              used before packets are queued on the outbound device. In this mode the slaves
+              attached to the dependent device and packets are switched to the stack instance of the
+              parent device for the L2 processing and routing from that instance will be
+              used before packets are queued on the outbound device. In this mode the dependent devices
               will not receive nor can send multicast / broadcast traffic.
               In <option>l3s</option> mode TX processing is very similar to the L3 mode except that
               iptables (conn-tracking) works in this mode and hence it is L3-symmetric (L3s).
               This will have slightly less performance but that shouldn't matter since you are
               choosing this mode over plain-L3 mode to make conn-tracking work.
               In <option>l2</option> mode TX processing happens on the stack instance attached to
-              the slave device and packets are switched and queued to the master device to send
-              out. In this mode the slaves will RX/TX multicast and broadcast (if applicable) as well.
+              the dependent device and packets are switched and queued to the parent device to send
+              out. In this mode the dependent devices will RX/TX multicast and broadcast (if applicable) as well.
               <option>lxc.net.[i].ipvlan.isolation</option> specifies the isolation mode.
               The accepted isolation values are <option>bridge</option>,
               <option>private</option> and <option>vepa</option>.
               It defaults to <option>bridge</option>.
-              In <option>bridge</option> isolation mode slaves can cross-talk among themselves
-              apart from talking through the master device.
+              In <option>bridge</option> isolation mode dependent devices can cross-talk among themselves
+              apart from talking through the parent device.
               In <option>private</option> isolation mode the port is set in private mode.
-              i.e. port won't allow cross communication between slaves.
+              i.e. port won't allow cross communication between dependent devices.
               In <option>vepa</option> isolation mode the port is set in VEPA mode.
               i.e. port will offload switching functionality to the external entity as
               described in 802.1Qbg.
@@ -1144,11 +1144,11 @@ by KATOH Yasufumi <karma at jazz.email.ne.jp>
               <!--
               If set, the container will have a new pseudo tty
               instance, making this private to it. The value specifies
-              the maximum number of pseudo ttys allowed for a pts
+              the maximum number of pseudo ttys allowed for a pty
               instance (this limitation is not implemented yet).
               -->
               もし設定された場合、コンテナは新しい pseudo tty インスタンスを持ち、それを自身のプライベートとします。
-              この値は pts インスタンスに許可される pseudo tty の最大数を指定します (この制限はまだ実装されていません)。
+              この値は pty インスタンスに許可される pseudo tty の最大数を指定します (この制限はまだ実装されていません)。
             </para>
           </listitem>
         </varlistentry>
@@ -1548,7 +1548,7 @@ by KATOH Yasufumi <karma at jazz.email.ne.jp>
               fstab フォーマットの一行と同じフォーマットのマウントポイントの指定をします。
 
               <!--
-              Moreover lxc supports mount propagation, such as rslave or
+              Moreover lxc supports mount propagation, such as rshared or
               rprivate, and adds three additional mount options.
               <option>optional</option> don't fail if mount does not work.
               <option>create=dir</option> or <option>create=file</option>
@@ -1556,7 +1556,7 @@ by KATOH Yasufumi <karma at jazz.email.ne.jp>
               <option>relative</option> source path is taken to be relative to
               the mounted container root. For instance,
               -->
-              加えて、LXC では rslave や rprivate といったマウント・プロパゲーションオプションと、独自の 3 つのマウントオプションが使えます。
+              加えて、LXC では rshared や rprivate といったマウント・プロパゲーションオプションと、独自の 3 つのマウントオプションが使えます。
               <option>optional</option> は、マウントが失敗しても失敗を返さずに無視します。
               <option>create=dir</option> と <option>create=file</option> は、マウントポイントをマウントする際にディレクトリもしくはファイルを作成します。
               <option>relative</option> を指定すると、マウントされたコンテナルートからの相対パスとして取得されます。
@@ -2239,7 +2239,7 @@ by KATOH Yasufumi <karma at jazz.email.ne.jp>
             standard namespace identifiers as seen in the
             <filename>/proc/PID/ns</filename> directory.
             The <option>lxc.namespace.keep</option> is a
-            blacklist option, i.e. it is useful when enforcing that containers
+            denylist option, i.e. it is useful when enforcing that containers
             must keep a specific set of namespaces.
             -->
               コンテナが、作成元のプロセスから継承する (新しい名前空間を作らずに元のプロセスの名前空間のまま実行する) 名前空間を指定します。継承する名前空間はスペース区切りのリストで指定します。指定する名前空間名は、<filename>/proc/PID/ns</filename> ディレクトリ内に存在する標準の名前空間指示子でなければなりません。<option>lxc.namespace.keep</option> はブラックリストを指定するオプションです。つまり、コンテナに特定の名前空間を使い続けることを強制したい場合に便利です。
@@ -2660,18 +2660,18 @@ by KATOH Yasufumi <karma at jazz.email.ne.jp>
       <para>
         <!--
         Versions 1 and 2 are currently supported.  In version 1, the
-        policy is a simple whitelist.  The second line therefore must
-        read "whitelist", with the rest of the file containing one (numeric)
-        syscall number per line.  Each syscall number is whitelisted,
-        while every unlisted number is blacklisted for use in the container
+        policy is a simple allowlist.  The second line therefore must
+        read "allowlist", with the rest of the file containing one (numeric)
+        syscall number per line.  Each syscall number is allowlisted,
+        while every unlisted number is denylisted for use in the container
         -->
-        現時点では、バージョン番号は 1 と 2 をサポートしています。バージョン 1 では、ポリシーはシンプルなホワイトリストですので、2 行目は "whitelist" でなければなりません。
+        現時点では、バージョン番号は 1 と 2 をサポートしています。バージョン 1 では、ポリシーはシンプルなホワイトリストですので、2 行目は "allowlist" でなければなりません。
         そして残りの行には 1 行に 1 つずつ、システムコール番号を書きます。各行のシステムコール番号がホワイトリスト化され、リストにない番号は、そのコンテナではブラックリストに入ります。
       </para>
 
       <para>
         <!--
-       In version 2, the policy may be blacklist or whitelist,
+       In version 2, the policy may be denylist or allowlist,
        supports per-rule and per-policy default actions, and supports
        per-architecture system call resolution from textual names.
           -->
@@ -2679,7 +2679,7 @@ by KATOH Yasufumi <karma at jazz.email.ne.jp>
       </para>
       <para>
         <!--
-       An example blacklist policy, in which all system calls are
+       An example denylist policy, in which all system calls are
        allowed except for mknod, which will simply do nothing and
        return 0 (success), looks like:
        -->
@@ -2688,7 +2688,7 @@ by KATOH Yasufumi <karma at jazz.email.ne.jp>
 
       <programlisting>
       2
-      blacklist
+      denylist
       mknod errno 0
       ioctl notify
       </programlisting>

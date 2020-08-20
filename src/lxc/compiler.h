@@ -57,4 +57,30 @@
 
 #define __cgfsng_ops
 
+/* access attribute */
+#define __access_r(x, y)
+#define __access_w(x, y)
+#define __access_rw(x, y)
+
+#ifdef __has_attribute
+#if __has_attribute(access)
+#undef __access_r
+#define __access_r(x, y) __attribute__((access(read_only, x, y)))
+
+#undef __access_w
+#define __access_w(x, y) __attribute__((access(write_only, x, y)))
+
+#undef __access_rw
+#define __access_rw(x, y) __attribute__((access(read_write, x, y)))
+#endif
+#endif
+
+#ifndef __hidden
+#define __hidden __attribute__((visibility("hidden")))
+#endif
+
+#ifndef __public
+#define __public __attribute__((visibility("default")))
+#endif
+
 #endif /* __LXC_COMPILER_H */

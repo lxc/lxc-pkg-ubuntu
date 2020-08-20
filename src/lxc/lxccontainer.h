@@ -90,7 +90,7 @@ struct lxc_container {
 	 * \private
 	 * Container configuration.
 	 *
-	 * \internal FIXME: do we want the whole lxc_handler?
+	 * \internal TODO: do we want the whole lxc_handler?
 	 */
 	struct lxc_conf *lxc_conf;
 
@@ -563,7 +563,7 @@ struct lxc_container {
 	 * \param c Container.
 	 * \param[in,out] ttynum Terminal number to attempt to allocate,
 	 *  or \c -1 to allocate the first available tty.
-	 * \param[out] masterfd File descriptor referring to the master side of the pty.
+	 * \param[out] ptxfd File descriptor referring to the ptx side of the pty.
 	 *
 	 * \return tty file descriptor number on success, or \c -1 on
 	 *  failure.
@@ -575,7 +575,7 @@ struct lxc_container {
 	 *  descriptor when no longer required so that it may be allocated
 	 *  by another caller.
 	 */
-	int (*console_getfd)(struct lxc_container *c, int *ttynum, int *masterfd);
+	int (*console_getfd)(struct lxc_container *c, int *ttynum, int *ptxfd);
 
 	/*!
 	 * \brief Allocate and run a console tty.
