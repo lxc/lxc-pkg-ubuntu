@@ -67,7 +67,7 @@ struct criu_opts {
 	struct lxc_handler *handler;
 	int console_fd;
 	/* The path that is bind mounted from /dev/console, if any. We don't
-	 * want to use `--ext-mount-map auto`'s result here because the pts
+	 * want to use `--ext-mount-map auto`'s result here because the pty
 	 * device may have a different path (e.g. if the pty number is
 	 * different) on the target host. NULL if lxc.console.path = "none".
 	 */
@@ -303,7 +303,7 @@ static void exec_criu(struct cgroup_ops *cgroup_ops, struct lxc_conf *conf,
 		 * the handler the restore task created.
 		 */
 		if (!strcmp(opts->action, "dump") || !strcmp(opts->action, "pre-dump")) {
-			path = lxc_cmd_get_cgroup_path(opts->c->name, opts->c->config_path, controllers[0]);
+			path = lxc_cmd_get_limiting_cgroup_path(opts->c->name, opts->c->config_path, controllers[0]);
 			if (!path) {
 				ERROR("failed to get cgroup path for %s", controllers[0]);
 				goto err;
@@ -311,7 +311,7 @@ static void exec_criu(struct cgroup_ops *cgroup_ops, struct lxc_conf *conf,
 		} else {
 			const char *p;
 
-			p = cgroup_ops->get_cgroup(cgroup_ops, controllers[0]);
+			p = cgroup_ops->get_limiting_cgroup(cgroup_ops, controllers[0]);
 			if (!p) {
 				ERROR("failed to get cgroup path for %s", controllers[0]);
 				goto err;
@@ -406,9 +406,9 @@ static void exec_criu(struct cgroup_ops *cgroup_ops, struct lxc_conf *conf,
 		DECLARE_ARG("-t");
 		DECLARE_ARG(pid);
 
-		freezer_relative = lxc_cmd_get_cgroup_path(opts->c->name,
-							   opts->c->config_path,
-							   "freezer");
+		freezer_relative = lxc_cmd_get_limiting_cgroup_path(opts->c->name,
+								    opts->c->config_path,
+								    "freezer");
 		if (!freezer_relative) {
 			ERROR("failed getting freezer path");
 			goto err;
@@ -942,7 +942,7 @@ static void do_restore(struct lxc_container *c, int status_pipe, struct migrate_
 		close(fd);
 	}
 
-	handler = lxc_init_handler(c->name, c->lxc_conf, c->config_path, false);
+	handler = lxc_init_handler(NULL, c->name, c->lxc_conf, c->config_path, false);
 	if (!handler)
 		goto out;
 
@@ -1020,7 +1020,7 @@ static void do_restore(struct lxc_container *c, int status_pipe, struct migrate_
 		os.action = "restore";
 		os.user = opts;
 		os.c = c;
-		os.console_fd = c->lxc_conf->console.slave;
+		os.console_fd = c->lxc_conf->console.pty;
 		os.criu_version = criu_version;
 		os.handler = handler;
 

@@ -20,6 +20,7 @@
 #include <sys/wait.h>
 #include <unistd.h>
 
+#include "compiler.h"
 #include "conf.h"
 #include "config.h"
 #include "list.h"
@@ -31,7 +32,7 @@
 #include "syscall_wrappers.h"
 #include "utils.h"
 
-extern int lxc_log_fd;
+__hidden extern int lxc_log_fd;
 
 static void usage(const char *name)
 {
@@ -61,7 +62,7 @@ static void opentty(const char *tty, int which)
 
 	fd = open(tty, O_RDWR | O_NONBLOCK);
 	if (fd < 0) {
-		CMD_SYSERROR("Failed to open tty");
+		CMD_SYSINFO("Failed to open tty");
 		return;
 	}
 
@@ -87,11 +88,11 @@ static int do_child(void *vargv)
 	int ret;
 	char **argv = (char **)vargv;
 
-	/* Assume we want to become root */
-	if (!lxc_switch_uid_gid(0, 0))
+	if (!lxc_setgroups(0, NULL))
 		return -1;
 
-	if (!lxc_setgroups(0, NULL))
+	/* Assume we want to become root */
+	if (!lxc_switch_uid_gid(0, 0))
 		return -1;
 
 	ret = unshare(CLONE_NEWNS);
@@ -103,7 +104,7 @@ static int do_child(void *vargv)
 	if (detect_shared_rootfs()) {
 		ret = mount(NULL, "/", NULL, MS_SLAVE | MS_REC, NULL);
 		if (ret < 0) {
-			CMD_SYSINFO("Failed to make \"/\" rslave");
+			CMD_SYSINFO("Failed to recursively turn root mount tree into dependent mount");
 			return -1;
 		}
 	}

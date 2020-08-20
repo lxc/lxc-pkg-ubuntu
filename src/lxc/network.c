@@ -36,7 +36,7 @@
 #include "memory_utils.h"
 #include "network.h"
 #include "nl.h"
-#include "raw_syscalls.h"
+#include "process_utils.h"
 #include "syscall_wrappers.h"
 #include "utils.h"
 
@@ -182,11 +182,6 @@ static int setup_ipv6_addr_routes(struct lxc_list *ip, int ifindex)
 	return 0;
 }
 
-struct ip_proxy_args {
-	const char *ip;
-	const char *dev;
-};
-
 static int lxc_ip_neigh_proxy(__u16 nlmsg_type, int family, int ifindex, void *dest)
 {
 	call_cleaner(nlmsg_free) struct nlmsg *answer = NULL, *nlmsg = NULL;
@@ -324,11 +319,15 @@ static int instantiate_veth(struct lxc_handler *handler, struct lxc_netdev *netd
 	}
 
 	if (!is_empty_string(netdev->link) && netdev->priv.veth_attr.mode == VETH_MODE_BRIDGE) {
+		if (!lxc_nic_exists(netdev->link)) {
+			SYSERROR("Failed to attach \"%s\" to bridge \"%s\", bridge interface doesn't exist", veth1, netdev->link);
+			goto out_delete;
+		}
+
 		err = lxc_bridge_attach(netdev->link, veth1);
 		if (err) {
 			errno = -err;
-			SYSERROR("Failed to attach \"%s\" to bridge \"%s\"",
-			         veth1, netdev->link);
+			SYSERROR("Failed to attach \"%s\" to bridge \"%s\"", veth1, netdev->link);
 			goto out_delete;
 		}
 		INFO("Attached \"%s\" to bridge \"%s\"", veth1, netdev->link);
@@ -483,8 +482,6 @@ static int instantiate_macvlan(struct lxc_handler *handler, struct lxc_netdev *n
 	}
 
 	strlcpy(netdev->created_name, peer, IFNAMSIZ);
-	if (is_empty_string(netdev->name))
-		(void)strlcpy(netdev->name, peer, IFNAMSIZ);
 
 	netdev->ifindex = if_nametoindex(peer);
 	if (!netdev->ifindex) {
@@ -534,7 +531,7 @@ on_error:
 	return -1;
 }
 
-static int lxc_ipvlan_create(const char *master, const char *name, int mode, int isolation)
+static int lxc_ipvlan_create(const char *parent, const char *name, int mode, int isolation)
 {
 	call_cleaner(nlmsg_free) struct nlmsg *answer = NULL, *nlmsg = NULL;
 	struct nl_handler nlh;
@@ -543,7 +540,7 @@ static int lxc_ipvlan_create(const char *master, const char *name, int mode, int
 	struct ifinfomsg *ifi;
 	struct rtattr *nest, *nest2;
 
-	len = strlen(master);
+	len = strlen(parent);
 	if (len == 1 || len >= IFNAMSIZ)
 		return ret_errno(EINVAL);
 
@@ -551,13 +548,13 @@ static int lxc_ipvlan_create(const char *master, const char *name, int mode, int
 	if (len == 1 || len >= IFNAMSIZ)
 		return ret_errno(EINVAL);
 
-	index = if_nametoindex(master);
+	index = if_nametoindex(parent);
 	if (!index)
 		return ret_errno(EINVAL);
 
 	err = netlink_open(nlh_ptr, NETLINK_ROUTE);
 	if (err)
-		return ret_errno(-err);
+		return err;
 
 	nlmsg = nlmsg_alloc(NLMSG_GOOD_SIZE);
 	if (!nlmsg)
@@ -586,7 +583,7 @@ static int lxc_ipvlan_create(const char *master, const char *name, int mode, int
 	if (!nest2)
 		return ret_errno(EPROTO);
 
-	if (nla_put_u32(nlmsg, IFLA_IPVLAN_MODE, mode))
+	if (nla_put_u16(nlmsg, IFLA_IPVLAN_MODE, mode))
 		return ret_errno(EPROTO);
 
 	/* if_link.h does not define the isolation flag value for bridge mode (unlike IPVLAN_F_PRIVATE and
@@ -634,8 +631,6 @@ static int instantiate_ipvlan(struct lxc_handler *handler, struct lxc_netdev *ne
 	}
 
 	strlcpy(netdev->created_name, peer, IFNAMSIZ);
-	if (is_empty_string(netdev->name))
-		(void)strlcpy(netdev->name, peer, IFNAMSIZ);
 
 	netdev->ifindex = if_nametoindex(peer);
 	if (!netdev->ifindex) {
@@ -709,8 +704,6 @@ static int instantiate_vlan(struct lxc_handler *handler, struct lxc_netdev *netd
 	}
 
 	strlcpy(netdev->created_name, peer, IFNAMSIZ);
-	if (is_empty_string(netdev->name))
-		(void)strlcpy(netdev->name, peer, IFNAMSIZ);
 
 	netdev->ifindex = if_nametoindex(peer);
 	if (!netdev->ifindex) {
@@ -866,7 +859,7 @@ static  instantiate_cb netdev_conf[LXC_NET_MAXCONFTYPE + 1] = {
 	[LXC_NET_NONE]    = instantiate_none,
 };
 
-static int instantiate_ns_veth(struct lxc_netdev *netdev)
+static int __instantiate_ns_common(struct lxc_netdev *netdev)
 {
 	char current_ifname[IFNAMSIZ];
 
@@ -908,33 +901,30 @@ static int instantiate_ns_veth(struct lxc_netdev *netdev)
 	return 0;
 }
 
-static int __instantiate_common(struct lxc_netdev *netdev)
+static int instantiate_ns_veth(struct lxc_netdev *netdev)
 {
-	netdev->ifindex = if_nametoindex(netdev->name);
-	if (!netdev->ifindex)
-		return log_error_errno(-1, errno, "Failed to retrieve ifindex for network device with name %s", netdev->name);
 
-	return 0;
+	return __instantiate_ns_common(netdev);
 }
 
 static int instantiate_ns_macvlan(struct lxc_netdev *netdev)
 {
-	return __instantiate_common(netdev);
+	return __instantiate_ns_common(netdev);
 }
 
 static int instantiate_ns_ipvlan(struct lxc_netdev *netdev)
 {
-	return __instantiate_common(netdev);
+	return __instantiate_ns_common(netdev);
 }
 
 static int instantiate_ns_vlan(struct lxc_netdev *netdev)
 {
-	return __instantiate_common(netdev);
+	return __instantiate_ns_common(netdev);
 }
 
 static int instantiate_ns_phys(struct lxc_netdev *netdev)
 {
-	return __instantiate_common(netdev);
+	return __instantiate_ns_common(netdev);
 }
 
 static int instantiate_ns_empty(struct lxc_netdev *netdev)
@@ -1431,7 +1421,7 @@ int netdev_set_flag(const char *name, int flag)
 	return netlink_transaction(nlh_ptr, nlmsg, answer);
 }
 
-int netdev_get_flag(const char *name, int *flag)
+static int netdev_get_flag(const char *name, int *flag)
 {
 	call_cleaner(nlmsg_free) struct nlmsg *answer = NULL, *nlmsg = NULL;
 	struct nl_handler nlh;
@@ -1746,7 +1736,7 @@ int lxc_veth_create(const char *name1, const char *name2, pid_t pid, unsigned in
 }
 
 /* TODO: merge with lxc_macvlan_create */
-int lxc_vlan_create(const char *master, const char *name, unsigned short vlanid)
+int lxc_vlan_create(const char *parent, const char *name, unsigned short vlanid)
 {
 	call_cleaner(nlmsg_free) struct nlmsg *answer = NULL, *nlmsg = NULL;
 	struct nl_handler nlh;
@@ -1759,7 +1749,7 @@ int lxc_vlan_create(const char *master, const char *name, unsigned short vlanid)
 	if (err)
 		return err;
 
-	len = strlen(master);
+	len = strlen(parent);
 	if (len == 1 || len >= IFNAMSIZ)
 		return ret_errno(EINVAL);
 
@@ -1775,7 +1765,7 @@ int lxc_vlan_create(const char *master, const char *name, unsigned short vlanid)
 	if (!answer)
 		return ret_errno(ENOMEM);
 
-	lindex = if_nametoindex(master);
+	lindex = if_nametoindex(parent);
 	if (!lindex)
 		return ret_errno(EINVAL);
 
@@ -1814,7 +1804,7 @@ int lxc_vlan_create(const char *master, const char *name, unsigned short vlanid)
 	return netlink_transaction(nlh_ptr, nlmsg, answer);
 }
 
-int lxc_macvlan_create(const char *master, const char *name, int mode)
+int lxc_macvlan_create(const char *parent, const char *name, int mode)
 {
 	call_cleaner(nlmsg_free) struct nlmsg *answer = NULL, *nlmsg = NULL;
 	struct nl_handler nlh;
@@ -1827,7 +1817,7 @@ int lxc_macvlan_create(const char *master, const char *name, int mode)
 	if (err)
 		return err;
 
-	len = strlen(master);
+	len = strlen(parent);
 	if (len == 1 || len >= IFNAMSIZ)
 		return ret_errno(EINVAL);
 
@@ -1843,7 +1833,7 @@ int lxc_macvlan_create(const char *master, const char *name, int mode)
 	if (!answer)
 		return ret_errno(ENOMEM);
 
-	index = if_nametoindex(master);
+	index = if_nametoindex(parent);
 	if (!index)
 		return ret_errno(EINVAL);
 
@@ -2447,10 +2437,7 @@ static const char padchar[] = "0123456789abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLM
 
 char *lxc_ifname_alnum_case_sensitive(char *template)
 {
-	int ret;
-	struct netns_ifaddrs *ifa, *ifaddr;
 	char name[IFNAMSIZ];
-	bool exists = false;
 	size_t i = 0;
 #ifdef HAVE_RAND_R
 	unsigned int seed;
@@ -2464,17 +2451,10 @@ char *lxc_ifname_alnum_case_sensitive(char *template)
 	if (strlen(template) >= IFNAMSIZ)
 		return NULL;
 
-	/* Get all the network interfaces. */
-	ret = netns_getifaddrs(&ifaddr, -1, &(bool){false});
-	if (ret < 0)
-		return log_error_errno(NULL, errno, "Failed to get network interfaces");
-
 	/* Generate random names until we find one that doesn't exist. */
 	for (;;) {
 		name[0] = '\0';
 		(void)strlcpy(name, template, IFNAMSIZ);
-
-		exists = false;
 
 		for (i = 0; i < strlen(name); i++) {
 			if (name[i] == 'X') {
@@ -2486,18 +2466,10 @@ char *lxc_ifname_alnum_case_sensitive(char *template)
 			}
 		}
 
-		for (ifa = ifaddr; ifa != NULL; ifa = ifa->ifa_next) {
-			if (!strcmp(ifa->ifa_name, name)) {
-				exists = true;
-				break;
-			}
-		}
-
-		if (!exists)
+		if (if_nametoindex(name) == 0)
 			break;
 	}
 
-	netns_freeifaddrs(ifaddr);
 	(void)strlcpy(template, name, strlen(template) + 1);
 
 	return template;
@@ -2796,7 +2768,7 @@ static int lxc_delete_network_unpriv_exec(const char *lxcpath, const char *lxcna
 	return 0;
 }
 
-bool lxc_delete_network_unpriv(struct lxc_handler *handler)
+static bool lxc_delete_network_unpriv(struct lxc_handler *handler)
 {
 	int ret;
 	struct lxc_list *iterator;
@@ -3120,9 +3092,9 @@ int lxc_network_move_created_netdev_priv(struct lxc_handler *handler)
 			physname = is_wlan(netdev->link);
 
 		if (physname)
-			ret = lxc_netdev_move_wlan(physname, netdev->link, pid, netdev->name);
+			ret = lxc_netdev_move_wlan(physname, netdev->link, pid, NULL);
 		else
-			ret = lxc_netdev_move_by_index(netdev->ifindex, pid, netdev->name);
+			ret = lxc_netdev_move_by_index(netdev->ifindex, pid, NULL);
 		if (ret)
 			return log_error_errno(-1, -ret, "Failed to move network device \"%s\" with ifindex %d to network namespace %d",
 					       netdev->created_name,
@@ -3176,7 +3148,7 @@ static int lxc_create_network_unpriv(struct lxc_handler *handler)
 	return 0;
 }
 
-bool lxc_delete_network_priv(struct lxc_handler *handler)
+static bool lxc_delete_network_priv(struct lxc_handler *handler)
 {
 	int ret;
 	struct lxc_list *iterator;

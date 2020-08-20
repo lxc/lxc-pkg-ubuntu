@@ -49,7 +49,7 @@
 #include "namespace.h"
 #include "network.h"
 #include "parse.h"
-#include "raw_syscalls.h"
+#include "process_utils.h"
 #include "start.h"
 #include "state.h"
 #include "storage.h"
@@ -537,12 +537,12 @@ static bool do_lxcapi_unfreeze(struct lxc_container *c)
 
 WRAP_API(bool, lxcapi_unfreeze)
 
-static int do_lxcapi_console_getfd(struct lxc_container *c, int *ttynum, int *masterfd)
+static int do_lxcapi_console_getfd(struct lxc_container *c, int *ttynum, int *ptxfd)
 {
 	if (!c)
 		return -1;
 
-	return lxc_terminal_getfd(c, ttynum, masterfd);
+	return lxc_terminal_getfd(c, ttynum, ptxfd);
 }
 
 WRAP_API_2(int, lxcapi_console_getfd, int *, int *)
@@ -830,14 +830,12 @@ static bool wait_on_daemonized_start(struct lxc_handler *handler, int pid)
 		DEBUG("First child %d exited", pid);
 
 	/* Close write end of the socket pair. */
-	close(handler->state_socket_pair[1]);
-	handler->state_socket_pair[1] = -1;
+	close_prot_errno_disarm(handler->state_socket_pair[1]);
 
 	state = lxc_rcv_status(handler->state_socket_pair[0]);
 
 	/* Close read end of the socket pair. */
-	close(handler->state_socket_pair[0]);
-	handler->state_socket_pair[0] = -1;
+	close_prot_errno_disarm(handler->state_socket_pair[0]);
 
 	if (state < 0) {
 		SYSERROR("Failed to receive the container state");
@@ -867,7 +865,6 @@ static bool do_lxcapi_start(struct lxc_container *c, int useinit, char * const a
 		NULL,
 	};
 	char **init_cmd = NULL;
-	int keepfds[3] = {-1, -1, -1};
 
 	/* container does exist */
 	if (!c)
@@ -901,7 +898,7 @@ static bool do_lxcapi_start(struct lxc_container *c, int useinit, char * const a
 	conf = c->lxc_conf;
 
 	/* initialize handler */
-	handler = lxc_init_handler(c->name, conf, c->config_path, c->daemonize);
+	handler = lxc_init_handler(NULL, c->name, conf, c->config_path, c->daemonize);
 
 	container_mem_unlock(c);
 	if (!handler)
@@ -918,7 +915,7 @@ static bool do_lxcapi_start(struct lxc_container *c, int useinit, char * const a
 	if (!argv) {
 		if (useinit) {
 			ERROR("No valid init detected");
-			lxc_free_handler(handler);
+			lxc_put_handler(handler);
 			return false;
 		}
 		argv = default_args;
@@ -936,7 +933,7 @@ static bool do_lxcapi_start(struct lxc_container *c, int useinit, char * const a
 		pid_first = fork();
 		if (pid_first < 0) {
 			free_init_cmd(init_cmd);
-			lxc_free_handler(handler);
+			lxc_put_handler(handler);
 			return false;
 		}
 
@@ -953,7 +950,7 @@ static bool do_lxcapi_start(struct lxc_container *c, int useinit, char * const a
 			started = wait_on_daemonized_start(handler, pid_first);
 
 			free_init_cmd(init_cmd);
-			lxc_free_handler(handler);
+			lxc_put_handler(handler);
 			return started;
 		}
 
@@ -985,7 +982,7 @@ static bool do_lxcapi_start(struct lxc_container *c, int useinit, char * const a
 		/* second parent */
 		if (pid_second != 0) {
 			free_init_cmd(init_cmd);
-			lxc_free_handler(handler);
+			lxc_put_handler(handler);
 			_exit(EXIT_SUCCESS);
 		}
 
@@ -998,11 +995,7 @@ static bool do_lxcapi_start(struct lxc_container *c, int useinit, char * const a
 			_exit(EXIT_FAILURE);
 		}
 
-		keepfds[0] = handler->conf->maincmd_fd;
-		keepfds[1] = handler->state_socket_pair[0];
-		keepfds[2] = handler->state_socket_pair[1];
-		ret = lxc_check_inherited(conf, true, keepfds,
-					  sizeof(keepfds) / sizeof(keepfds[0]));
+		ret = inherit_fds(handler, true);
 		if (ret < 0)
 			_exit(EXIT_FAILURE);
 
@@ -1020,7 +1013,7 @@ static bool do_lxcapi_start(struct lxc_container *c, int useinit, char * const a
 	} else if (!am_single_threaded()) {
 		ERROR("Cannot start non-daemonized container when threaded");
 		free_init_cmd(init_cmd);
-		lxc_free_handler(handler);
+		lxc_put_handler(handler);
 		return false;
 	}
 
@@ -1034,7 +1027,7 @@ static bool do_lxcapi_start(struct lxc_container *c, int useinit, char * const a
 		w = snprintf(pidstr, sizeof(pidstr), "%d", lxc_raw_getpid());
 		if (w < 0 || (size_t)w >= sizeof(pidstr)) {
 			free_init_cmd(init_cmd);
-			lxc_free_handler(handler);
+			lxc_put_handler(handler);
 
 			SYSERROR("Failed to write monitor pid to \"%s\"", c->pidfile);
 
@@ -1047,7 +1040,7 @@ static bool do_lxcapi_start(struct lxc_container *c, int useinit, char * const a
 		ret = lxc_write_to_file(c->pidfile, pidstr, w, false, 0600);
 		if (ret < 0) {
 			free_init_cmd(init_cmd);
-			lxc_free_handler(handler);
+			lxc_put_handler(handler);
 
 			SYSERROR("Failed to write monitor pid to \"%s\"", c->pidfile);
 
@@ -1065,15 +1058,15 @@ static bool do_lxcapi_start(struct lxc_container *c, int useinit, char * const a
 		ret = unshare(CLONE_NEWNS);
 		if (ret < 0) {
 			SYSERROR("Failed to unshare mount namespace");
-			lxc_free_handler(handler);
+			lxc_put_handler(handler);
 			ret = 1;
 			goto on_error;
 		}
 
 		ret = mount(NULL, "/", NULL, MS_SLAVE|MS_REC, NULL);
 		if (ret < 0) {
-			SYSERROR("Failed to make / rslave at startup");
-			lxc_free_handler(handler);
+			SYSERROR("Failed to recursively turn root mount tree into dependent mount. Continuing...");
+			lxc_put_handler(handler);
 			ret = 1;
 			goto on_error;
 		}
@@ -1082,20 +1075,16 @@ static bool do_lxcapi_start(struct lxc_container *c, int useinit, char * const a
 reboot:
 	if (conf->reboot == REBOOT_INIT) {
 		/* initialize handler */
-		handler = lxc_init_handler(c->name, conf, c->config_path, c->daemonize);
+		handler = lxc_init_handler(handler, c->name, conf, c->config_path, c->daemonize);
 		if (!handler) {
 			ret = 1;
 			goto on_error;
 		}
 	}
 
-	keepfds[0] = handler->conf->maincmd_fd;
-	keepfds[1] = handler->state_socket_pair[0];
-	keepfds[2] = handler->state_socket_pair[1];
-	ret = lxc_check_inherited(conf, c->daemonize, keepfds,
-				  sizeof(keepfds) / sizeof(keepfds[0]));
+	ret = inherit_fds(handler, c->daemonize);
 	if (ret < 0) {
-		lxc_free_handler(handler);
+		lxc_put_handler(handler);
 		ret = 1;
 		goto on_error;
 	}
@@ -1196,7 +1185,6 @@ WRAP_API(bool, lxcapi_stop)
 
 static int do_create_container_dir(const char *path, struct lxc_conf *conf)
 {
-	__do_free char *p = NULL;
 	int lasterr;
 	int ret = -1;
 
@@ -1212,10 +1200,8 @@ static int do_create_container_dir(const char *path, struct lxc_conf *conf)
 		ret = 0;
 	}
 
-	p = must_copy_string(path);
-
 	if (!lxc_list_empty(&conf->id_map)) {
-		ret = chown_mapped_root(p, conf);
+		ret = chown_mapped_root(path, conf);
 		if (ret < 0)
 			ret = -1;
 	}
@@ -1359,14 +1345,8 @@ static bool create_run_template(struct lxc_container *c, char *tpath,
 				_exit(EXIT_FAILURE);
 			}
 
-			ret = detect_shared_rootfs();
-			if (ret == 1) {
-				ret = mount(NULL, "/", NULL, MS_SLAVE | MS_REC, NULL);
-				if (ret < 0) {
-					SYSERROR("Failed to make \"/\" rslave");
-					ERROR("Continuing...");
-				}
-			}
+			if (detect_shared_rootfs() && mount(NULL, "/", NULL, MS_SLAVE | MS_REC, NULL))
+				SYSERROR("Failed to recursively turn root mount tree into dependent mount. Continuing...");
 		}
 
 		if (strcmp(bdev->type, "dir") != 0 && strcmp(bdev->type, "btrfs") != 0) {
@@ -2110,41 +2090,41 @@ static bool do_lxcapi_shutdown(struct lxc_container *c, int timeout)
 
 		if (ret < MAX_STATE)
 			return false;
+	}
 
-		if (pidfd >= 0) {
-			struct pollfd pidfd_poll = {
-			    .events = POLLIN,
-			    .fd = pidfd,
-			};
+	if (pidfd >= 0) {
+		struct pollfd pidfd_poll = {
+		    .events = POLLIN,
+		    .fd = pidfd,
+		};
 
-			killret = lxc_raw_pidfd_send_signal(pidfd, haltsignal,
-							    NULL, 0);
-			if (killret < 0)
-				return log_warn(false, "Failed to send signal %d to pidfd %d",
-						haltsignal, pidfd);
+		killret = lxc_raw_pidfd_send_signal(pidfd, haltsignal,
+						    NULL, 0);
+		if (killret < 0)
+			return log_warn(false, "Failed to send signal %d to pidfd %d",
+					haltsignal, pidfd);
 
-			TRACE("Sent signal %d to pidfd %d", haltsignal, pidfd);
+		TRACE("Sent signal %d to pidfd %d", haltsignal, pidfd);
 
-			/*
-			 * No need for going through all of the state server
-			 * complications anymore. We can just poll on pidfds. :)
-			 */
+		/*
+		 * No need for going through all of the state server
+		 * complications anymore. We can just poll on pidfds. :)
+		 */
 
-			if (timeout != 0) {
-				ret = poll(&pidfd_poll, 1, timeout * 1000);
-				if (ret < 0 || !(pidfd_poll.revents & POLLIN))
-					return false;
+		if (timeout != 0) {
+			ret = poll(&pidfd_poll, 1, timeout * 1000);
+			if (ret < 0 || !(pidfd_poll.revents & POLLIN))
+				return false;
 
-				TRACE("Pidfd polling detected container exit");
-			}
-		} else {
-			killret = kill(pid, haltsignal);
-			if (killret < 0)
-				return log_warn(false, "Failed to send signal %d to pid %d",
-						haltsignal, pid);
-
-			TRACE("Sent signal %d to pid %d", haltsignal, pid);
+			TRACE("Pidfd polling detected container exit");
 		}
+	} else {
+		killret = kill(pid, haltsignal);
+		if (killret < 0)
+			return log_warn(false, "Failed to send signal %d to pid %d",
+					haltsignal, pid);
+
+		TRACE("Sent signal %d to pid %d", haltsignal, pid);
 	}
 
 	if (timeout == 0)
@@ -3560,7 +3540,7 @@ static bool add_rdepends(struct lxc_container *c, struct lxc_container *c0)
  * then default to those even if not requested.
  * Currently we only do this for btrfs.
  */
-bool should_default_to_snapshot(struct lxc_container *c0,
+static bool should_default_to_snapshot(struct lxc_container *c0,
 				struct lxc_container *c1)
 {
 	__do_free char *p0 = NULL, *p1 = NULL;
@@ -3685,12 +3665,8 @@ static int clone_update_rootfs(struct clone_update_data *data)
 			return -1;
 		}
 
-		if (detect_shared_rootfs()) {
-			if (mount(NULL, "/", NULL, MS_SLAVE|MS_REC, NULL)) {
-				SYSERROR("Failed to make / rslave");
-				ERROR("Continuing...");
-			}
-		}
+		if (detect_shared_rootfs() && mount(NULL, "/", NULL, MS_SLAVE | MS_REC, NULL))
+			SYSERROR("Failed to recursively turn root mount tree into dependent mount. Continuing...");
 
 		if (bdev->ops->mount(bdev) < 0) {
 			storage_put(bdev);

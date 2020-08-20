@@ -30,6 +30,7 @@
 #include "cgroup.h"
 #include "commands.h"
 #include "commands_utils.h"
+#include "compiler.h"
 #include "conf.h"
 #include "config.h"
 #include "confile_utils.h"
@@ -47,7 +48,7 @@
 #include "monitor.h"
 #include "namespace.h"
 #include "network.h"
-#include "raw_syscalls.h"
+#include "process_utils.h"
 #include "start.h"
 #include "storage/storage.h"
 #include "storage/storage_utils.h"
@@ -212,6 +213,13 @@ int lxc_check_inherited(struct lxc_conf *conf, bool closeall,
 	if (conf && conf->close_all_fds)
 		closeall = true;
 
+	/*
+	 * Disable syslog at this point to avoid the above logging
+	 * function to open a new fd and make the check_inherited function
+	 * enter an infinite loop.
+	 */
+	lxc_log_syslog_disable();
+
 restart:
 	dir = opendir("/proc/self/fd");
 	if (!dir)
@@ -272,21 +280,24 @@ restart:
 
 #endif
 		if (closeall) {
-			close(fd);
+			if (close(fd))
+				SYSINFO("Closed inherited fd %d", fd);
+			else
+				INFO("Closed inherited fd %d", fd);
 			closedir(dir);
-			INFO("Closed inherited fd %d", fd);
 			goto restart;
 		}
 		WARN("Inherited fd %d", fd);
 	}
+	closedir(dir);
 
-	/* Only enable syslog at this point to avoid the above logging function
-	 * to open a new fd and make the check_inherited function enter an
-	 * infinite loop.
+	/*
+	 * Only enable syslog at this point to avoid the above logging
+	 * function to open a new fd and make the check_inherited function
+	 * enter an infinite loop.
 	 */
-	lxc_log_enable_syslog();
+	lxc_log_syslog_enable();
 
-	closedir(dir); /* cannot fail */
 	return 0;
 }
 
@@ -605,32 +616,7 @@ out_sigfd:
 	return ret;
 }
 
-void lxc_zero_handler(struct lxc_handler *handler)
-{
-	memset(handler, 0, sizeof(struct lxc_handler));
-
-	handler->state = STOPPED;
-
-	handler->pinfd = -EBADF;
-
-	handler->pidfd = -EBADF;
-
-	handler->sigfd = -EBADF;
-
-	for (int i = 0; i < LXC_NS_MAX; i++)
-		handler->nsfd[i] = -EBADF;
-
-	handler->data_sock[0] = -EBADF;
-	handler->data_sock[1] = -EBADF;
-
-	handler->state_socket_pair[0] = -EBADF;
-	handler->state_socket_pair[1] = -EBADF;
-
-	handler->sync_sock[0] = -EBADF;
-	handler->sync_sock[1] = -EBADF;
-}
-
-void lxc_free_handler(struct lxc_handler *handler)
+void lxc_put_handler(struct lxc_handler *handler)
 {
 	close_prot_errno_disarm(handler->pinfd);
 	close_prot_errno_disarm(handler->pidfd);
@@ -642,21 +628,26 @@ void lxc_free_handler(struct lxc_handler *handler)
 	close_prot_errno_disarm(handler->state_socket_pair[0]);
 	close_prot_errno_disarm(handler->state_socket_pair[1]);
 	cgroup_exit(handler->cgroup_ops);
-	handler->conf = NULL;
-	free_disarm(handler);
+	if (handler->conf && handler->conf->reboot == REBOOT_NONE)
+		free_disarm(handler);
+	else
+		handler->conf = NULL;
 }
 
-struct lxc_handler *lxc_init_handler(const char *name, struct lxc_conf *conf,
+struct lxc_handler *lxc_init_handler(struct lxc_handler *old,
+				     const char *name, struct lxc_conf *conf,
 				     const char *lxcpath, bool daemonize)
 {
+	int nr_keep_fds = 0;
 	int ret;
 	struct lxc_handler *handler;
 
-	handler = malloc(sizeof(*handler));
+	if (!old)
+		handler = zalloc(sizeof(*handler));
+	else
+		handler = old;
 	if (!handler)
 		return NULL;
-
-	memset(handler, 0, sizeof(*handler));
 
 	/* Note that am_guest_unpriv() checks the effective uid. We
 	 * probably don't care if we are real root only if we are running
@@ -701,6 +692,8 @@ struct lxc_handler *lxc_init_handler(const char *name, struct lxc_conf *conf,
 		TRACE("Created anonymous pair {%d,%d} of unix sockets",
 		      handler->state_socket_pair[0],
 		      handler->state_socket_pair[1]);
+		handler->keep_fds[nr_keep_fds++] = handler->state_socket_pair[0];
+		handler->keep_fds[nr_keep_fds++] = handler->state_socket_pair[1];
 	}
 
 	if (handler->conf->reboot == REBOOT_NONE) {
@@ -709,6 +702,7 @@ struct lxc_handler *lxc_init_handler(const char *name, struct lxc_conf *conf,
 			ERROR("Failed to set up command socket");
 			goto on_error;
 		}
+		handler->keep_fds[nr_keep_fds++] = handler->conf->maincmd_fd;
 	}
 
 	TRACE("Unix domain socket %d for command server is ready",
@@ -717,7 +711,7 @@ struct lxc_handler *lxc_init_handler(const char *name, struct lxc_conf *conf,
 	return handler;
 
 on_error:
-	lxc_free_handler(handler);
+	lxc_put_handler(handler);
 
 	return NULL;
 }
@@ -1008,7 +1002,7 @@ void lxc_end(struct lxc_handler *handler)
 	if (handler->conf->ephemeral == 1 && handler->conf->reboot != REBOOT_REQ)
 		lxc_destroy_container_on_signal(handler, name);
 
-	lxc_free_handler(handler);
+	lxc_put_handler(handler);
 }
 
 void lxc_abort(struct lxc_handler *handler)
@@ -1088,8 +1082,7 @@ static int do_start(void *data)
 	/* Unshare CLONE_NEWNET after CLONE_NEWUSER. See
 	 * https://github.com/lxc/lxd/issues/1978.
 	 */
-	if ((handler->ns_clone_flags & (CLONE_NEWNET | CLONE_NEWUSER)) ==
-	    (CLONE_NEWNET | CLONE_NEWUSER)) {
+	if (handler->ns_unshare_flags & CLONE_NEWNET) {
 		ret = unshare(CLONE_NEWNET);
 		if (ret < 0) {
 			SYSERROR("Failed to unshare CLONE_NEWNET");
@@ -1197,7 +1190,7 @@ static int do_start(void *data)
 	 *
 	 *	8:cpuset:/
 	 */
-	if (handler->ns_clone_flags & CLONE_NEWCGROUP) {
+	if (handler->ns_unshare_flags & CLONE_NEWCGROUP) {
 		ret = unshare(CLONE_NEWCGROUP);
 		if (ret < 0) {
 			if (errno != EINVAL) {
@@ -1256,14 +1249,14 @@ static int do_start(void *data)
 	 * setup on its console ie. the pty allocated in lxc_terminal_setup() so
 	 * make sure that that pty is stdin,stdout,stderr.
 	 */
-	 if (handler->conf->console.slave >= 0) {
+	 if (handler->conf->console.pty >= 0) {
 		 if (handler->daemonize || !handler->conf->is_execute)
-			 ret = set_stdfds(handler->conf->console.slave);
+			 ret = set_stdfds(handler->conf->console.pty);
 		 else
-			 ret = lxc_terminal_set_stdfds(handler->conf->console.slave);
+			 ret = lxc_terminal_set_stdfds(handler->conf->console.pty);
 		 if (ret < 0) {
 			ERROR("Failed to redirect std{in,out,err} to pty file descriptor %d",
-			      handler->conf->console.slave);
+			      handler->conf->console.pty);
 			goto out_warn_father;
 		 }
 	 }
@@ -1290,7 +1283,7 @@ static int do_start(void *data)
 
 	close_prot_errno_disarm(handler->sigfd);
 
-	if (handler->conf->console.slave < 0 && handler->daemonize) {
+	if (handler->conf->console.pty < 0 && handler->daemonize) {
 		if (devnull_fd < 0) {
 			devnull_fd = open_devnull();
 			if (devnull_fd < 0)
@@ -1442,9 +1435,9 @@ static int lxc_recv_ttys_from_child(struct lxc_handler *handler)
 
 		tty = &ttys->tty[i];
 		tty->busy = -1;
-		tty->master = ttyfds[0];
-		tty->slave = ttyfds[1];
-		TRACE("Received pty with master fd %d and slave fd %d from child", tty->master, tty->slave);
+		tty->ptx = ttyfds[0];
+		tty->pty = ttyfds[1];
+		TRACE("Received pty with ptx fd %d and pty fd %d from child", tty->ptx, tty->pty);
 	}
 
 	if (ret < 0)
@@ -1486,6 +1479,18 @@ int resolve_clone_flags(struct lxc_handler *handler)
 		handler->ns_clone_flags &= ~ns_info[i].clone_flag;
 		TRACE("Sharing %s namespace", ns_info[i].proc_name);
 	}
+
+	if (!pure_unified_layout(handler->cgroup_ops) && handler->ns_clone_flags & CLONE_NEWCGROUP)
+		handler->ns_unshare_flags |= CLONE_NEWCGROUP;
+
+	if ((handler->ns_clone_flags & (CLONE_NEWNET | CLONE_NEWUSER)) ==
+	    (CLONE_NEWNET | CLONE_NEWUSER))
+		handler->ns_unshare_flags |= CLONE_NEWNET;
+
+	/* Deal with namespaces that are spawned. */
+	handler->ns_on_clone_flags = handler->ns_clone_flags & ~handler->ns_unshare_flags;
+
+	handler->clone_flags = handler->ns_on_clone_flags | CLONE_PIDFD;
 
 	return 0;
 }
@@ -1609,18 +1614,6 @@ static int lxc_spawn(struct lxc_handler *handler)
 	}
 
 	/* Create a process in a new set of namespaces. */
-	handler->ns_on_clone_flags = handler->ns_clone_flags;
-	if (handler->ns_clone_flags & CLONE_NEWUSER) {
-		/* If CLONE_NEWUSER and CLONE_NEWNET was requested, we need to
-		 * clone a new user namespace first and only later unshare our
-		 * network namespace to ensure that network devices ownership is
-		 * set up correctly.
-		 */
-		handler->ns_on_clone_flags &= ~CLONE_NEWNET;
-	}
-	/* The cgroup namespace gets unshare()ed not clone()ed. */
-	handler->ns_on_clone_flags &= ~CLONE_NEWCGROUP;
-
 	if (share_ns) {
 		pid_t attacher_pid;
 
@@ -1636,15 +1629,64 @@ static int lxc_spawn(struct lxc_handler *handler)
 			SYSERROR("Intermediate process failed");
 			goto out_delete_net;
 		}
+
+		if (handler->pid < 0) {
+			SYSERROR(LXC_CLONE_ERROR);
+			goto out_delete_net;
+		}
 	} else {
-		handler->pid = lxc_raw_clone_cb(do_start, handler,
-						CLONE_PIDFD | handler->ns_on_clone_flags,
-						&handler->pidfd);
+		int cgroup_fd = -EBADF;
+
+		struct lxc_clone_args clone_args = {
+			.flags = handler->clone_flags,
+			.pidfd = ptr_to_u64(&handler->pidfd),
+			.exit_signal = SIGCHLD,
+		};
+
+		if (handler->ns_clone_flags & CLONE_NEWCGROUP) {
+			cgroup_fd = cgroup_unified_fd(cgroup_ops);
+			if (cgroup_fd >= 0) {
+				handler->clone_flags	|= CLONE_INTO_CGROUP;
+				clone_args.flags	|= CLONE_INTO_CGROUP;
+				clone_args.cgroup	= cgroup_fd;
+			}
+		}
+
+		/* Try to spawn directly into target cgroup. */
+		handler->pid = lxc_clone3(&clone_args, CLONE_ARGS_SIZE_VER2);
+		if (handler->pid < 0) {
+			SYSTRACE("Failed to spawn container directly into target cgroup");
+
+			/* Kernel might simply be too old for CLONE_INTO_CGROUP. */
+			handler->clone_flags		&= ~(CLONE_INTO_CGROUP | CLONE_NEWCGROUP);
+			handler->ns_on_clone_flags	&= ~CLONE_NEWCGROUP;
+			handler->ns_unshare_flags	|= CLONE_NEWCGROUP;
+
+			clone_args.flags		= handler->clone_flags;
+
+			handler->pid = lxc_clone3(&clone_args, CLONE_ARGS_SIZE_VER0);
+		} else if (cgroup_fd >= 0) {
+			TRACE("Spawned container directly into target cgroup via cgroup2 fd %d", cgroup_fd);
+		}
+
+		/* Kernel might be too old for clone3(). */
+		if (handler->pid < 0) {
+			SYSTRACE("Failed to spawn container via clone3()");
+			handler->pid = lxc_raw_legacy_clone(handler->clone_flags, &handler->pidfd);
+		}
+
+		if (handler->pid < 0) {
+			SYSERROR(LXC_CLONE_ERROR);
+			goto out_delete_net;
+		}
+
+		if (handler->pid == 0) {
+			(void)do_start(handler);
+			_exit(EXIT_FAILURE);
+		}
 	}
-	if (handler->pid < 0) {
-		SYSERROR(LXC_CLONE_ERROR);
-		goto out_delete_net;
-	}
+	if (handler->pidfd < 0)
+		handler->clone_flags &= ~CLONE_PIDFD;
 	TRACE("Cloned child process %d", handler->pid);
 
 	/* Verify that we can actually make use of pidfds. */
@@ -1783,7 +1825,12 @@ static int lxc_spawn(struct lxc_handler *handler)
 	if (ret < 0)
 		goto out_delete_net;
 
-	if (!cgroup_ops->setup_limits_legacy(cgroup_ops, handler->conf, true)) {
+	/*
+	 * with isolation the limiting devices cgroup was already setup, so
+	 * only setup devices here if we have no namespace directory
+	 */
+	if (!handler->conf->cgroup_meta.namespace_dir &&
+	    !cgroup_ops->setup_limits_legacy(cgroup_ops, handler->conf, true)) {
 		ERROR("Failed to setup legacy device cgroup controller limits");
 		goto out_delete_net;
 	}
@@ -1795,7 +1842,7 @@ static int lxc_spawn(struct lxc_handler *handler)
 	}
 	TRACE("Set up cgroup2 device controller limits");
 
-	if (handler->ns_clone_flags & CLONE_NEWCGROUP) {
+	if (handler->ns_unshare_flags & CLONE_NEWCGROUP) {
 		/* Now we're ready to preserve the cgroup namespace */
 		ret = lxc_try_preserve_ns(handler->pid, "cgroup");
 		if (ret < 0) {
@@ -1937,7 +1984,7 @@ int __lxc_start(struct lxc_handler *handler, struct lxc_operations *ops,
 			}
 			INFO("Unshared CLONE_NEWNS");
 
-			remount_all_slave();
+			turn_into_dependent_mounts();
 			ret = lxc_setup_rootfs_prepare_root(conf, name, lxcpath);
 			if (ret < 0) {
 				ERROR("Error setting up rootfs mount as root before spawn");
@@ -2004,30 +2051,28 @@ int __lxc_start(struct lxc_handler *handler, struct lxc_operations *ops,
 	if (error_num)
 		*error_num = handler->exit_status;
 
-/* These are not the droids you are looking for. */
-__private_goto1:
 	lxc_delete_network(handler);
-
-__private_goto2:
 	detach_block_device(handler->conf);
-
-__private_goto3:
 	lxc_end(handler);
-
 	return ret;
 
-/* These are the droids you are looking for. */
 out_abort:
 	lxc_abort(handler);
-	goto __private_goto3;
+	lxc_end(handler);
+	return ret;
 
 out_detach_blockdev:
 	lxc_abort(handler);
-	goto __private_goto2;
+	detach_block_device(handler->conf);
+	lxc_end(handler);
+	return ret;
 
 out_delete_network:
 	lxc_abort(handler);
-	goto __private_goto1;
+	lxc_delete_network(handler);
+	detach_block_device(handler->conf);
+	lxc_end(handler);
+	return ret;
 }
 
 struct start_args {
