@@ -1,3 +1,15 @@
+lxc (1:4.0.4-0ubuntu1) groovy; urgency=medium
+
+  * New upstream bugfix release (4.0.4):
+    - Support for new Linux clone flags (clone into cgroup)
+    - Support for new Linux VFS system calls
+    - Internal symbols are now properly hidden from external consumers
+  * New upstream bugfix release (4.0.3):
+    - Improvement to cgroupv1/cgroupv2 handling
+    - Various improvements and tests for lxc-usernsexec
+
+ -- Stéphane Graber <stgraber@ubuntu.com>  Thu, 20 Aug 2020 18:07:53 -0400
+
 lxc (1:4.0.2-0ubuntu1) focal; urgency=medium
 
   * New ypstream bugfix release (4.0.2):
