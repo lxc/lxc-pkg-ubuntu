@@ -1,3 +1,10 @@
+lxc (1:4.0.4-0ubuntu2) groovy; urgency=medium
+
+  * Cherry-pick upstream bugfix:
+    - cgfsng: fix cgroup attach cgroup creation
+
+ -- Stéphane Graber <stgraber@ubuntu.com>  Fri, 21 Aug 2020 14:09:35 -0400
+
 lxc (1:4.0.4-0ubuntu1) groovy; urgency=medium
 
   * New upstream bugfix release (4.0.4):
