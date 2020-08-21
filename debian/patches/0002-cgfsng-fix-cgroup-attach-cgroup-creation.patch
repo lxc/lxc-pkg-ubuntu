@@ -1,0 +1,61 @@
+From ee3e3d6750140f3f60b5461ac89f7cebb518a748 Mon Sep 17 00:00:00 2001
+From: Christian Brauner <christian.brauner@ubuntu.com>
+Date: Fri, 21 Aug 2020 09:59:18 +0200
+Subject: cgfsng: fix cgroup attach cgroup creation
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+[01m[Kcgroups/cgfsng.c:[m[K In function ‘[01m[Kcgroup_attach_leaf.constprop[m[K’:
+[01m[Kcgroups/cgfsng.c:2221:10:[m[K [01;31m[Kerror: [m[Kwriting 1 byte into a region of size 0 [[01;31m[K-Werror=stringop-overflow=[m[K]
+ 2221 |   [01;31m[K*slash = '\0'[m[K;
+      |   [01;31m[K~~~~~~~^~~~~~[m[K
+[01m[Kcgroups/cgfsng.c:2213:8:[m[K [01;36m[Knote: [m[Kat offset -13 to object ‘[01m[Kattach_cgroup[m[K’ with size 23 declared here
+ 2213 |   char [01;36m[Kattach_cgroup[m[K[STRLITERALLEN(".lxc-1000/cgroup.procs") + 1];
+      |        [01;36m[K^~~~~~~~~~~~~[m[K
+[01m[Kcgroups/cgfsng.c:2229:10:[m[K [01;31m[Kerror: [m[Kwriting 1 byte into a region of size 0 [[01;31m[K-Werror=stringop-overflow=[m[K]
+ 2229 |   [01;31m[K*slash = '/'[m[K;
+      |   [01;31m[K~~~~~~~^~~~~[m[K
+[01m[Kcgroups/cgfsng.c:2213:8:[m[K [01;36m[Knote: [m[Kat offset -13 to object ‘[01m[Kattach_cgroup[m[K’ with size 23 declared here
+ 2213 |   char [01;36m[Kattach_cgroup[m[K[STRLITERALLEN(".lxc-1000/cgroup.procs") + 1];
+      |        [01;36m[K^~~~~~~~~~~~~[m[K
+[01m[Kcgroups/cgfsng.c:2229:10:[m[K [01;31m[Kerror: [m[Kwriting 1 byte into a region of size 0 [[01;31m[K-Werror=stringop-overflow=[m[K]
+ 2229 |   [01;31m[K*slash = '/'[m[K;
+      |   [01;31m[K~~~~~~~^~~~~[m[K
+[01m[Kcgroups/cgfsng.c:2213:8:[m[K [01;36m[Knote: [m[Kat offset -13 to object ‘[01m[Kattach_cgroup[m[K’ with size 23 declared here
+ 2213 |   char [01;36m[Kattach_cgroup[m[K[STRLITERALLEN(".lxc-1000/cgroup.procs") + 1];
+      |        [01;36m[K^~~~~~~~~~~~~[m[K
+
+Link: https://launchpadlibrarian.net/494354168/buildlog_ubuntu-groovy-armhf.lxc_1%3A4.0.4-0ubuntu1_BUILDING.txt.gz
+Signed-off-by: Christian Brauner <christian.brauner@ubuntu.com>
+---
+ src/lxc/cgroups/cgfsng.c | 10 +++++++++-
+ 1 file changed, 9 insertions(+), 1 deletion(-)
+
+diff --git a/src/lxc/cgroups/cgfsng.c b/src/lxc/cgroups/cgfsng.c
+index 12646f21f..03ed1a80f 100644
+--- a/src/lxc/cgroups/cgfsng.c
++++ b/src/lxc/cgroups/cgfsng.c
+@@ -2210,13 +2210,21 @@ static int cgroup_attach_leaf(const struct lxc_conf *conf, int unified_fd, pid_t
+ 
+ 	do {
+ 		bool rm = false;
+-		char attach_cgroup[STRLITERALLEN(".lxc-1000/cgroup.procs") + 1];
++		char attach_cgroup[STRLITERALLEN(".lxc-/cgroup.procs") + INTTYPE_TO_STRLEN(int) + 1];
+ 		char *slash;
+ 
+ 		ret = snprintf(attach_cgroup, sizeof(attach_cgroup), ".lxc-%d/cgroup.procs", idx);
+ 		if (ret < 0 || (size_t)ret >= sizeof(attach_cgroup))
+ 			return ret_errno(EIO);
+ 
++		/*
++		 * This shouldn't really happen but the compiler might complain
++		 * that a short write would cause a buffer overrun. So be on
++		 * the safe side.
++		 */
++		if (ret < STRLITERALLEN(".lxc-/cgroup.procs"))
++			return log_error_errno(-EINVAL, EINVAL, "Unexpected short write would cause buffer-overrun");
++
+ 		slash = &attach_cgroup[ret] - STRLITERALLEN("/cgroup.procs");
+ 		*slash = '\0';
+ 
