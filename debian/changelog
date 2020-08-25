@@ -1,3 +1,10 @@
+lxc (1:4.0.4-0ubuntu3) groovy; urgency=medium
+
+  * Cherry-pick upstream bugfix:
+    - cgroups: fix armhf builds
+
+ -- Stéphane Graber <stgraber@ubuntu.com>  Tue, 25 Aug 2020 09:45:30 -0400
+
 lxc (1:4.0.4-0ubuntu2) groovy; urgency=medium
 
   * Cherry-pick upstream bugfix:
