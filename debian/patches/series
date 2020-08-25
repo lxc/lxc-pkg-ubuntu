@@ -1,2 +1,3 @@
 0001-Allocate-new-lxcbr0-subnet-at-startup-time.patch
 0002-cgfsng-fix-cgroup-attach-cgroup-creation.patch
+0003-cgroups-fix-armhf-builds.patch
