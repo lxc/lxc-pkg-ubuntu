@@ -1,0 +1,39 @@
+From 2e9a9a3ccd15209d13a0fca430bea62aeef41dc8 Mon Sep 17 00:00:00 2001
+From: Eneas U de Queiroz <cotequeiroz@gmail.com>
+Date: Fri, 25 Dec 2020 13:54:14 -0300
+Subject: commands: fix check for seccomp notify support
+
+Use HAVE_SECCOMP_NOTIFY instead of HAVE_DECL_SECCOMP_NOTIFY_FD.
+Currently the latter will be true if the declaration is found by
+configure, even if 'configure --disable-seccomp' is used.
+
+HAVE_SECCOMP_NOTIFY is defined in lxcseccomp.h if both HAVE_SECCOMP and
+HAVE_DECL_SECCOMP_NOTIFY_FD are true, which is the correct behavior.
+
+Signed-off-by: Eneas U de Queiroz <cotequeiroz@gmail.com>
+---
+ src/lxc/commands.c | 4 ++--
+ 1 file changed, 2 insertions(+), 2 deletions(-)
+
+diff --git a/src/lxc/commands.c b/src/lxc/commands.c
+index 3046587c7..f7065ac70 100644
+--- a/src/lxc/commands.c
++++ b/src/lxc/commands.c
+@@ -501,7 +501,7 @@ static int lxc_cmd_get_devpts_fd_callback(int fd, struct lxc_cmd_req *req,
+ 
+ int lxc_cmd_get_seccomp_notify_fd(const char *name, const char *lxcpath)
+ {
+-#if HAVE_DECL_SECCOMP_NOTIFY_FD
++#ifdef HAVE_SECCOMP_NOTIFY
+ 	int ret, stopped;
+ 	struct lxc_cmd_rr cmd = {
+ 		.req = {
+@@ -526,7 +526,7 @@ static int lxc_cmd_get_seccomp_notify_fd_callback(int fd, struct lxc_cmd_req *re
+ 						  struct lxc_handler *handler,
+ 						  struct lxc_epoll_descr *descr)
+ {
+-#if HAVE_DECL_SECCOMP_NOTIFY_FD
++#ifdef HAVE_SECCOMP_NOTIFY
+ 	struct lxc_cmd_rsp rsp = {
+ 		.ret = 0,
+ 	};

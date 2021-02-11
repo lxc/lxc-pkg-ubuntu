@@ -1,0 +1,28 @@
+From d6415efa3f943263a7ba1600fd9246fafd57c9bf Mon Sep 17 00:00:00 2001
+From: Christian Brauner <christian.brauner@ubuntu.com>
+Date: Mon, 1 Feb 2021 14:50:55 +0100
+Subject: attach: fix logging for stdfd replacement
+
+Signed-off-by: Christian Brauner <christian.brauner@ubuntu.com>
+---
+ src/lxc/attach.c | 4 ++--
+ 1 file changed, 2 insertions(+), 2 deletions(-)
+
+diff --git a/src/lxc/attach.c b/src/lxc/attach.c
+index 15a19e598..5a88dbc72 100644
+--- a/src/lxc/attach.c
++++ b/src/lxc/attach.c
+@@ -832,11 +832,11 @@ __noreturn static void do_attach(struct attach_clone_payload *payload)
+ 
+ 	if (options->stdout_fd >= 0 && options->stdout_fd != STDOUT_FILENO)
+ 		if (dup2(options->stdout_fd, STDOUT_FILENO))
+-			SYSDEBUG("Failed to replace stdout with %d", options->stdin_fd);
++			SYSDEBUG("Failed to replace stdout with %d", options->stdout_fd);
+ 
+ 	if (options->stderr_fd >= 0 && options->stderr_fd != STDERR_FILENO)
+ 		if (dup2(options->stderr_fd, STDERR_FILENO))
+-			SYSDEBUG("Failed to replace stderr with %d", options->stdin_fd);
++			SYSDEBUG("Failed to replace stderr with %d", options->stderr_fd);
+ 
+ 	/* close the old fds */
+ 	if (options->stdin_fd > STDERR_FILENO)

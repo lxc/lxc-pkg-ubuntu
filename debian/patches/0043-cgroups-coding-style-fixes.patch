@@ -1,0 +1,27 @@
+From 65c90dc85459251ebf0c29509fc4fa4a99221c83 Mon Sep 17 00:00:00 2001
+From: Christian Brauner <christian.brauner@ubuntu.com>
+Date: Sat, 30 Jan 2021 01:10:49 +0100
+Subject: cgroups: coding style fixes
+
+Signed-off-by: Christian Brauner <christian.brauner@ubuntu.com>
+---
+ src/lxc/cgroups/cgroup2_devices.c | 4 ++--
+ 1 file changed, 2 insertions(+), 2 deletions(-)
+
+diff --git a/src/lxc/cgroups/cgroup2_devices.c b/src/lxc/cgroups/cgroup2_devices.c
+index 91b1ff6e3..26349bf8e 100644
+--- a/src/lxc/cgroups/cgroup2_devices.c
++++ b/src/lxc/cgroups/cgroup2_devices.c
+@@ -245,10 +245,10 @@ int bpf_program_append_device(struct bpf_program *prog, struct device_item *devi
+ 	if (device_type > 0)
+ 		jump_nr++;
+ 
+-	if (device->major != -1)
++	if (device->major >= 0)
+ 		jump_nr++;
+ 
+-	if (device->minor != -1)
++	if (device->minor >= 0)
+ 		jump_nr++;
+ 
+ 	if (!bpf_device_all_access(access_mask)) {

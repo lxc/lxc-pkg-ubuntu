@@ -35,7 +35,7 @@
 
 #include "af_unix.h"
 #include "caps.h"
-#include "cgroup.h"
+#include "cgroups/cgroup.h"
 #include "conf.h"
 #include "config.h"
 #include "confile.h"
@@ -54,7 +54,7 @@
 #include "process_utils.h"
 #include "ringbuf.h"
 #include "start.h"
-#include "storage.h"
+#include "storage/storage.h"
 #include "storage/overlay.h"
 #include "syscall_wrappers.h"
 #include "terminal.h"
@@ -597,7 +597,7 @@ static int add_shmount_to_list(struct lxc_conf *conf)
 
 static int lxc_mount_auto_mounts(struct lxc_conf *conf, int flags, struct lxc_handler *handler)
 {
-	int i, r;
+	int i, ret;
 	static struct {
 		int match_mask;
 		int match_flag;
@@ -620,27 +620,43 @@ static int lxc_mount_auto_mounts(struct lxc_conf *conf, int flags, struct lxc_ha
 		 * it's busy...  MS_REMOUNT|MS_BIND|MS_RDONLY seems to work for
 		 * kernels as low as 2.6.32...
 		 */
-		{ LXC_AUTO_PROC_MASK, LXC_AUTO_PROC_MIXED, "proc",                                           "%r/proc",                    "proc",  MS_NODEV|MS_NOEXEC|MS_NOSUID,                    NULL, 0 },
+		{ LXC_AUTO_PROC_MASK, LXC_AUTO_PROC_MIXED, "proc",                                           "%r/proc",                    "proc",  MS_NODEV|MS_NOEXEC|MS_NOSUID,                    NULL, false },
 		/* proc/tty is used as a temporary placeholder for proc/sys/net which we'll move back in a few steps */
-		{ LXC_AUTO_PROC_MASK, LXC_AUTO_PROC_MIXED, "%r/proc/sys/net",                                "%r/proc/tty",                NULL,    MS_BIND,                                         NULL, 1 },
-		{ LXC_AUTO_PROC_MASK, LXC_AUTO_PROC_MIXED, "%r/proc/sys",                                    "%r/proc/sys",                NULL,    MS_BIND,                                         NULL, 0 },
-		{ LXC_AUTO_PROC_MASK, LXC_AUTO_PROC_MIXED, NULL,                                             "%r/proc/sys",                NULL,    MS_REMOUNT|MS_BIND|MS_RDONLY,                    NULL, 0 },
-		{ LXC_AUTO_PROC_MASK, LXC_AUTO_PROC_MIXED, "%r/proc/tty",                                    "%r/proc/sys/net",            NULL,    MS_MOVE,                                         NULL, 1 },
-		{ LXC_AUTO_PROC_MASK, LXC_AUTO_PROC_MIXED, "%r/proc/sysrq-trigger",                          "%r/proc/sysrq-trigger",      NULL,    MS_BIND,                                         NULL, 0 },
-		{ LXC_AUTO_PROC_MASK, LXC_AUTO_PROC_MIXED, NULL,                                             "%r/proc/sysrq-trigger",      NULL,    MS_REMOUNT|MS_BIND|MS_RDONLY,                    NULL, 0 },
-		{ LXC_AUTO_PROC_MASK, LXC_AUTO_PROC_RW,    "proc",                                           "%r/proc",                    "proc",  MS_NODEV|MS_NOEXEC|MS_NOSUID,                    NULL, 0 },
-		{ LXC_AUTO_SYS_MASK,  LXC_AUTO_SYS_RW,     "sysfs",                                          "%r/sys",                     "sysfs", 0,                                               NULL, 0 },
-		{ LXC_AUTO_SYS_MASK,  LXC_AUTO_SYS_RO,     "sysfs",                                          "%r/sys",                     "sysfs", MS_RDONLY,                                       NULL, 0 },
-		{ LXC_AUTO_SYS_MASK,  LXC_AUTO_SYS_MIXED,  "sysfs",                                          "%r/sys",                     "sysfs", MS_NODEV|MS_NOEXEC|MS_NOSUID,                    NULL, 0 },
-		{ LXC_AUTO_SYS_MASK,  LXC_AUTO_SYS_MIXED,  "%r/sys",                                         "%r/sys",                     NULL,    MS_BIND,                                         NULL, 0 },
-		{ LXC_AUTO_SYS_MASK,  LXC_AUTO_SYS_MIXED,  NULL,                                             "%r/sys",                     NULL,    MS_REMOUNT|MS_BIND|MS_RDONLY,                    NULL, 0 },
-		{ LXC_AUTO_SYS_MASK,  LXC_AUTO_SYS_MIXED,  "sysfs",                                          "%r/sys/devices/virtual/net", "sysfs", 0,                                               NULL, 0 },
-		{ LXC_AUTO_SYS_MASK,  LXC_AUTO_SYS_MIXED,  "%r/sys/devices/virtual/net/devices/virtual/net", "%r/sys/devices/virtual/net", NULL,    MS_BIND,                                         NULL, 0 },
-		{ LXC_AUTO_SYS_MASK,  LXC_AUTO_SYS_MIXED,  NULL,                                             "%r/sys/devices/virtual/net", NULL,    MS_REMOUNT|MS_BIND|MS_NOSUID|MS_NODEV|MS_NOEXEC, NULL, 0 },
-		{ 0,                  0,                   NULL,                                             NULL,                         NULL,    0,                                               NULL, 0 }
+		{ LXC_AUTO_PROC_MASK, LXC_AUTO_PROC_MIXED, "%r/proc/sys/net",                                "%r/proc/tty",                NULL,    MS_BIND,                                         NULL, true	 },
+		{ LXC_AUTO_PROC_MASK, LXC_AUTO_PROC_MIXED, "%r/proc/sys",                                    "%r/proc/sys",                NULL,    MS_BIND,                                         NULL, false },
+		{ LXC_AUTO_PROC_MASK, LXC_AUTO_PROC_MIXED, NULL,                                             "%r/proc/sys",                NULL,    MS_REMOUNT|MS_BIND|MS_RDONLY,                    NULL, false },
+		{ LXC_AUTO_PROC_MASK, LXC_AUTO_PROC_MIXED, "%r/proc/tty",                                    "%r/proc/sys/net",            NULL,    MS_MOVE,                                         NULL, true  },
+		{ LXC_AUTO_PROC_MASK, LXC_AUTO_PROC_MIXED, "%r/proc/sysrq-trigger",                          "%r/proc/sysrq-trigger",      NULL,    MS_BIND,                                         NULL, false },
+		{ LXC_AUTO_PROC_MASK, LXC_AUTO_PROC_MIXED, NULL,                                             "%r/proc/sysrq-trigger",      NULL,    MS_REMOUNT|MS_BIND|MS_RDONLY,                    NULL, false },
+		{ LXC_AUTO_PROC_MASK, LXC_AUTO_PROC_RW,    "proc",                                           "%r/proc",                    "proc",  MS_NODEV|MS_NOEXEC|MS_NOSUID,                    NULL, false },
+		{ LXC_AUTO_SYS_MASK,  LXC_AUTO_SYS_RW,     "sysfs",                                          "%r/sys",                     "sysfs", 0,                                               NULL, false },
+		{ LXC_AUTO_SYS_MASK,  LXC_AUTO_SYS_RO,     "sysfs",                                          "%r/sys",                     "sysfs", MS_RDONLY,                                       NULL, false },
+		{ LXC_AUTO_SYS_MASK,  LXC_AUTO_SYS_MIXED,  "sysfs",                                          "%r/sys",                     "sysfs", MS_NODEV|MS_NOEXEC|MS_NOSUID,                    NULL, false },
+		{ LXC_AUTO_SYS_MASK,  LXC_AUTO_SYS_MIXED,  "%r/sys",                                         "%r/sys",                     NULL,    MS_BIND,                                         NULL, false },
+		{ LXC_AUTO_SYS_MASK,  LXC_AUTO_SYS_MIXED,  NULL,                                             "%r/sys",                     NULL,    MS_REMOUNT|MS_BIND|MS_RDONLY,                    NULL, false },
+		{ LXC_AUTO_SYS_MASK,  LXC_AUTO_SYS_MIXED,  "sysfs",                                          "%r/sys/devices/virtual/net", "sysfs", 0,                                               NULL, false },
+		{ LXC_AUTO_SYS_MASK,  LXC_AUTO_SYS_MIXED,  "%r/sys/devices/virtual/net/devices/virtual/net", "%r/sys/devices/virtual/net", NULL,    MS_BIND,                                         NULL, false },
+		{ LXC_AUTO_SYS_MASK,  LXC_AUTO_SYS_MIXED,  NULL,                                             "%r/sys/devices/virtual/net", NULL,    MS_REMOUNT|MS_BIND|MS_NOSUID|MS_NODEV|MS_NOEXEC, NULL, false },
+		{ 0,                  0,                   NULL,                                             NULL,                         NULL,    0,                                               NULL, false }
 	};
+        struct lxc_rootfs *rootfs = &conf->rootfs;
+        bool has_cap_net_admin;
 
-        bool has_cap_net_admin = lxc_wants_cap(CAP_NET_ADMIN, conf);
+        if (flags & LXC_AUTO_PROC_MASK) {
+		ret = mkdirat(rootfs->mntpt_fd, "proc" , S_IRWXU | S_IRGRP | S_IXGRP | S_IROTH | S_IXOTH);
+		if (ret < 0 && errno != EEXIST)
+			return log_error_errno(-errno, errno,
+					       "Failed to create proc mountpoint under %d", rootfs->mntpt_fd);
+	}
+
+	if (flags & LXC_AUTO_SYS_MASK) {
+		ret = mkdirat(rootfs->mntpt_fd, "sys" , S_IRWXU | S_IRGRP | S_IXGRP | S_IROTH | S_IXOTH);
+		if (ret < 0 && errno != EEXIST)
+			return log_error_errno(-errno, errno,
+					       "Failed to create sysfs mountpoint under %d", rootfs->mntpt_fd);
+	}
+
+        has_cap_net_admin = lxc_wants_cap(CAP_NET_ADMIN, conf);
         for (i = 0; default_mounts[i].match_mask; i++) {
 		__do_free char *destination = NULL, *source = NULL;
 		int saved_errno;
@@ -650,7 +666,7 @@ static int lxc_mount_auto_mounts(struct lxc_conf *conf, int flags, struct lxc_ha
 
 		if (default_mounts[i].source) {
 			/* will act like strdup if %r is not present */
-			source = lxc_string_replace("%r", conf->rootfs.path ? conf->rootfs.mount : "", default_mounts[i].source);
+			source = lxc_string_replace("%r", rootfs->path ? rootfs->mount : "", default_mounts[i].source);
 			if (!source)
 				return -1;
 		}
@@ -664,24 +680,24 @@ static int lxc_mount_auto_mounts(struct lxc_conf *conf, int flags, struct lxc_ha
 		}
 
 		/* will act like strdup if %r is not present */
-		destination = lxc_string_replace("%r", conf->rootfs.path ? conf->rootfs.mount : "", default_mounts[i].destination);
+		destination = lxc_string_replace("%r", rootfs->path ? rootfs->mount : "", default_mounts[i].destination);
 		if (!destination)
 			return -1;
 
 		mflags = add_required_remount_flags(source, destination,
 						    default_mounts[i].flags);
-		r = safe_mount(source, destination, default_mounts[i].fstype,
-			       mflags, default_mounts[i].options,
-			       conf->rootfs.path ? conf->rootfs.mount : NULL);
+		ret = safe_mount(source, destination, default_mounts[i].fstype,
+				mflags, default_mounts[i].options,
+				rootfs->path ? rootfs->mount : NULL);
 		saved_errno = errno;
-		if (r < 0 && errno == ENOENT) {
+		if (ret < 0 && errno == ENOENT) {
 			INFO("Mount source or target for \"%s\" on \"%s\" does not exist. Skipping", source, destination);
-			r = 0;
-		} else if (r < 0) {
+			ret = 0;
+		} else if (ret < 0) {
 			SYSERROR("Failed to mount \"%s\" on \"%s\" with flags %lu", source, destination, mflags);
 		}
 
-		if (r < 0) {
+		if (ret < 0) {
 			errno = saved_errno;
 			return -1;
 		}
@@ -718,15 +734,12 @@ static int lxc_mount_auto_mounts(struct lxc_conf *conf, int flags, struct lxc_ha
 		if (flags & LXC_AUTO_CGROUP_FORCE)
 			cg_flags |= LXC_AUTO_CGROUP_FORCE;
 
-		if (!handler->cgroup_ops->mount(handler->cgroup_ops,
-						handler,
-						conf->rootfs.path ? conf->rootfs.mount : "",
-						cg_flags))
+		if (!handler->cgroup_ops->mount(handler->cgroup_ops, conf, cg_flags))
 			return log_error_errno(-1, errno, "Failed to mount \"/sys/fs/cgroup\"");
 	}
 
 	if (flags & LXC_AUTO_SHMOUNTS_MASK) {
-		int ret = add_shmount_to_list(conf);
+		ret = add_shmount_to_list(conf);
 		if (ret < 0)
 			return log_error(-1, "Failed to add shmount entry to container config");
 	}
@@ -3343,13 +3356,13 @@ int lxc_setup(struct lxc_handler *handler)
 	if (lxc_conf->is_execute) {
 		if (execveat_supported()) {
 			int fd;
-			char path[PATH_MAX];
+			char path[STRLITERALLEN(SBINDIR) + STRLITERALLEN("/init.lxc.static") + 1];
 
-			ret = snprintf(path, PATH_MAX, SBINDIR "/init.lxc.static");
+			ret = snprintf(path, sizeof(path), SBINDIR "/init.lxc.static");
 			if (ret < 0 || ret >= PATH_MAX)
 				return log_error(-1, "Path to init.lxc.static too long");
 
-			fd = open(path, O_PATH | O_CLOEXEC);
+			fd = open(path, O_NOCTTY | O_NOFOLLOW | O_CLOEXEC | O_PATH);
 			if (fd < 0)
 				return log_error_errno(-1, errno, "Unable to open lxc.init.static");
 
@@ -4091,8 +4104,7 @@ int userns_exec_1(const struct lxc_conf *conf, int (*fn)(void *), void *data,
 
 	close_prot_errno_disarm(pipe_fds[0]);
 
-	if (lxc_log_get_level() == LXC_LOG_LEVEL_TRACE ||
-	    conf->loglevel == LXC_LOG_LEVEL_TRACE) {
+	if (lxc_log_trace()) {
 		struct id_map *map;
 		struct lxc_list *it;
 
@@ -4206,8 +4218,7 @@ int userns_exec_minimal(const struct lxc_conf *conf,
 
 	close_prot_errno_disarm(sock_fds[0]);
 
-	if (lxc_log_get_level() == LXC_LOG_LEVEL_TRACE ||
-	    conf->loglevel == LXC_LOG_LEVEL_TRACE) {
+	if (lxc_log_trace()) {
 		struct id_map *map;
 		struct lxc_list *it;
 
@@ -4391,8 +4402,7 @@ int userns_exec_full(struct lxc_conf *conf, int (*fn)(void *), void *data,
 	/* idmap will now keep track of that memory. */
 	host_gid_map = NULL;
 
-	if (lxc_log_get_level() == LXC_LOG_LEVEL_TRACE ||
-	    conf->loglevel == LXC_LOG_LEVEL_TRACE) {
+	if (lxc_log_trace()) {
 		lxc_list_for_each (cur, idmap) {
 			map = cur->elem;
 			TRACE("establishing %cid mapping for \"%d\" in new "
@@ -4613,8 +4623,7 @@ int userns_exec_mapped_root(const char *path, int path_fd,
 
 	close_prot_errno_disarm(sock_fds[0]);
 
-	if (lxc_log_get_level() == LXC_LOG_LEVEL_TRACE ||
-	    conf->loglevel == LXC_LOG_LEVEL_TRACE) {
+	if (lxc_log_trace()) {
 		struct id_map *map;
 		struct lxc_list *it;
 

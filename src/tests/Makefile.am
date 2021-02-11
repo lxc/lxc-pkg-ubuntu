@@ -544,23 +544,23 @@ if ENABLE_SECCOMP
 lxc_test_utils_SOURCES += ../lxc/seccomp.c ../lxc/lxcseccomp.h
 endif
 
-AM_CFLAGS=-DLXCROOTFSMOUNT=\"$(LXCROOTFSMOUNT)\" \
-	  -DLXCPATH=\"$(LXCPATH)\" \
-	  -DLXC_GLOBAL_CONF=\"$(LXC_GLOBAL_CONF)\" \
-	  -DLXCINITDIR=\"$(LXCINITDIR)\" \
-	  -DLIBEXECDIR=\"$(LIBEXECDIR)\" \
-	  -DLOGPATH=\"$(LOGPATH)\" \
-	  -DLXCTEMPLATEDIR=\"$(LXCTEMPLATEDIR)\" \
-	  -DLXC_DEFAULT_CONFIG=\"$(LXC_DEFAULT_CONFIG)\" \
-	  -DDEFAULT_CGROUP_PATTERN=\"$(DEFAULT_CGROUP_PATTERN)\" \
-	  -DRUNTIME_PATH=\"$(RUNTIME_PATH)\" \
-	  -DSBINDIR=\"$(SBINDIR)\" \
-	  -I $(top_srcdir)/src \
-	  -I $(top_srcdir)/src/lxc \
-	  -I $(top_srcdir)/src/lxc/cgroups \
-	  -I $(top_srcdir)/src/lxc/tools \
-	  -I $(top_srcdir)/src/lxc/storage \
-	  -pthread
+AM_CFLAGS += -DLXCROOTFSMOUNT=\"$(LXCROOTFSMOUNT)\" \
+	     -DLXCPATH=\"$(LXCPATH)\" \
+	     -DLXC_GLOBAL_CONF=\"$(LXC_GLOBAL_CONF)\" \
+	     -DLXCINITDIR=\"$(LXCINITDIR)\" \
+	     -DLIBEXECDIR=\"$(LIBEXECDIR)\" \
+	     -DLOGPATH=\"$(LOGPATH)\" \
+	     -DLXCTEMPLATEDIR=\"$(LXCTEMPLATEDIR)\" \
+	     -DLXC_DEFAULT_CONFIG=\"$(LXC_DEFAULT_CONFIG)\" \
+	     -DDEFAULT_CGROUP_PATTERN=\"$(DEFAULT_CGROUP_PATTERN)\" \
+	     -DRUNTIME_PATH=\"$(RUNTIME_PATH)\" \
+	     -DSBINDIR=\"$(SBINDIR)\" \
+	     -I $(top_srcdir)/src \
+	     -I $(top_srcdir)/src/lxc \
+	     -I $(top_srcdir)/src/lxc/cgroups \
+	     -I $(top_srcdir)/src/lxc/tools \
+	     -I $(top_srcdir)/src/lxc/storage \
+	     -pthread
 
 if ENABLE_APPARMOR
 AM_CFLAGS += -DHAVE_APPARMOR
@@ -620,6 +620,7 @@ bin_SCRIPTS += lxc-test-automount \
 	       lxc-test-exit-code \
 	       lxc-test-no-new-privs \
 	       lxc-test-rootfs \
+	       lxc-test-procsys \
 	       lxc-test-usernsexec
 
 if DISTRO_UBUNTU
@@ -658,6 +659,7 @@ EXTRA_DIST = basic.c \
 	     lxc-test-lxc-attach \
 	     lxc-test-automount \
 	     lxc-test-rootfs \
+	     lxc-test-procsys \
 	     lxc-test-autostart \
 	     lxc-test-apparmor-mount \
 	     lxc-test-apparmor-generated \

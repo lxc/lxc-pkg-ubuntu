@@ -1,0 +1,27 @@
+From 3cba7c67d5666d2e8567d10379372f0627f520e5 Mon Sep 17 00:00:00 2001
+From: Christian Brauner <christian.brauner@ubuntu.com>
+Date: Fri, 22 Jan 2021 13:21:54 +0100
+Subject: lsm: remove obsolute comment about constructor
+
+Cc: stable-4.0
+Signed-off-by: Christian Brauner <christian.brauner@ubuntu.com>
+---
+ src/lxc/lsm/apparmor.c | 5 -----
+ 1 file changed, 5 deletions(-)
+
+diff --git a/src/lxc/lsm/apparmor.c b/src/lxc/lsm/apparmor.c
+index b09d47090..21945b826 100644
+--- a/src/lxc/lsm/apparmor.c
++++ b/src/lxc/lsm/apparmor.c
+@@ -523,11 +523,6 @@ static inline char *apparmor_namespace(const char *ctname, const char *lxcpath)
+ 	return full;
+ }
+ 
+-/* TODO: This is currently run only in the context of a constructor (via the
+- * initial lsm_init() called due to its __attribute__((constructor)), so we
+- * do not have ERROR/... macros available, so there are some fprintf(stderr)s
+- * in there.
+- */
+ static bool check_apparmor_parser_version(struct lsm_ops *ops)
+ {
+ 	int major = 0, minor = 0, micro = 0, ret = 0;

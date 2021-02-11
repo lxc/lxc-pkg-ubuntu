@@ -1,0 +1,27 @@
+From a380cc587be5821010d44653c7d0ee85d0d7b5ef Mon Sep 17 00:00:00 2001
+From: Christian Brauner <christian.brauner@ubuntu.com>
+Date: Sat, 30 Jan 2021 02:07:36 +0100
+Subject: cgroups: use zalloc
+
+Signed-off-by: Christian Brauner <christian.brauner@ubuntu.com>
+---
+ src/lxc/cgroups/cgfsng.c | 3 +--
+ 1 file changed, 1 insertion(+), 2 deletions(-)
+
+diff --git a/src/lxc/cgroups/cgfsng.c b/src/lxc/cgroups/cgfsng.c
+index d4e5e8871..431a1337e 100644
+--- a/src/lxc/cgroups/cgfsng.c
++++ b/src/lxc/cgroups/cgfsng.c
+@@ -3438,11 +3438,10 @@ struct cgroup_ops *cgfsng_ops_init(struct lxc_conf *conf)
+ {
+ 	__do_free struct cgroup_ops *cgfsng_ops = NULL;
+ 
+-	cgfsng_ops = malloc(sizeof(struct cgroup_ops));
++	cgfsng_ops = zalloc(sizeof(struct cgroup_ops));
+ 	if (!cgfsng_ops)
+ 		return ret_set_errno(NULL, ENOMEM);
+ 
+-	memset(cgfsng_ops, 0, sizeof(struct cgroup_ops));
+ 	cgfsng_ops->cgroup_layout = CGROUP_LAYOUT_UNKNOWN;
+ 
+ 	if (cg_init(cgfsng_ops, conf))

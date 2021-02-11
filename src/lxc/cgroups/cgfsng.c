@@ -44,6 +44,7 @@
 #include "mainloop.h"
 #include "memory_utils.h"
 #include "storage/storage.h"
+#include "syscall_wrappers.h"
 #include "utils.h"
 
 #ifndef HAVE_STRLCPY
@@ -153,15 +154,28 @@ static struct hierarchy *get_hierarchy(struct cgroup_ops *ops, const char *contr
 	for (int i = 0; ops->hierarchies[i]; i++) {
 		if (!controller) {
 			/* This is the empty unified hierarchy. */
-			if (ops->hierarchies[i]->controllers &&
-			    !ops->hierarchies[i]->controllers[0])
+			if (ops->hierarchies[i]->controllers && !ops->hierarchies[i]->controllers[0])
 				return ops->hierarchies[i];
+
 			continue;
-		} else if (pure_unified_layout(ops) &&
-			   strcmp(controller, "devices") == 0) {
-			if (ops->unified->bpf_device_controller)
-				return ops->unified;
-			break;
+		}
+
+		/*
+		 * Handle controllers with significant implementation changes
+		 * from cgroup to cgroup2.
+		 */
+		if (pure_unified_layout(ops)) {
+			if (strcmp(controller, "devices") == 0) {
+				if (ops->unified->bpf_device_controller)
+					return ops->unified;
+
+				break;
+			} else if (strcmp(controller, "freezer") == 0) {
+				if (ops->unified->freezer_controller)
+					return ops->unified;
+
+				break;
+			}
 		}
 
 		if (string_in_list(ops->hierarchies[i]->controllers, controller))
@@ -174,45 +188,6 @@ static struct hierarchy *get_hierarchy(struct cgroup_ops *ops, const char *contr
 		WARN("There is no empty unified cgroup hierarchy");
 
 	return ret_set_errno(NULL, ENOENT);
-}
-
-#define BATCH_SIZE 50
-static void batch_realloc(char **mem, size_t oldlen, size_t newlen)
-{
-	int newbatches = (newlen / BATCH_SIZE) + 1;
-	int oldbatches = (oldlen / BATCH_SIZE) + 1;
-
-	if (!*mem || newbatches > oldbatches)
-		*mem = must_realloc(*mem, newbatches * BATCH_SIZE);
-}
-
-static void append_line(char **dest, size_t oldlen, char *new, size_t newlen)
-{
-	size_t full = oldlen + newlen;
-
-	batch_realloc(dest, oldlen, full + 1);
-
-	memcpy(*dest + oldlen, new, newlen + 1);
-}
-
-/* Slurp in a whole file */
-static char *read_file(const char *fnam)
-{
-	__do_free char *buf = NULL, *line = NULL;
-	__do_fclose FILE *f = NULL;
-	size_t len = 0, fulllen = 0;
-	int linelen;
-
-	f = fopen(fnam, "re");
-	if (!f)
-		return NULL;
-
-	while ((linelen = getline(&line, &len, f)) != -1) {
-		append_line(&buf, fulllen, line, linelen);
-		fulllen += linelen;
-	}
-
-	return move_ptr(buf);
 }
 
 /* Taken over modified from the kernel sources. */
@@ -350,7 +325,7 @@ static bool cg_legacy_filter_and_set_cpus(const char *parent_cgroup,
 	bool flipped_bit = false;
 
 	fpath = must_make_path(parent_cgroup, "cpuset.cpus", NULL);
-	posscpus = read_file(fpath);
+	posscpus = read_file_at(-EBADF, fpath);
 	if (!posscpus)
 		return log_error_errno(false, errno, "Failed to read file \"%s\"", fpath);
 
@@ -360,7 +335,7 @@ static bool cg_legacy_filter_and_set_cpus(const char *parent_cgroup,
 		return false;
 
 	if (file_exists(__ISOL_CPUS)) {
-		isolcpus = read_file(__ISOL_CPUS);
+		isolcpus = read_file_at(-EBADF, __ISOL_CPUS);
 		if (!isolcpus)
 			return log_error_errno(false, errno, "Failed to read file \"%s\"", __ISOL_CPUS);
 
@@ -379,7 +354,7 @@ static bool cg_legacy_filter_and_set_cpus(const char *parent_cgroup,
 	}
 
 	if (file_exists(__OFFLINE_CPUS)) {
-		offlinecpus = read_file(__OFFLINE_CPUS);
+		offlinecpus = read_file_at(-EBADF, __OFFLINE_CPUS);
 		if (!offlinecpus)
 			return log_error_errno(false, errno, "Failed to read file \"%s\"", __OFFLINE_CPUS);
 
@@ -691,14 +666,14 @@ static char **cg_unified_make_empty_controller(void)
 	return move_ptr(aret);
 }
 
-static char **cg_unified_get_controllers(const char *file)
+static char **cg_unified_get_controllers(int dfd, const char *file)
 {
 	__do_free char *buf = NULL;
 	__do_free_string_list char **aret = NULL;
 	char *sep = " \t\n";
 	char *tok;
 
-	buf = read_file(file);
+	buf = read_file_at(dfd, file);
 	if (!buf)
 		return NULL;
 
@@ -721,6 +696,8 @@ static struct hierarchy *add_hierarchy(struct hierarchy ***h, char **clist, char
 	int newentry;
 
 	new = zalloc(sizeof(*new));
+	if (!new)
+		return ret_set_errno(NULL, ENOMEM);
 	new->controllers = clist;
 	new->mountpoint = mountpoint;
 	new->container_base_path = container_base_path;
@@ -1690,6 +1667,27 @@ __cgfsng_ops static void cgfsng_payload_finalize(struct cgroup_ops *ops)
 		if (!is_unified_hierarchy(h))
 			close_prot_errno_disarm(h->cgfd_con);
 	}
+
+	/*
+	 * The checking for freezer support should obviously be done at cgroup
+	 * initialization time but that doesn't work reliable. The freezer
+	 * controller has been demoted (rightly so) to a simple file located in
+	 * each non-root cgroup. At the time when the container is created we
+	 * might still be located in /sys/fs/cgroup and so checking for
+	 * cgroup.freeze won't tell us anything because this file doesn't exist
+	 * in the root cgroup. We could then iterate through /sys/fs/cgroup and
+	 * find an already existing cgroup and then check within that cgroup
+	 * for the existence of cgroup.freeze but that will only work on
+	 * systemd based hosts. Other init systems might not manage cgroups and
+	 * so no cgroup will exist. So we defer until we have created cgroups
+	 * for our container which means we check here.
+	 */
+        if (pure_unified_layout(ops) &&
+            !faccessat(ops->unified->cgfd_con, "cgroup.freeze", F_OK,
+                       AT_SYMLINK_NOFOLLOW)) {
+		TRACE("Unified hierarchy supports freezer");
+		ops->unified->freezer_controller = 1;
+        }
 }
 
 /* cgroup-full:* is done, no need to create subdirs */
@@ -1806,11 +1804,12 @@ static inline int cg_mount_cgroup_full(int type, struct hierarchy *h,
 }
 
 __cgfsng_ops static bool cgfsng_mount(struct cgroup_ops *ops,
-				      struct lxc_handler *handler,
-				      const char *root, int type)
+				      struct lxc_conf *conf, int type)
 {
 	__do_free char *cgroup_root = NULL;
 	bool has_cgns = false, wants_force_mount = false;
+	struct lxc_rootfs *rootfs = &conf->rootfs;
+	const char *root = rootfs->path ? rootfs->mount : "";
 	int ret;
 
 	if (!ops)
@@ -1819,7 +1818,7 @@ __cgfsng_ops static bool cgfsng_mount(struct cgroup_ops *ops,
 	if (!ops->hierarchies)
 		return true;
 
-	if (!handler || !handler->conf)
+	if (!conf)
 		return ret_set_errno(false, EINVAL);
 
 	if ((type & LXC_AUTO_CGROUP_MASK) == 0)
@@ -1831,7 +1830,7 @@ __cgfsng_ops static bool cgfsng_mount(struct cgroup_ops *ops,
 	}
 
 	if (!wants_force_mount) {
-		wants_force_mount = lxc_wants_cap(CAP_SYS_ADMIN, handler->conf);
+		wants_force_mount = !lxc_wants_cap(CAP_SYS_ADMIN, conf);
 
 		/*
 		 * Most recent distro versions currently have init system that
@@ -1870,13 +1869,20 @@ __cgfsng_ops static bool cgfsng_mount(struct cgroup_ops *ops,
 		return cg_mount_cgroup_full(type, ops->unified, cgroup_root) == 0;
 	}
 
-	/* mount tmpfs */
-	ret = safe_mount_beneath(root, NULL, DEFAULT_CGROUP_MOUNTPOINT, "tmpfs",
-				 MS_NOSUID | MS_NODEV | MS_NOEXEC | MS_RELATIME,
-				 "size=10240k,mode=755");
+	/*
+	 * Mount a tmpfs over DEFAULT_CGROUP_MOUNTPOINT. Note that we're
+	 * relying on RESOLVE_BENEATH so we need to skip the leading "/" in the
+	 * DEFAULT_CGROUP_MOUNTPOINT define.
+	 */
+	ret = mount_at(rootfs->mntpt_fd, NULL, DEFAULT_CGROUP_MOUNTPOINT_RELATIVE,
+		       PROTECT_OPATH_DIRECTORY, PROTECT_LOOKUP_BENEATH_XDEV,
+		       "tmpfs", MS_NOSUID | MS_NODEV | MS_NOEXEC | MS_RELATIME,
+		       "size=10240k,mode=755");
 	if (ret < 0) {
 		if (errno != ENOSYS)
-			return false;
+			return log_error_errno(false, errno,
+					       "Failed to mount tmpfs on %s",
+					       DEFAULT_CGROUP_MOUNTPOINT_RELATIVE);
 
 		ret = safe_mount(NULL, cgroup_root, "tmpfs",
 				 MS_NOSUID | MS_NODEV | MS_NOEXEC | MS_RELATIME,
@@ -2959,12 +2965,12 @@ __cgfsng_ops static bool cgfsng_setup_limits(struct cgroup_ops *ops,
 __cgfsng_ops static bool cgfsng_devices_activate(struct cgroup_ops *ops, struct lxc_handler *handler)
 {
 #ifdef HAVE_STRUCT_BPF_CGROUP_DEV_CTX
-	__do_bpf_program_free struct bpf_program *devices = NULL;
+	__do_bpf_program_free struct bpf_program *prog = NULL;
 	int ret;
 	struct lxc_conf *conf;
 	struct hierarchy *unified;
 	struct lxc_list *it;
-	struct bpf_program *devices_old;
+	struct bpf_program *prog_old;
 
 	if (!ops)
 		return ret_set_errno(false, ENOENT);
@@ -2984,18 +2990,18 @@ __cgfsng_ops static bool cgfsng_devices_activate(struct cgroup_ops *ops, struct 
 	    !unified->container_full_path || lxc_list_empty(&conf->devices))
 		return true;
 
-	devices = bpf_program_new(BPF_PROG_TYPE_CGROUP_DEVICE);
-	if (!devices)
+	prog = bpf_program_new(BPF_PROG_TYPE_CGROUP_DEVICE);
+	if (!prog)
 		return log_error_errno(false, ENOMEM, "Failed to create new bpf program");
 
-	ret = bpf_program_init(devices);
+	ret = bpf_program_init(prog);
 	if (ret)
 		return log_error_errno(false, ENOMEM, "Failed to initialize bpf program");
 
 	lxc_list_for_each(it, &conf->devices) {
 		struct device_item *cur = it->elem;
 
-		ret = bpf_program_append_device(devices, cur);
+		ret = bpf_program_append_device(prog, cur);
 		if (ret)
 			return log_error_errno(false, ENOMEM, "Failed to add new rule to bpf device program: type %c, major %d, minor %d, access %s, allow %d, global_rule %d",
 					       cur->type,
@@ -3013,20 +3019,20 @@ __cgfsng_ops static bool cgfsng_devices_activate(struct cgroup_ops *ops, struct 
 		      cur->global_rule);
 	}
 
-	ret = bpf_program_finalize(devices);
+	ret = bpf_program_finalize(prog);
 	if (ret)
 		return log_error_errno(false, ENOMEM, "Failed to finalize bpf program");
 
-	ret = bpf_program_cgroup_attach(devices, BPF_CGROUP_DEVICE,
+	ret = bpf_program_cgroup_attach(prog, BPF_CGROUP_DEVICE,
 					unified->container_limit_path,
 					BPF_F_ALLOW_MULTI);
 	if (ret)
 		return log_error_errno(false, ENOMEM, "Failed to attach bpf program");
 
 	/* Replace old bpf program. */
-	devices_old = move_ptr(ops->cgroup2_devices);
-	ops->cgroup2_devices = move_ptr(devices);
-	devices = move_ptr(devices_old);
+	prog_old = move_ptr(ops->cgroup2_devices);
+	ops->cgroup2_devices = move_ptr(prog);
+	prog = move_ptr(prog_old);
 #endif
 	return true;
 }
@@ -3139,7 +3145,7 @@ static void cg_unified_delegate(char ***delegate)
 	char *token;
 	int idx;
 
-	buf = read_file("/sys/kernel/cgroup/delegate");
+	buf = read_file_at(-EBADF, "/sys/kernel/cgroup/delegate");
 	if (!buf) {
 		for (char **p = standard; p && *p; p++) {
 			idx = append_null_to_list((void ***)delegate);
@@ -3177,9 +3183,9 @@ static int cg_hybrid_init(struct cgroup_ops *ops, bool relative, bool unprivileg
 	 * cgroups as our base in that case.
 	 */
 	if (!relative && (geteuid() == 0))
-		basecginfo = read_file("/proc/1/cgroup");
+		basecginfo = read_file_at(-EBADF, "/proc/1/cgroup");
 	else
-		basecginfo = read_file("/proc/self/cgroup");
+		basecginfo = read_file_at(-EBADF, "/proc/self/cgroup");
 	if (!basecginfo)
 		return ret_set_errno(-1, ENOMEM);
 
@@ -3263,7 +3269,7 @@ static int cg_hybrid_init(struct cgroup_ops *ops, bool relative, bool unprivileg
 							"cgroup.controllers",
 							NULL);
 
-			controller_list = cg_unified_get_controllers(cgv2_ctrl_path);
+			controller_list = cg_unified_get_controllers(-EBADF, cgv2_ctrl_path);
 			free(cgv2_ctrl_path);
 			if (!controller_list) {
 				controller_list = cg_unified_make_empty_controller();
@@ -3279,6 +3285,8 @@ static int cg_hybrid_init(struct cgroup_ops *ops, bool relative, bool unprivileg
 		}
 
 		new = add_hierarchy(&ops->hierarchies, move_ptr(controller_list), move_ptr(mountpoint), move_ptr(base_cgroup), type);
+		if (!new)
+			return log_error_errno(-1, errno, "Failed to add cgroup hierarchy");
 		if (type == CGROUP2_SUPER_MAGIC && !ops->unified) {
 			if (unprivileged)
 				cg_unified_delegate(&new->cgroup2_chown);
@@ -3306,9 +3314,9 @@ static char *cg_unified_get_current_cgroup(bool relative)
 	char *base_cgroup;
 
 	if (!relative && (geteuid() == 0))
-		basecginfo = read_file("/proc/1/cgroup");
+		basecginfo = read_file_at(-EBADF, "/proc/1/cgroup");
 	else
-		basecginfo = read_file("/proc/self/cgroup");
+		basecginfo = read_file_at(-EBADF, "/proc/self/cgroup");
 	if (!basecginfo)
 		return NULL;
 
@@ -3327,12 +3335,11 @@ static char *cg_unified_get_current_cgroup(bool relative)
 static int cg_unified_init(struct cgroup_ops *ops, bool relative,
 			   bool unprivileged)
 {
-	__do_free char *subtree_path = NULL;
+	__do_close int cgroup_root_fd = -EBADF;
+	__do_free char *base_cgroup = NULL, *controllers_path = NULL;
+	__do_free_string_list char **delegatable = NULL;
 	int ret;
-	char *mountpoint;
-	char **delegatable;
 	struct hierarchy *new;
-	char *base_cgroup = NULL;
 
 	ret = unified_cgroup_hierarchy();
 	if (ret == -ENOMEDIUM)
@@ -3347,14 +3354,18 @@ static int cg_unified_init(struct cgroup_ops *ops, bool relative,
 	if (!relative)
 		prune_init_scope(base_cgroup);
 
+	cgroup_root_fd = openat(-EBADF, DEFAULT_CGROUP_MOUNTPOINT,
+				O_NOCTTY | O_CLOEXEC | O_NOFOLLOW | O_DIRECTORY);
+	if (cgroup_root_fd < 0)
+		return -errno;
+
 	/*
 	 * We assume that the cgroup we're currently in has been delegated to
 	 * us and we are free to further delege all of the controllers listed
 	 * in cgroup.controllers further down the hierarchy.
 	 */
-	mountpoint = must_copy_string(DEFAULT_CGROUP_MOUNTPOINT);
-	subtree_path = must_make_path(mountpoint, base_cgroup, "cgroup.controllers", NULL);
-	delegatable = cg_unified_get_controllers(subtree_path);
+	controllers_path = must_make_path_relative(base_cgroup, "cgroup.controllers", NULL);
+	delegatable = cg_unified_get_controllers(cgroup_root_fd, controllers_path);
 	if (!delegatable)
 		delegatable = cg_unified_make_empty_controller();
 	if (!delegatable[0])
@@ -3367,7 +3378,14 @@ static int cg_unified_init(struct cgroup_ops *ops, bool relative,
 	 * controllers per container.
 	 */
 
-	new = add_hierarchy(&ops->hierarchies, delegatable, mountpoint, base_cgroup, CGROUP2_SUPER_MAGIC);
+	new = add_hierarchy(&ops->hierarchies,
+			    move_ptr(delegatable),
+			    must_copy_string(DEFAULT_CGROUP_MOUNTPOINT),
+			    move_ptr(base_cgroup),
+			    CGROUP2_SUPER_MAGIC);
+	if (!new)
+		return log_error_errno(-1, errno, "Failed to add unified cgroup hierarchy");
+
 	if (unprivileged)
 		cg_unified_delegate(&new->cgroup2_chown);
 
@@ -3427,43 +3445,42 @@ struct cgroup_ops *cgfsng_ops_init(struct lxc_conf *conf)
 {
 	__do_free struct cgroup_ops *cgfsng_ops = NULL;
 
-	cgfsng_ops = malloc(sizeof(struct cgroup_ops));
+	cgfsng_ops = zalloc(sizeof(struct cgroup_ops));
 	if (!cgfsng_ops)
 		return ret_set_errno(NULL, ENOMEM);
 
-	memset(cgfsng_ops, 0, sizeof(struct cgroup_ops));
 	cgfsng_ops->cgroup_layout = CGROUP_LAYOUT_UNKNOWN;
 
 	if (cg_init(cgfsng_ops, conf))
 		return NULL;
 
-	cgfsng_ops->data_init = cgfsng_data_init;
-	cgfsng_ops->payload_destroy = cgfsng_payload_destroy;
-	cgfsng_ops->monitor_destroy = cgfsng_monitor_destroy;
-	cgfsng_ops->monitor_create = cgfsng_monitor_create;
-	cgfsng_ops->monitor_enter = cgfsng_monitor_enter;
-	cgfsng_ops->monitor_delegate_controllers = cgfsng_monitor_delegate_controllers;
-	cgfsng_ops->payload_delegate_controllers = cgfsng_payload_delegate_controllers;
-	cgfsng_ops->payload_create = cgfsng_payload_create;
-	cgfsng_ops->payload_enter = cgfsng_payload_enter;
-	cgfsng_ops->payload_finalize = cgfsng_payload_finalize;
-	cgfsng_ops->escape = cgfsng_escape;
-	cgfsng_ops->num_hierarchies = cgfsng_num_hierarchies;
-	cgfsng_ops->get_hierarchies = cgfsng_get_hierarchies;
-	cgfsng_ops->get_cgroup = cgfsng_get_cgroup;
-	cgfsng_ops->get = cgfsng_get;
-	cgfsng_ops->set = cgfsng_set;
-	cgfsng_ops->freeze = cgfsng_freeze;
-	cgfsng_ops->unfreeze = cgfsng_unfreeze;
-	cgfsng_ops->setup_limits_legacy = cgfsng_setup_limits_legacy;
-	cgfsng_ops->setup_limits = cgfsng_setup_limits;
-	cgfsng_ops->driver = "cgfsng";
-	cgfsng_ops->version = "1.0.0";
-	cgfsng_ops->attach = cgfsng_attach;
-	cgfsng_ops->chown = cgfsng_chown;
-	cgfsng_ops->mount = cgfsng_mount;
-	cgfsng_ops->devices_activate = cgfsng_devices_activate;
-	cgfsng_ops->get_limiting_cgroup = cgfsng_get_limiting_cgroup;
+	cgfsng_ops->data_init				= cgfsng_data_init;
+	cgfsng_ops->payload_destroy			= cgfsng_payload_destroy;
+	cgfsng_ops->monitor_destroy			= cgfsng_monitor_destroy;
+	cgfsng_ops->monitor_create			= cgfsng_monitor_create;
+	cgfsng_ops->monitor_enter			= cgfsng_monitor_enter;
+	cgfsng_ops->monitor_delegate_controllers	= cgfsng_monitor_delegate_controllers;
+	cgfsng_ops->payload_delegate_controllers	= cgfsng_payload_delegate_controllers;
+	cgfsng_ops->payload_create			= cgfsng_payload_create;
+	cgfsng_ops->payload_enter			= cgfsng_payload_enter;
+	cgfsng_ops->payload_finalize			= cgfsng_payload_finalize;
+	cgfsng_ops->escape				= cgfsng_escape;
+	cgfsng_ops->num_hierarchies			= cgfsng_num_hierarchies;
+	cgfsng_ops->get_hierarchies			= cgfsng_get_hierarchies;
+	cgfsng_ops->get_cgroup				= cgfsng_get_cgroup;
+	cgfsng_ops->get					= cgfsng_get;
+	cgfsng_ops->set 				= cgfsng_set;
+	cgfsng_ops->freeze				= cgfsng_freeze;
+	cgfsng_ops->unfreeze				= cgfsng_unfreeze;
+	cgfsng_ops->setup_limits_legacy			= cgfsng_setup_limits_legacy;
+	cgfsng_ops->setup_limits			= cgfsng_setup_limits;
+	cgfsng_ops->driver				= "cgfsng";
+	cgfsng_ops->version				= "1.0.0";
+	cgfsng_ops->attach				= cgfsng_attach;
+	cgfsng_ops->chown				= cgfsng_chown;
+	cgfsng_ops->mount 				= cgfsng_mount;
+	cgfsng_ops->devices_activate			= cgfsng_devices_activate;
+	cgfsng_ops->get_limiting_cgroup			= cgfsng_get_limiting_cgroup;
 
 	return move_ptr(cgfsng_ops);
 }
