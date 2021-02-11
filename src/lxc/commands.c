@@ -86,6 +86,8 @@ static const char *lxc_cmd_str(lxc_cmd_t cmd)
 		[LXC_CMD_GET_INIT_PIDFD]        	= "get_init_pidfd",
 		[LXC_CMD_GET_LIMITING_CGROUP]		= "get_limiting_cgroup",
 		[LXC_CMD_GET_LIMITING_CGROUP2_FD]	= "get_limiting_cgroup2_fd",
+		[LXC_CMD_GET_DEVPTS_FD]			= "get_devpts_fd",
+		[LXC_CMD_GET_SECCOMP_NOTIFY_FD]		= "get_seccomp_notify_fd",
 	};
 
 	if (cmd >= LXC_CMD_MAX)
@@ -154,6 +156,16 @@ static int lxc_cmd_rsp_recv(int sock, struct lxc_cmd_rr *cmd)
 	if (cmd->req.cmd == LXC_CMD_GET_INIT_PIDFD) {
 		int init_pidfd = move_fd(fd_rsp);
 		rsp->data = INT_TO_PTR(init_pidfd);
+	}
+
+	if (cmd->req.cmd == LXC_CMD_GET_DEVPTS_FD) {
+		int devpts_fd = move_fd(fd_rsp);
+		rsp->data = INT_TO_PTR(devpts_fd);
+	}
+
+	if (cmd->req.cmd == LXC_CMD_GET_SECCOMP_NOTIFY_FD) {
+		int seccomp_notify_fd = move_fd(fd_rsp);
+		rsp->data = INT_TO_PTR(seccomp_notify_fd);
 	}
 
 	if (rsp->datalen == 0)
@@ -445,6 +457,91 @@ static int lxc_cmd_get_init_pidfd_callback(int fd, struct lxc_cmd_req *req,
 		return log_error(LXC_CMD_REAP_CLIENT_FD, "Failed to send init pidfd");
 
 	return 0;
+}
+
+int lxc_cmd_get_devpts_fd(const char *name, const char *lxcpath)
+{
+	int ret, stopped;
+	struct lxc_cmd_rr cmd = {
+		.req = {
+			.cmd = LXC_CMD_GET_DEVPTS_FD,
+		},
+	};
+
+	ret = lxc_cmd(name, &cmd, &stopped, lxcpath, NULL);
+	if (ret < 0)
+		return log_debug_errno(-1, errno, "Failed to process devpts fd command");
+
+	if (cmd.rsp.ret < 0)
+		return log_debug_errno(-EBADF, errno, "Failed to receive devpts fd");
+
+	return PTR_TO_INT(cmd.rsp.data);
+}
+
+static int lxc_cmd_get_devpts_fd_callback(int fd, struct lxc_cmd_req *req,
+					  struct lxc_handler *handler,
+					  struct lxc_epoll_descr *descr)
+{
+	struct lxc_cmd_rsp rsp = {
+		.ret = 0,
+	};
+	int ret;
+
+	if (!handler->conf || handler->conf->devpts_fd < 0) {
+		rsp.ret = -EBADF;
+		ret = lxc_abstract_unix_send_fds(fd, NULL, 0, &rsp, sizeof(rsp));
+	} else {
+		ret = lxc_abstract_unix_send_fds(fd, &handler->conf->devpts_fd, 1, &rsp, sizeof(rsp));
+	}
+	if (ret < 0)
+		return log_error(LXC_CMD_REAP_CLIENT_FD, "Failed to send devpts fd");
+
+	return 0;
+}
+
+int lxc_cmd_get_seccomp_notify_fd(const char *name, const char *lxcpath)
+{
+#if HAVE_DECL_SECCOMP_NOTIFY_FD
+	int ret, stopped;
+	struct lxc_cmd_rr cmd = {
+		.req = {
+			.cmd = LXC_CMD_GET_SECCOMP_NOTIFY_FD,
+		},
+	};
+
+	ret = lxc_cmd(name, &cmd, &stopped, lxcpath, NULL);
+	if (ret < 0)
+		return log_debug_errno(-1, errno, "Failed to process seccomp notify fd command");
+
+	if (cmd.rsp.ret < 0)
+		return log_debug_errno(-EBADF, errno, "Failed to receive seccomp notify fd");
+
+	return PTR_TO_INT(cmd.rsp.data);
+#else
+	return ret_errno(EOPNOTSUPP);
+#endif
+}
+
+static int lxc_cmd_get_seccomp_notify_fd_callback(int fd, struct lxc_cmd_req *req,
+						  struct lxc_handler *handler,
+						  struct lxc_epoll_descr *descr)
+{
+#if HAVE_DECL_SECCOMP_NOTIFY_FD
+	struct lxc_cmd_rsp rsp = {
+		.ret = 0,
+	};
+	int ret;
+
+	if (!handler->conf || handler->conf->seccomp.notifier.notify_fd < 0)
+		rsp.ret = -EBADF;
+	ret = lxc_abstract_unix_send_fds(fd, &handler->conf->seccomp.notifier.notify_fd, 1, &rsp, sizeof(rsp));
+	if (ret < 0)
+		return log_error(LXC_CMD_REAP_CLIENT_FD, "Failed to send seccomp notify fd");
+
+	return 0;
+#else
+	return ret_errno(EOPNOTSUPP);
+#endif
 }
 
 /*
@@ -800,12 +897,11 @@ static int lxc_cmd_stop_callback(int fd, struct lxc_cmd_req *req,
 		else
 			TRACE("Sent signal %d to pidfd %d", stopsignal, handler->pid);
 
-		rsp.ret = cgroup_ops->unfreeze(cgroup_ops, -1);
-		if (!rsp.ret)
-			return 0;
+		ret = cgroup_ops->unfreeze(cgroup_ops, -1);
+		if (ret)
+			WARN("Failed to unfreeze container \"%s\"", handler->name);
 
-		ERROR("Failed to unfreeze container \"%s\"", handler->name);
-		rsp.ret = -errno;
+		return 0;
 	} else {
 		rsp.ret = -errno;
 	}
@@ -1102,7 +1198,8 @@ static int lxc_cmd_add_bpf_device_cgroup_callback(int fd, struct lxc_cmd_req *re
 	__do_bpf_program_free struct bpf_program *devices = NULL;
 	struct lxc_cmd_rsp rsp = {0};
 	struct lxc_conf *conf = handler->conf;
-	struct hierarchy *unified = handler->cgroup_ops->unified;
+	struct cgroup_ops *cgroup_ops = handler->cgroup_ops;
+	struct hierarchy *unified = cgroup_ops->unified;
 	int ret;
 	struct lxc_list *it;
 	struct device_item *device;
@@ -1153,8 +1250,8 @@ static int lxc_cmd_add_bpf_device_cgroup_callback(int fd, struct lxc_cmd_req *re
 		goto respond;
 
 	/* Replace old bpf program. */
-	devices_old = move_ptr(conf->cgroup2_devices);
-	conf->cgroup2_devices = move_ptr(devices);
+	devices_old = move_ptr(cgroup_ops->cgroup2_devices);
+	cgroup_ops->cgroup2_devices = move_ptr(devices);
 	devices = move_ptr(devices_old);
 
 	rsp.ret = 0;
@@ -1504,6 +1601,8 @@ static int lxc_cmd_process(int fd, struct lxc_cmd_req *req,
 		[LXC_CMD_GET_INIT_PIDFD]                = lxc_cmd_get_init_pidfd_callback,
 		[LXC_CMD_GET_LIMITING_CGROUP]           = lxc_cmd_get_limiting_cgroup_callback,
 		[LXC_CMD_GET_LIMITING_CGROUP2_FD]       = lxc_cmd_get_limiting_cgroup2_fd_callback,
+		[LXC_CMD_GET_DEVPTS_FD]			= lxc_cmd_get_devpts_fd_callback,
+		[LXC_CMD_GET_SECCOMP_NOTIFY_FD]		= lxc_cmd_get_seccomp_notify_fd_callback,
 	};
 
 	if (req->cmd >= LXC_CMD_MAX)

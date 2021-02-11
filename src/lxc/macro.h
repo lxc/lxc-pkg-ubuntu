@@ -25,6 +25,10 @@
 #define PATH_MAX 4096
 #endif
 
+#ifndef MAX_GRBUF_SIZE
+#define MAX_GRBUF_SIZE 2097152
+#endif
+
 #define INT64_FMT "%" PRId64
 
 /* Define __S_ISTYPE if missing from the C library. */
@@ -33,28 +37,168 @@
 #endif
 
 /* capabilities */
-#ifndef CAP_SYS_ADMIN
-#define CAP_SYS_ADMIN 21
+#ifndef CAP_CHOWN
+#define CAP_CHOWN            	0
 #endif
 
-#ifndef CAP_SETFCAP
-#define CAP_SETFCAP 31
+#ifndef CAP_DAC_OVERRIDE
+#define CAP_DAC_OVERRIDE     	1
 #endif
 
-#ifndef CAP_MAC_OVERRIDE
-#define CAP_MAC_OVERRIDE 32
+#ifndef CAP_DAC_READ_SEARCH
+#define CAP_DAC_READ_SEARCH  	2
 #endif
 
-#ifndef CAP_MAC_ADMIN
-#define CAP_MAC_ADMIN 33
+#ifndef CAP_FOWNER
+#define CAP_FOWNER           	3
 #endif
 
-#ifndef CAP_SETUID
-#define CAP_SETUID 7
+#ifndef CAP_FSETID
+#define CAP_FSETID           	4
+#endif
+
+#ifndef CAP_KILL
+#define CAP_KILL             	5
 #endif
 
 #ifndef CAP_SETGID
-#define CAP_SETGID 6
+#define CAP_SETGID           	6
+#endif
+
+#ifndef CAP_SETUID
+#define CAP_SETUID           	7
+#endif
+
+#ifndef CAP_SETPCAP
+#define CAP_SETPCAP          	8
+#endif
+
+#ifndef CAP_LINUX_IMMUTABLE
+#define CAP_LINUX_IMMUTABLE  	9
+#endif
+
+#ifndef CAP_NET_BIND_SERVICE
+#define CAP_NET_BIND_SERVICE 	10
+#endif
+
+#ifndef CAP_NET_BROADCAST
+#define CAP_NET_BROADCAST    	11
+#endif
+
+#ifndef CAP_NET_ADMIN
+#define CAP_NET_ADMIN        	12
+#endif
+
+#ifndef CAP_NET_RAW
+#define CAP_NET_RAW          	13
+#endif
+
+#ifndef CAP_IPC_LOCK
+#define CAP_IPC_LOCK         	14
+#endif
+
+#ifndef CAP_IPC_OWNER
+#define CAP_IPC_OWNER        	15
+#endif
+
+#ifndef CAP_SYS_MODULE
+#define CAP_SYS_MODULE       	16
+#endif
+
+#ifndef CAP_SYS_RAWIO
+#define CAP_SYS_RAWIO        	17
+#endif
+
+#ifndef CAP_SYS_CHROOT
+#define CAP_SYS_CHROOT       	18
+#endif
+
+#ifndef CAP_SYS_PTRACE
+#define CAP_SYS_PTRACE       	19
+#endif
+
+#ifndef CAP_SYS_PACCT
+#define CAP_SYS_PACCT        	20
+#endif
+
+#ifndef CAP_SYS_ADMIN
+#define CAP_SYS_ADMIN        	21
+#endif
+
+#ifndef CAP_SYS_BOOT
+#define CAP_SYS_BOOT         	22
+#endif
+
+#ifndef CAP_SYS_NICE
+#define CAP_SYS_NICE         	23
+#endif
+
+#ifndef CAP_SYS_RESOURCE
+#define CAP_SYS_RESOURCE     	24
+#endif
+
+#ifndef CAP_SYS_TIME
+#define CAP_SYS_TIME         	25
+#endif
+
+#ifndef CAP_SYS_TTY_CONFIG
+#define CAP_SYS_TTY_CONFIG   	26
+#endif
+
+#ifndef CAP_MKNOD
+#define CAP_MKNOD            	27
+#endif
+
+#ifndef CAP_LEASE
+#define CAP_LEASE            	28
+#endif
+
+#ifndef CAP_AUDIT_WRITE
+#define CAP_AUDIT_WRITE      	29
+#endif
+
+#ifndef CAP_AUDIT_CONTROL
+#define CAP_AUDIT_CONTROL    	30
+#endif
+
+#ifndef CAP_SETFCAP
+#define CAP_SETFCAP	     	31
+#endif
+
+#ifndef CAP_MAC_OVERRIDE
+#define CAP_MAC_OVERRIDE     	32
+#endif
+
+#ifndef CAP_MAC_ADMIN
+#define CAP_MAC_ADMIN        	33
+#endif
+
+#ifndef CAP_SYSLOG
+#define CAP_SYSLOG           	34
+#endif
+
+#ifndef CAP_WAKE_ALARM
+#define CAP_WAKE_ALARM       	35
+#endif
+
+#ifndef CAP_BLOCK_SUSPEND
+#define CAP_BLOCK_SUSPEND    	36
+#endif
+
+#ifndef CAP_AUDIT_READ
+#define CAP_AUDIT_READ		37
+#endif
+
+#ifndef CAP_PERFMON
+#define CAP_PERFMON		38
+#endif
+
+#ifndef CAP_BPF
+#define CAP_BPF			39
+#endif
+
+#ifndef CAP_CHECKPOINT_RESTORE
+#define CAP_CHECKPOINT_RESTORE	40
 #endif
 
 /* prctl */
@@ -475,5 +619,13 @@ enum {
 	(__builtin_choose_expr(!__builtin_types_compatible_p(typeof(x),      \
 							     typeof(&*(x))), \
 			       sizeof(x) / sizeof((x)[0]), ((void)0)))
+
+#ifndef TIOCGPTPEER
+	#if defined __sparc__
+		#define TIOCGPTPEER _IO('t', 137)
+	#else
+		#define TIOCGPTPEER _IO('T', 0x41)
+	#endif
+#endif
 
 #endif /* __LXC_MACRO_H */

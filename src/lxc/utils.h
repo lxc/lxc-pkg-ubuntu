@@ -6,10 +6,6 @@
 /* Properly support loop devices on 32bit systems. */
 #define _FILE_OFFSET_BITS 64
 
-#ifndef MAX_GRBUF_SIZE
-#define MAX_GRBUF_SIZE 65536
-#endif
-
 #include <errno.h>
 #include <linux/loop.h>
 #include <linux/types.h>
@@ -229,7 +225,6 @@ __hidden extern uint64_t lxc_find_next_power2(uint64_t n);
 __hidden extern int lxc_set_death_signal(int signal, pid_t parent, int parent_status_fd);
 __hidden extern int fd_cloexec(int fd, bool cloexec);
 __hidden extern int lxc_rm_rf(const char *dirname);
-__hidden extern int lxc_setup_keyring(char *keyring_label);
 __hidden extern bool lxc_can_use_pidfd(int pidfd);
 
 __hidden extern int fix_stdio_permissions(uid_t uid);
@@ -243,5 +238,10 @@ static inline bool gid_valid(gid_t gid)
 {
 	return gid != LXC_INVALID_GID;
 }
+
+__hidden extern int safe_mount_beneath(const char *beneath, const char *src, const char *dst,
+				       const char *fstype, unsigned int flags, const void *data);
+__hidden extern int safe_mount_beneath_at(int beneat_fd, const char *src, const char *dst,
+					  const char *fstype, unsigned int flags, const void *data);
 
 #endif /* __LXC_UTILS_H */

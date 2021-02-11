@@ -2696,7 +2696,7 @@ static int lxc_delete_network_unpriv_exec(const char *lxcpath, const char *lxcna
 	int bytes, ret;
 	pid_t child;
 	int pipefd[2];
-	char buffer[PATH_MAX] = {0};
+	char buffer[PATH_MAX] = {};
 
 	if (netdev->type != LXC_NET_VETH)
 		return log_error_errno(-1, EINVAL, "Network type %d not support for unprivileged use", netdev->type);
@@ -3288,6 +3288,13 @@ int lxc_restore_phys_nics_to_netns(struct lxc_handler *handler)
 	int ret;
 	char ifname[IFNAMSIZ];
 	struct lxc_list *iterator;
+
+	/*
+	 * If we weren't asked to clone a new network namespace, there's
+	 * nothing to restore.
+	 */
+	if (!(handler->ns_clone_flags & CLONE_NEWNET))
+		return 0;
 
 	/* We need CAP_NET_ADMIN in the parent namespace in order to setns() to
 	 * the parent network namespace. We won't have this capability if we are

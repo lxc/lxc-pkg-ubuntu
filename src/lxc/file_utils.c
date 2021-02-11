@@ -18,6 +18,7 @@
 #include "macro.h"
 #include "memory_utils.h"
 #include "string_utils.h"
+#include "syscall_wrappers.h"
 #include "utils.h"
 
 int lxc_open_dirfd(const char *dir)
@@ -381,8 +382,10 @@ ssize_t lxc_sendfile_nointr(int out_fd, int in_fd, off_t *offset, size_t count)
 	return ret;
 }
 
-int fd_to_fd(int from, int to)
+ssize_t __fd_to_fd(int from, int to)
 {
+	ssize_t total_bytes = 0;
+
 	for (;;) {
 		uint8_t buf[PATH_MAX];
 		uint8_t *p = buf;
@@ -396,6 +399,7 @@ int fd_to_fd(int from, int to)
 			break;
 
 		bytes_to_write = (size_t)bytes_read;
+		total_bytes += bytes_read;
 		do {
 			ssize_t bytes_written;
 
@@ -408,7 +412,7 @@ int fd_to_fd(int from, int to)
 		} while (bytes_to_write > 0);
 	}
 
-	return 0;
+	return total_bytes;
 }
 
 int fd_to_buf(int fd, char **buf, size_t *length)
@@ -511,4 +515,53 @@ FILE *fdopen_cached(int fd, const char *mode, void **caller_freed_buffer)
 	move_fd(dupfd);
 #endif
 	return f;
+}
+
+bool exists_dir_at(int dir_fd, const char *path)
+{
+	struct stat sb;
+	int ret;
+
+	ret = fstatat(dir_fd, path, &sb, 0);
+	if (ret < 0)
+		return false;
+
+	return S_ISDIR(sb.st_mode);
+}
+
+bool exists_file_at(int dir_fd, const char *path)
+{
+	struct stat sb;
+
+	return fstatat(dir_fd, path, &sb, 0) == 0;
+}
+
+int open_beneath(int dir_fd, const char *path, unsigned int flags)
+{
+	__do_close int fd = -EBADF;
+	struct lxc_open_how how = {
+		.flags		= flags,
+		.resolve	= RESOLVE_NO_XDEV | RESOLVE_NO_SYMLINKS | RESOLVE_NO_MAGICLINKS | RESOLVE_BENEATH,
+	};
+
+	fd = openat2(dir_fd, path, &how, sizeof(how));
+	if (fd >= 0)
+		return move_fd(fd);
+
+	if (errno != ENOSYS)
+		return -errno;
+
+	return openat(dir_fd, path, O_NOFOLLOW | flags);
+}
+
+int fd_make_nonblocking(int fd)
+{
+	int flags;
+
+	flags = fcntl(fd, F_GETFL);
+	if (flags < 0)
+		return -1;
+
+	flags &= ~O_NONBLOCK;
+	return fcntl(fd, F_SETFL, flags);
 }

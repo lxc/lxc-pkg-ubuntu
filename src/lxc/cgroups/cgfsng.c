@@ -654,7 +654,7 @@ static char **cg_hybrid_get_controllers(char **klist, char **nlist, char *line,
 	 * verify /sys/fs/cgroup/ in this field.
 	 */
 	if (strncmp(p, DEFAULT_CGROUP_MOUNTPOINT "/", 15) != 0)
-		return log_error(NULL, "Found hierarchy not under " DEFAULT_CGROUP_MOUNTPOINT ": \"%s\"", p);
+		return log_warn(NULL, "Found hierarchy not under " DEFAULT_CGROUP_MOUNTPOINT ": \"%s\"", p);
 
 	p += 15;
 	p2 = strchr(p, ' ');
@@ -1027,7 +1027,7 @@ __cgfsng_ops static void cgfsng_payload_destroy(struct cgroup_ops *ops,
 	}
 
 #ifdef HAVE_STRUCT_BPF_CGROUP_DEV_CTX
-	ret = bpf_program_cgroup_detach(handler->conf->cgroup2_devices);
+	ret = bpf_program_cgroup_detach(handler->cgroup_ops->cgroup2_devices);
 	if (ret < 0)
 		WARN("Failed to detach bpf program from cgroup");
 #endif
@@ -1831,10 +1831,7 @@ __cgfsng_ops static bool cgfsng_mount(struct cgroup_ops *ops,
 	}
 
 	if (!wants_force_mount) {
-		if (!lxc_list_empty(&handler->conf->keepcaps))
-			wants_force_mount = !in_caplist(CAP_SYS_ADMIN, &handler->conf->keepcaps);
-		else
-			wants_force_mount = in_caplist(CAP_SYS_ADMIN, &handler->conf->caps);
+		wants_force_mount = lxc_wants_cap(CAP_SYS_ADMIN, handler->conf);
 
 		/*
 		 * Most recent distro versions currently have init system that
@@ -1874,9 +1871,17 @@ __cgfsng_ops static bool cgfsng_mount(struct cgroup_ops *ops,
 	}
 
 	/* mount tmpfs */
-	ret = safe_mount(NULL, cgroup_root, "tmpfs",
-			 MS_NOSUID | MS_NODEV | MS_NOEXEC | MS_RELATIME,
-			 "size=10240k,mode=755", root);
+	ret = safe_mount_beneath(root, NULL, DEFAULT_CGROUP_MOUNTPOINT, "tmpfs",
+				 MS_NOSUID | MS_NODEV | MS_NOEXEC | MS_RELATIME,
+				 "size=10240k,mode=755");
+	if (ret < 0) {
+		if (errno != ENOSYS)
+			return false;
+
+		ret = safe_mount(NULL, cgroup_root, "tmpfs",
+				 MS_NOSUID | MS_NODEV | MS_NOEXEC | MS_RELATIME,
+				 "size=10240k,mode=755", root);
+	}
 	if (ret < 0)
 		return false;
 
@@ -2740,9 +2745,6 @@ static int device_cgroup_rule_parse_devpath(struct device_item *device,
 	if (device_cgroup_parse_access(device, mode) < 0)
 		return -1;
 
-	if (n_parts == 1)
-		return ret_set_errno(-1, EINVAL);
-
 	ret = stat(path, &sb);
 	if (ret < 0)
 		return ret_set_errno(-1, errno);
@@ -3022,8 +3024,8 @@ __cgfsng_ops static bool cgfsng_devices_activate(struct cgroup_ops *ops, struct 
 		return log_error_errno(false, ENOMEM, "Failed to attach bpf program");
 
 	/* Replace old bpf program. */
-	devices_old = move_ptr(conf->cgroup2_devices);
-	conf->cgroup2_devices = move_ptr(devices);
+	devices_old = move_ptr(ops->cgroup2_devices);
+	ops->cgroup2_devices = move_ptr(devices);
 	devices = move_ptr(devices_old);
 #endif
 	return true;
@@ -3230,7 +3232,7 @@ static int cg_hybrid_init(struct cgroup_ops *ops, bool relative, bool unprivileg
 
 		mountpoint = cg_hybrid_get_mountpoint(line);
 		if (!mountpoint) {
-			ERROR("Failed parsing mountpoint from \"%s\"", line);
+			WARN("Failed parsing mountpoint from \"%s\"", line);
 			continue;
 		}
 
@@ -3239,7 +3241,7 @@ static int cg_hybrid_init(struct cgroup_ops *ops, bool relative, bool unprivileg
 		else
 			base_cgroup = cg_hybrid_get_current_cgroup(basecginfo, NULL, CGROUP2_SUPER_MAGIC);
 		if (!base_cgroup) {
-			ERROR("Failed to find current cgroup");
+			WARN("Failed to find current cgroup");
 			continue;
 		}
 

@@ -68,9 +68,17 @@ __hidden extern FILE *fopen_cloexec(const char *path, const char *mode);
 __hidden extern ssize_t lxc_sendfile_nointr(int out_fd, int in_fd, off_t *offset, size_t count);
 __hidden extern char *file_to_buf(const char *path, size_t *length);
 __hidden extern int fd_to_buf(int fd, char **buf, size_t *length);
-__hidden extern int fd_to_fd(int from, int to);
+__hidden extern ssize_t __fd_to_fd(int from, int to);
+static inline int fd_to_fd(int from, int to)
+{
+	return __fd_to_fd(from, to) >= 0;
+}
 __hidden extern int lxc_open_dirfd(const char *dir);
 __hidden extern FILE *fdopen_cached(int fd, const char *mode, void **caller_freed_buffer);
 __hidden extern FILE *fopen_cached(const char *path, const char *mode, void **caller_freed_buffer);
+__hidden extern bool exists_dir_at(int dir_fd, const char *path);
+__hidden extern bool exists_file_at(int dir_fd, const char *path);
+__hidden extern int open_beneath(int dir_fd, const char *path, unsigned int flags);
+__hidden int fd_make_nonblocking(int fd);
 
 #endif /* __LXC_FILE_UTILS_H */

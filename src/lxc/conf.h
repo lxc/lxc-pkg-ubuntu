@@ -15,10 +15,12 @@
 #include <sys/types.h>
 #include <sys/vfs.h>
 
+#include "caps.h"
 #include "compiler.h"
 #include "config.h"
 #include "list.h"
 #include "lxcseccomp.h"
+#include "memory_utils.h"
 #include "ringbuf.h"
 #include "start.h"
 #include "terminal.h"
@@ -68,6 +70,16 @@ struct lxc_cgroup {
 	};
 };
 
+static void free_lxc_cgroup(struct lxc_cgroup *ptr)
+{
+	if (ptr) {
+		free(ptr->subsystem);
+		free(ptr->value);
+		free_disarm(ptr);
+	}
+}
+define_cleanup_function(struct lxc_cgroup *, free_lxc_cgroup);
+
 #if !HAVE_SYS_RESOURCE_H
 #define RLIM_INFINITY ((unsigned long)-1)
 struct rlimit {
@@ -86,6 +98,15 @@ struct lxc_limit {
 	struct rlimit limit;
 };
 
+static void free_lxc_limit(struct lxc_limit *ptr)
+{
+	if (ptr) {
+		free(ptr->resource);
+		free_disarm(ptr);
+	}
+}
+define_cleanup_function(struct lxc_limit *, free_lxc_limit);
+
 enum idtype {
 	ID_TYPE_UID,
 	ID_TYPE_GID
@@ -101,6 +122,16 @@ struct lxc_sysctl {
 	char *value;
 };
 
+static void free_lxc_sysctl(struct lxc_sysctl *ptr)
+{
+	if (ptr) {
+		free(ptr->key);
+		free(ptr->value);
+		free_disarm(ptr);
+	}
+}
+define_cleanup_function(struct lxc_sysctl *, free_lxc_sysctl);
+
 /*
  * Defines a structure to configure proc filesystem at runtime.
  * @filename : the proc filesystem will be configured without the "lxc.proc" prefix
@@ -110,6 +141,16 @@ struct lxc_proc {
 	char *filename;
 	char *value;
 };
+
+static void free_lxc_proc(struct lxc_proc *ptr)
+{
+	if (ptr) {
+		free(ptr->filename);
+		free(ptr->value);
+		free_disarm(ptr);
+	}
+}
+define_cleanup_function(struct lxc_proc *, free_lxc_proc);
 
 /*
  * id_map is an id map entry.  Form in confile is:
@@ -139,15 +180,19 @@ struct lxc_tty_info {
 
 /* Defines a structure to store the rootfs location, the
  * optionals pivot_root, rootfs mount paths
- * @path       : the rootfs source (directory or device)
- * @mount      : where it is mounted
- * @bev_type   : optional backing store type
- * @options    : mount options
- * @mountflags : the portion of @options that are flags
- * @data       : the portion of @options that are not flags
- * @managed    : whether it is managed by LXC
+ * @path         : the rootfs source (directory or device)
+ * @mount        : where it is mounted
+ * @bev_type     : optional backing store type
+ * @options      : mount options
+ * @mountflags   : the portion of @options that are flags
+ * @data         : the portion of @options that are not flags
+ * @managed      : whether it is managed by LXC
+ * @mntpt_fd	 : fd for @mount
+ * @dev_mntpt_fd : fd for /dev of the container
  */
 struct lxc_rootfs {
+	int mntpt_fd;
+	int dev_mntpt_fd;
 	char *path;
 	char *mount;
 	char *bdev_type;
@@ -244,7 +289,6 @@ struct lxc_conf {
 	struct {
 		struct lxc_list cgroup;
 		struct lxc_list cgroup2;
-		struct bpf_program *cgroup2_devices;
 		/* This should be reimplemented as a hashmap. */
 		struct lxc_list devices;
 	};
@@ -282,6 +326,8 @@ struct lxc_conf {
 	struct lxc_terminal console;
 	/* maximum pty devices allowed by devpts mount */
 	size_t pty_max;
+	/* file descriptor for the container's /dev/pts mount */
+	int devpts_fd;
 
 	/* set to true when rootfs has been setup */
 	bool rootfs_setup;
@@ -456,6 +502,18 @@ __hidden extern int run_script(const char *name, const char *section, const char
 __hidden extern int run_script_argv(const char *name, unsigned int hook_version, const char *section,
 				    const char *script, const char *hookname, char **argsin);
 __hidden extern int in_caplist(int cap, struct lxc_list *caps);
+
+static inline bool lxc_wants_cap(int cap, struct lxc_conf *conf)
+{
+	if (lxc_caps_last_cap() < cap)
+		return false;
+
+	if (!lxc_list_empty(&conf->keepcaps))
+		return !in_caplist(cap, &conf->keepcaps);
+
+	return in_caplist(cap, &conf->caps);
+}
+
 __hidden extern int setup_sysctl_parameters(struct lxc_list *sysctls);
 __hidden extern int lxc_clear_sysctls(struct lxc_conf *c, const char *key);
 __hidden extern int setup_proc_filesystem(struct lxc_list *procs, pid_t pid);
@@ -471,5 +529,7 @@ static inline int chown_mapped_root(const char *path, const struct lxc_conf *con
 {
 	return userns_exec_mapped_root(path, -EBADF, conf);
 }
+
+__hidden int lxc_setup_devpts_parent(struct lxc_handler *handler);
 
 #endif /* __LXC_CONF_H */

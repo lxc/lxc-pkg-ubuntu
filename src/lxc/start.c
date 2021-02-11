@@ -728,7 +728,7 @@ int lxc_init(const char *name, struct lxc_handler *handler)
 	if (status_fd < 0)
 		return log_error_errno(-1, errno, "Failed to open monitor status fd");
 
-	lsm_init();
+	handler->lsm_ops = lsm_init();
 	TRACE("Initialized LSM");
 
 	/* Begin by setting the state to STARTING. */
@@ -815,13 +815,6 @@ int lxc_init(const char *name, struct lxc_handler *handler)
 	}
 	TRACE("Created console");
 
-	ret = lxc_terminal_map_ids(conf, &conf->console);
-	if (ret < 0) {
-		ERROR("Failed to chown console");
-		goto out_delete_terminal;
-	}
-	TRACE("Chowned console");
-
 	handler->cgroup_ops = cgroup_init(handler->conf);
 	if (!handler->cgroup_ops) {
 		ERROR("Failed to initialize cgroup driver");
@@ -834,7 +827,7 @@ int lxc_init(const char *name, struct lxc_handler *handler)
 		return log_error(-1, "Failed loading seccomp policy");
 	TRACE("Read seccomp policy");
 
-	ret = lsm_process_prepare(conf, handler->lxcpath);
+	ret = handler->lsm_ops->prepare(handler->lsm_ops, conf, handler->lxcpath);
 	if (ret < 0) {
 		ERROR("Failed to initialize LSM");
 		goto out_delete_terminal;
@@ -925,7 +918,7 @@ void lxc_end(struct lxc_handler *handler)
 	while (namespace_count--)
 		free(namespaces[namespace_count]);
 
-	lsm_process_cleanup(handler->conf, handler->lxcpath);
+	handler->lsm_ops->cleanup(handler->lsm_ops, handler->conf, handler->lxcpath);
 
 	if (cgroup_ops) {
 		cgroup_ops->payload_destroy(cgroup_ops, handler);
@@ -980,6 +973,7 @@ void lxc_end(struct lxc_handler *handler)
 
 	lxc_terminal_delete(&handler->conf->console);
 	lxc_delete_tty(&handler->conf->ttys);
+	close_prot_errno_disarm(handler->conf->devpts_fd);
 
 	/* The command socket is now closed, no more state clients can register
 	 * themselves from now on. So free the list of state clients.
@@ -1226,7 +1220,7 @@ static int do_start(void *data)
 	}
 
 	/* Set the label to change to when we exec(2) the container's init. */
-	ret = lsm_process_label_set(NULL, handler->conf, true);
+	ret = handler->lsm_ops->process_label_set(handler->lsm_ops, NULL, handler->conf, true);
 	if (ret < 0)
 		goto out_warn_father;
 
@@ -1884,6 +1878,12 @@ static int lxc_spawn(struct lxc_handler *handler)
 		}
 	}
 
+	ret = lxc_setup_devpts_parent(handler);
+	if (ret < 0) {
+		SYSERROR("Failed to receive devpts fd from child");
+		goto out_delete_net;
+	}
+
 	/* Now all networks are created, network devices are moved into place,
 	 * and the correct names and ifindices in the respective namespaces have
 	 * been recorded. The corresponding structs have now all been filled. So
@@ -2069,6 +2069,7 @@ out_detach_blockdev:
 
 out_delete_network:
 	lxc_abort(handler);
+	lxc_restore_phys_nics_to_netns(handler);
 	lxc_delete_network(handler);
 	detach_block_device(handler->conf);
 	lxc_end(handler);

@@ -608,6 +608,16 @@ static int do_lxcapi_init_pidfd(struct lxc_container *c)
 
 WRAP_API(int, lxcapi_init_pidfd)
 
+static int do_lxcapi_devpts_fd(struct lxc_container *c)
+{
+	if (!c)
+		return ret_errno(EBADF);
+
+	return lxc_cmd_get_devpts_fd(c->name, c->config_path);
+}
+
+WRAP_API(int, lxcapi_devpts_fd)
+
 static bool load_config_locked(struct lxc_container *c, const char *fname)
 {
 	if (!c->lxc_conf)
@@ -2330,20 +2340,21 @@ static char **do_lxcapi_get_interfaces(struct lxc_container *c)
 	char **interfaces = NULL;
 	char interface[IFNAMSIZ];
 
-	if (pipe2(pipefd, O_CLOEXEC) < 0)
-		return NULL;
+	if (pipe2(pipefd, O_CLOEXEC))
+		return log_error_errno(NULL, errno, "Failed to create pipe");
 
 	pid = fork();
 	if (pid < 0) {
-		SYSERROR("Failed to fork task to get interfaces information");
 		close(pipefd[0]);
 		close(pipefd[1]);
-		return NULL;
+		return log_error_errno(NULL, errno, "Failed to fork task to get interfaces information");
 	}
 
-	if (pid == 0) { /* child */
-		int ret = 1, nbytes;
-		struct netns_ifaddrs *interfaceArray = NULL, *tempIfAddr = NULL;
+	if (pid == 0) {
+		call_cleaner(netns_freeifaddrs) struct netns_ifaddrs *ifaddrs = NULL;
+		struct netns_ifaddrs *ifa = NULL;
+		int ret = 1;
+		int nbytes;
 
 		/* close the read-end of the pipe */
 		close(pipefd[0]);
@@ -2354,15 +2365,15 @@ static char **do_lxcapi_get_interfaces(struct lxc_container *c)
 		}
 
 		/* Grab the list of interfaces */
-		if (netns_getifaddrs(&interfaceArray, -1, &(bool){false})) {
+		if (netns_getifaddrs(&ifaddrs, -1, &(bool){false})) {
 			SYSERROR("Failed to get interfaces list");
 			goto out;
 		}
 
 		/* Iterate through the interfaces */
-		for (tempIfAddr = interfaceArray; tempIfAddr != NULL;
-		     tempIfAddr = tempIfAddr->ifa_next) {
-			nbytes = lxc_write_nointr(pipefd[1], tempIfAddr->ifa_name, IFNAMSIZ);
+		for (ifa = ifaddrs; ifa != NULL;
+		     ifa = ifa->ifa_next) {
+			nbytes = lxc_write_nointr(pipefd[1], ifa->ifa_name, IFNAMSIZ);
 			if (nbytes < 0)
 				goto out;
 
@@ -2372,9 +2383,6 @@ static char **do_lxcapi_get_interfaces(struct lxc_container *c)
 		ret = 0;
 
 	out:
-		if (interfaceArray)
-			netns_freeifaddrs(interfaceArray);
-
 		/* close the write-end of the pipe, thus sending EOF to the reader */
 		close(pipefd[1]);
 		_exit(ret);
@@ -2395,7 +2403,7 @@ static char **do_lxcapi_get_interfaces(struct lxc_container *c)
 		count++;
 	}
 
-	if (wait_for_pid(pid) != 0) {
+	if (wait_for_pid(pid)) {
 		for (i = 0; i < count; i++)
 			free(interfaces[i]);
 
@@ -2426,10 +2434,8 @@ static char **do_lxcapi_get_ips(struct lxc_container *c, const char *interface,
 	char **addresses = NULL;
 
 	ret = pipe2(pipefd, O_CLOEXEC);
-	if (ret < 0) {
-		SYSERROR("Failed to create pipe");
-		return NULL;
-	}
+	if (ret < 0)
+		return log_error_errno(NULL, errno, "Failed to create pipe");
 
 	pid = fork();
 	if (pid < 0) {
@@ -2440,11 +2446,12 @@ static char **do_lxcapi_get_ips(struct lxc_container *c, const char *interface,
 	}
 
 	if (pid == 0) {
+		call_cleaner(netns_freeifaddrs) struct netns_ifaddrs *ifaddrs = NULL;
+		struct netns_ifaddrs *ifa = NULL;
 		ssize_t nbytes;
 		char addressOutputBuffer[INET6_ADDRSTRLEN];
 		char *address_ptr = NULL;
-		void *tempAddrPtr = NULL;
-		struct netns_ifaddrs *interfaceArray = NULL, *tempIfAddr = NULL;
+		void *address_ptr_tmp = NULL;
 
 		/* close the read-end of the pipe */
 		close(pipefd[0]);
@@ -2455,52 +2462,50 @@ static char **do_lxcapi_get_ips(struct lxc_container *c, const char *interface,
 		}
 
 		/* Grab the list of interfaces */
-		if (netns_getifaddrs(&interfaceArray, -1, &(bool){false})) {
+		if (netns_getifaddrs(&ifaddrs, -1, &(bool){false})) {
 			SYSERROR("Failed to get interfaces list");
 			goto out;
 		}
 
 		/* Iterate through the interfaces */
-		for (tempIfAddr = interfaceArray; tempIfAddr;
-		     tempIfAddr = tempIfAddr->ifa_next) {
-			if (tempIfAddr->ifa_addr == NULL)
+		for (ifa = ifaddrs; ifa; ifa = ifa->ifa_next) {
+			if (ifa->ifa_addr == NULL)
 				continue;
 
 #pragma GCC diagnostic push
 #pragma GCC diagnostic ignored "-Wcast-align"
 
-			if (tempIfAddr->ifa_addr->sa_family == AF_INET) {
+			if (ifa->ifa_addr->sa_family == AF_INET) {
 				if (family && strcmp(family, "inet"))
 					continue;
 
-				tempAddrPtr = &((struct sockaddr_in *)tempIfAddr->ifa_addr)->sin_addr;
+				address_ptr_tmp = &((struct sockaddr_in *)ifa->ifa_addr)->sin_addr;
 			} else {
 				if (family && strcmp(family, "inet6"))
 					continue;
 
-				if (((struct sockaddr_in6 *)tempIfAddr->ifa_addr)->sin6_scope_id != scope)
+				if (((struct sockaddr_in6 *)ifa->ifa_addr)->sin6_scope_id != scope)
 					continue;
 
-				tempAddrPtr = &((struct sockaddr_in6 *)tempIfAddr->ifa_addr)->sin6_addr;
+				address_ptr_tmp = &((struct sockaddr_in6 *)ifa->ifa_addr)->sin6_addr;
 			}
 
 #pragma GCC diagnostic pop
 
-			if (interface && strcmp(interface, tempIfAddr->ifa_name))
+			if (interface && strcmp(interface, ifa->ifa_name))
 				continue;
-			else if (!interface && strcmp("lo", tempIfAddr->ifa_name) == 0)
+			else if (!interface && strcmp("lo", ifa->ifa_name) == 0)
 				continue;
 
-			address_ptr = (char *)inet_ntop(tempIfAddr->ifa_addr->sa_family,
-						    tempAddrPtr, addressOutputBuffer,
-						    sizeof(addressOutputBuffer));
+			address_ptr = (char *)inet_ntop(ifa->ifa_addr->sa_family, address_ptr_tmp,
+							addressOutputBuffer,
+							sizeof(addressOutputBuffer));
 			if (!address_ptr)
 				continue;
 
 			nbytes = lxc_write_nointr(pipefd[1], address_ptr, INET6_ADDRSTRLEN);
 			if (nbytes != INET6_ADDRSTRLEN) {
-				SYSERROR("Failed to send ipv6 address \"%s\"",
-					 address_ptr);
+				SYSERROR("Failed to send ipv6 address \"%s\"", address_ptr);
 				goto out;
 			}
 
@@ -2510,9 +2515,6 @@ static char **do_lxcapi_get_ips(struct lxc_container *c, const char *interface,
 		ret = 0;
 
 	out:
-		if (interfaceArray)
-			netns_freeifaddrs(interfaceArray);
-
 		/* close the write-end of the pipe, thus sending EOF to the reader */
 		close(pipefd[1]);
 		_exit(ret);
@@ -2530,7 +2532,7 @@ static char **do_lxcapi_get_ips(struct lxc_container *c, const char *interface,
 		count++;
 	}
 
-	if (wait_for_pid(pid) != 0) {
+	if (wait_for_pid(pid)) {
 		for (i = 0; i < count; i++)
 			free(addresses[i]);
 
@@ -5230,6 +5232,16 @@ static int do_lxcapi_seccomp_notify_fd(struct lxc_container *c)
 
 WRAP_API(int, lxcapi_seccomp_notify_fd)
 
+static int do_lxcapi_seccomp_notify_fd_active(struct lxc_container *c)
+{
+	if (!c || !c->lxc_conf)
+		return ret_set_errno(-1, -EINVAL);
+
+	return lxc_cmd_get_seccomp_notify_fd(c->name, c->config_path);
+}
+
+WRAP_API(int, lxcapi_seccomp_notify_fd_active)
+
 struct lxc_container *lxc_container_new(const char *name, const char *configpath)
 {
 	struct lxc_container *c;
@@ -5319,6 +5331,7 @@ struct lxc_container *lxc_container_new(const char *name, const char *configpath
 	c->unfreeze = lxcapi_unfreeze;
 	c->console = lxcapi_console;
 	c->console_getfd = lxcapi_console_getfd;
+	c->devpts_fd = lxcapi_devpts_fd;
 	c->init_pid = lxcapi_init_pid;
 	c->init_pidfd = lxcapi_init_pidfd;
 	c->load_config = lxcapi_load_config;
@@ -5371,6 +5384,7 @@ struct lxc_container *lxc_container_new(const char *name, const char *configpath
 	c->mount = lxcapi_mount;
 	c->umount = lxcapi_umount;
 	c->seccomp_notify_fd = lxcapi_seccomp_notify_fd;
+	c->seccomp_notify_fd_active = lxcapi_seccomp_notify_fd_active;
 
 	return c;
 
@@ -5727,7 +5741,7 @@ free_ct_name:
 
 bool lxc_config_item_is_supported(const char *key)
 {
-	return !!lxc_get_config(key);
+	return !!lxc_get_config_exact(key);
 }
 
 bool lxc_has_api_extension(const char *extension)
