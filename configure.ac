@@ -3,7 +3,7 @@ AC_PREREQ([2.69])
 m4_define([lxc_devel], 0)
 m4_define([lxc_version_major], 4)
 m4_define([lxc_version_minor], 0)
-m4_define([lxc_version_micro], 4)
+m4_define([lxc_version_micro], 6)
 m4_define([lxc_version_beta], [])
 
 m4_define([lxc_abi_major], 1)
@@ -622,7 +622,8 @@ AC_CHECK_HEADER([ifaddrs.h],
 AC_HEADER_MAJOR
 
 # Check for some syscalls functions
-AC_CHECK_FUNCS([setns pivot_root sethostname unshare rand_r confstr faccessat gettid memfd_create move_mount open_tree execveat clone3 fsopen fspick fsconfig fsmount])
+AC_CHECK_FUNCS([setns pivot_root sethostname unshare rand_r confstr faccessat gettid memfd_create move_mount open_tree execveat clone3 fsopen fspick fsconfig fsmount, openat2])
+AC_CHECK_TYPES([struct open_how], [], [], [[#include <linux/openat2.h>]])
 AC_CHECK_TYPES([struct clone_args], [], [], [[#include <linux/sched.h>]])
 AC_CHECK_MEMBERS([struct clone_args.set_tid],[],[],[[#include <linux/sched.h>]])
 AC_CHECK_MEMBERS([struct clone_args.cgroup],[],[],[[#include <linux/sched.h>]])

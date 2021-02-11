@@ -122,3 +122,16 @@ When running on kernels that support pidfds LXC will rely on them for most opera
 ## seccomp\_allow\_deny\_syntax
 
 This adds the ability to use "denylist" and "allowlist" in seccomp v2 policies.
+
+## devpts\_fd
+
+This adds the ability to allocate a file descriptor for the devpts instance of
+the container.
+
+## seccomp\_notify\_fd\_active
+
+Retrieve the seccomp notifier fd from a running container.
+
+## seccomp\_proxy\_send\_notify\_fd
+
+Whether the seccomp notify proxy sends a long a notify fd file descriptor.

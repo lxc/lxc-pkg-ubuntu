@@ -41,6 +41,8 @@ typedef enum {
 	LXC_CMD_GET_INIT_PIDFD,
 	LXC_CMD_GET_LIMITING_CGROUP,
 	LXC_CMD_GET_LIMITING_CGROUP2_FD,
+	LXC_CMD_GET_DEVPTS_FD,
+	LXC_CMD_GET_SECCOMP_NOTIFY_FD,
 	LXC_CMD_MAX,
 } lxc_cmd_t;
 
@@ -119,6 +121,7 @@ __hidden extern int lxc_cmd_mainloop_add(const char *name, struct lxc_epoll_desc
 __hidden extern int lxc_try_cmd(const char *name, const char *lxcpath);
 __hidden extern int lxc_cmd_console_log(const char *name, const char *lxcpath,
 					struct lxc_console_log *log);
+__hidden extern int lxc_cmd_get_seccomp_notify_fd(const char *name, const char *lxcpath);
 __hidden extern int lxc_cmd_seccomp_notify_add_listener(const char *name, const char *lxcpath, int fd,
 							/* unused */ unsigned int command,
 							/* unused */ unsigned int flags);
@@ -132,5 +135,6 @@ __hidden extern int lxc_cmd_get_cgroup2_fd(const char *name, const char *lxcpath
 __hidden extern char *lxc_cmd_get_limiting_cgroup_path(const char *name, const char *lxcpath,
 						       const char *subsystem);
 __hidden extern int lxc_cmd_get_limiting_cgroup2_fd(const char *name, const char *lxcpath);
+__hidden extern int lxc_cmd_get_devpts_fd(const char *name, const char *lxcpath);
 
 #endif /* __commands_h */

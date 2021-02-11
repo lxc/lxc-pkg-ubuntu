@@ -63,8 +63,8 @@
 /* Define to 1 if you have the `fsconfig' function. */
 #undef HAVE_FSCONFIG
 
-/* Define to 1 if you have the `fsmount' function. */
-#undef HAVE_FSMOUNT
+/* Define to 1 if you have the `fsmount,' function. */
+#undef HAVE_FSMOUNT_
 
 /* Define to 1 if you have the `fsopen' function. */
 #undef HAVE_FSOPEN
@@ -134,6 +134,9 @@
 
 /* Have %m format */
 #undef HAVE_M_FORMAT
+
+/* Define to 1 if you have the `openat2' function. */
+#undef HAVE_OPENAT2
 
 /* Define to 1 if you have the `openpty' function. */
 #undef HAVE_OPENPTY
@@ -215,6 +218,9 @@
 
 /* Define to 1 if `set_tid' is a member of `struct clone_args'. */
 #undef HAVE_STRUCT_CLONE_ARGS_SET_TID
+
+/* Define to 1 if the system has the type `struct open_how'. */
+#undef HAVE_STRUCT_OPEN_HOW
 
 /* Define to 1 if the system has the type `struct rtnl_link_stats64'. */
 #undef HAVE_STRUCT_RTNL_LINK_STATS64
