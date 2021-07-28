@@ -24,7 +24,12 @@ lxc (1:4.0.10-0ubuntu1) UNRELEASED; urgency=medium
       as LXC isn't pre-installed in Ubuntu images, so going with the
       upstream init script simplifies maintenance.
 
- -- Stéphane Graber <stgraber@ubuntu.com>  Wed, 28 Jul 2021 12:33:03 -0400
+  * Bump standards to 4.5.1
+    - Tweak lintian overrides (renames, cleanups, ...)
+    - Drop --with systemd (built-in now)
+    - Update debian/watch regexp and version
+
+ -- Stéphane Graber <stgraber@ubuntu.com>  Wed, 28 Jul 2021 15:42:28 -0400
 
 lxc (1:4.0.6-0ubuntu1) hirsute; urgency=medium
 
