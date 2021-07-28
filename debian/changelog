@@ -1,4 +1,4 @@
-lxc (1:4.0.10-0ubuntu1) UNRELEASED; urgency=medium
+lxc (1:4.0.10-0ubuntu1) impish; urgency=medium
 
   * New upstream bugfix release (4.0.10):
     - Fix issues with less common architectures
