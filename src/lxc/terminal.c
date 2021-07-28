@@ -209,8 +209,8 @@ static int lxc_terminal_rotate_log_file(struct lxc_terminal *terminal)
 	len = strlen(terminal->log_path) + sizeof(".1");
 	tmp = must_realloc(NULL, len);
 
-	ret = snprintf(tmp, len, "%s.1", terminal->log_path);
-	if (ret < 0 || (size_t)ret >= len)
+	ret = strnprintf(tmp, len, "%s.1", terminal->log_path);
+	if (ret < 0)
 		return -EFBIG;
 
 	close(terminal->log_fd);
@@ -251,7 +251,7 @@ static int lxc_terminal_write_log_file(struct lxc_terminal *terminal, char *buf,
 		/* This isn't a regular file. so rotating the file seems a
 		 * dangerous thing to do, size limits are also very
 		 * questionable. Let's not risk anything and tell the user that
-		 * he's requesting us to do weird stuff.
+		 * they're requesting us to do weird stuff.
 		 */
 		if (terminal->log_rotate > 0 || terminal->log_size > 0)
 			return -EINVAL;
@@ -474,7 +474,7 @@ int lxc_setup_tios(int fd, struct termios *oldtios)
 #ifdef IEXTEN
 	newtios.c_lflag &= ~IEXTEN;
 #endif
-	newtios.c_oflag &= ~ONLCR;
+	newtios.c_oflag |= ONLCR;
 	newtios.c_oflag |= OPOST;
 	newtios.c_cc[VMIN] = 1;
 	newtios.c_cc[VTIME] = 0;
@@ -920,32 +920,44 @@ static int lxc_terminal_create_native(const char *name, const char *lxcpath, str
 		return log_error_errno(-1, errno, "Failed to receive devpts fd");
 
 	terminal->ptx = open_beneath(devpts_fd, "ptmx", O_RDWR | O_NOCTTY | O_CLOEXEC);
-	if (terminal->ptx < 0)
-		return log_error_errno(-1, errno, "Failed to open terminal multiplexer device");
+	if (terminal->ptx < 0) {
+		if (errno == ENOSPC)
+			return systrace("Exceeded number of allocatable terminals");
+
+		return syserror("Failed to open terminal multiplexer device");
+	}
 
 	ret = unlockpt(terminal->ptx);
 	if (ret < 0) {
-		SYSERROR("Failed to unlock multiplexer device device");
+		SYSWARN("Failed to unlock multiplexer device device");
 		goto err;
 	}
 
 	terminal->pty = ioctl(terminal->ptx, TIOCGPTPEER, O_RDWR | O_NOCTTY | O_CLOEXEC);
 	if (terminal->pty < 0) {
-		SYSERROR("Failed to allocate new pty device");
+		switch (errno) {
+		case ENOTTY:
+			SYSTRACE("Pure fd-based terminal allocation not possible");
+			break;
+		case ENOSPC:
+			SYSTRACE("Exceeded number of allocatable terminals");
+			break;
+		default:
+			SYSWARN("Failed to allocate new pty device");
+			break;
+		}
 		goto err;
 	}
 
-	// ret = lxc_terminal_map_ids(conf, terminal);
-
 	ret = ttyname_r(terminal->pty, terminal->name, sizeof(terminal->name));
 	if (ret < 0) {
-		SYSERROR("Failed to retrieve name of terminal pty");
+		SYSWARN("Failed to retrieve name of terminal pty");
 		goto err;
 	}
 
 	ret = lxc_terminal_peer_default(terminal);
 	if (ret < 0) {
-		ERROR("Failed to allocate proxy terminal");
+		SYSWARN("Failed to allocate proxy terminal");
 		goto err;
 	}
 
@@ -956,8 +968,8 @@ err:
 	return -ENODEV;
 }
 
-int lxc_terminal_create(const char *name, const char *lxcpath, struct lxc_conf *conf,
-			struct lxc_terminal *terminal)
+int lxc_terminal_create(const char *name, const char *lxcpath,
+			struct lxc_conf *conf, struct lxc_terminal *terminal)
 {
 	if (!lxc_terminal_create_native(name, lxcpath, conf, terminal))
 		return 0;
@@ -970,10 +982,8 @@ int lxc_terminal_setup(struct lxc_conf *conf)
 	int ret;
 	struct lxc_terminal *terminal = &conf->console;
 
-	if (terminal->path && strcmp(terminal->path, "none") == 0) {
-		INFO("No terminal requested");
-		return 0;
-	}
+	if (terminal->path && strequal(terminal->path, "none"))
+		return log_info(0, "No terminal requested");
 
 	ret = lxc_terminal_create_foreign(conf, terminal);
 	if (ret < 0)
@@ -1082,7 +1092,7 @@ int lxc_terminal_ptx_cb(int fd, uint32_t events, void *cbdata,
 
 int lxc_terminal_getfd(struct lxc_container *c, int *ttynum, int *ptxfd)
 {
-	return lxc_cmd_console(c->name, ttynum, ptxfd, c->config_path);
+	return lxc_cmd_get_tty_fd(c->name, ttynum, ptxfd, c->config_path);
 }
 
 int lxc_console(struct lxc_container *c, int ttynum,
@@ -1098,7 +1108,7 @@ int lxc_console(struct lxc_container *c, int ttynum,
 	};
 	int istty = 0;
 
-	ttyfd = lxc_cmd_console(c->name, &ttynum, &ptxfd, c->config_path);
+	ttyfd = lxc_cmd_get_tty_fd(c->name, &ttynum, &ptxfd, c->config_path);
 	if (ttyfd < 0)
 		return -1;
 

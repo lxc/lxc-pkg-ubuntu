@@ -43,12 +43,12 @@
 #include "macro.h"
 #include "utils.h"
 
-void test_lxc_deslashify(void)
+void test_path_simplify(void)
 {
 	char *s = "/A///B//C/D/E/";
 	char *t;
 
-	t = lxc_deslashify(s);
+	t = path_simplify(s);
 	if (!t)
 		exit(EXIT_FAILURE);
 
@@ -57,7 +57,7 @@ void test_lxc_deslashify(void)
 
 	s = "/A";
 
-	t = lxc_deslashify(s);
+	t = path_simplify(s);
 	if (!t)
 		exit(EXIT_FAILURE);
 
@@ -65,7 +65,7 @@ void test_lxc_deslashify(void)
 	free(t);
 
 	s = "";
-	t = lxc_deslashify(s);
+	t = path_simplify(s);
 	if (!t)
 		exit(EXIT_FAILURE);
 
@@ -74,7 +74,7 @@ void test_lxc_deslashify(void)
 
 	s = "//";
 
-	t = lxc_deslashify(s);
+	t = path_simplify(s);
 	if (!t)
 		exit(EXIT_FAILURE);
 
@@ -403,7 +403,7 @@ void test_lxc_string_in_array(void)
 void test_parse_byte_size_string(void)
 {
 	int ret;
-	int64_t n;
+	long long int n;
 
 	ret = parse_byte_size_string("0", &n);
 	if (ret < 0) {
@@ -594,11 +594,20 @@ void test_task_blocks_signal(void)
 	return;
 }
 
+void test_is_in_comm(void)
+{
+#ifdef FUZZING_BUILD_MODE_UNSAFE_FOR_PRODUCTION
+	lxc_test_assert_abort(is_in_comm("fuzz-lxc-") == 0);
+	lxc_test_assert_abort(is_in_comm("lxc-test") == 1);
+	lxc_test_assert_abort(is_in_comm("") == 1);
+#endif /* FUZZING_BUILD_MODE_UNSAFE_FOR_PRODUCTION */
+}
+
 int main(int argc, char *argv[])
 {
 	test_lxc_string_replace();
 	test_lxc_string_in_array();
-	test_lxc_deslashify();
+	test_path_simplify();
 	test_detect_ramfs_rootfs();
 	test_lxc_safe_uint();
 	test_lxc_safe_int();
@@ -606,6 +615,7 @@ int main(int argc, char *argv[])
 	test_parse_byte_size_string();
 	test_lxc_config_net_is_hwaddr();
 	test_task_blocks_signal();
+	test_is_in_comm();
 
 	exit(EXIT_SUCCESS);
 }

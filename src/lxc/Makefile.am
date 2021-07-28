@@ -6,6 +6,8 @@ pkginclude_HEADERS = attach_options.h \
 
 noinst_HEADERS = api_extensions.h \
 		 attach.h \
+		 ../include/bpf.h \
+		 ../include/bpf_common.h \
 		 caps.h \
 		 cgroups/cgroup.h \
 		 cgroups/cgroup_utils.h \
@@ -16,7 +18,9 @@ noinst_HEADERS = api_extensions.h \
 		 confile_utils.h \
 		 criu.h \
 		 error.h \
+		 error_utils.h \
 		 file_utils.h \
+		 ../include/strchrnul.h \
 		 ../include/netns_ifaddrs.h \
 		 initutils.h \
 		 list.h \
@@ -99,6 +103,8 @@ lib_LTLIBRARIES = liblxc.la
 liblxc_la_SOURCES = af_unix.c af_unix.h \
 		    api_extensions.h \
 		    attach.c attach.h \
+		    ../include/bpf.h \
+		    ../include/bpf_common.h \
 		    caps.c caps.h \
 		    cgroups/cgfsng.c \
 		    cgroups/cgroup.c cgroups/cgroup.h \
@@ -113,6 +119,7 @@ liblxc_la_SOURCES = af_unix.c af_unix.h \
 		    criu.c criu.h \
 		    error.c error.h \
 		    execute.c \
+		    error_utils.h \
 		    freezer.c \
 		    file_utils.c file_utils.h \
 		    ../include/netns_ifaddrs.c ../include/netns_ifaddrs.h \
@@ -195,6 +202,10 @@ if !HAVE_STRLCAT
 liblxc_la_SOURCES += ../include/strlcat.c ../include/strlcat.h
 endif
 
+if !HAVE_STRCHRNUL
+liblxc_la_SOURCES += ../include/strchrnul.c ../include/strchrnul.h
+endif
+
 if ENFORCE_MEMFD_REXEC
 liblxc_la_SOURCES += rexec.c rexec.h
 endif
@@ -250,19 +261,14 @@ liblxc_la_CFLAGS = -fPIC \
 		   $(AM_CFLAGS) \
 		   $(LIBLXC_SANITIZER) \
 		   -pthread
-if ENABLE_ASAN
-liblxc_la_CFLAGS += -fsanitize=address \
-		    -fno-omit-frame-pointer
-endif
-
-if ENABLE_UBSAN
-liblxc_la_CFLAGS += -fsanitize=undefined
-endif
 
 liblxc_la_LDFLAGS = -pthread \
-		    -Wl,-no-undefined \
 		    -Wl,-soname,liblxc.so.$(firstword $(subst ., ,@LXC_ABI@)) \
 		    -version-info @LXC_ABI_MAJOR@
+
+if ENABLE_NO_UNDEFINED
+liblxc_la_LDFLAGS += -Wl,-no-undefined
+endif
 
 liblxc_la_LIBADD = $(CAP_LIBS) \
 		   $(OPENSSL_LIBS) \
@@ -356,6 +362,7 @@ lxc_attach_SOURCES += af_unix.c af_unix.h \
 		      lxclock.c lxclock.h \
 		      mainloop.c mainloop.h \
 		      monitor.c monitor.h \
+		      mount_utils.c mount_utils.h \
 		      namespace.c namespace.h \
 		      network.c network.h \
 		      nl.c nl.h \
@@ -385,6 +392,10 @@ lxc_attach_SOURCES += af_unix.c af_unix.h \
 if ENABLE_SECCOMP
 lxc_attach_SOURCES += seccomp.c lxcseccomp.h
 endif
+
+if !HAVE_STRCHRNUL
+lxc_attach_SOURCES += ../include/strchrnul.c ../include/strchrnul.h
+endif
 endif
 
 lxc_autostart_SOURCES = tools/lxc_autostart.c \
@@ -413,6 +424,7 @@ lxc_autostart_SOURCES += af_unix.c af_unix.h \
 			 lxclock.c lxclock.h \
 			 mainloop.c mainloop.h \
 			 monitor.c monitor.h \
+			 mount_utils.c mount_utils.h \
 			 namespace.c namespace.h \
 			 network.c network.h \
 			 nl.c nl.h \
@@ -440,6 +452,10 @@ lxc_autostart_SOURCES += af_unix.c af_unix.h \
 			 $(LSM_SOURCES)
 if ENABLE_SECCOMP
 lxc_autostart_SOURCES += seccomp.c lxcseccomp.h
+endif
+
+if !HAVE_STRCHRNUL
+lxc_autostart_SOURCES += ../include/strchrnul.c ../include/strchrnul.h
 endif
 endif
 
@@ -469,6 +485,7 @@ lxc_cgroup_SOURCES += af_unix.c af_unix.h \
 		      lxclock.c lxclock.h \
 		      mainloop.c mainloop.h \
 		      monitor.c monitor.h \
+		      mount_utils.c mount_utils.h \
 		      namespace.c namespace.h \
 		      network.c network.h \
 		      nl.c nl.h \
@@ -496,6 +513,10 @@ lxc_cgroup_SOURCES += af_unix.c af_unix.h \
 		      $(LSM_SOURCES)
 if ENABLE_SECCOMP
 lxc_cgroup_SOURCES += seccomp.c lxcseccomp.h
+endif
+
+if !HAVE_STRCHRNUL
+lxc_cgroup_SOURCES += ../include/strchrnul.c ../include/strchrnul.h
 endif
 endif
 
@@ -525,6 +546,7 @@ lxc_config_SOURCES += af_unix.c af_unix.h \
 		      lxclock.c lxclock.h \
 		      mainloop.c mainloop.h \
 		      monitor.c monitor.h \
+		      mount_utils.c mount_utils.h \
 		      namespace.c namespace.h \
 		      network.c network.h \
 		      nl.c nl.h \
@@ -552,6 +574,10 @@ lxc_config_SOURCES += af_unix.c af_unix.h \
 		      $(LSM_SOURCES)
 if ENABLE_SECCOMP
 lxc_config_SOURCES += seccomp.c lxcseccomp.h
+endif
+
+if !HAVE_STRCHRNUL
+lxc_config_SOURCES += ../include/strchrnul.c ../include/strchrnul.h
 endif
 endif
 
@@ -581,6 +607,7 @@ lxc_console_SOURCES += af_unix.c af_unix.h \
 		       lxclock.c lxclock.h \
 		       mainloop.c mainloop.h \
 		       monitor.c monitor.h \
+		       mount_utils.c mount_utils.h \
 		       namespace.c namespace.h \
 		       network.c network.h \
 		       nl.c nl.h \
@@ -608,6 +635,10 @@ lxc_console_SOURCES += af_unix.c af_unix.h \
 		       $(LSM_SOURCES)
 if ENABLE_SECCOMP
 lxc_console_SOURCES += seccomp.c lxcseccomp.h
+endif
+
+if !HAVE_STRCHRNUL
+lxc_console_SOURCES += ../include/strchrnul.c ../include/strchrnul.h
 endif
 endif
 
@@ -637,6 +668,7 @@ lxc_destroy_SOURCES += af_unix.c af_unix.h \
 		       lxclock.c lxclock.h \
 		       mainloop.c mainloop.h \
 		       monitor.c monitor.h \
+		       mount_utils.c mount_utils.h \
 		       namespace.c namespace.h \
 		       network.c network.h \
 		       nl.c nl.h \
@@ -664,6 +696,10 @@ lxc_destroy_SOURCES += af_unix.c af_unix.h \
 		       $(LSM_SOURCES)
 if ENABLE_SECCOMP
 lxc_destroy_SOURCES += seccomp.c lxcseccomp.h
+endif
+
+if !HAVE_STRCHRNUL
+lxc_destroy_SOURCES += ../include/strchrnul.c ../include/strchrnul.h
 endif
 endif
 
@@ -693,6 +729,7 @@ lxc_device_SOURCES += af_unix.c af_unix.h \
 		      lxclock.c lxclock.h \
 		      mainloop.c mainloop.h \
 		      monitor.c monitor.h \
+		      mount_utils.c mount_utils.h \
 		      namespace.c namespace.h \
 		      network.c network.h \
 		      nl.c nl.h \
@@ -720,6 +757,10 @@ lxc_device_SOURCES += af_unix.c af_unix.h \
 		      $(LSM_SOURCES)
 if ENABLE_SECCOMP
 lxc_device_SOURCES += seccomp.c lxcseccomp.h
+endif
+
+if !HAVE_STRCHRNUL
+lxc_device_SOURCES += ../include/strchrnul.c ../include/strchrnul.h
 endif
 endif
 
@@ -749,6 +790,7 @@ lxc_execute_SOURCES += af_unix.c af_unix.h \
 		       lxclock.c lxclock.h \
 		       mainloop.c mainloop.h \
 		       monitor.c monitor.h \
+		       mount_utils.c mount_utils.h \
 		       namespace.c namespace.h \
 		       network.c network.h \
 		       nl.c nl.h \
@@ -776,6 +818,10 @@ lxc_execute_SOURCES += af_unix.c af_unix.h \
 		       $(LSM_SOURCES)
 if ENABLE_SECCOMP
 lxc_execute_SOURCES += seccomp.c lxcseccomp.h
+endif
+
+if !HAVE_STRCHRNUL
+lxc_execute_SOURCES += ../include/strchrnul.c ../include/strchrnul.h
 endif
 endif
 
@@ -805,6 +851,7 @@ lxc_freeze_SOURCES += af_unix.c af_unix.h \
 		      lxclock.c lxclock.h \
 		      mainloop.c mainloop.h \
 		      monitor.c monitor.h \
+		      mount_utils.c mount_utils.h \
 		      namespace.c namespace.h \
 		      network.c network.h \
 		      nl.c nl.h \
@@ -832,6 +879,10 @@ lxc_freeze_SOURCES += af_unix.c af_unix.h \
 		      $(LSM_SOURCES)
 if ENABLE_SECCOMP
 lxc_freeze_SOURCES += seccomp.c lxcseccomp.h
+endif
+
+if !HAVE_STRCHRNUL
+lxc_freeze_SOURCES += ../include/strchrnul.c ../include/strchrnul.h
 endif
 endif
 
@@ -861,6 +912,7 @@ lxc_info_SOURCES += af_unix.c af_unix.h \
 		    lxclock.c lxclock.h \
 		    mainloop.c mainloop.h \
 		    monitor.c monitor.h \
+		    mount_utils.c mount_utils.h \
 		    namespace.c namespace.h \
 		    network.c network.h \
 		    nl.c nl.h \
@@ -888,6 +940,10 @@ lxc_info_SOURCES += af_unix.c af_unix.h \
 		    $(LSM_SOURCES)
 if ENABLE_SECCOMP
 lxc_info_SOURCES += seccomp.c lxcseccomp.h
+endif
+
+if !HAVE_STRCHRNUL
+lxc_info_SOURCES += ../include/strchrnul.c ../include/strchrnul.h
 endif
 endif
 
@@ -918,6 +974,7 @@ lxc_monitor_SOURCES += af_unix.c af_unix.h \
 		       macro.h \
 		       mainloop.c mainloop.h \
 		       monitor.c monitor.h \
+		       mount_utils.c mount_utils.h \
 		       namespace.c namespace.h \
 		       network.c network.h \
 		       nl.c nl.h \
@@ -945,6 +1002,10 @@ lxc_monitor_SOURCES += af_unix.c af_unix.h \
 		       $(LSM_SOURCES)
 if ENABLE_SECCOMP
 lxc_monitor_SOURCES += seccomp.c lxcseccomp.h
+endif
+
+if !HAVE_STRCHRNUL
+lxc_monitor_SOURCES += ../include/strchrnul.c ../include/strchrnul.h
 endif
 endif
 
@@ -975,6 +1036,7 @@ lxc_ls_SOURCES += af_unix.c af_unix.h \
 		  mainloop.c mainloop.h \
 		  memory_utils.h \
 		  monitor.c monitor.h \
+		  mount_utils.c mount_utils.h \
 		  namespace.c namespace.h \
 		  network.c network.h \
 		  nl.c nl.h \
@@ -1002,6 +1064,10 @@ lxc_ls_SOURCES += af_unix.c af_unix.h \
 		  $(LSM_SOURCES)
 if ENABLE_SECCOMP
 lxc_ls_SOURCES += seccomp.c lxcseccomp.h
+endif
+
+if !HAVE_STRCHRNUL
+lxc_ls_SOURCES += ../include/strchrnul.c ../include/strchrnul.h
 endif
 endif
 
@@ -1031,6 +1097,7 @@ lxc_copy_SOURCES += af_unix.c af_unix.h \
 		    lxclock.c lxclock.h \
 		    mainloop.c mainloop.h \
 		    monitor.c monitor.h \
+		    mount_utils.c mount_utils.h \
 		    namespace.c namespace.h \
 		    network.c network.h \
 		    nl.c nl.h \
@@ -1058,6 +1125,10 @@ lxc_copy_SOURCES += af_unix.c af_unix.h \
 		    $(LSM_SOURCES)
 if ENABLE_SECCOMP
 lxc_copy_SOURCES += seccomp.c lxcseccomp.h
+endif
+
+if !HAVE_STRCHRNUL
+lxc_copy_SOURCES += ../include/strchrnul.c ../include/strchrnul.h
 endif
 endif
 
@@ -1087,6 +1158,7 @@ lxc_start_SOURCES += af_unix.c af_unix.h \
 		     lxclock.c lxclock.h \
 		     mainloop.c mainloop.h \
 		     monitor.c monitor.h \
+		     mount_utils.c mount_utils.h \
 		     namespace.c namespace.h \
 		     network.c network.h \
 		     nl.c nl.h \
@@ -1114,6 +1186,10 @@ lxc_start_SOURCES += af_unix.c af_unix.h \
 		     $(LSM_SOURCES)
 if ENABLE_SECCOMP
 lxc_start_SOURCES += seccomp.c lxcseccomp.h
+endif
+
+if !HAVE_STRCHRNUL
+lxc_start_SOURCES += ../include/strchrnul.c ../include/strchrnul.h
 endif
 endif
 
@@ -1143,6 +1219,7 @@ lxc_stop_SOURCES += af_unix.c af_unix.h \
 		    lxclock.c lxclock.h \
 		    mainloop.c mainloop.h \
 		    monitor.c monitor.h \
+		    mount_utils.c mount_utils.h \
 		    namespace.c namespace.h \
 		    network.c network.h \
 		    nl.c nl.h \
@@ -1170,6 +1247,10 @@ lxc_stop_SOURCES += af_unix.c af_unix.h \
 		    $(LSM_SOURCES)
 if ENABLE_SECCOMP
 lxc_stop_SOURCES += seccomp.c lxcseccomp.h
+endif
+
+if !HAVE_STRCHRNUL
+lxc_stop_SOURCES += ../include/strchrnul.c ../include/strchrnul.h
 endif
 endif
 
@@ -1199,6 +1280,7 @@ lxc_top_SOURCES += af_unix.c af_unix.h \
 		   lxclock.c lxclock.h \
 		   mainloop.c mainloop.h \
 		   monitor.c monitor.h \
+		   mount_utils.c mount_utils.h \
 		   namespace.c namespace.h \
 		   network.c network.h \
 		   nl.c nl.h \
@@ -1226,6 +1308,10 @@ lxc_top_SOURCES += af_unix.c af_unix.h \
 		   $(LSM_SOURCES)
 if ENABLE_SECCOMP
 lxc_top_SOURCES += seccomp.c lxcseccomp.h
+endif
+
+if !HAVE_STRCHRNUL
+lxc_top_SOURCES += ../include/strchrnul.c ../include/strchrnul.h
 endif
 endif
 
@@ -1255,6 +1341,7 @@ lxc_unfreeze_SOURCES += af_unix.c af_unix.h \
 			lxclock.c lxclock.h \
 			mainloop.c mainloop.h \
 			monitor.c monitor.h \
+			mount_utils.c mount_utils.h \
 			namespace.c namespace.h \
 			network.c network.h \
 			nl.c nl.h \
@@ -1282,6 +1369,10 @@ lxc_unfreeze_SOURCES += af_unix.c af_unix.h \
 			$(LSM_SOURCES)
 if ENABLE_SECCOMP
 lxc_unfreeze_SOURCES += seccomp.c lxcseccomp.h
+endif
+
+if !HAVE_STRCHRNUL
+lxc_unfreeze_SOURCES += ../include/strchrnul.c ../include/strchrnul.h
 endif
 endif
 
@@ -1311,6 +1402,7 @@ lxc_unshare_SOURCES += af_unix.c af_unix.h \
 		       lxclock.c lxclock.h \
 		       mainloop.c mainloop.h \
 		       monitor.c monitor.h \
+		       mount_utils.c mount_utils.h \
 		       namespace.c namespace.h \
 		       network.c network.h \
 		       nl.c nl.h \
@@ -1341,6 +1433,10 @@ lxc_unshare_SOURCES += af_unix.c af_unix.h \
 if ENABLE_SECCOMP
 lxc_unshare_SOURCES += seccomp.c lxcseccomp.h
 endif
+
+if !HAVE_STRCHRNUL
+lxc_unshare_SOURCES += ../include/strchrnul.c ../include/strchrnul.h
+endif
 endif
 
 lxc_wait_SOURCES = tools/lxc_wait.c \
@@ -1369,6 +1465,7 @@ lxc_wait_SOURCES += af_unix.c af_unix.h \
 		    lxclock.c lxclock.h \
 		    mainloop.c mainloop.h \
 		    monitor.c monitor.h \
+		    mount_utils.c mount_utils.h \
 		    namespace.c namespace.h \
 		    network.c network.h \
 		    nl.c nl.h \
@@ -1396,6 +1493,10 @@ lxc_wait_SOURCES += af_unix.c af_unix.h \
 		    $(LSM_SOURCES)
 if ENABLE_SECCOMP
 lxc_wait_SOURCES += seccomp.c lxcseccomp.h
+endif
+
+if !HAVE_STRCHRNUL
+lxc_wait_SOURCES += ../include/strchrnul.c ../include/strchrnul.h
 endif
 endif
 
@@ -1425,6 +1526,7 @@ lxc_create_SOURCES += af_unix.c af_unix.h \
 		      lxclock.c lxclock.h \
 		      mainloop.c mainloop.h \
 		      monitor.c monitor.h \
+		      mount_utils.c mount_utils.h \
 		      namespace.c namespace.h \
 		      network.c network.h \
 		      nl.c nl.h \
@@ -1452,6 +1554,10 @@ lxc_create_SOURCES += af_unix.c af_unix.h \
 		      $(LSM_SOURCES)
 if ENABLE_SECCOMP
 lxc_create_SOURCES += seccomp.c lxcseccomp.h
+endif
+
+if !HAVE_STRCHRNUL
+lxc_create_SOURCES += ../include/strchrnul.c ../include/strchrnul.h
 endif
 endif
 
@@ -1481,6 +1587,7 @@ lxc_snapshot_SOURCES += af_unix.c af_unix.h \
 			lxclock.c lxclock.h \
 			mainloop.c mainloop.h \
 			monitor.c monitor.h \
+			mount_utils.c mount_utils.h \
 			namespace.c namespace.h \
 			network.c network.h \
 			nl.c nl.h \
@@ -1508,6 +1615,10 @@ lxc_snapshot_SOURCES += af_unix.c af_unix.h \
 			$(LSM_SOURCES)
 if ENABLE_SECCOMP
 lxc_snapshot_SOURCES += seccomp.c lxcseccomp.h
+endif
+
+if !HAVE_STRCHRNUL
+lxc_snapshot_SOURCES += ../include/strchrnul.c ../include/strchrnul.h
 endif
 endif
 
@@ -1537,6 +1648,7 @@ lxc_checkpoint_SOURCES += af_unix.c af_unix.h \
 			  lxclock.c lxclock.h \
 			  mainloop.c mainloop.h \
 			  monitor.c monitor.h \
+			  mount_utils.c mount_utils.h \
 			  namespace.c namespace.h \
 			  network.c network.h \
 			  nl.c nl.h \
@@ -1565,6 +1677,11 @@ lxc_checkpoint_SOURCES += af_unix.c af_unix.h \
 if ENABLE_SECCOMP
 lxc_checkpoint_SOURCES += seccomp.c lxcseccomp.h
 endif
+
+if !HAVE_STRCHRNUL
+lxc_checkpoint_SOURCES += ../include/strchrnul.c ../include/strchrnul.h
+endif
+
 endif
 endif
 
@@ -1608,6 +1725,7 @@ lxc_monitord_SOURCES += af_unix.c af_unix.h \
 			lxclock.c lxclock.h \
 			mainloop.c mainloop.h \
 			monitor.c monitor.h \
+			mount_utils.c mount_utils.h \
 			namespace.c namespace.h \
 			network.c network.h \
 			nl.c nl.h \
@@ -1637,6 +1755,10 @@ lxc_monitord_SOURCES += af_unix.c af_unix.h \
 if ENABLE_SECCOMP
 lxc_monitord_SOURCES += seccomp.c lxcseccomp.h
 endif
+
+if !HAVE_STRCHRNUL
+lxc_monitord_SOURCES += ../include/strchrnul.c ../include/strchrnul.h
+endif
 endif
 
 lxc_user_nic_SOURCES = cmd/lxc_user_nic.c
@@ -1665,6 +1787,7 @@ lxc_user_nic_SOURCES += af_unix.c af_unix.h \
 			mainloop.c mainloop.h \
 			memory_utils.h \
 			monitor.c monitor.h \
+			mount_utils.c mount_utils.h \
 			namespace.c namespace.h \
 			network.c network.h \
 			nl.c nl.h \
@@ -1694,6 +1817,10 @@ lxc_user_nic_SOURCES += af_unix.c af_unix.h \
 			$(LSM_SOURCES)
 if ENABLE_SECCOMP
 lxc_user_nic_SOURCES += seccomp.c lxcseccomp.h
+endif
+
+if !HAVE_STRCHRNUL
+lxc_user_nic_SOURCES += ../include/strchrnul.c ../include/strchrnul.h
 endif
 endif
 
@@ -1725,6 +1852,7 @@ lxc_usernsexec_SOURCES += af_unix.c af_unix.h \
 			  mainloop.c mainloop.h \
 			  memory_utils.h \
 			  monitor.c monitor.h \
+			  mount_utils.c mount_utils.h \
 			  namespace.c namespace.h \
 			  network.c network.h \
 			  nl.c nl.h \
@@ -1753,6 +1881,10 @@ lxc_usernsexec_SOURCES += af_unix.c af_unix.h \
 			  $(LSM_SOURCES)
 if ENABLE_SECCOMP
 lxc_usernsexec_SOURCES += seccomp.c lxcseccomp.h
+endif
+
+if !HAVE_STRCHRNUL
+lxc_usernsexec_SOURCES += ../include/strchrnul.c ../include/strchrnul.h
 endif
 endif
 endif
@@ -1797,6 +1929,12 @@ endif
 init_lxc_static_LDFLAGS = -all-static -pthread
 init_lxc_static_LDADD = @CAP_LIBS@
 init_lxc_static_CFLAGS = $(AM_CFLAGS) -DNO_LXC_CONF
+if ENABLE_SANITIZERS
+init_lxc_static_CFLAGS += -fno-sanitize=address,undefined
+endif
+if ENABLE_FUZZERS
+init_lxc_static_CFLAGS += -fno-sanitize=fuzzer-no-link
+endif
 endif
 endif
 
@@ -1828,8 +1966,7 @@ pam_cgfs_la_LIBADD = $(AM_LIBS) \
 pam_cgfs_la_LDFLAGS = $(AM_LDFLAGS) \
 		      -avoid-version \
 		      -module \
-		      -shared \
-		      -Wl,-no-undefined
+		      -shared
 endif
 endif
 

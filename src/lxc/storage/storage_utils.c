@@ -327,7 +327,7 @@ int find_fstype_cb(char *buffer, void *data)
 	DEBUG("Trying to mount \"%s\"->\"%s\" with FSType \"%s\"", cbarg->rootfs,
 	      cbarg->target, fstype);
 
-	if (parse_mntopts(cbarg->options, &mntflags, &mntdata) < 0) {
+	if (parse_mntopts_legacy(cbarg->options, &mntflags, &mntdata) < 0) {
 		free(mntdata);
 		return 0;
 	}
@@ -461,7 +461,7 @@ int storage_destroy_wrapper(void *data)
 {
 	struct lxc_conf *conf = data;
 
-	(void)lxc_setgroups(0, NULL);
+	(void)lxc_drop_groups();
 
 	if (setgid(0) < 0) {
 		SYSERROR("Failed to setgid to 0");

@@ -24,6 +24,7 @@
 #include "memory_utils.h"
 #include "monitor.h"
 #include "state.h"
+#include "string_utils.h"
 #include "utils.h"
 
 lxc_log_define(commands_utils, lxc);
@@ -104,8 +105,8 @@ int lxc_make_abstract_socket_name(char *path, size_t pathlen,
 		name = "";
 
 	if (hashed_sock_name != NULL) {
-		ret = snprintf(offset, len, "lxc/%s/%s", hashed_sock_name, suffix);
-		if (ret < 0 || (size_t)ret >= len)
+		ret = strnprintf(offset, len, "lxc/%s/%s", hashed_sock_name, suffix);
+		if (ret < 0)
 			return log_error_errno(-1, errno, "Failed to create abstract socket name");
 		return 0;
 	}
@@ -116,6 +117,10 @@ int lxc_make_abstract_socket_name(char *path, size_t pathlen,
 			return log_error(-1, "Failed to allocate memory");
 	}
 
+	/*
+	 * Here we allow exceeding the buffer because we're falling back to
+	 * hashing. So we're not using strnprintf() here.
+	 */
 	ret = snprintf(offset, len, "%s/%s/%s", lxcpath, name, suffix);
 	if (ret < 0)
 		return log_error_errno(-1, errno, "Failed to create abstract socket name");
@@ -127,13 +132,13 @@ int lxc_make_abstract_socket_name(char *path, size_t pathlen,
 	if (ret >= len) {
 		tmplen = strlen(name) + strlen(lxcpath) + 2;
 		tmppath = must_realloc(NULL, tmplen);
-		ret = snprintf(tmppath, tmplen, "%s/%s", lxcpath, name);
-		if (ret < 0 || (size_t)ret >= tmplen)
+		ret = strnprintf(tmppath, tmplen, "%s/%s", lxcpath, name);
+		if (ret < 0)
 			return log_error_errno(-1, errno, "Failed to create abstract socket name");
 
 		hash = fnv_64a_buf(tmppath, ret, FNV1A_64_INIT);
-		ret = snprintf(offset, len, "lxc/%016" PRIx64 "/%s", hash, suffix);
-		if (ret < 0 || (size_t)ret >= len)
+		ret = strnprintf(offset, len, "lxc/%016" PRIx64 "/%s", hash, suffix);
+		if (ret < 0)
 			return log_error_errno(-1, errno, "Failed to create abstract socket name");
 	}
 
@@ -189,4 +194,11 @@ int lxc_add_state_client(int state_client_fd, struct lxc_handler *handler,
 
 	TRACE("Added state client fd %d to state client list", state_client_fd);
 	return MAX_STATE;
+}
+
+void lxc_cmd_notify_state_listeners(const char *name, const char *lxcpath,
+				    lxc_state_t state)
+{
+	(void)lxc_cmd_serve_state_clients(name, lxcpath, state);
+	(void)lxc_monitor_send_state(name, state, lxcpath);
 }

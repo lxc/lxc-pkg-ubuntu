@@ -6,6 +6,9 @@
 /* build for use with Coverity */
 #undef ENABLE_COVERITY_BUILD
 
+/* build with sanitizers enabled */
+#undef ENABLE_SANITIZERS
+
 /* Rexec liblxc as memfd */
 #undef ENFORCE_MEMFD_REXEC
 
@@ -14,6 +17,9 @@
 
 /* Define to 1 if you have the `clone3' function. */
 #undef HAVE_CLONE3
+
+/* Define to 1 if you have the `close_range' function. */
+#undef HAVE_CLOSE_RANGE
 
 /* Define to 1 if you have the `confstr' function. */
 #undef HAVE_CONFSTR
@@ -63,8 +69,8 @@
 /* Define to 1 if you have the `fsconfig' function. */
 #undef HAVE_FSCONFIG
 
-/* Define to 1 if you have the `fsmount,' function. */
-#undef HAVE_FSMOUNT_
+/* Define to 1 if you have the `fsmount' function. */
+#undef HAVE_FSMOUNT
 
 /* Define to 1 if you have the `fsopen' function. */
 #undef HAVE_FSOPEN
@@ -111,9 +117,6 @@
 /* Define to 1 if you have the `util' library (-lutil). */
 #undef HAVE_LIBUTIL
 
-/* Define to 1 if you have the <linux/bpf.h> header file. */
-#undef HAVE_LINUX_BPF_H
-
 /* Define to 1 if you have the <linux/genetlink.h> header file. */
 #undef HAVE_LINUX_GENETLINK_H
 
@@ -128,6 +131,9 @@
 
 /* Define to 1 if you have the <memory.h> header file. */
 #undef HAVE_MEMORY_H
+
+/* Define to 1 if you have the `mount_setattr' function. */
+#undef HAVE_MOUNT_SETATTR
 
 /* Define to 1 if you have the `move_mount' function. */
 #undef HAVE_MOVE_MOUNT
@@ -192,6 +198,9 @@
 /* Define to 1 if you have the <stdlib.h> header file. */
 #undef HAVE_STDLIB_H
 
+/* Define to 1 if you have the `strchrnul' function. */
+#undef HAVE_STRCHRNUL
+
 /* Define to 1 if you have the `strerror_r' function. */
 #undef HAVE_STRERROR_R
 
@@ -207,9 +216,6 @@
 /* Define to 1 if you have the `strlcpy' function. */
 #undef HAVE_STRLCPY
 
-/* Define to 1 if the system has the type `struct bpf_cgroup_dev_ctx'. */
-#undef HAVE_STRUCT_BPF_CGROUP_DEV_CTX
-
 /* Define to 1 if the system has the type `struct clone_args'. */
 #undef HAVE_STRUCT_CLONE_ARGS
 
@@ -218,6 +224,9 @@
 
 /* Define to 1 if `set_tid' is a member of `struct clone_args'. */
 #undef HAVE_STRUCT_CLONE_ARGS_SET_TID
+
+/* Define to 1 if the system has the type `struct mount_attr'. */
+#undef HAVE_STRUCT_MOUNT_ATTR
 
 /* Define to 1 if the system has the type `struct open_how'. */
 #undef HAVE_STRUCT_OPEN_HOW
@@ -263,6 +272,9 @@
 
 /* Define to 1 if you have the <utmpx.h> header file. */
 #undef HAVE_UTMPX_H
+
+/* Define to 1 if the system has the type `__aligned_u64'. */
+#undef HAVE___ALIGNED_U64
 
 /* bionic libc */
 #undef IS_BIONIC
@@ -339,6 +351,17 @@
 
 /* Version number of package */
 #undef VERSION
+
+/* Enable large inode numbers on Mac OS X 10.5.  */
+#ifndef _DARWIN_USE_64_BIT_INODE
+# define _DARWIN_USE_64_BIT_INODE 1
+#endif
+
+/* Number of bits in a file offset, on hosts where this is settable. */
+#undef _FILE_OFFSET_BITS
+
+/* Define for large files, on AIX-style hosts. */
+#undef _LARGE_FILES
 
 /* Define to 1 if on MINIX. */
 #undef _MINIX

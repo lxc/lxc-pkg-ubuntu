@@ -31,6 +31,10 @@
 #include <linux/openat2.h>
 #endif
 
+#if HAVE_SYS_PERSONALITY_H
+#include <sys/personality.h>
+#endif
+
 typedef int32_t key_serial_t;
 
 #if !HAVE_KEYCTL
@@ -209,6 +213,24 @@ extern int fsmount(int fs_fd, unsigned int flags, unsigned int attr_flags);
 #endif
 
 /*
+ * mount_setattr()
+ */
+struct lxc_mount_attr {
+	__u64 attr_set;
+	__u64 attr_clr;
+	__u64 propagation;
+	__u64 userns_fd;
+};
+
+#ifndef HAVE_MOUNT_SETATTR
+static inline int mount_setattr(int dfd, const char *path, unsigned int flags,
+				struct lxc_mount_attr *attr, size_t size)
+{
+	return syscall(__NR_mount_setattr, dfd, path, flags, attr, size);
+}
+#endif
+
+/*
  * Arguments for how openat2(2) should open the target path. If only @flags and
  * @mode are non-zero, then openat2(2) operates very similarly to openat(2).
  *
@@ -271,7 +293,7 @@ struct lxc_open_how {
 #define PROTECT_OPEN (PROTECT_OPEN_WITH_TRAILING_SYMLINKS | O_NOFOLLOW)
 
 #define PROTECT_OPEN_W_WITH_TRAILING_SYMLINKS (O_CLOEXEC | O_NOCTTY | O_WRONLY)
-#define PROTECT_OPEN_W (PROTECT_OPEN_WITH_TRAILING_SYMLINKS | O_NOFOLLOW)
+#define PROTECT_OPEN_W (PROTECT_OPEN_W_WITH_TRAILING_SYMLINKS | O_NOFOLLOW)
 
 #ifndef HAVE_OPENAT2
 static inline int openat2(int dfd, const char *filename, struct lxc_open_how *how, size_t size)
@@ -283,5 +305,27 @@ static inline int openat2(int dfd, const char *filename, struct lxc_open_how *ho
 	return syscall(__NR_openat2, dfd, filename, (struct open_how *)how, size);
 }
 #endif /* HAVE_OPENAT2 */
+
+#ifndef CLOSE_RANGE_UNSHARE
+#define CLOSE_RANGE_UNSHARE	(1U << 1)
+#endif
+
+#ifndef CLOSE_RANGE_CLOEXEC
+#define CLOSE_RANGE_CLOEXEC	(1U << 2)
+#endif
+
+#ifndef HAVE_CLOSE_RANGE
+static inline int close_range(unsigned int fd, unsigned int max_fd, unsigned int flags)
+{
+	return syscall(__NR_close_range, fd, max_fd, flags);
+}
+#endif
+
+#ifndef HAVE_SYS_PERSONALITY_H
+static inline int personality(unsigned long persona)
+{
+	return syscall(__NR_personality, persona);
+}
+#endif
 
 #endif /* __LXC_SYSCALL_WRAPPER_H */
