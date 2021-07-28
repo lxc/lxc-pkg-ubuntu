@@ -23,7 +23,7 @@
 
 int lxc_open_dirfd(const char *dir)
 {
-	return open(dir, O_DIRECTORY | O_RDONLY | O_CLOEXEC | O_NOFOLLOW);
+	return open_at(-EBADF, dir, PROTECT_OPATH_DIRECTORY, PROTECT_LOOKUP_ABSOLUTE & ~RESOLVE_NO_XDEV, 0);
 }
 
 int lxc_readat(int dirfd, const char *filename, void *buf, size_t count)
@@ -31,15 +31,15 @@ int lxc_readat(int dirfd, const char *filename, void *buf, size_t count)
 	__do_close int fd = -EBADF;
 	ssize_t ret;
 
-	fd = openat(dirfd, filename, O_RDONLY | O_CLOEXEC);
+	fd = open_at(dirfd, filename, PROTECT_OPEN, PROTECT_LOOKUP_BENEATH, 0);
 	if (fd < 0)
-		return -1;
+		return -errno;
 
 	ret = lxc_read_nointr(fd, buf, count);
-	if (ret < 0 || (size_t)ret != count)
-		return -1;
+	if (ret < 0)
+		return -errno;
 
-	return 0;
+	return ret;
 }
 
 int lxc_writeat(int dirfd, const char *filename, const void *buf, size_t count)
@@ -47,8 +47,7 @@ int lxc_writeat(int dirfd, const char *filename, const void *buf, size_t count)
 	__do_close int fd = -EBADF;
 	ssize_t ret;
 
-	fd = openat(dirfd, filename,
-		    O_WRONLY | O_CLOEXEC | O_NOCTTY | O_NOFOLLOW);
+	fd = open_at(dirfd, filename, PROTECT_OPEN_W_WITH_TRAILING_SYMLINKS, PROTECT_LOOKUP_BENEATH, 0);
 	if (fd < 0)
 		return -1;
 
@@ -64,9 +63,9 @@ int lxc_write_openat(const char *dir, const char *filename, const void *buf,
 {
 	__do_close int dirfd = -EBADF;
 
-	dirfd = open(dir, O_DIRECTORY | O_RDONLY | O_CLOEXEC | O_NOCTTY | O_NOFOLLOW);
+	dirfd = open(dir, PROTECT_OPEN);
 	if (dirfd < 0)
-		return -1;
+		return -errno;
 
 	return lxc_writeat(dirfd, filename, buf, count);
 }
@@ -105,6 +104,32 @@ int lxc_read_from_file(const char *filename, void *buf, size_t count)
 	fd = open(filename, O_RDONLY | O_CLOEXEC);
 	if (fd < 0)
 		return -1;
+
+	if (!buf || !count) {
+		char buf2[100];
+		size_t count2 = 0;
+
+		while ((ret = lxc_read_nointr(fd, buf2, 100)) > 0)
+			count2 += ret;
+
+		if (ret >= 0)
+			ret = count2;
+	} else {
+		memset(buf, 0, count);
+		ret = lxc_read_nointr(fd, buf, count);
+	}
+
+	return ret;
+}
+
+ssize_t lxc_read_try_buf_at(int dfd, const char *path, void *buf, size_t count)
+{
+	__do_close int fd = -EBADF;
+	ssize_t ret;
+
+	fd = open_at(dfd, path, PROTECT_OPEN, PROTECT_LOOKUP_BENEATH, 0);
+	if (fd < 0)
+		return -errno;
 
 	if (!buf || !count) {
 		char buf2[100];
@@ -338,22 +363,22 @@ FILE *fopen_cloexec(const char *path, const char *mode)
 	int open_mode = 0, step = 0;
 	FILE *f;
 
-	if (!strncmp(mode, "r+", 2)) {
+	if (strnequal(mode, "r+", 2)) {
 		open_mode = O_RDWR;
 		step = 2;
-	} else if (!strncmp(mode, "r", 1)) {
+	} else if (strnequal(mode, "r", 1)) {
 		open_mode = O_RDONLY;
 		step = 1;
-	} else if (!strncmp(mode, "w+", 2)) {
+	} else if (strnequal(mode, "w+", 2)) {
 		open_mode = O_RDWR | O_TRUNC | O_CREAT;
 		step = 2;
-	} else if (!strncmp(mode, "w", 1)) {
+	} else if (strnequal(mode, "w", 1)) {
 		open_mode = O_WRONLY | O_TRUNC | O_CREAT;
 		step = 1;
-	} else if (!strncmp(mode, "a+", 2)) {
+	} else if (strnequal(mode, "a+", 2)) {
 		open_mode = O_RDWR | O_CREAT | O_APPEND;
 		step = 2;
-	} else if (!strncmp(mode, "a", 1)) {
+	} else if (strnequal(mode, "a", 1)) {
 		open_mode = O_WRONLY | O_CREAT | O_APPEND;
 		step = 1;
 	}
@@ -430,12 +455,15 @@ int fd_to_buf(int fd, char **buf, size_t *length)
 
 		bytes_read = lxc_read_nointr(fd, chunk, sizeof(chunk));
 		if (bytes_read < 0)
-			return 0;
+			return -errno;
 
 		if (!bytes_read)
 			break;
 
-		copy = must_realloc(old, (*length + bytes_read) * sizeof(*old));
+		copy = realloc(old, (*length + bytes_read) * sizeof(*old));
+		if (!copy)
+			return ret_errno(ENOMEM);
+
 		memcpy(copy + *length, chunk, bytes_read);
 		*length += bytes_read;
 	}
@@ -517,41 +545,129 @@ FILE *fdopen_cached(int fd, const char *mode, void **caller_freed_buffer)
 	return f;
 }
 
+int fd_cloexec(int fd, bool cloexec)
+{
+	int oflags, nflags;
+
+	oflags = fcntl(fd, F_GETFD, 0);
+	if (oflags < 0)
+		return -errno;
+
+	if (cloexec)
+		nflags = oflags | FD_CLOEXEC;
+	else
+		nflags = oflags & ~FD_CLOEXEC;
+
+	if (nflags == oflags)
+		return 0;
+
+	if (fcntl(fd, F_SETFD, nflags) < 0)
+		return -errno;
+
+	return 0;
+}
+
+FILE *fdopen_at(int dfd, const char *path, const char *mode,
+		unsigned int o_flags, unsigned int resolve_flags)
+{
+	__do_close int fd = -EBADF;
+	__do_fclose FILE *f = NULL;
+
+	if (is_empty_string(path))
+		fd = dup_cloexec(dfd);
+	else
+		fd = open_at(dfd, path, o_flags, resolve_flags, 0);
+	if (fd < 0)
+		return NULL;
+
+	f = fdopen(fd, "re");
+	if (!f)
+		return NULL;
+
+	/* Transfer ownership of fd. */
+	move_fd(fd);
+
+	return move_ptr(f);
+}
+
+int timens_offset_write(clockid_t clk_id, int64_t s_offset, int64_t ns_offset)
+{
+	__do_close int fd = -EBADF;
+	int ret;
+	ssize_t len;
+	char buf[INTTYPE_TO_STRLEN(int) +
+		 STRLITERALLEN(" ") + INTTYPE_TO_STRLEN(int64_t) +
+		 STRLITERALLEN(" ") + INTTYPE_TO_STRLEN(int64_t) + 1];
+
+	if (clk_id == CLOCK_MONOTONIC_COARSE || clk_id == CLOCK_MONOTONIC_RAW)
+		clk_id = CLOCK_MONOTONIC;
+
+	fd = open("/proc/self/timens_offsets", O_WRONLY | O_CLOEXEC);
+	if (fd < 0)
+		return -errno;
+
+	len = strnprintf(buf, sizeof(buf), "%d %" PRId64 " %" PRId64, clk_id, s_offset, ns_offset);
+	if (len < 0)
+		return ret_errno(EFBIG);
+
+	ret = lxc_write_nointr(fd, buf, len);
+	if (ret < 0 || (size_t)ret != len)
+		return -EIO;
+
+	return 0;
+}
+
 bool exists_dir_at(int dir_fd, const char *path)
 {
-	struct stat sb;
 	int ret;
+	struct stat sb;
 
 	ret = fstatat(dir_fd, path, &sb, 0);
 	if (ret < 0)
 		return false;
 
-	return S_ISDIR(sb.st_mode);
+	ret = S_ISDIR(sb.st_mode);
+	if (ret)
+		errno = EEXIST;
+	else
+		errno = ENOTDIR;
+
+	return ret;
 }
 
 bool exists_file_at(int dir_fd, const char *path)
 {
+	int ret;
 	struct stat sb;
 
-	return fstatat(dir_fd, path, &sb, 0) == 0;
+	ret = fstatat(dir_fd, path, &sb, 0);
+	if (ret == 0)
+		errno = EEXIST;
+	return ret == 0;
 }
 
-int open_beneath(int dir_fd, const char *path, unsigned int flags)
+int open_at(int dfd, const char *path, unsigned int o_flags,
+	    unsigned int resolve_flags, mode_t mode)
 {
 	__do_close int fd = -EBADF;
 	struct lxc_open_how how = {
-		.flags		= flags,
-		.resolve	= RESOLVE_NO_XDEV | RESOLVE_NO_SYMLINKS | RESOLVE_NO_MAGICLINKS | RESOLVE_BENEATH,
+		.flags		= o_flags,
+		.mode		= mode,
+		.resolve	= resolve_flags,
 	};
 
-	fd = openat2(dir_fd, path, &how, sizeof(how));
+	fd = openat2(dfd, path, &how, sizeof(how));
 	if (fd >= 0)
 		return move_fd(fd);
 
 	if (errno != ENOSYS)
 		return -errno;
 
-	return openat(dir_fd, path, O_NOFOLLOW | flags);
+	fd = openat(dfd, path, o_flags, mode);
+	if (fd < 0)
+		return -errno;
+
+	return move_fd(fd);
 }
 
 int fd_make_nonblocking(int fd)
@@ -564,4 +680,74 @@ int fd_make_nonblocking(int fd)
 
 	flags &= ~O_NONBLOCK;
 	return fcntl(fd, F_SETFL, flags);
+}
+
+#define BATCH_SIZE 50
+static void batch_realloc(char **mem, size_t oldlen, size_t newlen)
+{
+	int newbatches = (newlen / BATCH_SIZE) + 1;
+	int oldbatches = (oldlen / BATCH_SIZE) + 1;
+
+	if (!*mem || newbatches > oldbatches)
+		*mem = must_realloc(*mem, newbatches * BATCH_SIZE);
+}
+
+static void append_line(char **dest, size_t oldlen, char *new, size_t newlen)
+{
+	size_t full = oldlen + newlen;
+
+	batch_realloc(dest, oldlen, full + 1);
+
+	memcpy(*dest + oldlen, new, newlen + 1);
+}
+
+/* Slurp in a whole file */
+char *read_file_at(int dfd, const char *fnam,
+		   unsigned int o_flags, unsigned resolve_flags)
+{
+	__do_close int fd = -EBADF;
+	__do_free char *buf = NULL, *line = NULL;
+	__do_fclose FILE *f = NULL;
+	size_t len = 0, fulllen = 0;
+	int linelen;
+
+	fd = open_at(dfd, fnam, o_flags, resolve_flags, 0);
+	if (fd < 0)
+		return NULL;
+
+	f = fdopen(fd, "re");
+	if (!f)
+		return NULL;
+	/* Transfer ownership to fdopen(). */
+	move_fd(fd);
+
+	while ((linelen = getline(&line, &len, f)) != -1) {
+		append_line(&buf, fulllen, line, linelen);
+		fulllen += linelen;
+	}
+
+	return move_ptr(buf);
+}
+
+bool same_file_lax(int fda, int fdb)
+{
+	struct stat st_fda, st_fdb;
+
+
+        if (fda == fdb)
+                return true;
+
+        if (fstat(fda, &st_fda) < 0)
+                return false;
+
+        if (fstat(fdb, &st_fdb) < 0)
+                return false;
+
+	errno = EINVAL;
+	if ((st_fda.st_mode & S_IFMT) != (st_fdb.st_mode & S_IFMT))
+		return false;
+
+	errno = EINVAL;
+	return (st_fda.st_dev == st_fdb.st_dev) &&
+	       (st_fda.st_ino == st_fdb.st_ino);
 }

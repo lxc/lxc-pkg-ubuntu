@@ -321,8 +321,7 @@ static struct lxc_container *test_ct_create(const char *lxcpath,
 		goto out1;
 	}
 	if (ct->is_defined(ct)) {
-		ct->stop(ct);
-		ct->destroy(ct);
+		test_ct_destroy(ct);
 		ct = lxc_container_new(name, lxcpath);
 	}
 	if (!ct->createl(ct, template, NULL, NULL, 0, NULL)) {
@@ -400,7 +399,7 @@ int main(int argc, char *argv[])
 
 	(void)strlcpy(template, P_tmpdir"/attach_XXXXXX", sizeof(template));
 
-	lsm_ops = lsm_init();
+	lsm_ops = lsm_init_static();
 
 	i = lxc_make_tmpfile(template, false);
 	if (i < 0) {

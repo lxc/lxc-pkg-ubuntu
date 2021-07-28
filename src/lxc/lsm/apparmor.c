@@ -13,9 +13,11 @@
 #include <unistd.h>
 
 #include "caps.h"
+#include "cgroups/cgroup_utils.h"
 #include "conf.h"
 #include "config.h"
 #include "initutils.h"
+#include "file_utils.h"
 #include "log.h"
 #include "lsm.h"
 #include "parse.h"
@@ -393,52 +395,87 @@ static int apparmor_enabled(struct lsm_ops *ops)
 	return 0;
 }
 
+static int __apparmor_process_label_open(struct lsm_ops *ops, pid_t pid, int o_flags, bool on_exec)
+{
+	int ret = -1;
+	int labelfd;
+	char path[LXC_LSMATTRLEN];
+
+	if (on_exec)
+		TRACE("On-exec not supported with AppArmor");
+
+	/* first try the apparmor subdir */
+	ret = snprintf(path, LXC_LSMATTRLEN, "/proc/%d/attr/apparmor/current", pid);
+	if (ret < 0 || ret >= LXC_LSMATTRLEN)
+		return -1;
+
+	labelfd = open(path, o_flags);
+	if (labelfd >= 0)
+		return labelfd;
+	else if (errno != ENOENT)
+		goto error;
+
+	/* fallback to legacy global attr directory */
+	ret = snprintf(path, LXC_LSMATTRLEN, "/proc/%d/attr/current", pid);
+	if (ret < 0 || ret >= LXC_LSMATTRLEN)
+		return -1;
+
+	labelfd = open(path, o_flags);
+	if (labelfd >= 0)
+		return labelfd;
+
+error:
+	return log_error_errno(-errno, errno, "Unable to open AppArmor LSM label file descriptor");
+}
+
 static char *apparmor_process_label_get(struct lsm_ops *ops, pid_t pid)
 {
-	char path[100], *space;
+	__do_close int fd_label = -EBADF;
+	__do_free char *buf = NULL;
+	__do_free char *label = NULL;
 	int ret;
-	char *buf = NULL, *newbuf;
-	int sz = 0;
-	FILE *f;
+	size_t len;
 
-	ret = snprintf(path, 100, "/proc/%d/attr/current", pid);
-	if (ret < 0 || ret >= 100) {
-		ERROR("path name too long");
+	fd_label = __apparmor_process_label_open(ops, pid, O_RDONLY, false);
+	if (fd_label < 0)
 		return NULL;
-	}
-again:
-	f = fopen_cloexec(path, "r");
-	if (!f) {
-		SYSERROR("opening %s", path);
-		free(buf);
+
+	ret = fd_to_buf(fd_label, &buf, &len);
+	if (ret < 0)
 		return NULL;
-	}
-	sz += 1024;
-	newbuf = realloc(buf, sz);
-	if (!newbuf) {
-		free(buf);
-		ERROR("out of memory");
-		fclose(f);
+
+	if (len == 0)
 		return NULL;
-	}
-	buf = newbuf;
-	memset(buf, 0, sz);
-	ret = fread(buf, 1, sz - 1, f);
-	fclose(f);
-	if (ret < 0) {
-		ERROR("reading %s", path);
-		free(buf);
+
+	label = malloc(len + 1);
+	if (!label)
 		return NULL;
-	}
-	if (ret >= sz)
-		goto again;
-	space = strchr(buf, '\n');
-	if (space)
-		*space = '\0';
-	space = strchr(buf, ' ');
-	if (space)
-		*space = '\0';
-	return buf;
+	memcpy(label, buf, len);
+	label[len] = '\0';
+
+	len = strcspn(label, "\n \t");
+	if (len)
+		label[len] = '\0';
+
+	return move_ptr(label);
+}
+
+static char *apparmor_process_label_get_at(struct lsm_ops *ops, int fd_pid)
+{
+	__do_free char *label = NULL;
+	size_t len;
+
+	/* first try the apparmor subdir, then fall back to legacy interface */
+	label = read_file_at(fd_pid, "attr/apparmor/current", PROTECT_OPEN, PROTECT_LOOKUP_BENEATH);
+	if (!label && errno == ENOENT)
+		label = read_file_at(fd_pid, "attr/current", PROTECT_OPEN, PROTECT_LOOKUP_BENEATH);
+	if (!label)
+		return log_error_errno(NULL, errno, "Failed to get AppArmor context");
+
+	len = strcspn(label, "\n \t");
+	if (len)
+		label[len] = '\0';
+	return move_ptr(label);
 }
 
 /*
@@ -449,7 +486,7 @@ static bool apparmor_am_unconfined(struct lsm_ops *ops)
 {
 	char *p = apparmor_process_label_get(ops, lxc_raw_getpid());
 	bool ret = false;
-	if (!p || strcmp(p, "unconfined") == 0)
+	if (!p || strequal(p, "unconfined"))
 		ret = true;
 	free(p);
 	return ret;
@@ -459,9 +496,9 @@ static bool aa_needs_transition(char *curlabel)
 {
 	if (!curlabel)
 		return false;
-	if (strcmp(curlabel, "unconfined") == 0)
+	if (strequal(curlabel, "unconfined"))
 		return false;
-	if (strcmp(curlabel, "/usr/bin/lxc-start") == 0)
+	if (strequal(curlabel, "/usr/bin/lxc-start"))
 		return false;
 	return true;
 }
@@ -523,11 +560,6 @@ static inline char *apparmor_namespace(const char *ctname, const char *lxcpath)
 	return full;
 }
 
-/* TODO: This is currently run only in the context of a constructor (via the
- * initial lsm_init() called due to its __attribute__((constructor)), so we
- * do not have ERROR/... macros available, so there are some fprintf(stderr)s
- * in there.
- */
 static bool check_apparmor_parser_version(struct lsm_ops *ops)
 {
 	int major = 0, minor = 0, micro = 0, ret = 0;
@@ -590,10 +622,10 @@ static bool file_is_yes(const char *path)
 	rd = lxc_read_nointr(fd, buf, sizeof(buf));
 	close(fd);
 
-	return rd >= 4 && strncmp(buf, "yes\n", 4) == 0;
+	return rd >= 4 && strnequal(buf, "yes\n", 4);
 }
 
-static bool apparmor_can_stack()
+static bool apparmor_can_stack(void)
 {
 	int major, minor, scanned;
 	FILE *f;
@@ -1040,13 +1072,13 @@ static int apparmor_prepare(struct lsm_ops *ops, struct lxc_conf *conf, const ch
 	label = conf->lsm_aa_profile;
 
 	/* user may request that we just ignore apparmor */
-	if (label && strcmp(label, AA_UNCHANGED) == 0) {
+	if (label && strequal(label, AA_UNCHANGED)) {
 		INFO("AppArmor profile unchanged per user request");
 		conf->lsm_aa_profile_computed = must_copy_string(label);
 		return 0;
 	}
 
-	if (label && strcmp(label, AA_GENERATED) == 0) {
+	if (label && strequal(label, AA_GENERATED)) {
 		if (!check_apparmor_parser_version(ops)) {
 			ERROR("Cannot use generated profile: apparmor_parser not available");
 			goto out;
@@ -1081,7 +1113,7 @@ static int apparmor_prepare(struct lsm_ops *ops, struct lxc_conf *conf, const ch
 	if (!ops->aa_can_stack && aa_needs_transition(curlabel)) {
 		/* we're already confined, and stacking isn't supported */
 
-		if (!label || strcmp(curlabel, label) == 0) {
+		if (!label || strequal(curlabel, label)) {
 			/* no change requested */
 			ret = 0;
 			goto out;
@@ -1098,7 +1130,7 @@ static int apparmor_prepare(struct lsm_ops *ops, struct lxc_conf *conf, const ch
 			label = AA_DEF_PROFILE;
 	}
 
-	if (!ops->aa_mount_features_enabled && strcmp(label, "unconfined") != 0) {
+	if (!ops->aa_mount_features_enabled && !strequal(label, "unconfined")) {
 		WARN("Incomplete AppArmor support in your kernel");
 		if (!conf->lsm_aa_allow_incomplete) {
 			ERROR("If you really want to start this container, set");
@@ -1128,35 +1160,20 @@ static int apparmor_keyring_label_set(struct lsm_ops *ops, const char *label)
 
 static int apparmor_process_label_fd_get(struct lsm_ops *ops, pid_t pid, bool on_exec)
 {
-	int ret = -1;
-	int labelfd;
-	char path[LXC_LSMATTRLEN];
-
-	if (on_exec)
-		TRACE("On-exec not supported with AppArmor");
-
-	ret = snprintf(path, LXC_LSMATTRLEN, "/proc/%d/attr/current", pid);
-	if (ret < 0 || ret >= LXC_LSMATTRLEN)
-		return -1;
-
-	labelfd = open(path, O_RDWR);
-	if (labelfd < 0)
-		return log_error_errno(-errno, errno, "Unable to open AppArmor LSM label file descriptor");
-
-	return labelfd;
+	return __apparmor_process_label_open(ops, pid, O_RDWR, on_exec);
 }
 
 static int apparmor_process_label_set_at(struct lsm_ops *ops, int label_fd, const char *label, bool on_exec)
 {
+	__do_free char *command = NULL;
 	int ret = -1;
 	size_t len;
-	__do_free char *command = NULL;
 
 	if (on_exec)
-		log_trace(0, "Changing AppArmor profile on exec not supported");
+		TRACE("Changing AppArmor profile on exec not supported");
 
 	len = strlen(label) + strlen("changeprofile ") + 1;
-	command = malloc(len);
+	command = zalloc(len);
 	if (!command)
 		return ret_errno(ENOMEM);
 
@@ -1167,7 +1184,7 @@ static int apparmor_process_label_set_at(struct lsm_ops *ops, int label_fd, cons
 	ret = lxc_write_nointr(label_fd, command, len - 1);
 
 	INFO("Set AppArmor label to \"%s\"", label);
-	return 0;
+	return ret;
 }
 
 /*
@@ -1185,45 +1202,33 @@ static int apparmor_process_label_set_at(struct lsm_ops *ops, int label_fd, cons
 static int apparmor_process_label_set(struct lsm_ops *ops, const char *inlabel,
 				      struct lxc_conf *conf, bool on_exec)
 {
-	int label_fd, ret;
-	pid_t tid;
+	__do_close int label_fd = -EBADF;
+	int ret;
 	const char *label;
 
 	if (!ops->aa_enabled)
-		return log_error(-1, "AppArmor not enabled");
+		return log_error_errno(-EOPNOTSUPP, EOPNOTSUPP, "AppArmor not enabled");
 
 	label = inlabel ? inlabel : conf->lsm_aa_profile_computed;
-	if (!label) {
-		ERROR("LSM wasn't prepared");
-		return -1;
-	}
+	if (!label)
+		return log_error_errno(-EINVAL, EINVAL, "LSM wasn't prepared");
 
 	/* user may request that we just ignore apparmor */
-	if (strcmp(label, AA_UNCHANGED) == 0) {
-		INFO("AppArmor profile unchanged per user request");
-		return 0;
-	}
+	if (strequal(label, AA_UNCHANGED))
+		return log_info(0, "AppArmor profile unchanged per user request");
 
-	if (strcmp(label, "unconfined") == 0 && apparmor_am_unconfined(ops)) {
-		INFO("AppArmor profile unchanged");
-		return 0;
-	}
-	tid = lxc_raw_gettid();
-	label_fd = apparmor_process_label_fd_get(ops, tid, on_exec);
-	if (label_fd < 0) {
-		SYSERROR("Failed to change AppArmor profile to %s", label);
-		return -1;
-	}
+	if (strequal(label, "unconfined") && apparmor_am_unconfined(ops))
+		return log_info(0, "AppArmor profile unchanged");
+
+	label_fd = apparmor_process_label_fd_get(ops, lxc_raw_gettid(), on_exec);
+	if (label_fd < 0)
+		return log_error_errno(-EINVAL, EINVAL, "Failed to change AppArmor profile to %s", label);
 
 	ret = apparmor_process_label_set_at(ops, label_fd, label, on_exec);
-	close(label_fd);
-	if (ret < 0) {
-		ERROR("Failed to change AppArmor profile to %s", label);
-		return -1;
-	}
+	if (ret < 0)
+		return log_error_errno(-EINVAL, EINVAL, "Failed to change AppArmor profile to %s", label);
 
-	INFO("Changed AppArmor profile to %s", label);
-	return 0;
+	return log_info(0, "Changed AppArmor profile to %s", label);
 }
 
 static struct lsm_ops apparmor_ops = {
@@ -1242,6 +1247,7 @@ static struct lsm_ops apparmor_ops = {
 	.process_label_fd_get		= apparmor_process_label_fd_get,
 	.process_label_get 		= apparmor_process_label_get,
 	.process_label_set 		= apparmor_process_label_set,
+	.process_label_get_at 		= apparmor_process_label_get_at,
 	.process_label_set_at		= apparmor_process_label_set_at,
 };
 

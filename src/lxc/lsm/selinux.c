@@ -13,8 +13,10 @@
 
 #include "conf.h"
 #include "config.h"
+#include "file_utils.h"
 #include "log.h"
 #include "lsm.h"
+#include "memory_utils.h"
 
 #define DEFAULT_LABEL "unconfined_t"
 
@@ -41,6 +43,32 @@ static char *selinux_process_label_get(struct lsm_ops *ops, pid_t pid)
 }
 
 /*
+ * selinux_process_label_get_at: Get SELinux context of a process
+ *
+ * @fd_pid     : file descriptor to /proc/<pid> of the process
+ *
+ * Returns the context of the given pid. The caller must free()
+ * the returned string.
+ *
+ * Note that this relies on /proc being available.
+ */
+static char *selinux_process_label_get_at(struct lsm_ops *ops, int fd_pid)
+{
+	__do_free char *label = NULL;
+	size_t len;
+
+	label = read_file_at(fd_pid, "attr/current", PROTECT_OPEN, PROTECT_LOOKUP_BENEATH);
+	if (!label)
+		return log_error_errno(NULL, errno, "Failed to get SELinux context");
+
+	len = strcspn(label, "\n \t");
+	if (len)
+		label[len] = '\0';
+
+	return move_ptr(label);
+}
+
+/*
  * selinux_process_label_set: Set SELinux context of a process
  *
  * @label   : label string
@@ -62,7 +90,7 @@ static int selinux_process_label_set(struct lsm_ops *ops, const char *inlabel,
 	if (!label)
 		label = DEFAULT_LABEL;
 
-	if (strcmp(label, "unconfined_t") == 0)
+	if (strequal(label, "unconfined_t"))
 		return 0;
 
 	if (on_exec)
@@ -154,6 +182,7 @@ static struct lsm_ops selinux_ops = {
 	.process_label_fd_get		= selinux_process_label_fd_get,
 	.process_label_get		= selinux_process_label_get,
 	.process_label_set		= selinux_process_label_set,
+	.process_label_get_at		= selinux_process_label_get_at,
 	.process_label_set_at		= selinux_process_label_set_at,
 };
 

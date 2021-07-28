@@ -15,6 +15,8 @@
 #include <sys/types.h>
 #include <unistd.h>
 
+#include "config.h"
+#include "cgroups/cgroup.h"
 #include "compiler.h"
 #include "string_utils.h"
 
@@ -51,5 +53,7 @@ struct prctl_mm_map {
 __hidden extern const char *lxc_global_config_value(const char *option_name);
 
 __hidden extern int setproctitle(char *title);
+
+__hidden __noreturn int lxc_container_init(int argc, char *const *argv, bool quiet);
 
 #endif /* __LXC_INITUTILS_H */

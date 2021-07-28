@@ -203,7 +203,7 @@ int btrfs_mount(struct lxc_storage *bdev)
 	if (!bdev->src || !bdev->dest)
 		return -22;
 
-	if (parse_mntopts(bdev->mntopts, &mntflags, &mntdata) < 0) {
+	if (parse_mntopts_legacy(bdev->mntopts, &mntflags, &mntdata) < 0) {
 		free(mntdata);
 		return -22;
 	}
@@ -374,7 +374,7 @@ int btrfs_snapshot_wrapper(void *data)
 	const char *src;
 	struct rsync_data_char *arg = data;
 
-	(void)lxc_setgroups(0, NULL);
+	(void)lxc_drop_groups();
 
 	if (setgid(0) < 0) {
 		ERROR("Failed to setgid to 0");

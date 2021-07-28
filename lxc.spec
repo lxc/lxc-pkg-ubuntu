@@ -57,7 +57,7 @@ BuildRequires: systemd
 %endif
 
 Name: lxc
-Version: 4.0.6
+Version: 4.0.10
 Release: %{?beta_rel:0.1.%{beta_rel}}%{?!beta_rel:%{norm_rel}}%{?dist}
 URL: http://linuxcontainers.org
 Source: http://linuxcontainers.org/downloads/%{name}-%{version}%{?beta_dot}.tar.gz
@@ -197,6 +197,10 @@ LXC_DHCP_MAX="253"
 # dnsmasq.  For instance, you can use 'dhcp-host=mail1,10.0.3.100' to have
 # container 'mail1' always get ip address 10.0.3.100.
 #LXC_DHCP_CONFILE=/etc/lxc/dnsmasq.conf
+
+# Whether to use nftables (if available) to configure required network rules.
+# Set to any value != "true" to force iptables backend instead.
+LXC_USE_NFT="true"
 
 # Uncomment the next line if you want lxcbr0's dnsmasq to resolve the .lxc
 # domain.  You can then add "server=/lxc/10.0.3.1' (or your actual $LXC_ADDR)

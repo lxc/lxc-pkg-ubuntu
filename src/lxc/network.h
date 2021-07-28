@@ -80,6 +80,9 @@ struct ifla_veth {
 	struct lxc_list ipv4_routes;
 	struct lxc_list ipv6_routes;
 	int mode; /* bridge, router */
+	short vlan_id;
+	bool vlan_id_set;
+	struct lxc_list vlan_tagged_ids;
 };
 
 struct ifla_vlan {
@@ -133,6 +136,7 @@ union netdev_p {
  * @created_name      : the name with which this interface got created before
  *			being renamed to final_name.
  *			Currenly only used for veth devices.
+ * @transient_name    : temporary name to avoid namespace collisions
  * @hwaddr            : mac address
  * @mtu               : maximum transmission unit
  * @priv              : information specific to the specificed network type
@@ -162,6 +166,7 @@ struct lxc_netdev {
 	bool l2proxy;
 	char name[IFNAMSIZ];
 	char created_name[IFNAMSIZ];
+	char transient_name[IFNAMSIZ];
 	char *hwaddr;
 	char *mtu;
 	union netdev_p priv;

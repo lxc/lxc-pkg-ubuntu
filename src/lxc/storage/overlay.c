@@ -192,11 +192,11 @@ int ovl_clonepaths(struct lxc_storage *orig, struct lxc_storage *new, const char
 		 * don't need to record a dependency. If we would restore would
 		 * also fail.
 		 */
-		clean_old_path = lxc_deslashify(oldpath);
+		clean_old_path = path_simplify(oldpath);
 		if (!clean_old_path)
 			return log_error_errno(-ENOMEM, ENOMEM, "Failed to create clean path for \"%s\"", oldpath);
 
-		clean_new_path = lxc_deslashify(lxcpath);
+		clean_new_path = path_simplify(lxcpath);
 		if (!clean_new_path)
 			return log_error_errno(-ENOMEM, ENOMEM, "Failed to create clean path for \"%s\"", lxcpath);
 
@@ -414,7 +414,7 @@ int ovl_mount(struct lxc_storage *bdev)
 	work = must_make_path(upper, LXC_OVERLAY_WORK_DIR, NULL);
 	upper[lastslash - upper] = '/';
 
-	ret = parse_mntopts(bdev->mntopts, &mntflags, &mntdata);
+	ret = parse_mntopts_legacy(bdev->mntopts, &mntflags, &mntdata);
 	if (ret < 0) {
 		ERROR("Failed to parse mount options");
 		free(mntdata);

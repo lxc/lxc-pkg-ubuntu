@@ -14,6 +14,10 @@
 #include "include/strlcat.h"
 #endif
 
+#ifndef HAVE_STRCHRNUL
+#include "include/strchrnul.h"
+#endif
+
 /* convert variadic argument lists to arrays (for execl type argument lists) */
 __hidden extern char **lxc_va_arg_list_to_argv(va_list ap, size_t skip, int do_strdup);
 __hidden extern const char **lxc_va_arg_list_to_argv_const(va_list ap, size_t skip);
@@ -26,21 +30,7 @@ __hidden extern char *lxc_string_replace(const char *needle, const char *replace
 					 const char *haystack);
 __hidden extern bool lxc_string_in_array(const char *needle, const char **haystack);
 __hidden extern char *lxc_string_join(const char *sep, const char **parts, bool use_as_prefix);
-/*
- * Normalize and split path: Leading and trailing / are removed, multiple
- * / are compactified, .. and . are resolved (.. on the top level is considered
- * identical to .).
- * Examples:
- *     /            ->   { NULL }
- *     foo/../bar   ->   { bar, NULL }
- *     ../../       ->   { NULL }
- *     ./bar/baz/.. ->   { bar, NULL }
- *     foo//bar     ->   { foo, bar, NULL }
- */
-__hidden extern char **lxc_normalize_path(const char *path);
 
-/* remove multiple slashes from the path, e.g. ///foo//bar -> /foo/bar */
-__hidden extern char *lxc_deslashify(const char *path);
 __hidden extern char *lxc_append_paths(const char *first, const char *second);
 
 /*
@@ -74,8 +64,12 @@ __hidden extern int lxc_safe_long(const char *numstr, long int *converted);
 __hidden extern int lxc_safe_long_long(const char *numstr, long long int *converted);
 __hidden extern int lxc_safe_ulong(const char *numstr, unsigned long *converted);
 __hidden extern int lxc_safe_uint64(const char *numstr, uint64_t *converted, int base);
+__hidden extern int lxc_safe_int64_residual(const char *restrict numstr,
+					    int64_t *restrict converted,
+					    int base, char *restrict residual,
+					    size_t residual_len);
 /* Handles B, kb, MB, GB. Detects overflows and reports -ERANGE. */
-__hidden extern int parse_byte_size_string(const char *s, int64_t *converted);
+__hidden extern int parse_byte_size_string(const char *s, long long int *converted);
 
 /*
  * Concatenate all passed-in strings into one path. Do not fail. If any piece
@@ -84,6 +78,16 @@ __hidden extern int parse_byte_size_string(const char *s, int64_t *converted);
 __hidden __attribute__((sentinel)) extern char *must_concat(size_t *len, const char *first, ...);
 __hidden __attribute__((sentinel)) extern char *must_make_path(const char *first, ...);
 __hidden __attribute__((sentinel)) extern char *must_append_path(char *first, ...);
+
+#define must_make_path_relative(__first__, ...)                                \
+	({                                                                     \
+		char *__ptr__;                                                 \
+		if (*__first__ == '/')                                         \
+			__ptr__ = must_make_path(".", __first__, __VA_ARGS__); \
+		else                                                           \
+			__ptr__ = must_make_path(__first__, __VA_ARGS__);      \
+		__ptr__;                                                       \
+	})
 
 /* Return copy of string @entry. Do not fail. */
 __hidden extern char *must_copy_string(const char *entry);
@@ -105,6 +109,8 @@ static inline bool is_empty_string(const char *s)
 	return !s || strcmp(s, "") == 0;
 }
 
+#define maybe_empty(s) ((!is_empty_string(s)) ? (s) : ("(null)"))
+
 static inline ssize_t safe_strlcat(char *src, const char *append, size_t len)
 {
 	size_t new_len;
@@ -125,5 +131,59 @@ static inline bool strequal(const char *str, const char *eq)
 {
 	return strcmp(str, eq) == 0;
 }
+
+static inline bool dotdot(const char *str)
+{
+	return !!strstr(str, "..");
+}
+
+static inline bool abspath(const char *str)
+{
+	return *str == '/';
+}
+
+static inline char *deabs(char *str)
+{
+	return str + strspn(str, "/");
+}
+
+#define strnprintf(buf, buf_size, ...)                                            \
+	({                                                                        \
+		int __ret_strnprintf;                                             \
+		__ret_strnprintf = snprintf(buf, buf_size, ##__VA_ARGS__);        \
+		if (__ret_strnprintf < 0 || (size_t)__ret_strnprintf >= buf_size) \
+			__ret_strnprintf = ret_errno(EIO);                        \
+		__ret_strnprintf;                                                 \
+	})
+
+static inline const char *proc_self_fd(int fd)
+{
+	static const char *invalid_fd_path = "/proc/self/fd/-EBADF";
+	static char buf[LXC_PROC_SELF_FD_LEN] = "/proc/self/fd/";
+
+	if (strnprintf(buf + STRLITERALLEN("/proc/self/fd/"),
+		       INTTYPE_TO_STRLEN(int), "%d", fd) < 0)
+		return invalid_fd_path;
+
+	return buf;
+}
+
+static inline const char *fdstr(int fd)
+{
+	static const char *fdstr_invalid = "-EBADF";
+	static char buf[INTTYPE_TO_STRLEN(int)];
+
+	if (strnprintf(buf, sizeof(buf), "%d", fd) < 0)
+		return fdstr_invalid;
+
+	return buf;
+}
+
+#define lxc_iterate_parts(__iterator, __splitme, __separators)                  \
+	for (char *__p = NULL, *__it = strtok_r(__splitme, __separators, &__p); \
+	     (__iterator = __it);                                               \
+	     __iterator = __it = strtok_r(NULL, __separators, &__p))
+
+__hidden extern char *path_simplify(const char *path);
 
 #endif /* __LXC_STRING_UTILS_H */

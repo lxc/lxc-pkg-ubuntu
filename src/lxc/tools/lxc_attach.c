@@ -23,7 +23,9 @@
 #include "config.h"
 #include "confile.h"
 #include "log.h"
+#ifdef ENFORCE_MEMFD_REXEC
 #include "rexec.h"
+#endif
 #include "utils.h"
 
 lxc_log_define(lxc_attach, lxc);
@@ -59,6 +61,7 @@ static char **extra_env;
 static ssize_t extra_env_size;
 static char **extra_keep;
 static ssize_t extra_keep_size;
+static char *selinux_context = NULL;
 
 static const struct option my_longopts[] = {
 	{"elevated-privileges", optional_argument, 0, 'e'},
@@ -74,6 +77,7 @@ static const struct option my_longopts[] = {
 	{"rcfile", required_argument, 0, 'f'},
 	{"uid", required_argument, 0, 'u'},
 	{"gid", required_argument, 0, 'g'},
+        {"context", required_argument, 0, 'c'},
 	LXC_COMMON_OPTIONS
 };
 
@@ -126,6 +130,8 @@ Options :\n\
                     Load configuration file FILE\n\
   -u, --uid=UID     Execute COMMAND with UID inside the container\n\
   -g, --gid=GID     Execute COMMAND with GID inside the container\n\
+  -c, --context=context\n\
+                    SELinux Context to transition into\n\
 ",
 	.options      = my_longopts,
 	.parser       = my_parser,
@@ -148,8 +154,8 @@ static int my_parser(struct lxc_arguments *args, int c, char *arg)
 		break;
 	case 'R': remount_sys_proc = 1; break;
 	case 'a':
-		new_personality = lxc_config_parse_arch(arg);
-		if (new_personality < 0) {
+		ret = lxc_config_parse_arch(arg, &new_personality);
+		if (ret < 0) {
 			ERROR("Invalid architecture specified: %s", arg);
 			return -1;
 		}
@@ -201,6 +207,9 @@ static int my_parser(struct lxc_arguments *args, int c, char *arg)
 		if (lxc_safe_uint(arg, &args->gid) < 0)
 			return -1;
 		break;
+        case 'c':
+                selinux_context = arg;
+                break;
 	}
 
 	return 0;
@@ -352,6 +361,9 @@ int main(int argc, char *argv[])
 
 	if (my_args.gid != LXC_INVALID_GID)
 		attach_options.gid = my_args.gid;
+
+	// selinux_context will be NULL if not set
+	attach_options.lsm_label = selinux_context;
 
 	if (command.program) {
 		ret = c->attach_run_wait(c, &attach_options, command.program,

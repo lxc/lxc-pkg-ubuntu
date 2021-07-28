@@ -98,9 +98,9 @@ static void lxc_rexec_as_memfd(char **argv, char **envp, const char *memfd_name)
 	if (memfd < 0) {
 		char template[PATH_MAX];
 
-		ret = snprintf(template, sizeof(template),
-			       P_tmpdir "/.%s_XXXXXX", memfd_name);
-		if (ret < 0 || (size_t)ret >= sizeof(template))
+		ret = strnprintf(template, sizeof(template),
+				 P_tmpdir "/.%s_XXXXXX", memfd_name);
+		if (ret < 0)
 			return;
 
 		tmpfd = lxc_make_tmpfile(template, true);
@@ -127,10 +127,13 @@ static void lxc_rexec_as_memfd(char **argv, char **envp, const char *memfd_name)
 		sent = lxc_sendfile_nointr(memfd >= 0 ? memfd : tmpfd, fd, NULL,
 					   st.st_size - bytes_sent);
 		if (sent < 0) {
-			/* Fallback to shoveling data between kernel- and
+			/*
+			 * Fallback to shoveling data between kernel- and
 			 * userspace.
 			 */
-			lseek(fd, 0, SEEK_SET);
+			if (lseek(fd, 0, SEEK_SET) == (off_t) -1)
+				fprintf(stderr, "Failed to seek to beginning of file");
+
 			if (fd_to_fd(fd, memfd >= 0 ? memfd : tmpfd))
 				break;
 
@@ -148,8 +151,8 @@ static void lxc_rexec_as_memfd(char **argv, char **envp, const char *memfd_name)
 	} else {
 		char procfd[LXC_PROC_PID_FD_LEN];
 
-		ret = snprintf(procfd, sizeof(procfd), "/proc/self/fd/%d", tmpfd);
-		if (ret < 0 || (size_t)ret >= sizeof(procfd))
+		ret = strnprintf(procfd, sizeof(procfd), "/proc/self/fd/%d", tmpfd);
+		if (ret < 0)
 			return;
 
 		execfd = open(procfd, O_PATH | O_CLOEXEC);

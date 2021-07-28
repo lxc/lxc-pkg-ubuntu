@@ -35,7 +35,7 @@ int lxc_rsync_exec_wrapper(void *data)
 	if (!lxc_switch_uid_gid(0, 0))
 		return -1;
 
-	if (!lxc_setgroups(0, NULL))
+	if (!lxc_drop_groups())
 		return -1;
 
 	return lxc_rsync_exec(args->src, args->dest);
@@ -86,17 +86,19 @@ int lxc_rsync(struct rsync_data *data)
 		ERROR("Failed mounting \"%s\" on \"%s\"", orig->src, orig->dest);
 		return -1;
 	}
+	TRACE("Mounted \"%s\" on \"%s\"", orig->src, orig->dest);
 
 	ret = new->ops->mount(new);
 	if (ret < 0) {
 		ERROR("Failed mounting \"%s\" onto \"%s\"", new->src, new->dest);
 		return -1;
 	}
+	TRACE("Mounted \"%s\" on \"%s\"", new->src, new->dest);
 
 	if (!lxc_switch_uid_gid(0, 0))
 		return -1;
 
-	if (!lxc_setgroups(0, NULL))
+	if (!lxc_drop_groups())
 		return -1;
 
 	src = lxc_storage_get_path(orig->dest, orig->type);

@@ -85,7 +85,7 @@ struct lxc_log_category {
 };
 
 #ifndef NO_LXC_CONF
-extern int lxc_log_use_global_fd;
+extern bool lxc_log_use_global_fd;
 #endif
 
 /*
@@ -561,6 +561,119 @@ __lxc_unused static inline void LXC_##LEVEL(struct lxc_log_locinfo* locinfo,	\
 		__internal_ret__;                             \
 	})
 
+/* These are the logging return helpers to be used. */
+#define syserror(format, ...)                    \
+	({                                       \
+		SYSERROR(format, ##__VA_ARGS__); \
+		(-labs(errno));                  \
+	})
+
+#define syserror_set(__ret__, format, ...)                    \
+	({                                                    \
+		typeof(__ret__) __internal_ret__ = (__ret__); \
+		errno = labs(__ret__);                        \
+		SYSERROR(format, ##__VA_ARGS__);              \
+		__internal_ret__;                             \
+	})
+
+#define syserror_ret(__ret__, format, ...)                    \
+	({                                                    \
+		typeof(__ret__) __internal_ret__ = (__ret__); \
+		SYSERROR(format, ##__VA_ARGS__);              \
+		__internal_ret__;                             \
+	})
+
+#define error_ret(__ret__, format, ...)                       \
+	({                                                    \
+		typeof(__ret__) __internal_ret__ = (__ret__); \
+		ERROR(format, ##__VA_ARGS__);                 \
+		__internal_ret__;                             \
+	})
+
+#define syswarn(format, ...)                    \
+	({                                      \
+		SYSWARN(format, ##__VA_ARGS__); \
+		(-labs(errno));                 \
+	})
+
+#define syswarn_set(__ret__, format, ...)                     \
+	({                                                    \
+		typeof(__ret__) __internal_ret__ = (__ret__); \
+		errno = labs(__ret__);                        \
+		SYSWARN(format, ##__VA_ARGS__);               \
+		__internal_ret__;                             \
+	})
+
+#define syswarn_ret(__ret__, format, ...)                     \
+	({                                                    \
+		typeof(__ret__) __internal_ret__ = (__ret__); \
+		SYSWARN(format, ##__VA_ARGS__);               \
+		__internal_ret__;                             \
+	})
+
+#define sysinfo(format, ...)                    \
+	({                                      \
+		SYSINFO(format, ##__VA_ARGS__); \
+		(-labs(errno));                 \
+	})
+
+#define sysinfo_set(__ret__, format, ...)                     \
+	({                                                    \
+		typeof(__ret__) __internal_ret__ = (__ret__); \
+		errno = labs(__ret__);                        \
+		SYSINFO(format, ##__VA_ARGS__);               \
+		__internal_ret__;                             \
+	})
+
+#define sysinfo_ret(__ret__, format, ...)                    \
+	({                                                    \
+		typeof(__ret__) __internal_ret__ = (__ret__); \
+		SYSINFO(format, ##__VA_ARGS__);              \
+		__internal_ret__;                             \
+	})
+
+#define sysdebug(format, ...)                    \
+	({                                       \
+		SYSDEBUG(format, ##__VA_ARGS__); \
+		(-labs(errno));                  \
+	})
+
+#define sysdebug_set(__ret__, format, ...)                    \
+	({                                                    \
+		typeof(__ret__) __internal_ret__ = (__ret__); \
+		errno = labs(__ret__);                        \
+		SYSDEBUG(format, ##__VA_ARGS__);              \
+		__internal_ret__;                             \
+	})
+
+#define sysdebug_ret(__ret__, format, ...)                    \
+	({                                                    \
+		typeof(__ret__) __internal_ret__ = (__ret__); \
+		SYSDEBUG(format, ##__VA_ARGS__);              \
+		__internal_ret__;                             \
+	})
+
+#define systrace(format, ...)                    \
+	({                                       \
+		SYSTRACE(format, ##__VA_ARGS__); \
+		(-labs(errno));                  \
+	})
+
+#define systrace_set(__ret__, format, ...)                    \
+	({                                                    \
+		typeof(__ret__) __internal_ret__ = (__ret__); \
+		errno = labs(__ret__);                        \
+		SYSTRACE(format, ##__VA_ARGS__);              \
+		__internal_ret__;                             \
+	})
+
+#define systrace_ret(__ret__, format, ...)                    \
+	({                                                    \
+		typeof(__ret__) __internal_ret__ = (__ret__); \
+		SYSTRACE(format, ##__VA_ARGS__);              \
+		__internal_ret__;                             \
+	})
+
 extern int lxc_log_fd;
 
 __hidden extern int lxc_log_syslog(int facility);
@@ -568,11 +681,16 @@ __hidden extern void lxc_log_syslog_enable(void);
 __hidden extern void lxc_log_syslog_disable(void);
 __hidden extern int lxc_log_set_level(int *dest, int level);
 __hidden extern int lxc_log_get_level(void);
+static inline bool lxc_log_trace(void)
+{
+	return lxc_log_get_level() <= LXC_LOG_LEVEL_TRACE;
+}
 __hidden extern bool lxc_log_has_valid_level(void);
 __hidden extern int lxc_log_set_file(int *fd, const char *fname);
 __hidden extern const char *lxc_log_get_file(void);
 __hidden extern void lxc_log_set_prefix(const char *prefix);
 __hidden extern const char *lxc_log_get_prefix(void);
 __hidden extern void lxc_log_options_no_override(void);
+__hidden extern int lxc_log_get_fd(void);
 
 #endif /* __LXC_LOG_H */
