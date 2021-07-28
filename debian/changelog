@@ -1,3 +1,31 @@
+lxc (1:4.0.10-0ubuntu1) UNRELEASED; urgency=medium
+
+  * New upstream bugfix release (4.0.10):
+    - Fix issues with less common architectures
+    - Support for additional idmap mounts
+    - nft support in lxc-net
+    - Cleaner mount entries for sys:mixed
+    - Switched GPG server to keyserver.ubuntu.com
+
+  * New upstream bugfix release (4.0.9):
+    - Fix incorrect personality setting when running 32bit containers on 64bit
+
+  * New upstream bugfix release (4.0.8):
+    - Fix CGroup attach against older running containers
+
+  * New upstream bugfix release (4.0.7):
+    - Testing improvements including fixes from oss-fuzz
+    - Rework of the attach codepath
+    - Cgroup handling rework
+
+  * Drop all patches:
+    - Cherry-picks are all now included
+    - "Allocate new lxcbr0 subnet at startup time" is no longer needed
+      as LXC isn't pre-installed in Ubuntu images, so going with the
+      upstream init script simplifies maintenance.
+
+ -- Stéphane Graber <stgraber@ubuntu.com>  Wed, 28 Jul 2021 12:33:03 -0400
+
 lxc (1:4.0.6-0ubuntu1) hirsute; urgency=medium
 
   * New upstream bugfix release (4.0.6):
