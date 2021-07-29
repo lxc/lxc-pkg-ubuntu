@@ -1,9 +1,9 @@
-lxc (1:4.0.10-0ubuntu2) UNRELEASED; urgency=medium
+lxc (1:4.0.10-0ubuntu2) impish; urgency=medium
 
   * debian/patches: Re-introduce default lxcbr0 configuration.
     0001-Ubuntu-default-lxcbr0-configuration.patch
 
- -- Stéphane Graber <stgraber@ubuntu.com>  Thu, 29 Jul 2021 17:29:28 -0400
+ -- Stéphane Graber <stgraber@ubuntu.com>  Thu, 29 Jul 2021 17:42:39 -0400
 
 lxc (1:4.0.10-0ubuntu1) impish; urgency=medium
 
