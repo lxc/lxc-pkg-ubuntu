@@ -1,3 +1,9 @@
+lxc (1:4.0.10-0ubuntu3) UNRELEASED; urgency=medium
+
+  * debian/rules: Fix setuid bit handling for lxc-user-nic
+
+ -- Stéphane Graber <stgraber@ubuntu.com>  Fri, 30 Jul 2021 14:35:22 -0400
+
 lxc (1:4.0.10-0ubuntu2) impish; urgency=medium
 
   * debian/patches: Re-introduce default lxcbr0 configuration.
