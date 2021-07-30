@@ -58,14 +58,14 @@ override_dh_install:
 
 	dh_install
 
-override_dh_fixperms:
-	dh_fixperms
-	chmod u+s debian/liblxc-common/usr/lib/${DEB_HOST_MULTIARCH}/lxc/lxc-user-nic
-
 override_dh_builddeb:
 	# prevent system users from using setuid-root binaries under /var/lib/lxc
 	chmod 700 debian/lxc-utils/var/lib/lxc
 	chmod 700 debian/lxc-utils/var/cache/lxc
+
+	# mark lxc-user-nic as setuid
+	chmod u+s debian/liblxc-common/usr/lib/${DEB_HOST_MULTIARCH}/lxc/lxc-user-nic
+
 	dh_builddeb
 
 override_dh_installinit:
