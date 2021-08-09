@@ -1,0 +1,110 @@
+From 3590f2b3d5a74ce4415cc373436b3edde8e2acfd Mon Sep 17 00:00:00 2001
+From: Christian Brauner <christian.brauner@ubuntu.com>
+Date: Thu, 29 Jul 2021 14:32:21 +0200
+Subject: conf: add and use mount_beneath_fd()
+
+Signed-off-by: Christian Brauner <christian.brauner@ubuntu.com>
+---
+ src/lxc/conf.c        |  4 ++--
+ src/lxc/mount_utils.c | 31 +++++++++++++++++++++++++++++++
+ src/lxc/mount_utils.h |  6 +++++-
+ 3 files changed, 38 insertions(+), 3 deletions(-)
+
+diff --git a/src/lxc/conf.c b/src/lxc/conf.c
+index 65c7be762..f8402b561 100644
+--- a/src/lxc/conf.c
++++ b/src/lxc/conf.c
+@@ -1784,7 +1784,7 @@ static int lxc_finalize_devpts_child(struct lxc_handler *handler)
+ 
+ 		for (ret = -1, opts = mntopt_sets; opts && *opts; opts++) {
+ 			/* mount new devpts instance */
+-			ret = mount("devpts", "/dev/pts", "devpts", MS_NOSUID | MS_NOEXEC, *opts);
++			ret = mount_beneath_fd(rootfs->dfd_dev, "", "pts", "devpts", MS_NOSUID | MS_NOEXEC, *opts);
+ 			if (ret == 0)
+ 				break;
+ 		}
+@@ -1817,7 +1817,7 @@ static int lxc_finalize_devpts_child(struct lxc_handler *handler)
+ 	DEBUG("Created \"/dev/ptmx\" file as bind mount target");
+ 
+ 	/* Main option: use a bind-mount to please AppArmor  */
+-	ret = mount("/dev/pts/ptmx", "/dev/ptmx", NULL, MS_BIND, NULL);
++	ret = mount_beneath_fd(rootfs->dfd_dev, "pts/ptmx", "ptmx", NULL, MS_BIND, NULL);
+ 	if (!ret)
+ 		return log_debug(0, "Bind mounted \"/dev/pts/ptmx\" to \"/dev/ptmx\"");
+ 	else
+diff --git a/src/lxc/mount_utils.c b/src/lxc/mount_utils.c
+index b8aadaea6..1cf71dadd 100644
+--- a/src/lxc/mount_utils.c
++++ b/src/lxc/mount_utils.c
+@@ -11,6 +11,7 @@
+ #include <sys/stat.h>
+ #include <sys/types.h>
+ 
++#include "conf.h"
+ #include "file_utils.h"
+ #include "log.h"
+ #include "macro.h"
+@@ -604,3 +605,33 @@ bool can_use_bind_mounts(void)
+ 
+ 	return supported == 1;
+ }
++
++int mount_beneath_fd(int fd, const char *source, const char *target,
++		     const char *fs_name, unsigned int flags, const void *data)
++{
++	int ret;
++	char buf_source[PATH_MAX], buf_target[PATH_MAX];
++
++	if (abspath(source) || abspath(target))
++		return ret_errno(EINVAL);
++
++	ret = strnprintf(buf_target, sizeof(buf_target), "/proc/self/fd/%d/%s", fd, target);
++	if (ret < 0)
++		return syserror("Failed to create path");
++
++	if (is_empty_string(source)) {
++		ret = mount(fs_name ?: "", buf_target, fs_name, flags, data);
++	} else {
++		ret = strnprintf(buf_source, sizeof(buf_source), "/proc/self/fd/%d/%s", fd, source);
++		if (ret < 0)
++			return syserror("Failed to create path");
++
++		source = buf_source;
++		ret = mount(source, buf_target, fs_name, flags, data);
++	}
++	if (ret < 0)
++		return syserror("Failed to mount \"%s\" to \"%s\"", source, buf_target);
++
++	TRACE("Mounted \"%s\" to \"%s\"", source, buf_target);
++	return 0;
++}
+diff --git a/src/lxc/mount_utils.h b/src/lxc/mount_utils.h
+index dcc786f28..17ff4698f 100644
+--- a/src/lxc/mount_utils.h
++++ b/src/lxc/mount_utils.h
+@@ -12,6 +12,8 @@
+ #include "memory_utils.h"
+ #include "syscall_wrappers.h"
+ 
++struct lxc_rootfs;
++
+ /* open_tree() flags */
+ 
+ #ifndef AT_RECURSIVE
+@@ -189,7 +191,6 @@ __hidden extern int fd_bind_mount(int dfd_from, const char *path_from,
+ 				  int dfd_to, const char *path_to,
+ 				  __u64 o_flags_to, __u64 resolve_flags_to,
+ 				  unsigned int attr_flags, bool recursive);
+-
+ __hidden extern int fd_mount_idmapped(int dfd_from, const char *path_from,
+ 				      __u64 o_flags_from, __u64 resolve_flags_from,
+ 				      int dfd_to, const char *path_to,
+@@ -220,5 +221,8 @@ __hidden extern unsigned long add_required_remount_flags(const char *s,
+ 
+ __hidden extern bool can_use_mount_api(void);
+ __hidden extern bool can_use_bind_mounts(void);
++__hidden extern int mount_beneath_fd(int fd, const char *source,
++				     const char *target, const char *fs_name,
++				     unsigned int flags, const void *data);
+ 
+ #endif /* __LXC_MOUNT_UTILS_H */

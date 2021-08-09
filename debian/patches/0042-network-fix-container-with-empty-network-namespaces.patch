@@ -1,0 +1,99 @@
+From 2ec7144d15d303bcdf4f3053f75b07bcfcb0001a Mon Sep 17 00:00:00 2001
+From: Christian Brauner <christian.brauner@ubuntu.com>
+Date: Thu, 5 Aug 2021 16:16:33 +0200
+Subject: network: fix container with empty network namespaces
+
+Fixes: #3922
+Signed-off-by: Christian Brauner <christian.brauner@ubuntu.com>
+---
+ src/lxc/confile.c |  2 ++
+ src/lxc/network.c | 42 ++++++++++++++++++++++++------------------
+ 2 files changed, 26 insertions(+), 18 deletions(-)
+
+diff --git a/src/lxc/confile.c b/src/lxc/confile.c
+index a53bf82da..a388beaf9 100644
+--- a/src/lxc/confile.c
++++ b/src/lxc/confile.c
+@@ -418,6 +418,8 @@ static int set_config_net_type(const char *key, const char *value,
+ 		netdev->type = LXC_NET_PHYS;
+ 	} else if (strequal(value, "empty")) {
+ 		netdev->type = LXC_NET_EMPTY;
++		/* We don't support custom loopback device names. */
++		(void)strlcpy(netdev->name, "lo", IFNAMSIZ);
+ 	} else if (strequal(value, "none")) {
+ 		netdev->type = LXC_NET_NONE;
+ 	} else {
+diff --git a/src/lxc/network.c b/src/lxc/network.c
+index ce4e3a5c0..54fe61550 100644
+--- a/src/lxc/network.c
++++ b/src/lxc/network.c
+@@ -1231,7 +1231,12 @@ static int netdev_configure_server_empty(struct lxc_handler *handler, struct lxc
+ 	    NULL,
+ 	};
+ 
+-	netdev->ifindex = 0;
++	/* The loopback device always has index 1. */
++	netdev->ifindex = 1;
++
++	if (!strequal(netdev->name, "lo"))
++		return syserror_set(-EINVAL, "Custom loopback device names not supported");
++
+ 	if (!netdev->upscript)
+ 		return 0;
+ 
+@@ -3494,6 +3499,23 @@ static int create_transient_name(struct lxc_netdev *netdev)
+ 	return 0;
+ }
+ 
++static int netdev_requires_move(const struct lxc_netdev *netdev)
++{
++	if (IN_SET(netdev->type, LXC_NET_EMPTY, LXC_NET_NONE))
++		return false;
++
++	/*
++	 * Veth devices are directly created in the container's network
++	 * namespace so the device doesn't need to be moved into the
++	 * container's network namespace. The transient name will
++	 * already have been set above when we created the veth tunnel.
++	 */
++	if (!netdev->ifindex)
++		return false;
++
++	return true;
++}
++
+ int lxc_network_move_created_netdev_priv(struct lxc_handler *handler)
+ {
+ 	pid_t pid = handler->pid;
+@@ -3508,16 +3530,7 @@ int lxc_network_move_created_netdev_priv(struct lxc_handler *handler)
+ 		int ret;
+ 		struct lxc_netdev *netdev = iterator->elem;
+ 
+-		/*
+-		* Veth devices are directly created in the container's network
+-		* namespace so the device doesn't need to be moved into the
+-		* container's network namespace. The transient name will
+-		* already have been set above when we created the veth tunnel.
+-		*
+-		* Other than this special case this also catches all
+-		* LXC_NET_EMPTY and LXC_NET_NONE devices.
+-		 */
+-		if (!netdev->ifindex)
++		if (!netdev_requires_move(netdev))
+ 			continue;
+ 
+ 		ret = create_transient_name(netdev);
+@@ -3857,13 +3870,6 @@ static int lxc_network_setup_in_child_namespaces_common(struct lxc_netdev *netde
+ 	int err;
+ 	char bufinet4[INET_ADDRSTRLEN], bufinet6[INET6_ADDRSTRLEN];
+ 
+-	/* empty network namespace */
+-	if (!netdev->ifindex && netdev->flags & IFF_UP) {
+-		err = lxc_netdev_up("lo");
+-		if (err)
+-			return log_error_errno(-1, -err, "Failed to set the loopback network device up");
+-	}
+-
+ 	/* set a mac address */
+ 	if (netdev->hwaddr && setup_hw_addr(netdev->hwaddr, netdev->name))
+ 		return log_error_errno(-1, errno, "Failed to setup hw address for network device \"%s\"", netdev->name);

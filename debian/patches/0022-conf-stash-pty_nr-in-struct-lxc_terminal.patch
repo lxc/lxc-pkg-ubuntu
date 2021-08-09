@@ -1,0 +1,125 @@
+From 91540b10486884beca9d539c9b98cf4eef4b57bf Mon Sep 17 00:00:00 2001
+From: Christian Brauner <christian.brauner@ubuntu.com>
+Date: Fri, 30 Jul 2021 09:07:50 +0200
+Subject: conf: stash pty_nr in struct lxc_terminal
+
+Signed-off-by: Christian Brauner <christian.brauner@ubuntu.com>
+---
+ src/lxc/conf.c     |  8 ++++++--
+ src/lxc/terminal.c | 17 +++++++++++------
+ src/lxc/terminal.h |  3 ++-
+ 3 files changed, 19 insertions(+), 9 deletions(-)
+
+diff --git a/src/lxc/conf.c b/src/lxc/conf.c
+index 9e5069239..78f59e24a 100644
+--- a/src/lxc/conf.c
++++ b/src/lxc/conf.c
+@@ -1087,14 +1087,17 @@ static int lxc_allocate_ttys(struct lxc_conf *conf)
+ 		return -ENOMEM;
+ 
+ 	for (size_t i = 0; i < conf->ttys.max; i++) {
++		int pty_nr = -1;
+ 		struct lxc_terminal_info *tty = &ttys->tty[i];
+ 
+-		ret = lxc_devpts_terminal(conf->devpts_fd, conf, &tty->ptx, &tty->pty, tty->name);
++		ret = lxc_devpts_terminal(conf->devpts_fd, conf, &tty->ptx,
++					  &tty->pty, &pty_nr);
+ 		if (ret < 0) {
+ 			conf->ttys.max = i;
+ 			return syserror_set(-ENOTTY, "Failed to create tty %zu", i);
+ 		}
+-		DEBUG("Created tty with ptx fd %d and pty fd %d", tty->ptx, tty->pty);
++		DEBUG("Created tty with ptx fd %d and pty fd %d and index %d",
++		      tty->ptx, tty->pty, pty_nr);
+ 		tty->busy = -1;
+ 	}
+ 
+@@ -3246,6 +3249,7 @@ struct lxc_conf *lxc_conf_init(void)
+ 	new->console.proxy.pty = -1;
+ 	new->console.ptx = -EBADF;
+ 	new->console.pty = -EBADF;
++	new->console.pty_nr = -1;
+ 	new->console.name[0] = '\0';
+ 	new->devpts_fd = -EBADF;
+ 	memset(&new->console.ringbuf, 0, sizeof(struct lxc_ringbuf));
+diff --git a/src/lxc/terminal.c b/src/lxc/terminal.c
+index 312584640..f89c726f8 100644
+--- a/src/lxc/terminal.c
++++ b/src/lxc/terminal.c
+@@ -767,6 +767,8 @@ void lxc_terminal_delete(struct lxc_terminal *terminal)
+ 		close(terminal->pty);
+ 	terminal->pty = -1;
+ 
++	terminal->pty_nr = -1;
++
+ 	if (terminal->log_fd >= 0)
+ 		close(terminal->log_fd);
+ 	terminal->log_fd = -1;
+@@ -910,7 +912,7 @@ err:
+ }
+ 
+ int lxc_devpts_terminal(int devpts_fd, struct lxc_conf *conf,
+-			int *ret_ptx, int *ret_pty, char buf[static PATH_MAX])
++			int *ret_ptx, int *ret_pty, int *ret_pty_nr)
+ {
+ 	__do_close int fd_ptx = -EBADF, fd_opath_pty = -EBADF, fd_pty = -EBADF;
+ 	int pty_nr = -1;
+@@ -957,12 +959,9 @@ int lxc_devpts_terminal(int devpts_fd, struct lxc_conf *conf,
+ 	if (!same_file_lax(fd_pty, fd_opath_pty))
+ 		return syswarn_set(-ENODEV, "Terminal file descriptor changed");
+ 
+-	ret = strnprintf(buf, PATH_MAX, "dev/pts/%d", pty_nr);
+-	if (ret < 0)
+-		return syswarn_set(-ENODEV, "Failed to create terminal pty name");
+-
+ 	*ret_ptx = move_fd(fd_ptx);
+ 	*ret_pty = move_fd(fd_pty);
++	*ret_pty_nr = pty_nr;
+ 	return 0;
+ }
+ 
+@@ -978,10 +977,15 @@ static int lxc_terminal_create_native(const char *name, const char *lxcpath,
+ 		return log_error_errno(-1, errno, "Failed to receive devpts fd");
+ 
+ 	ret = lxc_devpts_terminal(devpts_fd, conf, &terminal->ptx,
+-				  &terminal->pty, terminal->name);
++				  &terminal->pty, &terminal->pty_nr);
+ 	if (ret < 0)
+ 		return ret;
+ 
++	ret = strnprintf(terminal->name, sizeof(terminal->name),
++			 "/dev/pts/%d", terminal->pty_nr);
++	if (ret < 0)
++		return syserror("Failed to create path");
++
+ 	ret = lxc_terminal_peer_default(terminal);
+ 	if (ret < 0) {
+ 		lxc_terminal_delete(terminal);
+@@ -1270,6 +1274,7 @@ void lxc_terminal_info_init(struct lxc_terminal_info *terminal)
+ void lxc_terminal_init(struct lxc_terminal *terminal)
+ {
+ 	memset(terminal, 0, sizeof(*terminal));
++	terminal->pty_nr = -1;
+ 	terminal->pty = -EBADF;
+ 	terminal->ptx = -EBADF;
+ 	terminal->peer = -EBADF;
+diff --git a/src/lxc/terminal.h b/src/lxc/terminal.h
+index 4d2894fe7..67d7ea899 100644
+--- a/src/lxc/terminal.h
++++ b/src/lxc/terminal.h
+@@ -58,6 +58,7 @@ struct lxc_terminal_state {
+ };
+ 
+ struct lxc_terminal {
++	int pty_nr;
+ 	int pty;
+ 	int ptx;
+ 	int peer;
+@@ -254,6 +255,6 @@ __hidden extern void lxc_terminal_init(struct lxc_terminal *terminal);
+ __hidden extern int lxc_terminal_signal_sigmask_safe_blocked(struct lxc_terminal *terminal);
+ __hidden extern int lxc_devpts_terminal(int devpts_fd, struct lxc_conf *conf,
+ 					int *ret_ptx, int *ret_pty,
+-					char buf[static PATH_MAX]);
++					int *ret_pty_nr);
+ 
+ #endif /* __LXC_TERMINAL_H */

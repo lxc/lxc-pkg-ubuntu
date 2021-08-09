@@ -1,0 +1,139 @@
+From e31dc043fc327ddc2c9bb03494d2aee31f6fba8a Mon Sep 17 00:00:00 2001
+From: Christian Brauner <christian.brauner@ubuntu.com>
+Date: Sat, 31 Jul 2021 10:14:39 +0200
+Subject: conf: handle kernels without TIOCGPTPEER
+
+Signed-off-by: Christian Brauner <christian.brauner@ubuntu.com>
+---
+ src/lxc/conf.c             |  4 ++--
+ src/lxc/syscall_wrappers.h |  1 +
+ src/lxc/terminal.c         | 40 ++++++++++++++++++++++++++------------
+ src/lxc/terminal.h         |  3 ++-
+ 4 files changed, 33 insertions(+), 15 deletions(-)
+
+diff --git a/src/lxc/conf.c b/src/lxc/conf.c
+index 12b227959..a20d1f073 100644
+--- a/src/lxc/conf.c
++++ b/src/lxc/conf.c
+@@ -1072,7 +1072,7 @@ static int lxc_allocate_ttys(struct lxc_conf *conf)
+ 		struct lxc_terminal_info *tty = &ttys->tty[i];
+ 
+ 		ret = lxc_devpts_terminal(conf->devpts_fd, &tty->ptx,
+-					  &tty->pty, &pty_nr);
++					  &tty->pty, &pty_nr, false);
+ 		if (ret < 0) {
+ 			conf->ttys.max = i;
+ 			return syserror_set(-ENOTTY, "Failed to create tty %zu", i);
+@@ -2031,7 +2031,7 @@ static int lxc_setup_console(const struct lxc_handler *handler,
+ 		 * available.
+ 		 */
+ 		ret = lxc_devpts_terminal(handler->conf->devpts_fd, &console->ptx,
+-					  &console->pty, &console->pty_nr);
++					  &console->pty, &console->pty_nr, false);
+ 		if (ret < 0)
+ 			return syserror("Failed to allocate console from container's devpts instance");
+ 
+diff --git a/src/lxc/syscall_wrappers.h b/src/lxc/syscall_wrappers.h
+index 4c6ef0731..f50875cc1 100644
+--- a/src/lxc/syscall_wrappers.h
++++ b/src/lxc/syscall_wrappers.h
+@@ -294,6 +294,7 @@ struct lxc_open_how {
+ 
+ #define PROTECT_OPEN_W_WITH_TRAILING_SYMLINKS (O_CLOEXEC | O_NOCTTY | O_WRONLY)
+ #define PROTECT_OPEN_W (PROTECT_OPEN_W_WITH_TRAILING_SYMLINKS | O_NOFOLLOW)
++#define PROTECT_OPEN_RW (O_CLOEXEC | O_NOCTTY | O_RDWR | O_NOFOLLOW)
+ 
+ #ifndef HAVE_OPENAT2
+ static inline int openat2(int dfd, const char *filename, struct lxc_open_how *how, size_t size)
+diff --git a/src/lxc/terminal.c b/src/lxc/terminal.c
+index 1e1e2111b..13bc7212f 100644
+--- a/src/lxc/terminal.c
++++ b/src/lxc/terminal.c
+@@ -911,7 +911,8 @@ err:
+ 	return -ENODEV;
+ }
+ 
+-int lxc_devpts_terminal(int devpts_fd, int *ret_ptx, int *ret_pty, int *ret_pty_nr)
++int lxc_devpts_terminal(int devpts_fd, int *ret_ptx, int *ret_pty,
++			int *ret_pty_nr, bool require_tiocgptpeer)
+ {
+ 	__do_close int fd_ptx = -EBADF, fd_opath_pty = -EBADF, fd_pty = -EBADF;
+ 	int pty_nr = -1;
+@@ -946,20 +947,35 @@ int lxc_devpts_terminal(int devpts_fd, int *ret_ptx, int *ret_pty, int *ret_pty_
+ 			break;
+ 		}
+ 
+-		return ret_errno(ENODEV);
++		if (require_tiocgptpeer)
++			return ret_errno(ENODEV);
+ 	}
+ 
+ 	ret = ioctl(fd_ptx, TIOCGPTN, &pty_nr);
+ 	if (ret)
+ 		return syswarn_set(-ENODEV, "Failed to retrieve name of terminal pty");
+ 
+-	fd_opath_pty = open_at(devpts_fd, fdstr(pty_nr), PROTECT_OPATH_FILE,
+-			       PROTECT_LOOKUP_ABSOLUTE_XDEV, 0);
+-	if (fd_opath_pty < 0)
+-		return syswarn_set(-ENODEV, "Failed to open terminal pty fd by path %d/%d", devpts_fd, pty_nr);
+-
+-	if (!same_file_lax(fd_pty, fd_opath_pty))
+-		return syswarn_set(-ENODEV, "Terminal file descriptor changed");
++	if (fd_pty < 0) {
++		/*
++		 * If we end up it means that TIOCGPTPEER isn't supported but
++		 * the caller told us they trust the devpts instance so we use
++		 * the pty nr to open the pty side.
++		 */
++		fd_pty = open_at(devpts_fd, fdstr(pty_nr), PROTECT_OPEN_RW,
++				 PROTECT_LOOKUP_ABSOLUTE_XDEV, 0);
++		if (fd_pty < 0)
++			return syswarn_set(-ENODEV, "Failed to open terminal pty fd by path %d/%d",
++					   devpts_fd, pty_nr);
++	} else {
++		fd_opath_pty = open_at(devpts_fd, fdstr(pty_nr), PROTECT_OPATH_FILE,
++				       PROTECT_LOOKUP_ABSOLUTE_XDEV, 0);
++		if (fd_opath_pty < 0)
++			return syswarn_set(-ENODEV, "Failed to open terminal pty fd by path %d/%d",
++					   devpts_fd, pty_nr);
++
++		if (!same_file_lax(fd_pty, fd_opath_pty))
++			return syswarn_set(-ENODEV, "Terminal file descriptor changed");
++	}
+ 
+ 	*ret_ptx = move_fd(fd_ptx);
+ 	*ret_pty = move_fd(fd_pty);
+@@ -989,8 +1005,8 @@ int lxc_terminal_parent(struct lxc_conf *conf)
+ 	if (fd_devpts < 0)
+ 		return syserror("Failed to open devpts instance");
+ 
+-	ret = lxc_devpts_terminal(fd_devpts, &console->ptx,
+-				  &console->pty, &console->pty_nr);
++	ret = lxc_devpts_terminal(fd_devpts, &console->ptx, &console->pty,
++				  &console->pty_nr, false);
+ 	if (ret < 0)
+ 		return syserror("Failed to allocate console");
+ 
+@@ -1013,7 +1029,7 @@ static int lxc_terminal_create_native(const char *name, const char *lxcpath,
+ 		return log_error_errno(-1, errno, "Failed to receive devpts fd");
+ 
+ 	ret = lxc_devpts_terminal(devpts_fd, &terminal->ptx, &terminal->pty,
+-				  &terminal->pty_nr);
++				  &terminal->pty_nr, true);
+ 	if (ret < 0)
+ 		return ret;
+ 
+diff --git a/src/lxc/terminal.h b/src/lxc/terminal.h
+index 05a01e550..a41aadf0e 100644
+--- a/src/lxc/terminal.h
++++ b/src/lxc/terminal.h
+@@ -254,7 +254,8 @@ __hidden extern void lxc_terminal_info_init(struct lxc_terminal_info *terminal);
+ __hidden extern void lxc_terminal_init(struct lxc_terminal *terminal);
+ __hidden extern int lxc_terminal_signal_sigmask_safe_blocked(struct lxc_terminal *terminal);
+ __hidden extern int lxc_devpts_terminal(int devpts_fd, int *ret_ptx,
+-					int *ret_pty, int *ret_pty_nr);
++					int *ret_pty, int *ret_pty_nr,
++					bool require_tiocgptpeer);
+ __hidden extern int lxc_terminal_parent(struct lxc_conf *conf);
+ 
+ static inline bool wants_console(const struct lxc_terminal *terminal)

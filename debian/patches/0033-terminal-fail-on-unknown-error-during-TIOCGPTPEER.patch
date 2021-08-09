@@ -1,0 +1,26 @@
+From 9588f056e33e5e1ff7abaa105e8f03fc2842bd5f Mon Sep 17 00:00:00 2001
+From: Christian Brauner <christian.brauner@ubuntu.com>
+Date: Sat, 31 Jul 2021 10:19:57 +0200
+Subject: terminal: fail on unknown error during TIOCGPTPEER
+
+Signed-off-by: Christian Brauner <christian.brauner@ubuntu.com>
+---
+ src/lxc/terminal.c | 3 ++-
+ 1 file changed, 2 insertions(+), 1 deletion(-)
+
+diff --git a/src/lxc/terminal.c b/src/lxc/terminal.c
+index dcdb51df5..cdb44956c 100644
+--- a/src/lxc/terminal.c
++++ b/src/lxc/terminal.c
+@@ -944,9 +944,10 @@ int lxc_devpts_terminal(int devpts_fd, int *ret_ptx, int *ret_pty,
+ 			break;
+ 		default:
+ 			SYSWARN("Failed to allocate new pty device");
+-			break;
++			return -errno;
+ 		}
+ 
++		/* The caller tells us that they trust the devpts instance. */
+ 		if (require_tiocgptpeer)
+ 			return ret_errno(ENODEV);
+ 	}

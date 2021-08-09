@@ -1,0 +1,32 @@
+From b79b1267d074187a8e66640bd5648b9d5b6a70c1 Mon Sep 17 00:00:00 2001
+From: Christian Brauner <christian.brauner@ubuntu.com>
+Date: Mon, 9 Aug 2021 15:59:26 +0200
+Subject: lsm/apparmor: use cleanup macro
+
+Signed-off-by: Christian Brauner <christian.brauner@ubuntu.com>
+---
+ src/lxc/lsm/apparmor.c | 3 +--
+ 1 file changed, 1 insertion(+), 2 deletions(-)
+
+diff --git a/src/lxc/lsm/apparmor.c b/src/lxc/lsm/apparmor.c
+index 6bf6c6eea..a0d81ea01 100644
+--- a/src/lxc/lsm/apparmor.c
++++ b/src/lxc/lsm/apparmor.c
+@@ -611,8 +611,8 @@ out:
+ 
+ static bool file_is_yes(const char *path)
+ {
++	__do_close int fd = -EBADF;
+ 	ssize_t rd;
+-	int fd;
+ 	char buf[8]; /* we actually just expect "yes" or "no" */
+ 
+ 	fd = open(path, O_RDONLY | O_CLOEXEC);
+@@ -620,7 +620,6 @@ static bool file_is_yes(const char *path)
+ 		return false;
+ 
+ 	rd = lxc_read_nointr(fd, buf, sizeof(buf));
+-	close(fd);
+ 
+ 	return rd >= 4 && strnequal(buf, "yes\n", 4);
+ }

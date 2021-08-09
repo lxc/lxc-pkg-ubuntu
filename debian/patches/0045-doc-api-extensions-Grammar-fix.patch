@@ -1,0 +1,26 @@
+From 3ea9df5822bf9c546689d302bdb3770e242d9066 Mon Sep 17 00:00:00 2001
+From: =?UTF-8?q?St=C3=A9phane=20Graber?= <stgraber@ubuntu.com>
+Date: Mon, 9 Aug 2021 13:18:44 -0400
+Subject: doc/api-extensions: Grammar fix
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+Signed-off-by: Stéphane Graber <stgraber@ubuntu.com>
+---
+ doc/api-extensions.md | 2 +-
+ 1 file changed, 1 insertion(+), 1 deletion(-)
+
+diff --git a/doc/api-extensions.md b/doc/api-extensions.md
+index 8147650d1..cdf82f937 100644
+--- a/doc/api-extensions.md
++++ b/doc/api-extensions.md
+@@ -113,7 +113,7 @@ This enables `LXC` to make complete use of the unified cgroup hierarchy. With th
+ 
+ ## init\_pidfd
+ 
+-This adds a new API function `init_pidfd()` which allows to retrieve a pidfd for the container's init process allowing process management interactions such as sending signal to be completely reliable and rac-e free.
++This adds a new API function `init_pidfd()` which allows one to retrieve a pidfd for the container's init process allowing process management interactions such as sending signals to be completely reliable and race free.
+ 
+ ## pidfd
+ 

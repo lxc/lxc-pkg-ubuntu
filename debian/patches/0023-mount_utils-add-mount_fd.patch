@@ -1,0 +1,65 @@
+From 5e65cce71a2a8260e23acd45a6f75ebea5a188cb Mon Sep 17 00:00:00 2001
+From: Christian Brauner <christian.brauner@ubuntu.com>
+Date: Fri, 30 Jul 2021 09:15:14 +0200
+Subject: mount_utils: add mount_fd()
+
+Signed-off-by: Christian Brauner <christian.brauner@ubuntu.com>
+---
+ src/lxc/mount_utils.c | 34 ++++++++++++++++++++++++++++++++++
+ src/lxc/mount_utils.h |  2 ++
+ 2 files changed, 36 insertions(+)
+
+diff --git a/src/lxc/mount_utils.c b/src/lxc/mount_utils.c
+index 1cf71dadd..77498bbf3 100644
+--- a/src/lxc/mount_utils.c
++++ b/src/lxc/mount_utils.c
+@@ -635,3 +635,37 @@ int mount_beneath_fd(int fd, const char *source, const char *target,
+ 	TRACE("Mounted \"%s\" to \"%s\"", source, buf_target);
+ 	return 0;
+ }
++
++int mount_fd(int fd_source, int fd_target, const char *fs_name,
++	     unsigned int flags, const void *data)
++{
++	int ret;
++	char buf_source[LXC_PROC_PID_FD_LEN], buf_target[LXC_PROC_PID_FD_LEN];
++	char *source = buf_source, *target = buf_target;
++
++	if (fd_source < 0) {
++		source = NULL;
++	} else {
++		ret = strnprintf(buf_source, sizeof(buf_source),
++				 "/proc/self/fd/%d", fd_source);
++		if (ret < 0)
++			return ret;
++	}
++
++	if (fd_target < 0) {
++		target = NULL;
++	} else {
++		ret = strnprintf(buf_target, sizeof(buf_target),
++				 "/proc/self/fd/%d", fd_target);
++		if (ret < 0)
++			return ret;
++	}
++
++	ret = mount(source, target, "none", MS_BIND, 0);
++	if (ret < 0)
++		return syserror("Failed to mount \"%s\" to \"%s\"",
++				maybe_empty(source), maybe_empty(target));
++
++	TRACE("Mounted \"%s\" to \"%s\"", maybe_empty(source), maybe_empty(target));
++	return 0;
++}
+diff --git a/src/lxc/mount_utils.h b/src/lxc/mount_utils.h
+index 17ff4698f..4caf34b2f 100644
+--- a/src/lxc/mount_utils.h
++++ b/src/lxc/mount_utils.h
+@@ -224,5 +224,7 @@ __hidden extern bool can_use_bind_mounts(void);
+ __hidden extern int mount_beneath_fd(int fd, const char *source,
+ 				     const char *target, const char *fs_name,
+ 				     unsigned int flags, const void *data);
++__hidden extern int mount_fd(int fd_source, int fd_target, const char *fs_name,
++			     unsigned int flags, const void *data);
+ 
+ #endif /* __LXC_MOUNT_UTILS_H */

@@ -1,0 +1,23 @@
+From 495b58870d1a73508b0096a3b2c64ef0f2c772fc Mon Sep 17 00:00:00 2001
+From: Christian Brauner <christian.brauner@ubuntu.com>
+Date: Sat, 31 Jul 2021 10:17:36 +0200
+Subject: terminal: move native terminal allocation from error logging to info
+
+Signed-off-by: Christian Brauner <christian.brauner@ubuntu.com>
+---
+ src/lxc/terminal.c | 2 +-
+ 1 file changed, 1 insertion(+), 1 deletion(-)
+
+diff --git a/src/lxc/terminal.c b/src/lxc/terminal.c
+index 13bc7212f..dcdb51df5 100644
+--- a/src/lxc/terminal.c
++++ b/src/lxc/terminal.c
+@@ -1026,7 +1026,7 @@ static int lxc_terminal_create_native(const char *name, const char *lxcpath,
+ 
+ 	devpts_fd = lxc_cmd_get_devpts_fd(name, lxcpath);
+ 	if (devpts_fd < 0)
+-		return log_error_errno(-1, errno, "Failed to receive devpts fd");
++		return sysinfo("Failed to receive devpts fd");
+ 
+ 	ret = lxc_devpts_terminal(devpts_fd, &terminal->ptx, &terminal->pty,
+ 				  &terminal->pty_nr, true);

@@ -1,0 +1,24 @@
+From 58bbbf93032e6894c4693a743103a1f288b1500b Mon Sep 17 00:00:00 2001
+From: Christian Brauner <christian.brauner@ubuntu.com>
+Date: Thu, 29 Jul 2021 15:26:17 +0200
+Subject: conf: surface failures to setup console
+
+Signed-off-by: Christian Brauner <christian.brauner@ubuntu.com>
+---
+ src/lxc/conf.c | 3 +++
+ 1 file changed, 3 insertions(+)
+
+diff --git a/src/lxc/conf.c b/src/lxc/conf.c
+index 482d1213b..1b069e4a5 100644
+--- a/src/lxc/conf.c
++++ b/src/lxc/conf.c
+@@ -2042,6 +2042,9 @@ static int lxc_setup_console(const struct lxc_handler *handler,
+ 		ret = lxc_setup_ttydir_console(rootfs, console, ttydir);
+ 	else
+ 		ret = lxc_setup_dev_console(rootfs, console);
++	if (ret < 0)
++		return syserror("Failed to setup console");
++
+ 	fd_pty = move_fd(console->pty);
+ 
+ 	/*

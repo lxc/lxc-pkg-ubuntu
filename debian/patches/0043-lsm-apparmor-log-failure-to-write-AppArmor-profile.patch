@@ -1,0 +1,38 @@
+From da641e87c1767a63599cdac85567776515ed0857 Mon Sep 17 00:00:00 2001
+From: Christian Brauner <christian.brauner@ubuntu.com>
+Date: Mon, 9 Aug 2021 15:58:53 +0200
+Subject: lsm/apparmor: log failure to write AppArmor profile
+
+Signed-off-by: Christian Brauner <christian.brauner@ubuntu.com>
+---
+ src/lxc/lsm/apparmor.c | 8 ++++++--
+ 1 file changed, 6 insertions(+), 2 deletions(-)
+
+diff --git a/src/lxc/lsm/apparmor.c b/src/lxc/lsm/apparmor.c
+index 3e4aa40d7..6bf6c6eea 100644
+--- a/src/lxc/lsm/apparmor.c
++++ b/src/lxc/lsm/apparmor.c
+@@ -1163,7 +1163,8 @@ static int apparmor_process_label_fd_get(struct lsm_ops *ops, pid_t pid, bool on
+ 	return __apparmor_process_label_open(ops, pid, O_RDWR, on_exec);
+ }
+ 
+-static int apparmor_process_label_set_at(struct lsm_ops *ops, int label_fd, const char *label, bool on_exec)
++static int apparmor_process_label_set_at(struct lsm_ops *ops, int label_fd,
++					 const char *label, bool on_exec)
+ {
+ 	__do_free char *command = NULL;
+ 	int ret = -1;
+@@ -1182,9 +1183,12 @@ static int apparmor_process_label_set_at(struct lsm_ops *ops, int label_fd, cons
+ 		return -EFBIG;
+ 
+ 	ret = lxc_write_nointr(label_fd, command, len - 1);
++	if (ret < 0)
++		return syserror("Failed to write AppArmor profile \"%s\" to %d",
++				label, label_fd);
+ 
+ 	INFO("Set AppArmor label to \"%s\"", label);
+-	return ret;
++	return 0;
+ }
+ 
+ /*

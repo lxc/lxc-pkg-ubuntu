@@ -1,0 +1,110 @@
+From 4f747b6ae17d8e340bdff99bbb393911d9beca77 Mon Sep 17 00:00:00 2001
+From: Christian Brauner <christian.brauner@ubuntu.com>
+Date: Tue, 3 Aug 2021 12:51:24 +0200
+Subject: mount_utils: make some mount helpers static inline
+
+Signed-off-by: Christian Brauner <christian.brauner@ubuntu.com>
+---
+ src/lxc/mount_utils.c | 31 ++++---------------------------
+ src/lxc/mount_utils.h | 39 ++++++++++++++++++++++++++++-----------
+ 2 files changed, 32 insertions(+), 38 deletions(-)
+
+diff --git a/src/lxc/mount_utils.c b/src/lxc/mount_utils.c
+index 783503aae..b04c2646d 100644
+--- a/src/lxc/mount_utils.c
++++ b/src/lxc/mount_utils.c
+@@ -307,11 +307,10 @@ int move_detached_mount(int dfd_from, int dfd_to, const char *path_to,
+ 	return 0;
+ }
+ 
+-static int __fd_bind_mount(int dfd_from, const char *path_from,
+-			   __u64 o_flags_from, __u64 resolve_flags_from,
+-			   int dfd_to, const char *path_to, __u64 o_flags_to,
+-			   __u64 resolve_flags_to, unsigned int attr_flags,
+-			   int userns_fd, bool recursive)
++int __fd_bind_mount(int dfd_from, const char *path_from, __u64 o_flags_from,
++		    __u64 resolve_flags_from, int dfd_to, const char *path_to,
++		    __u64 o_flags_to, __u64 resolve_flags_to, __u64 attr_flags,
++		    int userns_fd, bool recursive)
+ {
+ 	struct lxc_mount_attr attr = {
+ 		.attr_set = attr_flags,
+@@ -360,28 +359,6 @@ static int __fd_bind_mount(int dfd_from, const char *path_from,
+ 				   resolve_flags_to);
+ }
+ 
+-int fd_mount_idmapped(int dfd_from, const char *path_from,
+-		      __u64 o_flags_from, __u64 resolve_flags_from,
+-		      int dfd_to, const char *path_to,
+-		      __u64 o_flags_to, __u64 resolve_flags_to,
+-		      unsigned int attr_flags, int userns_fd, bool recursive)
+-{
+-	return __fd_bind_mount(dfd_from, path_from, o_flags_from, resolve_flags_from,
+-			       dfd_to, path_to, o_flags_to, resolve_flags_to,
+-			       attr_flags, userns_fd, recursive);
+-}
+-
+-int fd_bind_mount(int dfd_from, const char *path_from,
+-		  __u64 o_flags_from, __u64 resolve_flags_from,
+-		  int dfd_to, const char *path_to,
+-		  __u64 o_flags_to, __u64 resolve_flags_to,
+-		  unsigned int attr_flags, bool recursive)
+-{
+-	return __fd_bind_mount(dfd_from, path_from, o_flags_from, resolve_flags_from,
+-			       dfd_to, path_to, o_flags_to, resolve_flags_to,
+-			       attr_flags, -EBADF, recursive);
+-}
+-
+ int calc_remount_flags_new(int dfd_from, const char *path_from,
+ 			   __u64 o_flags_from, __u64 resolve_flags_from,
+ 			   bool remount, unsigned long cur_flags,
+diff --git a/src/lxc/mount_utils.h b/src/lxc/mount_utils.h
+index 6fed1a0a9..d24949714 100644
+--- a/src/lxc/mount_utils.h
++++ b/src/lxc/mount_utils.h
+@@ -186,17 +186,34 @@ static inline int fs_mount(const char *fs_name, int dfd_from,
+ 	return fs_attach(fd_fs, dfd_to, path_to, o_flags_to, resolve_flags_to, attr_flags);
+ }
+ 
+-__hidden extern int fd_bind_mount(int dfd_from, const char *path_from,
+-				  __u64 o_flags_from, __u64 resolve_flags_from,
+-				  int dfd_to, const char *path_to,
+-				  __u64 o_flags_to, __u64 resolve_flags_to,
+-				  unsigned int attr_flags, bool recursive);
+-__hidden extern int fd_mount_idmapped(int dfd_from, const char *path_from,
+-				      __u64 o_flags_from, __u64 resolve_flags_from,
+-				      int dfd_to, const char *path_to,
+-				      __u64 o_flags_to, __u64 resolve_flags_to,
+-				      unsigned int attr_flags, int userns_fd,
+-				      bool recursive);
++__hidden extern int __fd_bind_mount(int dfd_from, const char *path_from,
++				    __u64 o_flags_from,
++				    __u64 resolve_flags_from, int dfd_to,
++				    const char *path_to, __u64 o_flags_to,
++				    __u64 resolve_flags_to, __u64 attr_flags,
++				    int userns_fd, bool recursive);
++static inline int fd_mount_idmapped(int dfd_from, const char *path_from,
++				    __u64 o_flags_from,
++				    __u64 resolve_flags_from, int dfd_to,
++				    const char *path_to, __u64 o_flags_to,
++				    __u64 resolve_flags_to, __u64 attr_flags,
++				    int userns_fd, bool recursive)
++{
++	return __fd_bind_mount(dfd_from, path_from, o_flags_from, resolve_flags_from,
++			       dfd_to, path_to, o_flags_to, resolve_flags_to,
++			       attr_flags, userns_fd, recursive);
++}
++
++static inline int fd_bind_mount(int dfd_from, const char *path_from,
++				__u64 o_flags_from, __u64 resolve_flags_from,
++				int dfd_to, const char *path_to,
++				__u64 o_flags_to, __u64 resolve_flags_to,
++				__u64 attr_flags, bool recursive)
++{
++	return __fd_bind_mount(dfd_from, path_from, o_flags_from, resolve_flags_from,
++			       dfd_to, path_to, o_flags_to, resolve_flags_to,
++			       attr_flags, -EBADF, recursive);
++}
+ __hidden extern int create_detached_idmapped_mount(const char *path,
+ 						   int userns_fd, bool recursive);
+ __hidden extern int move_detached_mount(int dfd_from, int dfd_to,

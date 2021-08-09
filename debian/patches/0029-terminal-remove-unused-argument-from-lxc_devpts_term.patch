@@ -1,0 +1,82 @@
+From b3bdee39ff3a57a55aca180d84f4c4649cebc616 Mon Sep 17 00:00:00 2001
+From: Christian Brauner <christian.brauner@ubuntu.com>
+Date: Fri, 30 Jul 2021 13:49:15 +0200
+Subject: terminal: remove unused argument from lxc_devpts_terminal()
+
+Signed-off-by: Christian Brauner <christian.brauner@ubuntu.com>
+---
+ src/lxc/conf.c     |  2 +-
+ src/lxc/terminal.c | 10 ++++------
+ src/lxc/terminal.h |  5 ++---
+ 3 files changed, 7 insertions(+), 10 deletions(-)
+
+diff --git a/src/lxc/conf.c b/src/lxc/conf.c
+index 116136541..dbd7f012d 100644
+--- a/src/lxc/conf.c
++++ b/src/lxc/conf.c
+@@ -1071,7 +1071,7 @@ static int lxc_allocate_ttys(struct lxc_conf *conf)
+ 		int pty_nr = -1;
+ 		struct lxc_terminal_info *tty = &ttys->tty[i];
+ 
+-		ret = lxc_devpts_terminal(conf->devpts_fd, conf, &tty->ptx,
++		ret = lxc_devpts_terminal(conf->devpts_fd, &tty->ptx,
+ 					  &tty->pty, &pty_nr);
+ 		if (ret < 0) {
+ 			conf->ttys.max = i;
+diff --git a/src/lxc/terminal.c b/src/lxc/terminal.c
+index f89c726f8..26470515b 100644
+--- a/src/lxc/terminal.c
++++ b/src/lxc/terminal.c
+@@ -911,8 +911,7 @@ err:
+ 	return -ENODEV;
+ }
+ 
+-int lxc_devpts_terminal(int devpts_fd, struct lxc_conf *conf,
+-			int *ret_ptx, int *ret_pty, int *ret_pty_nr)
++int lxc_devpts_terminal(int devpts_fd, int *ret_ptx, int *ret_pty, int *ret_pty_nr)
+ {
+ 	__do_close int fd_ptx = -EBADF, fd_opath_pty = -EBADF, fd_pty = -EBADF;
+ 	int pty_nr = -1;
+@@ -966,7 +965,6 @@ int lxc_devpts_terminal(int devpts_fd, struct lxc_conf *conf,
+ }
+ 
+ static int lxc_terminal_create_native(const char *name, const char *lxcpath,
+-				      struct lxc_conf *conf,
+ 				      struct lxc_terminal *terminal)
+ {
+ 	__do_close int devpts_fd = -EBADF;
+@@ -976,8 +974,8 @@ static int lxc_terminal_create_native(const char *name, const char *lxcpath,
+ 	if (devpts_fd < 0)
+ 		return log_error_errno(-1, errno, "Failed to receive devpts fd");
+ 
+-	ret = lxc_devpts_terminal(devpts_fd, conf, &terminal->ptx,
+-				  &terminal->pty, &terminal->pty_nr);
++	ret = lxc_devpts_terminal(devpts_fd, &terminal->ptx, &terminal->pty,
++				  &terminal->pty_nr);
+ 	if (ret < 0)
+ 		return ret;
+ 
+@@ -998,7 +996,7 @@ static int lxc_terminal_create_native(const char *name, const char *lxcpath,
+ int lxc_terminal_create(const char *name, const char *lxcpath,
+ 			struct lxc_conf *conf, struct lxc_terminal *terminal)
+ {
+-	if (!lxc_terminal_create_native(name, lxcpath, conf, terminal))
++	if (!lxc_terminal_create_native(name, lxcpath, terminal))
+ 		return 0;
+ 
+ 	return lxc_terminal_create_foreign(conf, terminal);
+diff --git a/src/lxc/terminal.h b/src/lxc/terminal.h
+index 67d7ea899..9d3b61d32 100644
+--- a/src/lxc/terminal.h
++++ b/src/lxc/terminal.h
+@@ -253,8 +253,7 @@ __hidden extern void lxc_terminal_conf_free(struct lxc_terminal *terminal);
+ __hidden extern void lxc_terminal_info_init(struct lxc_terminal_info *terminal);
+ __hidden extern void lxc_terminal_init(struct lxc_terminal *terminal);
+ __hidden extern int lxc_terminal_signal_sigmask_safe_blocked(struct lxc_terminal *terminal);
+-__hidden extern int lxc_devpts_terminal(int devpts_fd, struct lxc_conf *conf,
+-					int *ret_ptx, int *ret_pty,
+-					int *ret_pty_nr);
++__hidden extern int lxc_devpts_terminal(int devpts_fd, int *ret_ptx,
++					int *ret_pty, int *ret_pty_nr);
+ 
+ #endif /* __LXC_TERMINAL_H */

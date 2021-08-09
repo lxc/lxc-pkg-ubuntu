@@ -767,6 +767,8 @@ void lxc_terminal_delete(struct lxc_terminal *terminal)
 		close(terminal->pty);
 	terminal->pty = -1;
 
+	terminal->pty_nr = -1;
+
 	if (terminal->log_fd >= 0)
 		close(terminal->log_fd);
 	terminal->log_fd = -1;
@@ -909,32 +911,30 @@ err:
 	return -ENODEV;
 }
 
-static int lxc_terminal_create_native(const char *name, const char *lxcpath, struct lxc_conf *conf,
-				      struct lxc_terminal *terminal)
+int lxc_devpts_terminal(int devpts_fd, int *ret_ptx, int *ret_pty,
+			int *ret_pty_nr, bool require_tiocgptpeer)
 {
-	__do_close int devpts_fd = -EBADF;
+	__do_close int fd_ptx = -EBADF, fd_opath_pty = -EBADF, fd_pty = -EBADF;
+	int pty_nr = -1;
 	int ret;
 
-	devpts_fd = lxc_cmd_get_devpts_fd(name, lxcpath);
 	if (devpts_fd < 0)
-		return log_error_errno(-1, errno, "Failed to receive devpts fd");
+		return ret_errno(EBADF);
 
-	terminal->ptx = open_beneath(devpts_fd, "ptmx", O_RDWR | O_NOCTTY | O_CLOEXEC);
-	if (terminal->ptx < 0) {
+	fd_ptx = open_beneath(devpts_fd, "ptmx", O_RDWR | O_NOCTTY | O_CLOEXEC);
+	if (fd_ptx < 0) {
 		if (errno == ENOSPC)
 			return systrace("Exceeded number of allocatable terminals");
 
 		return syserror("Failed to open terminal multiplexer device");
 	}
 
-	ret = unlockpt(terminal->ptx);
-	if (ret < 0) {
-		SYSWARN("Failed to unlock multiplexer device device");
-		goto err;
-	}
+	ret = unlockpt(fd_ptx);
+	if (ret < 0)
+		return syswarn_set(-ENODEV, "Failed to unlock multiplexer device device");
 
-	terminal->pty = ioctl(terminal->ptx, TIOCGPTPEER, O_RDWR | O_NOCTTY | O_CLOEXEC);
-	if (terminal->pty < 0) {
+	fd_pty = ioctl(fd_ptx, TIOCGPTPEER, O_RDWR | O_NOCTTY | O_CLOEXEC);
+	if (fd_pty < 0) {
 		switch (errno) {
 		case ENOTTY:
 			SYSTRACE("Pure fd-based terminal allocation not possible");
@@ -944,34 +944,114 @@ static int lxc_terminal_create_native(const char *name, const char *lxcpath, str
 			break;
 		default:
 			SYSWARN("Failed to allocate new pty device");
-			break;
+			return -errno;
 		}
-		goto err;
+
+		/* The caller tells us that they trust the devpts instance. */
+		if (require_tiocgptpeer)
+			return ret_errno(ENODEV);
 	}
 
-	ret = ttyname_r(terminal->pty, terminal->name, sizeof(terminal->name));
-	if (ret < 0) {
-		SYSWARN("Failed to retrieve name of terminal pty");
-		goto err;
+	ret = ioctl(fd_ptx, TIOCGPTN, &pty_nr);
+	if (ret)
+		return syswarn_set(-ENODEV, "Failed to retrieve name of terminal pty");
+
+	if (fd_pty < 0) {
+		/*
+		 * If we end up it means that TIOCGPTPEER isn't supported but
+		 * the caller told us they trust the devpts instance so we use
+		 * the pty nr to open the pty side.
+		 */
+		fd_pty = open_at(devpts_fd, fdstr(pty_nr), PROTECT_OPEN_RW,
+				 PROTECT_LOOKUP_ABSOLUTE_XDEV, 0);
+		if (fd_pty < 0)
+			return syswarn_set(-ENODEV, "Failed to open terminal pty fd by path %d/%d",
+					   devpts_fd, pty_nr);
+	} else {
+		fd_opath_pty = open_at(devpts_fd, fdstr(pty_nr), PROTECT_OPATH_FILE,
+				       PROTECT_LOOKUP_ABSOLUTE_XDEV, 0);
+		if (fd_opath_pty < 0)
+			return syswarn_set(-ENODEV, "Failed to open terminal pty fd by path %d/%d",
+					   devpts_fd, pty_nr);
+
+		if (!same_file_lax(fd_pty, fd_opath_pty))
+			return syswarn_set(-ENODEV, "Terminal file descriptor changed");
 	}
+
+	*ret_ptx = move_fd(fd_ptx);
+	*ret_pty = move_fd(fd_pty);
+	*ret_pty_nr = pty_nr;
+	return 0;
+}
+
+int lxc_terminal_parent(struct lxc_conf *conf)
+{
+	__do_close int fd_devpts = -EBADF;
+	struct lxc_terminal *console = &conf->console;
+	int ret;
+
+	if (!wants_console(&conf->console))
+		return 0;
+
+	/* Allocate console from the container's devpts. */
+	if (conf->pty_max > 1)
+		return 0;
+
+	/* Allocate console for the container from the host's devpts. */
+	fd_devpts = open_at(-EBADF,
+			    "/dev/pts",
+			    PROTECT_OPATH_DIRECTORY,
+			    PROTECT_LOOKUP_ABSOLUTE_XDEV,
+			    0);
+	if (fd_devpts < 0)
+		return syserror("Failed to open devpts instance");
+
+	ret = lxc_devpts_terminal(fd_devpts, &console->ptx, &console->pty,
+				  &console->pty_nr, false);
+	if (ret < 0)
+		return syserror("Failed to allocate console");
+
+	ret = strnprintf(console->name, sizeof(console->name),
+			 "/dev/pts/%d", console->pty_nr);
+	if (ret < 0)
+		return syserror("Failed to create console path");
+
+	return lxc_terminal_map_ids(conf, &conf->console);
+}
+
+static int lxc_terminal_create_native(const char *name, const char *lxcpath,
+				      struct lxc_terminal *terminal)
+{
+	__do_close int devpts_fd = -EBADF;
+	int ret;
+
+	devpts_fd = lxc_cmd_get_devpts_fd(name, lxcpath);
+	if (devpts_fd < 0)
+		return sysinfo("Failed to receive devpts fd");
+
+	ret = lxc_devpts_terminal(devpts_fd, &terminal->ptx, &terminal->pty,
+				  &terminal->pty_nr, true);
+	if (ret < 0)
+		return ret;
+
+	ret = strnprintf(terminal->name, sizeof(terminal->name),
+			 "/dev/pts/%d", terminal->pty_nr);
+	if (ret < 0)
+		return syserror("Failed to create path");
 
 	ret = lxc_terminal_peer_default(terminal);
 	if (ret < 0) {
-		SYSWARN("Failed to allocate proxy terminal");
-		goto err;
+		lxc_terminal_delete(terminal);
+		return syswarn_set(-ENODEV, "Failed to allocate proxy terminal");
 	}
 
 	return 0;
-
-err:
-	lxc_terminal_delete(terminal);
-	return -ENODEV;
 }
 
 int lxc_terminal_create(const char *name, const char *lxcpath,
 			struct lxc_conf *conf, struct lxc_terminal *terminal)
 {
-	if (!lxc_terminal_create_native(name, lxcpath, conf, terminal))
+	if (!lxc_terminal_create_native(name, lxcpath, terminal))
 		return 0;
 
 	return lxc_terminal_create_foreign(conf, terminal);
@@ -985,9 +1065,9 @@ int lxc_terminal_setup(struct lxc_conf *conf)
 	if (terminal->path && strequal(terminal->path, "none"))
 		return log_info(0, "No terminal requested");
 
-	ret = lxc_terminal_create_foreign(conf, terminal);
+	ret = lxc_terminal_peer_default(terminal);
 	if (ret < 0)
-		return -1;
+		goto err;
 
 	ret = lxc_terminal_create_log_file(terminal);
 	if (ret < 0)
@@ -1247,6 +1327,7 @@ void lxc_terminal_info_init(struct lxc_terminal_info *terminal)
 void lxc_terminal_init(struct lxc_terminal *terminal)
 {
 	memset(terminal, 0, sizeof(*terminal));
+	terminal->pty_nr = -1;
 	terminal->pty = -EBADF;
 	terminal->ptx = -EBADF;
 	terminal->peer = -EBADF;
