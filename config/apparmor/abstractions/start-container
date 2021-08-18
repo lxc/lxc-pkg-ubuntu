@@ -21,6 +21,9 @@
   # allow pre-mount hooks to stage mounts under /var/lib/lxc/<container>/
   mount -> /var/lib/lxc/{**,},
 
+  mount /dev/.lxc-boot-id -> /proc/sys/kernel/random/boot_id,
+  mount options=(ro, nosuid, nodev, noexec, remount, bind) -> /proc/sys/kernel/random/boot_id,
+
   # required for some pre-mount hooks
   mount fstype=overlayfs,
   mount fstype=aufs,

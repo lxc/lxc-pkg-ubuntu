@@ -40,7 +40,7 @@
 	#elif defined __sparc__
 		#define __NR_keyctl 283
 	#elif defined __ia64__
-		#define __NR_keyctl 249
+		#define __NR_keyctl (249 + 1024)
 	#elif defined _MIPS_SIM
 		#if _MIPS_SIM == _MIPS_SIM_ABI32	/* o32 */
 			#define __NR_keyctl 4282
@@ -112,7 +112,7 @@
 	#elif defined __sparc__
 		#define __NR_pivot_root 146
 	#elif defined __ia64__
-		#define __NR_pivot_root 183
+		#define __NR_pivot_root (183 + 1024)
 	#elif defined _MIPS_SIM
 		#if _MIPS_SIM == _MIPS_SIM_ABI32	/* o32 */
 			#define __NR_pivot_root 4216
@@ -147,7 +147,7 @@
 	#elif defined __sparc__
 		#define __NR_setns 337
 	#elif defined __ia64__
-		#define __NR_setns 306
+		#define __NR_setns (306 + 1024)
 	#elif defined _MIPS_SIM
 		#if _MIPS_SIM == _MIPS_SIM_ABI32	/* o32 */
 			#define __NR_setns 4344
@@ -182,7 +182,7 @@
 	#elif defined __sparc__
 		#define __NR_sethostname 88
 	#elif defined __ia64__
-		#define __NR_sethostname 59
+		#define __NR_sethostname (59 + 1024)
 	#elif defined _MIPS_SIM
 		#if _MIPS_SIM == _MIPS_SIM_ABI32	/* o32 */
 			#define __NR_sethostname 474
@@ -217,7 +217,7 @@
 	#elif defined __sparc__
 		#define __NR_signalfd 311
 	#elif defined __ia64__
-		#define __NR_signalfd 283
+		#define __NR_signalfd (283 + 1024)
 	#elif defined _MIPS_SIM
 		#if _MIPS_SIM == _MIPS_SIM_ABI32	/* o32 */
 			#define __NR_signalfd 4317
@@ -228,9 +228,6 @@
 		#if _MIPS_SIM == _MIPS_SIM_ABI64	/* n64 */
 			#define __NR_signalfd 5276
 		#endif
-	#else
-		#define -1
-		#warning "__NR_signalfd not defined for your architecture"
 	#endif
 #endif
 
@@ -252,7 +249,7 @@
 	#elif defined __sparc__
 		#define __NR_signalfd4 317
 	#elif defined __ia64__
-		#define __NR_signalfd4 289
+		#define __NR_signalfd4 (289 + 1024)
 	#elif defined _MIPS_SIM
 		#if _MIPS_SIM == _MIPS_SIM_ABI32	/* o32 */
 			#define __NR_signalfd4 4324
@@ -287,7 +284,7 @@
 	#elif defined __sparc__
 		#define __NR_unshare 299
 	#elif defined __ia64__
-		#define __NR_unshare 272
+		#define __NR_unshare (272 + 1024)
 	#elif defined _MIPS_SIM
 		#if _MIPS_SIM == _MIPS_SIM_ABI32	/* o32 */
 			#define __NR_unshare 4303
@@ -322,7 +319,7 @@
 	#elif defined __sparc__
 		#define __NR_bpf 349
 	#elif defined __ia64__
-		#define __NR_bpf 317
+		#define __NR_bpf (317 + 1024)
 	#elif defined _MIPS_SIM
 		#if _MIPS_SIM == _MIPS_SIM_ABI32	/* o32 */
 			#define __NR_bpf 4355
@@ -357,7 +354,7 @@
 	#elif defined __sparc__
 		#define __NR_faccessat 296
 	#elif defined __ia64__
-		#define __NR_faccessat 269
+		#define __NR_faccessat (269 + 1024)
 	#elif defined _MIPS_SIM
 		#if _MIPS_SIM == _MIPS_SIM_ABI32	/* o32 */
 			#define __NR_faccessat 4300
@@ -387,6 +384,8 @@
 		#if _MIPS_SIM == _MIPS_SIM_ABI64	/* n64 */
 			#define __NR_pidfd_send_signal 5424
 		#endif
+	#elif defined __ia64__
+		#define __NR_pidfd_send_signal (424 + 1024)
 	#else
 		#define __NR_pidfd_send_signal 424
 	#endif
@@ -410,7 +409,7 @@
 	#elif defined __sparc__
 		#define __NR_seccomp 346
 	#elif defined __ia64__
-		#define __NR_seccomp 329
+		#define __NR_seccomp (329 + 1024)
 	#elif defined _MIPS_SIM
 		#if _MIPS_SIM == _MIPS_SIM_ABI32	/* o32 */
 			#define __NR_seccomp 4352
@@ -445,7 +444,7 @@
 	#elif defined __sparc__
 		#define __NR_gettid 143
 	#elif defined __ia64__
-		#define __NR_gettid 81
+		#define __NR_gettid (81 + 1024)
 	#elif defined _MIPS_SIM
 		#if _MIPS_SIM == _MIPS_SIM_ABI32	/* o32 */
 			#define __NR_gettid 4222
@@ -484,7 +483,7 @@
 	#elif defined __sparc__
 		#define __NR_execveat 350
 	#elif defined __ia64__
-		#define __NR_execveat 318
+		#define __NR_execveat (318 + 1024)
 	#elif defined _MIPS_SIM
 		#if _MIPS_SIM == _MIPS_SIM_ABI32	/* o32 */
 			#define __NR_execveat 4356
@@ -498,6 +497,166 @@
 	#else
 		#define -1
 		#warning "__NR_execveat not defined for your architecture"
+	#endif
+#endif
+
+#ifndef __NR_move_mount
+	#if defined __alpha__
+		#define __NR_move_mount 539
+	#elif defined _MIPS_SIM
+		#if _MIPS_SIM == _MIPS_SIM_ABI32	/* o32 */
+			#define __NR_move_mount 4429
+		#endif
+		#if _MIPS_SIM == _MIPS_SIM_NABI32	/* n32 */
+			#define __NR_move_mount 6429
+		#endif
+		#if _MIPS_SIM == _MIPS_SIM_ABI64	/* n64 */
+			#define __NR_move_mount 5429
+		#endif
+	#elif defined __ia64__
+		#define __NR_move_mount (428 + 1024)
+	#else
+		#define __NR_move_mount 429
+	#endif
+#endif
+
+#ifndef __NR_open_tree
+	#if defined __alpha__
+		#define __NR_open_tree 538
+	#elif defined _MIPS_SIM
+		#if _MIPS_SIM == _MIPS_SIM_ABI32	/* o32 */
+			#define __NR_open_tree 4428
+		#endif
+		#if _MIPS_SIM == _MIPS_SIM_NABI32	/* n32 */
+			#define __NR_open_tree 6428
+		#endif
+		#if _MIPS_SIM == _MIPS_SIM_ABI64	/* n64 */
+			#define __NR_open_tree 5428
+		#endif
+	#elif defined __ia64__
+		#define __NR_open_tree (428 + 1024)
+	#else
+		#define __NR_open_tree 428
+	#endif
+#endif
+
+#ifndef __NR_clone3
+	#if defined __alpha__
+		#define __NR_clone3 545
+	#elif defined _MIPS_SIM
+		#if _MIPS_SIM == _MIPS_SIM_ABI32	/* o32 */
+			#define __NR_clone3 4435
+		#endif
+		#if _MIPS_SIM == _MIPS_SIM_NABI32	/* n32 */
+			#define __NR_clone3 6435
+		#endif
+		#if _MIPS_SIM == _MIPS_SIM_ABI64	/* n64 */
+			#define __NR_clone3 5435
+		#endif
+	#elif defined __ia64__
+		#define __NR_clone3 (435 + 1024)
+	#else
+		#define __NR_clone3 435
+	#endif
+#endif
+
+#ifndef __NR_fsopen
+	#if defined __alpha__
+		#define __NR_fsopen 540
+	#elif defined _MIPS_SIM
+		#if _MIPS_SIM == _MIPS_SIM_ABI32	/* o32 */
+			#define __NR_fsopen 4430
+		#endif
+		#if _MIPS_SIM == _MIPS_SIM_NABI32	/* n32 */
+			#define __NR_fsopen 6430
+		#endif
+		#if _MIPS_SIM == _MIPS_SIM_ABI64	/* n64 */
+			#define __NR_fsopen 5430
+		#endif
+	#elif defined __ia64__
+		#define __NR_fsopen (430 + 1024)
+	#else
+		#define __NR_fsopen 430
+	#endif
+#endif
+
+#ifndef __NR_fspick
+	#if defined __alpha__
+		#define __NR_fspick 543
+	#elif defined _MIPS_SIM
+		#if _MIPS_SIM == _MIPS_SIM_ABI32	/* o32 */
+			#define __NR_fspick 4433
+		#endif
+		#if _MIPS_SIM == _MIPS_SIM_NABI32	/* n32 */
+			#define __NR_fspick 6433
+		#endif
+		#if _MIPS_SIM == _MIPS_SIM_ABI64	/* n64 */
+			#define __NR_fspick 5433
+		#endif
+	#elif defined __ia64__
+		#define __NR_fspick (433 + 1024)
+	#else
+		#define __NR_fspick 433
+	#endif
+#endif
+
+#ifndef __NR_fsconfig
+	#if defined __alpha__
+		#define __NR_fsconfig 541
+	#elif defined _MIPS_SIM
+		#if _MIPS_SIM == _MIPS_SIM_ABI32	/* o32 */
+			#define __NR_fsconfig 4431
+		#endif
+		#if _MIPS_SIM == _MIPS_SIM_NABI32	/* n32 */
+			#define __NR_fsconfig 6431
+		#endif
+		#if _MIPS_SIM == _MIPS_SIM_ABI64	/* n64 */
+			#define __NR_fsconfig 5431
+		#endif
+	#elif defined __ia64__
+		#define __NR_fsconfig (431 + 1024)
+	#else
+		#define __NR_fsconfig 431
+	#endif
+#endif
+
+#ifndef __NR_fsmount
+	#if defined __alpha__
+		#define __NR_fsmount 542
+	#elif defined _MIPS_SIM
+		#if _MIPS_SIM == _MIPS_SIM_ABI32	/* o32 */
+			#define __NR_fsmount 4432
+		#endif
+		#if _MIPS_SIM == _MIPS_SIM_NABI32	/* n32 */
+			#define __NR_fsmount 6432
+		#endif
+		#if _MIPS_SIM == _MIPS_SIM_ABI64	/* n64 */
+			#define __NR_fsmount 5432
+		#endif
+	#elif defined __ia64__
+		#define __NR_fsmount (432 + 1024)
+	#else
+		#define __NR_fsmount 432
+	#endif
+#endif
+
+#ifndef __NR_openat2
+	#if defined __alpha__
+		#define __NR_openat2 547
+	#elif defined _MIPS_SIM
+		#if _MIPS_SIM == _MIPS_SIM_ABI32	/* o32 */
+			#define __NR_openat2 4437
+		#endif
+		#if _MIPS_SIM == _MIPS_SIM_NABI32	/* n32 */
+			#define __NR_openat2 6437
+		#endif
+		#if _MIPS_SIM == _MIPS_SIM_ABI64	/* n64 */
+			#define __NR_openat2 5437
+		#endif
+	#elif defined __ia64__
+		#define __NR_openat2 (437 + 1024)
+	#else
+		#define __NR_openat2 437
 	#endif
 #endif
 
