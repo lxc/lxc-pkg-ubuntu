@@ -3,7 +3,7 @@ AC_PREREQ([2.69])
 m4_define([lxc_devel], 0)
 m4_define([lxc_version_major], 4)
 m4_define([lxc_version_minor], 0)
-m4_define([lxc_version_micro], 2)
+m4_define([lxc_version_micro], 6)
 m4_define([lxc_version_beta], [])
 
 m4_define([lxc_abi_major], 1)
@@ -622,7 +622,11 @@ AC_CHECK_HEADER([ifaddrs.h],
 AC_HEADER_MAJOR
 
 # Check for some syscalls functions
-AC_CHECK_FUNCS([setns pivot_root sethostname unshare rand_r confstr faccessat gettid memfd_create])
+AC_CHECK_FUNCS([setns pivot_root sethostname unshare rand_r confstr faccessat gettid memfd_create move_mount open_tree execveat clone3 fsopen fspick fsconfig fsmount, openat2])
+AC_CHECK_TYPES([struct open_how], [], [], [[#include <linux/openat2.h>]])
+AC_CHECK_TYPES([struct clone_args], [], [], [[#include <linux/sched.h>]])
+AC_CHECK_MEMBERS([struct clone_args.set_tid],[],[],[[#include <linux/sched.h>]])
+AC_CHECK_MEMBERS([struct clone_args.cgroup],[],[],[[#include <linux/sched.h>]])
 
 # Check for strerror_r() support. Defines:
 # - HAVE_STRERROR_R if available
@@ -660,7 +664,7 @@ fi
 AC_CHECK_LIB(pthread, main)
 AC_CHECK_FUNCS(statvfs)
 AC_CHECK_LIB(util, openpty)
-AC_CHECK_FUNCS([openpty hasmntopt setmntent endmntent utmpxname])
+AC_CHECK_FUNCS([hasmntopt setmntent endmntent utmpxname])
 AC_CHECK_FUNCS([getgrgid_r],
 	AM_CONDITIONAL(HAVE_GETGRGID_R, true)
 	AC_DEFINE(HAVE_GETGRGID_R,1,[Have getgrgid_r]),
@@ -681,6 +685,10 @@ AC_CHECK_FUNCS([keyctl],
 	AM_CONDITIONAL(HAVE_KEYCTL, true)
 	AC_DEFINE(HAVE_KEYCTL,1,[Have keyctl]),
 	AM_CONDITIONAL(HAVE_KEYCTL, false))
+AC_CHECK_FUNCS([openpty],
+	AM_CONDITIONAL(HAVE_OPENPTY, true)
+	AC_DEFINE(HAVE_OPENPTY,1,[Have openpty]),
+	AM_CONDITIONAL(HAVE_OPENPTY, false))
 AC_CHECK_FUNCS([prlimit],
 	AM_CONDITIONAL(HAVE_PRLIMIT, true)
 	AC_DEFINE(HAVE_PRLIMIT,1,[Have prlimit]),
@@ -753,11 +761,15 @@ AX_CHECK_COMPILE_FLAG([-Wnested-externs], [CFLAGS="$CFLAGS -Wnested-externs"],,[
 AX_CHECK_COMPILE_FLAG([-fasynchronous-unwind-tables], [CFLAGS="$CFLAGS -fasynchronous-unwind-tables"],,[-Werror])
 AX_CHECK_COMPILE_FLAG([-pipe], [CFLAGS="$CFLAGS -pipe"],,[-Werror])
 AX_CHECK_COMPILE_FLAG([-fexceptions], [CFLAGS="$CFLAGS -fexceptions"],,[-Werror])
+AX_CHECK_COMPILE_FLAG([-Warray-bounds], [CFLAGS="$CFLAGS -Warray-bounds"],,[-Werror])
+AX_CHECK_COMPILE_FLAG([-Wrestrict], [CFLAGS="$CFLAGS -Wrestrict"],,[-Werror])
+AX_CHECK_COMPILE_FLAG([-Wreturn-local-addr], [CFLAGS="$CFLAGS -Wreturn-local-addr"],,[-Werror])
+AX_CHECK_COMPILE_FLAG([-Wstringop-overflow], [CFLAGS="$CFLAGS -Wstringop-overflow"],,[-Werror])
 
 AX_CHECK_LINK_FLAG([-z relro], [LDFLAGS="$LDFLAGS -z relro"],,[])
 AX_CHECK_LINK_FLAG([-z now], [LDFLAGS="$LDFLAGS -z now"],,[])
 
-CFLAGS="$CFLAGS -Wvla -std=gnu11"
+CFLAGS="$CFLAGS -Wvla -std=gnu11 -fms-extensions"
 if test "x$enable_werror" = "xyes"; then
 	CFLAGS="$CFLAGS -Werror"
 fi

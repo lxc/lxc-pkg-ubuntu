@@ -28,7 +28,7 @@
 #include "initutils.h"
 #include "memory_utils.h"
 #include "parse.h"
-#include "raw_syscalls.h"
+#include "process_utils.h"
 #include "string_utils.h"
 
 /* option keys for long only options */
@@ -479,7 +479,7 @@ int main(int argc, char *argv[])
 			break;
 		}
 		default:
-			ret = kill(pid, was_interrupted);
+			kill(pid, was_interrupted);
 			break;
 		}
 		ret = EXIT_SUCCESS;

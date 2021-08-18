@@ -7,6 +7,7 @@
 #include <seccomp.h>
 #include <stdio.h>
 #include <stdlib.h>
+#include <sys/epoll.h>
 #include <sys/mount.h>
 #include <sys/utsname.h>
 
@@ -99,7 +100,7 @@ static uint32_t get_v2_default_action(char *line)
 	while (*line == ' ')
 		line++;
 
-	/* After 'whitelist' or 'blacklist' comes default behavior. */
+	/* After 'allowlist' or 'denylist' comes default behavior. */
 	if (strncmp(line, "kill", 4) == 0) {
 		ret_action = SCMP_ACT_KILL;
 	} else if (strncmp(line, "errno", 5) == 0) {
@@ -317,7 +318,7 @@ enum lxc_hostarch_t {
 	lxc_seccomp_arch_unknown = 999,
 };
 
-int get_hostarch(void)
+static int get_hostarch(void)
 {
 	struct utsname uts;
 	if (uname(&uts) < 0) {
@@ -351,8 +352,8 @@ int get_hostarch(void)
 	return lxc_seccomp_arch_unknown;
 }
 
-scmp_filter_ctx get_new_ctx(enum lxc_hostarch_t n_arch,
-			    uint32_t default_policy_action, bool *needs_merge)
+static scmp_filter_ctx get_new_ctx(enum lxc_hostarch_t n_arch, uint32_t default_policy_action,
+				   bool *needs_merge)
 {
 	int ret;
 	uint32_t arch;
@@ -485,8 +486,15 @@ scmp_filter_ctx get_new_ctx(enum lxc_hostarch_t n_arch,
 	return ctx;
 }
 
-bool do_resolve_add_rule(uint32_t arch, char *line, scmp_filter_ctx ctx,
-			 struct seccomp_v2_rule *rule)
+enum lxc_seccomp_rule_status_t {
+  lxc_seccomp_rule_added = 0,
+  lxc_seccomp_rule_err,
+  lxc_seccomp_rule_undefined_syscall,
+  lxc_seccomp_rule_unsupported_arch,
+};
+
+static enum lxc_seccomp_rule_status_t do_resolve_add_rule(uint32_t arch, char *line, scmp_filter_ctx ctx,
+				struct seccomp_v2_rule *rule)
 {
 	int i, nr, ret;
 	struct scmp_arg_cmp arg_cmp[6];
@@ -495,7 +503,7 @@ bool do_resolve_add_rule(uint32_t arch, char *line, scmp_filter_ctx ctx,
 	if (arch && ret != 0) {
 		errno = -ret;
 		SYSERROR("Seccomp: rule and context arch do not match (arch %d)", arch);
-		return false;
+		return lxc_seccomp_rule_err;
 	}
 
 	/*get the syscall name*/
@@ -510,24 +518,28 @@ bool do_resolve_add_rule(uint32_t arch, char *line, scmp_filter_ctx ctx,
 		if (ret < 0) {
 			errno = -ret;
 			SYSERROR("Failed loading rule to reject force umount");
-			return false;
+			return lxc_seccomp_rule_err;
 		}
 
 		INFO("Set seccomp rule to reject force umounts");
-		return true;
+		return lxc_seccomp_rule_added;
 	}
 
 	nr = seccomp_syscall_resolve_name(line);
 	if (nr == __NR_SCMP_ERROR) {
-		WARN("Failed to resolve syscall \"%s\"", line);
-		WARN("This syscall will NOT be handled by seccomp");
-		return true;
+		INFO("The syscall[%s] is is undefined on host native arch", line);
+		return lxc_seccomp_rule_undefined_syscall;
 	}
 
-	if (nr < 0) {
-		WARN("Got negative return value %d for syscall \"%s\"", nr, line);
-		WARN("This syscall will NOT be handled by seccomp");
-		return true;
+	// The syscall resolves to a pseudo syscall and may be available on compat archs.
+	if (nr < 0 && arch == SCMP_ARCH_NATIVE) {
+		DEBUG("The syscall[%d:%s] is a pseudo syscall and not available on host native arch.", nr, line);
+		return lxc_seccomp_rule_unsupported_arch;
+	}
+
+	if (arch != SCMP_ARCH_NATIVE && seccomp_syscall_resolve_name_arch(arch, line) < 0) {
+		DEBUG("The syscall[%d:%s] is not supported on compat arch[%u]", nr, line, arch);
+		return lxc_seccomp_rule_unsupported_arch;
 	}
 
 	memset(&arg_cmp, 0, sizeof(arg_cmp));
@@ -549,16 +561,41 @@ bool do_resolve_add_rule(uint32_t arch, char *line, scmp_filter_ctx ctx,
 					      rule->args_value[i].value);
 	}
 
+	INFO("Adding %s rule for syscall[%d:%s] action[%d:%s] arch[%u]",
+			  (arch == SCMP_ARCH_NATIVE) ? "native" : "compat",
+			  nr, line, rule->action, get_action_name(rule->action), arch);
+
 	ret = seccomp_rule_add_exact_array(ctx, rule->action, nr,
 					   rule->args_num, arg_cmp);
 	if (ret < 0) {
 		errno = -ret;
-		SYSERROR("Failed loading rule for %s (nr %d action %d (%s))",
-		         line, nr, rule->action, get_action_name(rule->action));
-		return false;
+		SYSERROR("Failed to add rule for syscall[%d:%s] action[%d:%s] arch[%u]",
+		         nr, line, rule->action, get_action_name(rule->action), arch);
+		return lxc_seccomp_rule_err;
 	}
 
-	return true;
+	return lxc_seccomp_rule_added;
+}
+
+/*
+ * It is unfortunate, but we can't simply remove those terms since this would
+ * break way too many users.
+ */
+#define BACKWARDCOMPAT_TERMINOLOGY_DENYLIST "blacklist"
+#define BACKWARDCOMPAT_TERMINOLOGY_ALLOWLIST "whitelist"
+
+static inline bool is_denylist(const char *type)
+{
+	return strnequal(type, "denylist", STRLITERALLEN("denylist")) ||
+	       strnequal(type, BACKWARDCOMPAT_TERMINOLOGY_DENYLIST,
+			 STRLITERALLEN(BACKWARDCOMPAT_TERMINOLOGY_DENYLIST));
+}
+
+static inline bool is_allowlist(const char *type)
+{
+	return strnequal(type, "allowlist", STRLITERALLEN("allowlist")) ||
+	       strnequal(type, BACKWARDCOMPAT_TERMINOLOGY_ALLOWLIST,
+			 STRLITERALLEN(BACKWARDCOMPAT_TERMINOLOGY_ALLOWLIST));
 }
 
 /*
@@ -580,7 +617,7 @@ static int parse_config_v2(FILE *f, char *line, size_t *line_bufsz, struct lxc_c
 	int ret;
 	char *p;
 	enum lxc_hostarch_t cur_rule_arch, native_arch;
-	bool blacklist = false;
+	bool denylist = false;
 	uint32_t default_policy_action = -1, default_rule_action = -1;
 	struct seccomp_v2_rule rule;
 	struct scmp_ctx_info {
@@ -589,12 +626,10 @@ static int parse_config_v2(FILE *f, char *line, size_t *line_bufsz, struct lxc_c
 		bool needs_merge[3];
 	} ctx;
 
-	if (strncmp(line, "blacklist", 9) == 0)
-		blacklist = true;
-	else if (strncmp(line, "whitelist", 9) != 0) {
-		ERROR("Bad seccomp policy style \"%s\"", line);
-		return -1;
-	}
+	if (is_denylist(line))
+		denylist = true;
+	else if (!is_allowlist(line))
+		return log_error(-EINVAL, "Bad seccomp policy style \"%s\"", line);
 
 	p = strchr(line, ' ');
 	if (p) {
@@ -603,8 +638,8 @@ static int parse_config_v2(FILE *f, char *line, size_t *line_bufsz, struct lxc_c
 			return -1;
 	}
 
-	/* for blacklist, allow any syscall which has no rule */
-	if (blacklist) {
+	/* for denylist, allow any syscall which has no rule */
+	if (denylist) {
 		if (default_policy_action == -1)
 			default_policy_action = SCMP_ACT_ALLOW;
 
@@ -617,6 +652,8 @@ static int parse_config_v2(FILE *f, char *line, size_t *line_bufsz, struct lxc_c
 		if (default_rule_action == -1)
 			default_rule_action = SCMP_ACT_ALLOW;
 	}
+
+	DEBUG("Host native arch is [%u]", seccomp_arch_native());
 
 	memset(&ctx, 0, sizeof(ctx));
 	ctx.architectures[0] = SCMP_ARCH_NATIVE;
@@ -958,43 +995,23 @@ static int parse_config_v2(FILE *f, char *line, size_t *line_bufsz, struct lxc_c
 		}
 #endif
 
-		if (!do_resolve_add_rule(SCMP_ARCH_NATIVE, line,
-					 conf->seccomp.seccomp_ctx, &rule))
+
+		ret = do_resolve_add_rule(SCMP_ARCH_NATIVE, line,
+					 conf->seccomp.seccomp_ctx, &rule);
+		if (ret == lxc_seccomp_rule_err)
 			goto bad_rule;
+		if (ret == lxc_seccomp_rule_undefined_syscall)
+			continue;
 
-		INFO("Added native rule for arch %d for %s action %d(%s)",
-		     SCMP_ARCH_NATIVE, line, rule.action,
-		     get_action_name(rule.action));
-
-		if (ctx.architectures[0] != SCMP_ARCH_NATIVE) {
-			if (!do_resolve_add_rule(ctx.architectures[0], line,
-						 ctx.contexts[0], &rule))
-				goto bad_rule;
-
-			INFO("Added compat rule for arch %d for %s action %d(%s)",
-			     ctx.architectures[0], line, rule.action,
-			     get_action_name(rule.action));
+		for (int i = 0; i < 3; i++ ) {
+			uint32_t arch = ctx.architectures[i];
+			if (arch != SCMP_ARCH_NATIVE && arch != seccomp_arch_native()) {
+				if (lxc_seccomp_rule_err == do_resolve_add_rule(arch, line,
+							ctx.contexts[i], &rule))
+					goto bad_rule;
+			}
 		}
 
-		if (ctx.architectures[1] != SCMP_ARCH_NATIVE) {
-			if (!do_resolve_add_rule(ctx.architectures[1], line,
-						 ctx.contexts[1], &rule))
-				goto bad_rule;
-
-			INFO("Added compat rule for arch %d for %s action %d(%s)",
-			     ctx.architectures[1], line, rule.action,
-			     get_action_name(rule.action));
-		}
-
-		if (ctx.architectures[2] != SCMP_ARCH_NATIVE) {
-			if (!do_resolve_add_rule(ctx.architectures[2], line,
-						ctx.contexts[2], &rule))
-				goto bad_rule;
-
-			INFO("Added native rule for arch %d for %s action %d(%s)",
-			     ctx.architectures[2], line, rule.action,
-			     get_action_name(rule.action));
-		}
 	}
 
 	INFO("Merging compat seccomp contexts into main context");
@@ -1079,7 +1096,7 @@ static int parse_config_v2(FILE *f, char *line, struct lxc_conf *conf)
  * the second line has some directives
  * then comes policy subject to the directives
  * right now version must be '1' or '2'
- * the directives must include 'whitelist'(version == 1 or 2) or 'blacklist'
+ * the directives must include 'allowlist'(version == 1 or 2) or 'denylist'
  * (version == 2) and can include 'debug' (though debug is not yet supported).
  */
 static int parse_config(FILE *f, struct lxc_conf *conf)
@@ -1099,8 +1116,8 @@ static int parse_config(FILE *f, struct lxc_conf *conf)
 		goto bad_line;
 	}
 
-	if (version == 1 && !strstr(line, "whitelist")) {
-		ERROR("Only whitelist policy is supported");
+	if (version == 1 && !strstr(line, "allowlist")) {
+		ERROR("Only allowlist policy is supported");
 		goto bad_line;
 	}
 
@@ -1263,6 +1280,9 @@ int lxc_seccomp_load(struct lxc_conf *conf)
 			return -1;
 		}
 
+		if (fd_make_nonblocking(ret))
+			return log_error_errno(-1, errno, "Failed to make seccomp listener fd non-blocking");;
+
 		conf->seccomp.notifier.notify_fd = ret;
 		TRACE("Retrieved new seccomp listener fd %d", ret);
 	}
@@ -1322,9 +1342,16 @@ static void seccomp_notify_default_answer(int fd, struct seccomp_notif *req,
 {
 	resp->id = req->id;
 	resp->error = -ENOSYS;
+	resp->val = 0;
+	resp->flags = 0;
 
 	if (seccomp_notify_respond(fd, resp))
-		SYSERROR("Failed to send default message to seccomp");
+		SYSERROR("Failed to send default message to seccomp notification with id(%llu)",
+			 (long long unsigned int)resp->id);
+	else
+		TRACE("Sent default response for seccomp notification with id(%llu)",
+		      (long long unsigned int)resp->id);
+	memset(resp, 0, handler->conf->seccomp.notifier.sizes.seccomp_notif_resp);
 }
 #endif
 
@@ -1337,7 +1364,7 @@ int seccomp_notify_handler(int fd, uint32_t events, void *data,
 	__do_close int fd_mem = -EBADF;
 	int ret;
 	ssize_t bytes;
-	int send_fd_list[2];
+	int send_fd_list[3];
 	struct iovec iov[4];
 	size_t iov_len, msg_base_size, msg_full_size;
 	char mem_path[6 /* /proc/ */
@@ -1352,12 +1379,21 @@ int seccomp_notify_handler(int fd, uint32_t events, void *data,
 	int listener_proxy_fd = conf->seccomp.notifier.proxy_fd;
 	struct seccomp_notify_proxy_msg msg = {0};
 	char *cookie = conf->seccomp.notifier.cookie;
-	uint64_t req_id;
+	__u64 req_id;
 
-	memset(req, 0, sizeof(*req));
+	if (events & EPOLLHUP) {
+		lxc_mainloop_del_handler(descr, fd);
+		close(fd);
+		return log_trace(0, "Removing seccomp notifier fd %d", fd);
+	}
+
+	memset(req, 0, conf->seccomp.notifier.sizes.seccomp_notif);
 	ret = seccomp_notify_receive(fd, req);
 	if (ret) {
-		SYSERROR("Failed to read seccomp notification");
+		if (errno == ENOENT)
+			TRACE("Intercepted system call aborted");
+		else
+			SYSERROR("Failed to read seccomp notification");
 		goto out;
 	}
 
@@ -1378,6 +1414,7 @@ int seccomp_notify_handler(int fd, uint32_t events, void *data,
 
 	/* remember the ID in case we receive garbage from the proxy */
 	resp->id = req_id = req->id;
+	TRACE("Received seccomp notification with id(%llu)", (long long unsigned int)req_id);
 
 	snprintf(mem_path, sizeof(mem_path), "/proc/%d", req->pid);
 	fd_pid = open(mem_path, O_RDONLY | O_DIRECTORY | O_CLOEXEC);
@@ -1402,7 +1439,7 @@ int seccomp_notify_handler(int fd, uint32_t events, void *data,
 	ret = seccomp_notify_id_valid(fd, req->id);
 	if (ret < 0) {
 		seccomp_notify_default_answer(fd, req, resp, hdlr);
-		SYSERROR("Invalid seccomp notify request id");
+		SYSERROR("Invalid seccomp notify request id(%llu)", (long long unsigned int)req->id);
 		goto out;
 	}
 
@@ -1434,10 +1471,10 @@ int seccomp_notify_handler(int fd, uint32_t events, void *data,
 
 	send_fd_list[0] = fd_pid;
 	send_fd_list[1] = fd_mem;
+	send_fd_list[2] = fd;
 
 retry:
-	bytes = lxc_abstract_unix_send_fds_iov(listener_proxy_fd, send_fd_list,
-					       2, iov, iov_len);
+	bytes = lxc_abstract_unix_send_fds_iov(listener_proxy_fd, send_fd_list, 3, iov, iov_len);
 	if (bytes != (ssize_t)msg_full_size) {
 		SYSERROR("Failed to forward message to seccomp proxy");
 		if (!reconnected) {
@@ -1461,8 +1498,9 @@ retry:
 	}
 
 	if (resp->id != req_id) {
+		ERROR("Proxy returned response with illegal id(%llu) != id(%llu)",
+		      (long long unsigned int)resp->id, (long long unsigned int)req_id);
 		resp->id = req_id;
-		ERROR("Proxy returned response with illegal id");
 		seccomp_notify_default_answer(fd, req, resp, hdlr);
 		goto out;
 	}
@@ -1474,9 +1512,19 @@ retry:
 		goto out;
 	}
 
+	if (resp->id != req_id) {
+		ERROR("Proxy returned response with illegal id(%llu) != id(%llu)",
+		      (long long unsigned int)resp->id, (long long unsigned int)req_id);
+		resp->id = req_id;
+	}
+
 	ret = seccomp_notify_respond(fd, resp);
 	if (ret)
 		SYSERROR("Failed to send seccomp notification");
+	else
+		TRACE("Sent response for seccomp notification with id(%llu)",
+		      (long long unsigned int)resp->id);
+	memset(resp, 0, conf->seccomp.notifier.sizes.seccomp_notif_resp);
 
 out:
 #endif

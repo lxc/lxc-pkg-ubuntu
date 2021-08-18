@@ -16,6 +16,7 @@
 #include <unistd.h>
 
 #include "config.h"
+#include "macro.h"
 #include "syscall_numbers.h"
 
 #ifdef HAVE_LINUX_MEMFD_H
@@ -24,6 +25,10 @@
 
 #ifdef HAVE_SYS_SIGNALFD_H
 #include <sys/signalfd.h>
+#endif
+
+#ifdef HAVE_STRUCT_OPEN_HOW
+#include <linux/openat2.h>
 #endif
 
 typedef int32_t key_serial_t;
@@ -112,8 +117,10 @@ static inline int signalfd(int fd, const sigset_t *mask, int flags)
 	int retval;
 
 	retval = syscall(__NR_signalfd4, fd, mask, _NSIG / 8, flags);
+#ifdef __NR_signalfd
 	if (errno == ENOSYS && flags == 0)
 		retval = syscall(__NR_signalfd, fd, mask, _NSIG / 8);
+#endif
 
 	return retval;
 }
@@ -136,5 +143,126 @@ static int faccessat(int __fd, const char *__file, int __type, int __flag)
 	return syscall(__NR_faccessat, __fd, __file, __type, __flag);
 }
 #endif
+
+#ifndef HAVE_MOVE_MOUNT
+static inline int move_mount_lxc(int from_dfd, const char *from_pathname,
+				 int to_dfd, const char *to_pathname,
+				 unsigned int flags)
+{
+	return syscall(__NR_move_mount, from_dfd, from_pathname, to_dfd,
+		       to_pathname, flags);
+}
+#define move_mount move_mount_lxc
+#else
+extern int move_mount(int from_dfd, const char *from_pathname, int to_dfd,
+		      const char *to_pathname, unsigned int flags);
+#endif
+
+#ifndef HAVE_OPEN_TREE
+static inline int open_tree_lxc(int dfd, const char *filename, unsigned int flags)
+{
+	return syscall(__NR_open_tree, dfd, filename, flags);
+}
+#define open_tree open_tree_lxc
+#else
+extern int open_tree(int dfd, const char *filename, unsigned int flags);
+#endif
+
+#ifndef HAVE_FSOPEN
+static inline int fsopen_lxc(const char *fs_name, unsigned int flags)
+{
+	return syscall(__NR_fsopen, fs_name, flags);
+}
+#define fsopen fsopen_lxc
+#else
+extern int fsopen(const char *fs_name, unsigned int flags);
+#endif
+
+#ifndef HAVE_FSPICK
+static inline int fspick_lxc(int dfd, const char *path, unsigned int flags)
+{
+	return syscall(__NR_fspick, dfd, path, flags);
+}
+#define fspick fspick_lxc
+#else
+extern int fspick(int dfd, const char *path, unsigned int flags);
+#endif
+
+#ifndef HAVE_FSCONFIG
+static inline int fsconfig_lxc(int fd, unsigned int cmd, const char *key, const void *value, int aux)
+{
+	return syscall(__NR_fsconfig, fd, cmd, key, value, aux);
+}
+#define fsconfig fsconfig_lxc
+#else
+extern int fsconfig(int fd, unsigned int cmd, const char *key, const void *value, int aux);
+#endif
+
+#ifndef HAVE_FSMOUNT
+static inline int fsmount_lxc(int fs_fd, unsigned int flags, unsigned int attr_flags)
+{
+	return syscall(__NR_fsmount, fs_fd, flags, attr_flags);
+}
+#define fsmount fsmount_lxc
+#else
+extern int fsmount(int fs_fd, unsigned int flags, unsigned int attr_flags);
+#endif
+
+/*
+ * Arguments for how openat2(2) should open the target path. If only @flags and
+ * @mode are non-zero, then openat2(2) operates very similarly to openat(2).
+ *
+ * However, unlike openat(2), unknown or invalid bits in @flags result in
+ * -EINVAL rather than being silently ignored. @mode must be zero unless one of
+ * {O_CREAT, O_TMPFILE} are set.
+ *
+ * @flags: O_* flags.
+ * @mode: O_CREAT/O_TMPFILE file mode.
+ * @resolve: RESOLVE_* flags.
+ */
+struct lxc_open_how {
+	__u64 flags;
+	__u64 mode;
+	__u64 resolve;
+};
+
+/* how->resolve flags for openat2(2). */
+#ifndef RESOLVE_NO_XDEV
+#define RESOLVE_NO_XDEV		0x01 /* Block mount-point crossings
+					(includes bind-mounts). */
+#endif
+
+#ifndef RESOLVE_NO_MAGICLINKS
+#define RESOLVE_NO_MAGICLINKS	0x02 /* Block traversal through procfs-style
+					"magic-links". */
+#endif
+
+#ifndef RESOLVE_NO_SYMLINKS
+#define RESOLVE_NO_SYMLINKS	0x04 /* Block traversal through all symlinks
+					(implies OEXT_NO_MAGICLINKS) */
+#endif
+
+#ifndef RESOLVE_BENEATH
+#define RESOLVE_BENEATH		0x08 /* Block "lexical" trickery like
+					"..", symlinks, and absolute
+					paths which escape the dirfd. */
+#endif
+
+#ifndef RESOLVE_IN_ROOT
+#define RESOLVE_IN_ROOT		0x10 /* Make all jumps to "/" and ".."
+					be scoped inside the dirfd
+					(similar to chroot(2)). */
+#endif
+
+#ifndef HAVE_OPENAT2
+static inline int openat2(int dfd, const char *filename, struct lxc_open_how *how, size_t size)
+{
+	/* When struct open_how is updated we should update lxc as well. */
+#ifdef HAVE_STRUCT_OPEN_HOW
+	BUILD_BUG_ON(sizeof(struct lxc_open_how) != sizeof(struct open_how));
+#endif
+	return syscall(__NR_openat2, dfd, filename, (struct open_how *)how, size);
+}
+#endif /* HAVE_OPENAT2 */
 
 #endif /* __LXC_SYSCALL_WRAPPER_H */

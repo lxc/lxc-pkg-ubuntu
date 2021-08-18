@@ -19,20 +19,10 @@
 #include "log.h"
 #include "lsm.h"
 #include "parse.h"
-#include "raw_syscalls.h"
+#include "process_utils.h"
 #include "utils.h"
 
 lxc_log_define(apparmor, lsm);
-
-/* set by lsm_apparmor_drv_init if true */
-static int aa_enabled = 0;
-static bool aa_parser_available = false;
-static bool aa_supports_unix = false;
-static bool aa_can_stack = false;
-static bool aa_is_stacked = false;
-static bool aa_admin = false;
-
-static int mount_features_enabled = 0;
 
 #define AA_DEF_PROFILE "lxc-container-default"
 #define AA_DEF_PROFILE_CGNS "lxc-container-default-cgns"
@@ -121,8 +111,8 @@ static const char AA_PROFILE_BASE[] =
 "  # deny reads from debugfs\n"
 "  deny /sys/kernel/debug/{,**} rwklx,\n"
 "\n"
-"  # allow paths to be made slave, shared, private or unbindable\n"
-"  # FIXME: This currently doesn't work due to the apparmor parser treating those as allowing all mounts.\n"
+"  # allow paths to be made dependent, shared, private or unbindable\n"
+"  # TODO: This currently doesn't work due to the apparmor parser treating those as allowing all mounts.\n"
 "#  mount options=(rw,make-slave) -> **,\n"
 "#  mount options=(rw,make-rslave) -> **,\n"
 "#  mount options=(rw,make-shared) -> **,\n"
@@ -343,7 +333,7 @@ static const char AA_PROFILE_NESTING_BASE[] =
 "  mount /var/lib/lxd/shmounts/ -> /var/lib/lxd/shmounts/,\n"
 "  mount options=bind /var/lib/lxd/shmounts/** -> /var/lib/lxd/**,\n"
 "\n"
-"  # FIXME: There doesn't seem to be a way to ask for:\n"
+"  # TODO: There doesn't seem to be a way to ask for:\n"
 "  # mount options=(ro,nosuid,nodev,noexec,remount,bind),\n"
 "  # as we always get mount to $cdir/proc/sys with those flags denied\n"
 "  # So allow all mounts until that is straightened out:\n"
@@ -373,42 +363,37 @@ static const char AA_PROFILE_UNPRIVILEGED[] =
 "  mount options=(ro,remount),\n"
 ;
 
-static bool check_mount_feature_enabled(void)
-{
-	return mount_features_enabled == 1;
-}
-
-static void load_mount_features_enabled(void)
+static void load_mount_features_enabled(struct lsm_ops *ops)
 {
 	struct stat statbuf;
 	int ret;
 
 	ret = stat(AA_MOUNT_RESTR, &statbuf);
 	if (ret == 0)
-		mount_features_enabled = 1;
+		ops->aa_mount_features_enabled = 1;
 }
 
 /* aa_getcon is not working right now.  Use our hand-rolled version below */
-static int apparmor_enabled(void)
+static int apparmor_enabled(struct lsm_ops *ops)
 {
-	FILE *fin;
+	__do_fclose FILE *fin = NULL;
 	char e;
 	int ret;
 
 	fin = fopen_cloexec(AA_ENABLED_FILE, "r");
 	if (!fin)
 		return 0;
+
 	ret = fscanf(fin, "%c", &e);
-	fclose(fin);
 	if (ret == 1 && e == 'Y') {
-		load_mount_features_enabled();
+		load_mount_features_enabled(ops);
 		return 1;
 	}
 
 	return 0;
 }
 
-static char *apparmor_process_label_get(pid_t pid)
+static char *apparmor_process_label_get(struct lsm_ops *ops, pid_t pid)
 {
 	char path[100], *space;
 	int ret;
@@ -460,9 +445,9 @@ again:
  * Probably makes sense to reorganize these to only read
  * the label once
  */
-static bool apparmor_am_unconfined(void)
+static bool apparmor_am_unconfined(struct lsm_ops *ops)
 {
-	char *p = apparmor_process_label_get(lxc_raw_getpid());
+	char *p = apparmor_process_label_get(ops, lxc_raw_getpid());
 	bool ret = false;
 	if (!p || strcmp(p, "unconfined") == 0)
 		ret = true;
@@ -538,21 +523,28 @@ static inline char *apparmor_namespace(const char *ctname, const char *lxcpath)
 	return full;
 }
 
-/* FIXME: This is currently run only in the context of a constructor (via the
+/* TODO: This is currently run only in the context of a constructor (via the
  * initial lsm_init() called due to its __attribute__((constructor)), so we
  * do not have ERROR/... macros available, so there are some fprintf(stderr)s
  * in there.
  */
-static bool check_apparmor_parser_version()
+static bool check_apparmor_parser_version(struct lsm_ops *ops)
 {
+	int major = 0, minor = 0, micro = 0, ret = 0;
 	struct lxc_popen_FILE *parserpipe;
 	int rc;
-	int major = 0, minor = 0, micro = 0;
+
+	switch (ops->aa_parser_available) {
+	case 0:
+		return false;
+	case 1:
+		return true;
+	}
 
 	parserpipe = lxc_popen("apparmor_parser --version");
 	if (!parserpipe) {
 		fprintf(stderr, "Failed to run check for apparmor_parser\n");
-		return false;
+		goto out;
 	}
 
 	rc = fscanf(parserpipe->f, "AppArmor parser version %d.%d.%d", &major, &minor, &micro);
@@ -560,26 +552,29 @@ static bool check_apparmor_parser_version()
 		lxc_pclose(parserpipe);
 		/* We stay silent for now as this most likely means the shell
 		 * lxc_popen executed failed to find the apparmor_parser binary.
-		 * See the FIXME comment above for details.
+		 * See the TODO comment above for details.
 		 */
-		return false;
+		goto out;
 	}
 
 	rc = lxc_pclose(parserpipe);
 	if (rc < 0) {
 		fprintf(stderr, "Error waiting for child process\n");
-		return false;
+		goto out;
 	}
 	if (rc != 0) {
 		fprintf(stderr, "'apparmor_parser --version' executed with an error status\n");
-		return false;
+		goto out;
 	}
 
-	aa_supports_unix = (major > 2) ||
-	                   (major == 2 && minor > 10) ||
-	                   (major == 2 && minor == 10 && micro >= 95);
+	if ((major > 2) || (major == 2 && minor > 10) || (major == 2 && minor == 10 && micro >= 95))
+		ops->aa_supports_unix = 1;
 
-	return true;
+	ret = 1;
+
+out:
+	ops->aa_parser_available = ret;
+	return ret == 1;
 }
 
 static bool file_is_yes(const char *path)
@@ -725,7 +720,7 @@ static void append_all_remount_rules(char **profile, size_t *size)
 	}
 }
 
-static char *get_apparmor_profile_content(struct lxc_conf *conf, const char *lxcpath)
+static char *get_apparmor_profile_content(struct lsm_ops *ops, struct lxc_conf *conf, const char *lxcpath)
 {
 	char *profile, *profile_name_full;
 	size_t size;
@@ -744,7 +739,7 @@ static char *get_apparmor_profile_content(struct lxc_conf *conf, const char *lxc
 
 	append_all_remount_rules(&profile, &size);
 
-	if (aa_supports_unix)
+	if (ops->aa_supports_unix)
 		must_append_sized(&profile, &size, AA_PROFILE_UNIX_SOCKETS,
 		                  STRARRAYLEN(AA_PROFILE_UNIX_SOCKETS));
 
@@ -752,7 +747,7 @@ static char *get_apparmor_profile_content(struct lxc_conf *conf, const char *lxc
 		must_append_sized(&profile, &size, AA_PROFILE_CGROUP_NAMESPACES,
 		                  STRARRAYLEN(AA_PROFILE_CGROUP_NAMESPACES));
 
-	if (aa_can_stack && !aa_is_stacked) {
+	if (ops->aa_can_stack && !ops->aa_is_stacked) {
 		char *namespace, *temp;
 
 		must_append_sized(&profile, &size, AA_PROFILE_STACKING_BASE,
@@ -775,7 +770,7 @@ static char *get_apparmor_profile_content(struct lxc_conf *conf, const char *lxc
 		must_append_sized(&profile, &size, AA_PROFILE_NESTING_BASE,
 		                  STRARRAYLEN(AA_PROFILE_NESTING_BASE));
 
-		if (!aa_can_stack || aa_is_stacked) {
+		if (!ops->aa_can_stack || ops->aa_is_stacked) {
 			char *temp;
 
 			temp = must_concat(NULL, "  change_profile -> \"",
@@ -832,11 +827,11 @@ static char *make_apparmor_namespace_path(const char *ctname, const char *lxcpat
 	return ret;
 }
 
-static bool make_apparmor_namespace(struct lxc_conf *conf, const char *lxcpath)
+static bool make_apparmor_namespace(struct lsm_ops *ops, struct lxc_conf *conf, const char *lxcpath)
 {
 	char *path;
 
-	if (!aa_can_stack || aa_is_stacked)
+	if (!ops->aa_can_stack || ops->aa_is_stacked)
 		return true;
 
 	path = make_apparmor_namespace_path(conf->name, lxcpath);
@@ -916,7 +911,7 @@ static void remove_apparmor_profile(struct lxc_conf *conf, const char *lxcpath)
 	free(path);
 }
 
-static int load_apparmor_profile(struct lxc_conf *conf, const char *lxcpath)
+static int load_apparmor_profile(struct lsm_ops *ops, struct lxc_conf *conf, const char *lxcpath)
 {
 	struct stat profile_sb;
 	size_t content_len;
@@ -925,7 +920,7 @@ static int load_apparmor_profile(struct lxc_conf *conf, const char *lxcpath)
 	char *profile_path = NULL, *old_content = NULL, *new_content = NULL;
 	int profile_fd = -1;
 
-	if (!make_apparmor_namespace(conf, lxcpath))
+	if (!make_apparmor_namespace(ops, conf, lxcpath))
 		return -1;
 
 	/* In order to avoid forcing a profile parse (potentially slow) on
@@ -961,7 +956,7 @@ static int load_apparmor_profile(struct lxc_conf *conf, const char *lxcpath)
 		goto out;
 	}
 
-	new_content = get_apparmor_profile_content(conf, lxcpath);
+	new_content = get_apparmor_profile_content(ops, conf, lxcpath);
 	if (!new_content)
 		goto out;
 
@@ -1019,9 +1014,9 @@ out_ok:
  * Ensure that the container's policy namespace is unloaded to free kernel
  * memory. This does not delete the policy from disk or cache.
  */
-static void apparmor_cleanup(struct lxc_conf *conf, const char *lxcpath)
+static void apparmor_cleanup(struct lsm_ops *ops, struct lxc_conf *conf, const char *lxcpath)
 {
-	if (!aa_admin)
+	if (!ops->aa_admin)
 		return;
 
 	if (!conf->lsm_aa_profile_created)
@@ -1033,16 +1028,14 @@ static void apparmor_cleanup(struct lxc_conf *conf, const char *lxcpath)
 	remove_apparmor_profile(conf, lxcpath);
 }
 
-static int apparmor_prepare(struct lxc_conf *conf, const char *lxcpath)
+static int apparmor_prepare(struct lsm_ops *ops, struct lxc_conf *conf, const char *lxcpath)
 {
 	int ret = -1;
 	const char *label;
 	char *curlabel = NULL, *genlabel = NULL;
 
-	if (!aa_enabled) {
-		ERROR("AppArmor not enabled");
-		return -1;
-	}
+	if (!ops->aa_enabled)
+		return log_error(-1, "AppArmor not enabled");
 
 	label = conf->lsm_aa_profile;
 
@@ -1054,13 +1047,13 @@ static int apparmor_prepare(struct lxc_conf *conf, const char *lxcpath)
 	}
 
 	if (label && strcmp(label, AA_GENERATED) == 0) {
-		if (!aa_parser_available) {
+		if (!check_apparmor_parser_version(ops)) {
 			ERROR("Cannot use generated profile: apparmor_parser not available");
 			goto out;
 		}
 
 		/* auto-generate profile based on available/requested security features */
-		if (load_apparmor_profile(conf, lxcpath) != 0) {
+		if (load_apparmor_profile(ops, conf, lxcpath) != 0) {
 			ERROR("Failed to load generated AppArmor profile");
 			goto out;
 		}
@@ -1071,7 +1064,7 @@ static int apparmor_prepare(struct lxc_conf *conf, const char *lxcpath)
 			goto out;
 		}
 
-		if (aa_can_stack && !aa_is_stacked) {
+		if (ops->aa_can_stack && !ops->aa_is_stacked) {
 			char *namespace = apparmor_namespace(conf->name, lxcpath);
 			size_t llen = strlen(genlabel);
 			must_append_sized(&genlabel, &llen, "//&:", STRARRAYLEN("//&:"));
@@ -1083,9 +1076,9 @@ static int apparmor_prepare(struct lxc_conf *conf, const char *lxcpath)
 		label = genlabel;
 	}
 
-	curlabel = apparmor_process_label_get(lxc_raw_getpid());
+	curlabel = apparmor_process_label_get(ops, lxc_raw_getpid());
 
-	if (!aa_can_stack && aa_needs_transition(curlabel)) {
+	if (!ops->aa_can_stack && aa_needs_transition(curlabel)) {
 		/* we're already confined, and stacking isn't supported */
 
 		if (!label || strcmp(curlabel, label) == 0) {
@@ -1105,7 +1098,7 @@ static int apparmor_prepare(struct lxc_conf *conf, const char *lxcpath)
 			label = AA_DEF_PROFILE;
 	}
 
-	if (!check_mount_feature_enabled() && strcmp(label, "unconfined") != 0) {
+	if (!ops->aa_mount_features_enabled && strcmp(label, "unconfined") != 0) {
 		WARN("Incomplete AppArmor support in your kernel");
 		if (!conf->lsm_aa_allow_incomplete) {
 			ERROR("If you really want to start this container, set");
@@ -1122,10 +1115,59 @@ out:
 	if (genlabel) {
 		free(genlabel);
 		if (ret != 0)
-			apparmor_cleanup(conf, lxcpath);
+			apparmor_cleanup(ops, conf, lxcpath);
 	}
 	free(curlabel);
 	return ret;
+}
+
+static int apparmor_keyring_label_set(struct lsm_ops *ops, const char *label)
+{
+	return 0;
+}
+
+static int apparmor_process_label_fd_get(struct lsm_ops *ops, pid_t pid, bool on_exec)
+{
+	int ret = -1;
+	int labelfd;
+	char path[LXC_LSMATTRLEN];
+
+	if (on_exec)
+		TRACE("On-exec not supported with AppArmor");
+
+	ret = snprintf(path, LXC_LSMATTRLEN, "/proc/%d/attr/current", pid);
+	if (ret < 0 || ret >= LXC_LSMATTRLEN)
+		return -1;
+
+	labelfd = open(path, O_RDWR);
+	if (labelfd < 0)
+		return log_error_errno(-errno, errno, "Unable to open AppArmor LSM label file descriptor");
+
+	return labelfd;
+}
+
+static int apparmor_process_label_set_at(struct lsm_ops *ops, int label_fd, const char *label, bool on_exec)
+{
+	int ret = -1;
+	size_t len;
+	__do_free char *command = NULL;
+
+	if (on_exec)
+		log_trace(0, "Changing AppArmor profile on exec not supported");
+
+	len = strlen(label) + strlen("changeprofile ") + 1;
+	command = malloc(len);
+	if (!command)
+		return ret_errno(ENOMEM);
+
+	ret = snprintf(command, len, "changeprofile %s", label);
+	if (ret < 0 || (size_t)ret >= len)
+		return -EFBIG;
+
+	ret = lxc_write_nointr(label_fd, command, len - 1);
+
+	INFO("Set AppArmor label to \"%s\"", label);
+	return 0;
 }
 
 /*
@@ -1140,17 +1182,15 @@ out:
  *
  * Notes: This relies on /proc being available.
  */
-static int apparmor_process_label_set(const char *inlabel, struct lxc_conf *conf,
-				      bool on_exec)
+static int apparmor_process_label_set(struct lsm_ops *ops, const char *inlabel,
+				      struct lxc_conf *conf, bool on_exec)
 {
 	int label_fd, ret;
 	pid_t tid;
 	const char *label;
 
-	if (!aa_enabled) {
-		ERROR("AppArmor not enabled");
-		return -1;
-	}
+	if (!ops->aa_enabled)
+		return log_error(-1, "AppArmor not enabled");
 
 	label = inlabel ? inlabel : conf->lsm_aa_profile_computed;
 	if (!label) {
@@ -1164,18 +1204,18 @@ static int apparmor_process_label_set(const char *inlabel, struct lxc_conf *conf
 		return 0;
 	}
 
-	if (strcmp(label, "unconfined") == 0 && apparmor_am_unconfined()) {
+	if (strcmp(label, "unconfined") == 0 && apparmor_am_unconfined(ops)) {
 		INFO("AppArmor profile unchanged");
 		return 0;
 	}
 	tid = lxc_raw_gettid();
-	label_fd = lsm_process_label_fd_get(tid, on_exec);
+	label_fd = apparmor_process_label_fd_get(ops, tid, on_exec);
 	if (label_fd < 0) {
 		SYSERROR("Failed to change AppArmor profile to %s", label);
 		return -1;
 	}
 
-	ret = lsm_process_label_set_at(label_fd, label, on_exec);
+	ret = apparmor_process_label_set_at(ops, label_fd, label, on_exec);
 	close(label_fd);
 	if (ret < 0) {
 		ERROR("Failed to change AppArmor profile to %s", label);
@@ -1186,44 +1226,50 @@ static int apparmor_process_label_set(const char *inlabel, struct lxc_conf *conf
 	return 0;
 }
 
-static struct lsm_drv apparmor_drv = {
-	.name = "AppArmor",
-	.enabled           = apparmor_enabled,
-	.process_label_get = apparmor_process_label_get,
-	.process_label_set = apparmor_process_label_set,
-	.prepare           = apparmor_prepare,
-	.cleanup           = apparmor_cleanup,
+static struct lsm_ops apparmor_ops = {
+	.name				= "AppArmor",
+	.aa_admin			= -1,
+	.aa_can_stack			= -1,
+	.aa_enabled			= -1,
+	.aa_is_stacked			= -1,
+	.aa_mount_features_enabled	= -1,
+	.aa_parser_available		= -1,
+	.aa_supports_unix		= -1,
+	.cleanup			= apparmor_cleanup,
+	.enabled			= apparmor_enabled,
+	.keyring_label_set		= apparmor_keyring_label_set,
+	.prepare           		= apparmor_prepare,
+	.process_label_fd_get		= apparmor_process_label_fd_get,
+	.process_label_get 		= apparmor_process_label_get,
+	.process_label_set 		= apparmor_process_label_set,
+	.process_label_set_at		= apparmor_process_label_set_at,
 };
 
-struct lsm_drv *lsm_apparmor_drv_init(void)
+struct lsm_ops *lsm_apparmor_ops_init(void)
 {
-	bool have_mac_admin = false;
+	apparmor_ops.aa_admin = 0;
+	apparmor_ops.aa_can_stack = 0;
+	apparmor_ops.aa_enabled = 0;
+	apparmor_ops.aa_is_stacked = 0;
+	apparmor_ops.aa_mount_features_enabled = 0;
+	apparmor_ops.aa_parser_available = -1;
+	apparmor_ops.aa_supports_unix = 0;
 
-	if (!apparmor_enabled())
+	if (!apparmor_enabled(&apparmor_ops))
 		return NULL;
 
-	/* We only support generated profiles when apparmor_parser is usable */
-	if (!check_apparmor_parser_version())
-		goto out;
-
-	aa_parser_available = true;
-
-	aa_can_stack = apparmor_can_stack();
-	if (aa_can_stack)
-		aa_is_stacked = file_is_yes("/sys/kernel/security/apparmor/.ns_stacked");
+	apparmor_ops.aa_can_stack = apparmor_can_stack();
+	if (apparmor_ops.aa_can_stack)
+		apparmor_ops.aa_is_stacked = file_is_yes("/sys/kernel/security/apparmor/.ns_stacked");
 
 	#if HAVE_LIBCAP
-	have_mac_admin = lxc_proc_cap_is_set(CAP_SETGID, CAP_EFFECTIVE);
+	apparmor_ops.aa_admin = lxc_proc_cap_is_set(CAP_SETGID, CAP_EFFECTIVE);
 	#endif
-
-	if (!have_mac_admin)
+	if (!apparmor_ops.aa_admin)
 		WARN("Per-container AppArmor profiles are disabled because the mac_admin capability is missing");
-	else if (am_host_unpriv() && !aa_is_stacked)
+	else if (am_host_unpriv() && !apparmor_ops.aa_is_stacked)
 		WARN("Per-container AppArmor profiles are disabled because LXC is running in an unprivileged container without stacking");
-	else
-		aa_admin = true;
 
-out:
-	aa_enabled = 1;
-	return &apparmor_drv;
+	apparmor_ops.aa_enabled = 1;
+	return &apparmor_ops;
 }

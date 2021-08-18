@@ -3,13 +3,17 @@
 #ifndef __LXC_START_H
 #define __LXC_START_H
 
+#include <linux/sched.h>
+#include <sched.h>
 #include <signal.h>
 #include <stdbool.h>
 #include <sys/param.h>
 #include <sys/socket.h>
 #include <sys/un.h>
 
+#include "compiler.h"
 #include "conf.h"
+#include "macro.h"
 #include "namespace.h"
 #include "state.h"
 
@@ -25,20 +29,18 @@ struct lxc_handler {
 	 *   list the clone flags that were unshare()ed rather then clone()ed
 	 *   because of ordering requirements (e.g. e.g. CLONE_NEWNET and
 	 *   CLONE_NEWUSER) or implementation details.
-         *
-	 * @ns_keep_flags;
-	 * - The clone flags for the namespaces that the container will inherit
-	 *   from the parent. They are not recorded in the handler itself but
-	 *   are present in the container's config.
 	 *
-	 * @ns_share_flags;
-	 * - The clone flags for the namespaces that the container will share
-	 *   with another process.  They are not recorded in the handler itself
-	 *   but are present in the container's config.
+	 * @ns_unshare_flags
+	 * - Flags for namespaces that were unshared, not cloned.
+	 *
+	 * @clone_flags
+	 * - ns_on_clone flags | other flags used to create container.
 	 */
 	struct /* lxc_ns */ {
-		int ns_clone_flags;
-		int ns_on_clone_flags;
+		unsigned int ns_clone_flags;
+		unsigned int ns_on_clone_flags;
+		unsigned int ns_unshare_flags;
+		__aligned_u64 clone_flags;
 	};
 
 	/* File descriptor to pin the rootfs for privileged containers. */
@@ -122,6 +124,12 @@ struct lxc_handler {
 	int exit_status;
 
 	struct cgroup_ops *cgroup_ops;
+
+	/* Internal fds that always need to stay open. */
+	int keep_fds[3];
+
+	/* Static memory, don't free. */
+	struct lsm_ops *lsm_ops;
 };
 
 struct execute_args {
@@ -136,21 +144,17 @@ struct lxc_operations {
 	int (*post_start)(struct lxc_handler *, void *);
 };
 
-extern int lxc_poll(const char *name, struct lxc_handler *handler);
-extern int lxc_set_state(const char *name, struct lxc_handler *handler,
-			 lxc_state_t state);
-extern int lxc_serve_state_clients(const char *name,
-				   struct lxc_handler *handler,
-				   lxc_state_t state);
-extern void lxc_abort(struct lxc_handler *handler);
-extern struct lxc_handler *lxc_init_handler(const char *name,
-					    struct lxc_conf *conf,
-					    const char *lxcpath,
-					    bool daemonize);
-extern void lxc_zero_handler(struct lxc_handler *handler);
-extern void lxc_free_handler(struct lxc_handler *handler);
-extern int lxc_init(const char *name, struct lxc_handler *handler);
-extern void lxc_end(struct lxc_handler *handler);
+__hidden extern int lxc_poll(const char *name, struct lxc_handler *handler);
+__hidden extern int lxc_set_state(const char *name, struct lxc_handler *handler, lxc_state_t state);
+__hidden extern int lxc_serve_state_clients(const char *name, struct lxc_handler *handler,
+					    lxc_state_t state);
+__hidden extern void lxc_abort(struct lxc_handler *handler);
+__hidden extern struct lxc_handler *lxc_init_handler(struct lxc_handler *old, const char *name,
+						     struct lxc_conf *conf, const char *lxcpath,
+						     bool daemonize);
+__hidden extern void lxc_put_handler(struct lxc_handler *handler);
+__hidden extern int lxc_init(const char *name, struct lxc_handler *handler);
+__hidden extern void lxc_end(struct lxc_handler *handler);
 
 /* lxc_check_inherited: Check for any open file descriptors and close them if
  *                      requested.
@@ -159,11 +163,17 @@ extern void lxc_end(struct lxc_handler *handler);
  * @param[in] fds_to_ignore Array of file descriptors to ignore.
  * @param[in] len_fds       Length of fds_to_ignore array.
  */
-extern int lxc_check_inherited(struct lxc_conf *conf, bool closeall,
-			       int *fds_to_ignore, size_t len_fds);
-extern int __lxc_start(struct lxc_handler *, struct lxc_operations *, void *,
-		       const char *, bool, int *);
+__hidden extern int lxc_check_inherited(struct lxc_conf *conf, bool closeall, int *fds_to_ignore,
+					size_t len_fds);
+static inline int inherit_fds(struct lxc_handler *handler, bool closeall)
+{
+	return lxc_check_inherited(handler->conf, closeall, handler->keep_fds,
+				   ARRAY_SIZE(handler->keep_fds));
+}
 
-extern int resolve_clone_flags(struct lxc_handler *handler);
+__hidden extern int __lxc_start(struct lxc_handler *, struct lxc_operations *, void *, const char *,
+				bool, int *);
+
+__hidden extern int resolve_clone_flags(struct lxc_handler *handler);
 
 #endif

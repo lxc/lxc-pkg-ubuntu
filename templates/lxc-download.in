@@ -47,6 +47,7 @@ DOWNLOAD_USE_CACHE="false"
 DOWNLOAD_VALIDATE="true"
 DOWNLOAD_VARIANT="default"
 DOWNLOAD_TEMP=
+DOWNLOAD_STANDARD_RESOLVER="false"
 
 LXC_MAPPED_GID=
 LXC_MAPPED_UID=
@@ -130,16 +131,19 @@ gpg_setup() {
 
   mkdir -p "${DOWNLOAD_TEMP}/gpg"
   chmod 700 "${DOWNLOAD_TEMP}/gpg"
+
+  if [ "${DOWNLOAD_STANDARD_RESOLVER}" = "true" ]; then
+    echo "standard-resolver" > "${DOWNLOAD_TEMP}/gpg/dirmngr.conf"
+  fi
   export GNUPGHOME="${DOWNLOAD_TEMP}/gpg"
 
   success=
   for _ in $(seq 3); do
-    if $(gpg --keyserver "${DOWNLOAD_KEYSERVER}" ${DOWNLOAD_GPG_PROXY:-} \
-      --recv-keys "${DOWNLOAD_KEYID}" >/dev/null 2>&1); then
+    if gpg --keyserver "${DOWNLOAD_KEYSERVER}" ${DOWNLOAD_GPG_PROXY:-} \
+      --recv-keys "${DOWNLOAD_KEYID}" >/dev/null 2>&1; then
       success=1
       break
     fi
-    break
   done
 
   if [ -z "${success}" ]; then
@@ -223,6 +227,7 @@ Optional arguments:
 [ --no-validate ]: Disable GPG validation (not recommended)
 [ --flush-cache ]: Flush the local copy (if present)
 [ --force-cache ]: Force the use of the local copy even if expired
+[ --standard-resolver ]: Force the use of the standard resolver
 
 LXC internal arguments (do not pass manually!):
 [ --name <name> ]: The container name
@@ -261,6 +266,7 @@ while :; do
     --no-validate) DOWNLOAD_VALIDATE="false"; shift 1;;
     --flush-cache) DOWNLOAD_FLUSH_CACHE="true"; shift 1;;
     --force-cache) DOWNLOAD_FORCE_CACHE="true"; shift 1;;
+    --standard-resolver) STANDARD_RESOLVER="true"; shift 1;;
     --name)        LXC_NAME="$2"; shift 2;;
     --path)        LXC_PATH="$2"; shift 2;;
     --rootfs)      LXC_ROOTFS="$2"; shift 2;;
@@ -327,7 +333,7 @@ if ! command -V mktemp >/dev/null 2>&1; then
   DOWNLOAD_TEMP="${DOWNLOAD_TEMP}/tmp/lxc-download.$$"
 elif [ -n "${DOWNLOAD_TEMP}" ]; then
   mkdir -p "${DOWNLOAD_TEMP}"
-  DOWNLOAD_TEMP="$(mktemp -p ${DOWNLOAD_TEMP} -d)"
+  DOWNLOAD_TEMP="$(mktemp -p "${DOWNLOAD_TEMP}" -d)"
 else
   DOWNLOAD_TEMP="${DOWNLOAD_TEMP}$(mktemp -d)"
 fi

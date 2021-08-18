@@ -35,7 +35,7 @@
 #include "memory_utils.h"
 #include "namespace.h"
 #include "parse.h"
-#include "raw_syscalls.h"
+#include "process_utils.h"
 #include "syscall_wrappers.h"
 #include "utils.h"
 
@@ -201,12 +201,12 @@ extern int get_u16(unsigned short *val, const char *arg, int base)
 	char *ptr;
 
 	if (!arg || !*arg)
-		return -1;
+		return ret_errno(EINVAL);
 
 	errno = 0;
 	res = strtoul(arg, &ptr, base);
 	if (!ptr || ptr == arg || *ptr || res > 0xFFFF || errno != 0)
-		return -1;
+		return ret_errno(ERANGE);
 
 	*val = res;
 
@@ -240,7 +240,9 @@ int mkdir_p(const char *dir, mode_t mode)
 
 char *get_rundir()
 {
-	char *rundir;
+	__do_free char *rundir = NULL;
+	char *static_rundir;
+	int ret;
 	size_t len;
 	const char *homedir;
 	struct stat sb;
@@ -251,9 +253,9 @@ char *get_rundir()
 	if (geteuid() == sb.st_uid || getegid() == sb.st_gid)
 		return strdup(RUNTIME_PATH);
 
-	rundir = getenv("XDG_RUNTIME_DIR");
-	if (rundir)
-		return strdup(rundir);
+	static_rundir = getenv("XDG_RUNTIME_DIR");
+	if (static_rundir)
+		return strdup(static_rundir);
 
 	INFO("XDG_RUNTIME_DIR isn't set in the environment");
 	homedir = getenv("HOME");
@@ -265,8 +267,11 @@ char *get_rundir()
 	if (!rundir)
 		return NULL;
 
-	snprintf(rundir, len, "%s/.cache/lxc/run/", homedir);
-	return rundir;
+	ret = snprintf(rundir, len, "%s/.cache/lxc/run/", homedir);
+	if (ret < 0 || (size_t)ret >= len)
+		return ret_set_errno(NULL, EIO);
+
+	return move_ptr(rundir);
 }
 
 int wait_for_pid(pid_t pid)
@@ -569,15 +574,7 @@ gid_t get_ns_gid(gid_t orig)
 
 bool dir_exists(const char *path)
 {
-	struct stat sb;
-	int ret;
-
-	ret = stat(path, &sb);
-	if (ret < 0)
-		/* Could be something other than eexist, just say "no". */
-		return false;
-
-	return S_ISDIR(sb.st_mode);
+	return exists_dir_at(-1, path);
 }
 
 /* Note we don't use SHA-1 here as we don't want to depend on HAVE_GNUTLS.
@@ -712,7 +709,7 @@ bool detect_ramfs_rootfs(void)
 		if (strcmp(p + 1, "/") == 0) {
 			/* This is '/'. Is it the ramfs? */
 			p = strchr(p2 + 1, '-');
-			if (p && strncmp(p, "- rootfs rootfs ", 16) == 0)
+			if (p && strncmp(p, "- rootfs ", 9) == 0)
 				return true;
 		}
 	}
@@ -1079,6 +1076,65 @@ out:
 	return dirfd;
 }
 
+int __safe_mount_beneath_at(int beneath_fd, const char *src, const char *dst, const char *fstype,
+			    unsigned int flags, const void *data)
+{
+	__do_close int source_fd = -EBADF, target_fd = -EBADF;
+	struct lxc_open_how how = {
+		.flags		= O_RDONLY | O_CLOEXEC | O_PATH,
+		.resolve	= RESOLVE_NO_SYMLINKS | RESOLVE_NO_MAGICLINKS | RESOLVE_BENEATH,
+	};
+	int ret;
+	char src_buf[LXC_PROC_PID_FD_LEN], tgt_buf[LXC_PROC_PID_FD_LEN];
+
+	if (beneath_fd < 0)
+		return -EINVAL;
+
+	if ((flags & MS_BIND) && src && src[0] != '/') {
+		source_fd = openat2(beneath_fd, src, &how, sizeof(how));
+		if (source_fd < 0)
+			return -errno;
+		ret = snprintf(src_buf, sizeof(src_buf), "/proc/self/fd/%d", source_fd);
+		if (ret < 0 || ret >= sizeof(src_buf))
+			return -EIO;
+	} else {
+		src_buf[0] = '\0';
+	}
+
+	target_fd = openat2(beneath_fd, dst, &how, sizeof(how));
+	if (target_fd < 0)
+		return -errno;
+	ret = snprintf(tgt_buf, sizeof(tgt_buf), "/proc/self/fd/%d", target_fd);
+	if (ret < 0 || ret >= sizeof(tgt_buf))
+		return -EIO;
+
+	if (!is_empty_string(src_buf))
+		ret = mount(src_buf, tgt_buf, fstype, flags, data);
+	else
+		ret = mount(src, tgt_buf, fstype, flags, data);
+
+	return ret;
+}
+
+int safe_mount_beneath(const char *beneath, const char *src, const char *dst, const char *fstype,
+		       unsigned int flags, const void *data)
+{
+	__do_close int beneath_fd = -EBADF;
+	const char *path = beneath ? beneath : "/";
+
+	beneath_fd = openat(-1, path, O_RDONLY | O_CLOEXEC | O_DIRECTORY | O_PATH);
+	if (beneath_fd < 0)
+		return log_error_errno(-errno, errno, "Failed to open %s", path);
+
+	return __safe_mount_beneath_at(beneath_fd, src, dst, fstype, flags, data);
+}
+
+int safe_mount_beneath_at(int beneath_fd, const char *src, const char *dst, const char *fstype,
+			  unsigned int flags, const void *data)
+{
+	return __safe_mount_beneath_at(beneath_fd, src, dst, fstype, flags, data);
+}
+
 /*
  * Safely mount a path into a container, ensuring that the mount target
  * is under the container's @rootfs.  (If @rootfs is NULL, then the container
@@ -1323,10 +1379,8 @@ int lxc_preserve_ns(const int pid, const char *ns)
 	ret = snprintf(path, __NS_PATH_LEN, "/proc/%d/ns%s%s", pid,
 		       !ns || strcmp(ns, "") == 0 ? "" : "/",
 		       !ns || strcmp(ns, "") == 0 ? "" : ns);
-	if (ret < 0 || (size_t)ret >= __NS_PATH_LEN) {
-		errno = EFBIG;
-		return -1;
-	}
+	if (ret < 0 || (size_t)ret >= __NS_PATH_LEN)
+		return ret_errno(EIO);
 
 	return open(path, O_RDONLY | O_CLOEXEC);
 }
@@ -1544,7 +1598,7 @@ pop_stack:
 	return umounts;
 }
 
-int run_command_internal(char *buf, size_t buf_size, int (*child_fn)(void *), void *args, bool wait_status)
+static int run_command_internal(char *buf, size_t buf_size, int (*child_fn)(void *), void *args, bool wait_status)
 {
 	pid_t child;
 	int ret, fret, pipefd[2];
@@ -1791,41 +1845,6 @@ int lxc_rm_rf(const char *dirname)
 	return fret;
 }
 
-int lxc_setup_keyring(char *keyring_label)
-{
-	key_serial_t keyring;
-	int ret = 0;
-
-	if (keyring_label) {
-		if (lsm_keyring_label_set(keyring_label) < 0) {
-			ERROR("Couldn't set keyring label");
-		}
-	}
-
-	/* Try to allocate a new session keyring for the container to prevent
-	 * information leaks.
-	 */
-	keyring = keyctl(KEYCTL_JOIN_SESSION_KEYRING, prctl_arg(0),
-			 prctl_arg(0), prctl_arg(0), prctl_arg(0));
-	if (keyring < 0) {
-		switch (errno) {
-		case ENOSYS:
-			DEBUG("The keyctl() syscall is not supported or blocked");
-			break;
-		case EACCES:
-			__fallthrough;
-		case EPERM:
-			DEBUG("Failed to access kernel keyring. Continuing...");
-			break;
-		default:
-			SYSERROR("Failed to create kernel keyring");
-			break;
-		}
-	}
-
-	return ret;
-}
-
 bool lxc_can_use_pidfd(int pidfd)
 {
 	int ret;
@@ -1871,11 +1890,11 @@ int fix_stdio_permissions(uid_t uid)
 
 	devnull_fd = open_devnull();
 	if (devnull_fd < 0)
-		return log_warn_errno(-1, errno, "Failed to open \"/dev/null\"");
+		return log_trace_errno(-1, errno, "Failed to open \"/dev/null\"");
 
 	ret = fstat(devnull_fd, &st_null);
 	if (ret)
-		return log_warn_errno(-errno, errno, "Failed to stat \"/dev/null\"");
+		return log_trace_errno(-errno, errno, "Failed to stat \"/dev/null\"");
 
 	for (int i = 0; i < ARRAY_SIZE(std_fds); i++) {
 		ret = fstat(std_fds[i], &st);
@@ -1890,14 +1909,15 @@ int fix_stdio_permissions(uid_t uid)
 
 		ret = fchown(std_fds[i], uid, st.st_gid);
 		if (ret) {
-			SYSWARN("Failed to chown standard I/O file descriptor %d to uid %d and gid %d",
-				std_fds[i], uid, st.st_gid);
+			TRACE("Failed to chown standard I/O file descriptor %d to uid %d and gid %d",
+			      std_fds[i], uid, st.st_gid);
 			fret = -1;
+			continue;
 		}
 
 		ret = fchmod(std_fds[i], 0700);
 		if (ret) {
-			SYSWARN("Failed to chmod standard I/O file descriptor %d", std_fds[i]);
+			TRACE("Failed to chmod standard I/O file descriptor %d", std_fds[i]);
 			fret = -1;
 		}
 	}

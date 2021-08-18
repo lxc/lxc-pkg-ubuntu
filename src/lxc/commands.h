@@ -7,6 +7,7 @@
 #include <sys/types.h>
 #include <unistd.h>
 
+#include "compiler.h"
 #include "lxccontainer.h"
 #include "macro.h"
 #include "state.h"
@@ -38,6 +39,10 @@ typedef enum {
 	LXC_CMD_UNFREEZE,
 	LXC_CMD_GET_CGROUP2_FD,
 	LXC_CMD_GET_INIT_PIDFD,
+	LXC_CMD_GET_LIMITING_CGROUP,
+	LXC_CMD_GET_LIMITING_CGROUP2_FD,
+	LXC_CMD_GET_DEVPTS_FD,
+	LXC_CMD_GET_SECCOMP_NOTIFY_FD,
 	LXC_CMD_MAX,
 } lxc_cmd_t;
 
@@ -59,7 +64,7 @@ struct lxc_cmd_rr {
 };
 
 struct lxc_cmd_console_rsp_data {
-	int masterfd;
+	int ptxfd;
 	int ttynum;
 };
 
@@ -71,23 +76,23 @@ struct lxc_cmd_console_log {
 
 };
 
-extern int lxc_cmd_terminal_winch(const char *name, const char *lxcpath);
-extern int lxc_cmd_console(const char *name, int *ttynum, int *fd,
-			   const char *lxcpath);
+__hidden extern int lxc_cmd_terminal_winch(const char *name, const char *lxcpath);
+__hidden extern int lxc_cmd_console(const char *name, int *ttynum, int *fd, const char *lxcpath);
 /*
  * Get the 'real' cgroup path (as seen in /proc/self/cgroup) for a container
  * for a particular subsystem
  */
-extern char *lxc_cmd_get_cgroup_path(const char *name, const char *lxcpath,
-			const char *subsystem);
-extern int lxc_cmd_get_clone_flags(const char *name, const char *lxcpath);
-extern char *lxc_cmd_get_config_item(const char *name, const char *item, const char *lxcpath);
-extern char *lxc_cmd_get_name(const char *hashed_sock);
-extern char *lxc_cmd_get_lxcpath(const char *hashed_sock);
-extern pid_t lxc_cmd_get_init_pid(const char *name, const char *lxcpath);
-extern int lxc_cmd_get_init_pidfd(const char *name, const char *lxcpath);
-extern int lxc_cmd_get_state(const char *name, const char *lxcpath);
-extern int lxc_cmd_stop(const char *name, const char *lxcpath);
+__hidden extern char *lxc_cmd_get_cgroup_path(const char *name, const char *lxcpath,
+					      const char *subsystem);
+__hidden extern int lxc_cmd_get_clone_flags(const char *name, const char *lxcpath);
+__hidden extern char *lxc_cmd_get_config_item(const char *name, const char *item,
+					      const char *lxcpath);
+__hidden extern char *lxc_cmd_get_name(const char *hashed_sock);
+__hidden extern char *lxc_cmd_get_lxcpath(const char *hashed_sock);
+__hidden extern pid_t lxc_cmd_get_init_pid(const char *name, const char *lxcpath);
+__hidden extern int lxc_cmd_get_init_pidfd(const char *name, const char *lxcpath);
+__hidden extern int lxc_cmd_get_state(const char *name, const char *lxcpath);
+__hidden extern int lxc_cmd_stop(const char *name, const char *lxcpath);
 
 /* lxc_cmd_add_state_client    Register a new state client fd in the container's
  *                             in-memory handler.
@@ -102,32 +107,34 @@ extern int lxc_cmd_stop(const char *name, const char *lxcpath);
  *                                                 via socket fd
  *                                     < MAX_STATE current container state
  */
-extern int lxc_cmd_add_state_client(const char *name, const char *lxcpath,
-				    lxc_state_t states[MAX_STATE],
-				    int *state_client_fd);
-extern int lxc_cmd_serve_state_clients(const char *name, const char *lxcpath,
-				       lxc_state_t state);
+__hidden extern int lxc_cmd_add_state_client(const char *name, const char *lxcpath,
+					     lxc_state_t states[MAX_STATE], int *state_client_fd);
+__hidden extern int lxc_cmd_serve_state_clients(const char *name, const char *lxcpath,
+						lxc_state_t state);
 
 struct lxc_epoll_descr;
 struct lxc_handler;
 
-extern int lxc_cmd_init(const char *name, const char *lxcpath, const char *suffix);
-extern int lxc_cmd_mainloop_add(const char *name, struct lxc_epoll_descr *descr,
-				    struct lxc_handler *handler);
-extern int lxc_try_cmd(const char *name, const char *lxcpath);
-extern int lxc_cmd_console_log(const char *name, const char *lxcpath,
-			       struct lxc_console_log *log);
-extern int lxc_cmd_seccomp_notify_add_listener(const char *name,
-					       const char *lxcpath,
-					       int fd,
-					       /* unused */ unsigned int command,
-					       /* unused */ unsigned int flags);
+__hidden extern int lxc_cmd_init(const char *name, const char *lxcpath, const char *suffix);
+__hidden extern int lxc_cmd_mainloop_add(const char *name, struct lxc_epoll_descr *descr,
+					 struct lxc_handler *handler);
+__hidden extern int lxc_try_cmd(const char *name, const char *lxcpath);
+__hidden extern int lxc_cmd_console_log(const char *name, const char *lxcpath,
+					struct lxc_console_log *log);
+__hidden extern int lxc_cmd_get_seccomp_notify_fd(const char *name, const char *lxcpath);
+__hidden extern int lxc_cmd_seccomp_notify_add_listener(const char *name, const char *lxcpath, int fd,
+							/* unused */ unsigned int command,
+							/* unused */ unsigned int flags);
 
 struct device_item;
-extern int lxc_cmd_add_bpf_device_cgroup(const char *name, const char *lxcpath,
-					 struct device_item *device);
-extern int lxc_cmd_freeze(const char *name, const char *lxcpath, int timeout);
-extern int lxc_cmd_unfreeze(const char *name, const char *lxcpath, int timeout);
-extern int lxc_cmd_get_cgroup2_fd(const char *name, const char *lxcpath);
+__hidden extern int lxc_cmd_add_bpf_device_cgroup(const char *name, const char *lxcpath,
+						  struct device_item *device);
+__hidden extern int lxc_cmd_freeze(const char *name, const char *lxcpath, int timeout);
+__hidden extern int lxc_cmd_unfreeze(const char *name, const char *lxcpath, int timeout);
+__hidden extern int lxc_cmd_get_cgroup2_fd(const char *name, const char *lxcpath);
+__hidden extern char *lxc_cmd_get_limiting_cgroup_path(const char *name, const char *lxcpath,
+						       const char *subsystem);
+__hidden extern int lxc_cmd_get_limiting_cgroup2_fd(const char *name, const char *lxcpath);
+__hidden extern int lxc_cmd_get_devpts_fd(const char *name, const char *lxcpath);
 
 #endif /* __commands_h */
