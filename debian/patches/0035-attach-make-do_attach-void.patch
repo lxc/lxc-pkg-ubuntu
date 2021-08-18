@@ -1,0 +1,45 @@
+From 151971eee6abb70644feb1ef7c2fabe237a17ad6 Mon Sep 17 00:00:00 2001
+From: Christian Brauner <christian.brauner@ubuntu.com>
+Date: Wed, 27 Jan 2021 20:51:20 +0100
+Subject: attach: make do_attach() void
+
+Cc: stable-4.0
+Signed-off-by: Christian Brauner <christian.brauner@ubuntu.com>
+---
+ src/lxc/attach.c | 9 +++------
+ 1 file changed, 3 insertions(+), 6 deletions(-)
+
+diff --git a/src/lxc/attach.c b/src/lxc/attach.c
+index e9b34d3e6..ebc3526c7 100644
+--- a/src/lxc/attach.c
++++ b/src/lxc/attach.c
+@@ -644,7 +644,7 @@ static void lxc_put_attach_clone_payload(struct attach_clone_payload *p)
+ 	}
+ }
+ 
+-__noreturn static int do_attach(struct attach_clone_payload *payload)
++__noreturn static void do_attach(struct attach_clone_payload *payload)
+ {
+ 	int lsm_fd, ret;
+ 	uid_t new_uid;
+@@ -888,6 +888,7 @@ __noreturn static int do_attach(struct attach_clone_payload *payload)
+ 
+ on_error:
+ 	lxc_put_attach_clone_payload(payload);
++	ERROR("Failed to attach to container");
+ 	_exit(EXIT_FAILURE);
+ }
+ 
+@@ -1219,11 +1220,7 @@ int lxc_attach(struct lxc_container *container, lxc_attach_exec_t exec_function,
+ 				}
+ 			}
+ 
+-			ret = do_attach(&payload);
+-			if (ret < 0)
+-				ERROR("Failed to exec");
+-
+-			_exit(EXIT_FAILURE);
++			do_attach(&payload);
+ 		}
+ 
+ 		if (options->attach_flags & LXC_ATTACH_TERMINAL)

@@ -1,0 +1,33 @@
+From 6264d95593b5174b4c7e2426f9ddcf97c2ac581d Mon Sep 17 00:00:00 2001
+From: Christian Brauner <christian.brauner@ubuntu.com>
+Date: Tue, 26 Jan 2021 15:27:37 +0100
+Subject: cgroups: coding style fixes
+
+Cc: stable-4.0
+Signed-off-by: Christian Brauner <christian.brauner@ubuntu.com>
+---
+ src/lxc/cgroups/cgfsng.c | 5 +++--
+ 1 file changed, 3 insertions(+), 2 deletions(-)
+
+diff --git a/src/lxc/cgroups/cgfsng.c b/src/lxc/cgroups/cgfsng.c
+index afc27107d..227c45457 100644
+--- a/src/lxc/cgroups/cgfsng.c
++++ b/src/lxc/cgroups/cgfsng.c
+@@ -153,14 +153,15 @@ static struct hierarchy *get_hierarchy(struct cgroup_ops *ops, const char *contr
+ 	for (int i = 0; ops->hierarchies[i]; i++) {
+ 		if (!controller) {
+ 			/* This is the empty unified hierarchy. */
+-			if (ops->hierarchies[i]->controllers &&
+-			    !ops->hierarchies[i]->controllers[0])
++			if (ops->hierarchies[i]->controllers && !ops->hierarchies[i]->controllers[0])
+ 				return ops->hierarchies[i];
++
+ 			continue;
+ 		} else if (pure_unified_layout(ops) &&
+ 			   strcmp(controller, "devices") == 0) {
+ 			if (ops->unified->bpf_device_controller)
+ 				return ops->unified;
++
+ 			break;
+ 		}
+ 

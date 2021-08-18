@@ -1,0 +1,25 @@
+From 98e186b24e4d6ceb3a085cfcce68c2391143793c Mon Sep 17 00:00:00 2001
+From: Christian Brauner <christian.brauner@ubuntu.com>
+Date: Sat, 30 Jan 2021 02:07:21 +0100
+Subject: cgroups: ensure all memory is zeroed
+
+Signed-off-by: Christian Brauner <christian.brauner@ubuntu.com>
+---
+ src/lxc/cgroups/cgroup2_devices.c | 3 ++-
+ 1 file changed, 2 insertions(+), 1 deletion(-)
+
+diff --git a/src/lxc/cgroups/cgroup2_devices.c b/src/lxc/cgroups/cgroup2_devices.c
+index ef7d1ec9e..657640b8b 100644
+--- a/src/lxc/cgroups/cgroup2_devices.c
++++ b/src/lxc/cgroups/cgroup2_devices.c
+@@ -52,8 +52,9 @@ static int bpf_program_add_instructions(struct bpf_program *prog,
+ 	new_insn = realloc(prog->instructions, sizeof(struct bpf_insn) * (count + prog->n_instructions));
+ 	if (!new_insn)
+ 		return log_error_errno(-1, ENOMEM, "Failed to reallocate bpf cgroup program");
+-
+ 	prog->instructions = new_insn;
++	memset(prog->instructions + prog->n_instructions, 0,
++	       sizeof(struct bpf_insn) * count);
+ 	memcpy(prog->instructions + prog->n_instructions, instructions,
+ 	       sizeof(struct bpf_insn) * count);
+ 	prog->n_instructions += count;

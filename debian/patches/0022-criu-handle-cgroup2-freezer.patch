@@ -1,0 +1,26 @@
+From c59fe8ed70d36ea08838d6a121c33d11f9b3150f Mon Sep 17 00:00:00 2001
+From: Christian Brauner <christian.brauner@ubuntu.com>
+Date: Tue, 26 Jan 2021 15:58:41 +0100
+Subject: criu: handle cgroup2 freezer
+
+Signed-off-by: Christian Brauner <christian.brauner@ubuntu.com>
+---
+ src/lxc/criu.c | 5 ++++-
+ 1 file changed, 4 insertions(+), 1 deletion(-)
+
+diff --git a/src/lxc/criu.c b/src/lxc/criu.c
+index 31961d0f0..f3dd6531e 100644
+--- a/src/lxc/criu.c
++++ b/src/lxc/criu.c
+@@ -404,7 +404,10 @@ static void exec_criu(struct cgroup_ops *cgroup_ops, struct lxc_conf *conf,
+ 			goto err;
+ 		}
+ 
+-		ret = snprintf(log, sizeof(log), "/sys/fs/cgroup/freezer/%s", freezer_relative);
++		if (pure_unified_layout(cgroup_ops))
++			ret = snprintf(log, sizeof(log), "/sys/fs/cgroup/%s", freezer_relative);
++		else
++			ret = snprintf(log, sizeof(log), "/sys/fs/cgroup/freezer/%s", freezer_relative);
+ 		if (ret < 0 || ret >= sizeof(log))
+ 			goto err;
+ 

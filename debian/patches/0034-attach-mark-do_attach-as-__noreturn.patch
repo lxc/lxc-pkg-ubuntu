@@ -1,0 +1,24 @@
+From 51dc8a0fb849f6db01699e01aa26ec3d68d2272a Mon Sep 17 00:00:00 2001
+From: Christian Brauner <christian.brauner@ubuntu.com>
+Date: Wed, 27 Jan 2021 20:48:41 +0100
+Subject: attach: mark do_attach() as __noreturn
+
+Cc: stable-4.0
+Signed-off-by: Christian Brauner <christian.brauner@ubuntu.com>
+---
+ src/lxc/attach.c | 2 +-
+ 1 file changed, 1 insertion(+), 1 deletion(-)
+
+diff --git a/src/lxc/attach.c b/src/lxc/attach.c
+index fb3a3f791..e9b34d3e6 100644
+--- a/src/lxc/attach.c
++++ b/src/lxc/attach.c
+@@ -644,7 +644,7 @@ static void lxc_put_attach_clone_payload(struct attach_clone_payload *p)
+ 	}
+ }
+ 
+-static int do_attach(struct attach_clone_payload *payload)
++__noreturn static int do_attach(struct attach_clone_payload *payload)
+ {
+ 	int lsm_fd, ret;
+ 	uid_t new_uid;

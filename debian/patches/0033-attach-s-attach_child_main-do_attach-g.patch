@@ -1,0 +1,33 @@
+From e3483fd72fea4bfe6124a5cdbab7da8025da0c7a Mon Sep 17 00:00:00 2001
+From: Christian Brauner <christian.brauner@ubuntu.com>
+Date: Wed, 27 Jan 2021 20:47:46 +0100
+Subject: attach: s/attach_child_main/do_attach/g
+
+Cc: stable-4.0
+Signed-off-by: Christian Brauner <christian.brauner@ubuntu.com>
+---
+ src/lxc/attach.c | 4 ++--
+ 1 file changed, 2 insertions(+), 2 deletions(-)
+
+diff --git a/src/lxc/attach.c b/src/lxc/attach.c
+index 861d2583c..fb3a3f791 100644
+--- a/src/lxc/attach.c
++++ b/src/lxc/attach.c
+@@ -644,7 +644,7 @@ static void lxc_put_attach_clone_payload(struct attach_clone_payload *p)
+ 	}
+ }
+ 
+-static int attach_child_main(struct attach_clone_payload *payload)
++static int do_attach(struct attach_clone_payload *payload)
+ {
+ 	int lsm_fd, ret;
+ 	uid_t new_uid;
+@@ -1219,7 +1219,7 @@ int lxc_attach(struct lxc_container *container, lxc_attach_exec_t exec_function,
+ 				}
+ 			}
+ 
+-			ret = attach_child_main(&payload);
++			ret = do_attach(&payload);
+ 			if (ret < 0)
+ 				ERROR("Failed to exec");
+ 

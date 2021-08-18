@@ -1,0 +1,33 @@
+From 732fa957b9fc0570b415c0dd24630a245e77a092 Mon Sep 17 00:00:00 2001
+From: Christian Brauner <christian.brauner@ubuntu.com>
+Date: Mon, 1 Feb 2021 14:51:41 +0100
+Subject: attach: fix error checking for dup2()
+
+Signed-off-by: Christian Brauner <christian.brauner@ubuntu.com>
+---
+ src/lxc/attach.c | 6 +++---
+ 1 file changed, 3 insertions(+), 3 deletions(-)
+
+diff --git a/src/lxc/attach.c b/src/lxc/attach.c
+index 5a88dbc72..1c9b30d2b 100644
+--- a/src/lxc/attach.c
++++ b/src/lxc/attach.c
+@@ -827,15 +827,15 @@ __noreturn static void do_attach(struct attach_clone_payload *payload)
+ 	 * may want to make sure the fds are closed, for example.
+ 	 */
+ 	if (options->stdin_fd >= 0 && options->stdin_fd != STDIN_FILENO)
+-		if (dup2(options->stdin_fd, STDIN_FILENO))
++		if (dup2(options->stdin_fd, STDIN_FILENO) < 0)
+ 			SYSDEBUG("Failed to replace stdin with %d", options->stdin_fd);
+ 
+ 	if (options->stdout_fd >= 0 && options->stdout_fd != STDOUT_FILENO)
+-		if (dup2(options->stdout_fd, STDOUT_FILENO))
++		if (dup2(options->stdout_fd, STDOUT_FILENO) < 0)
+ 			SYSDEBUG("Failed to replace stdout with %d", options->stdout_fd);
+ 
+ 	if (options->stderr_fd >= 0 && options->stderr_fd != STDERR_FILENO)
+-		if (dup2(options->stderr_fd, STDERR_FILENO))
++		if (dup2(options->stderr_fd, STDERR_FILENO) < 0)
+ 			SYSDEBUG("Failed to replace stderr with %d", options->stderr_fd);
+ 
+ 	/* close the old fds */

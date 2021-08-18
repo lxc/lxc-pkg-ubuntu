@@ -1,0 +1,22 @@
+From 6c32aad15749827e30476be33e64ac90e7438e06 Mon Sep 17 00:00:00 2001
+From: Christian Brauner <christian.brauner@ubuntu.com>
+Date: Mon, 25 Jan 2021 12:51:31 +0100
+Subject: configure: add AC_SYS_LARGEFILE checking
+
+Signed-off-by: Christian Brauner <christian.brauner@ubuntu.com>
+---
+ configure.ac | 1 +
+ 1 file changed, 1 insertion(+)
+
+diff --git a/configure.ac b/configure.ac
+index 34f3ba31e..e234f4cee 100644
+--- a/configure.ac
++++ b/configure.ac
+@@ -43,6 +43,7 @@ AM_INIT_AUTOMAKE([-Wall -Werror -Wno-portability subdir-objects])
+ AC_CANONICAL_HOST
+ AM_PROG_CC_C_O
+ AC_USE_SYSTEM_EXTENSIONS
++AC_SYS_LARGEFILE
+ 
+ # Test if we have a new enough compiler.
+ AC_COMPILE_IFELSE([AC_LANG_PROGRAM([[

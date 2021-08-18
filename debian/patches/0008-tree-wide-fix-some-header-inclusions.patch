@@ -1,0 +1,61 @@
+From fd07b4b1d4972ad33a23f5584bcf74b85d38c728 Mon Sep 17 00:00:00 2001
+From: Christian Brauner <christian.brauner@ubuntu.com>
+Date: Fri, 22 Jan 2021 14:31:08 +0100
+Subject: tree-wide: fix some header inclusions
+
+Cc: stable-4.0
+Signed-off-by: Christian Brauner <christian.brauner@ubuntu.com>
+---
+ src/lxc/commands.c | 2 +-
+ src/lxc/conf.c     | 4 ++--
+ src/lxc/confile.c  | 2 +-
+ 3 files changed, 4 insertions(+), 4 deletions(-)
+
+diff --git a/src/lxc/commands.c b/src/lxc/commands.c
+index f7065ac70..603516a33 100644
+--- a/src/lxc/commands.c
++++ b/src/lxc/commands.c
+@@ -17,7 +17,7 @@
+ #include <unistd.h>
+ 
+ #include "af_unix.h"
+-#include "cgroup.h"
++#include "cgroups/cgroup.h"
+ #include "cgroups/cgroup2_devices.h"
+ #include "commands.h"
+ #include "commands_utils.h"
+diff --git a/src/lxc/conf.c b/src/lxc/conf.c
+index d9217a6e1..e0f2dfc47 100644
+--- a/src/lxc/conf.c
++++ b/src/lxc/conf.c
+@@ -35,7 +35,7 @@
+ 
+ #include "af_unix.h"
+ #include "caps.h"
+-#include "cgroup.h"
++#include "cgroups/cgroup.h"
+ #include "conf.h"
+ #include "config.h"
+ #include "confile.h"
+@@ -54,7 +54,7 @@
+ #include "process_utils.h"
+ #include "ringbuf.h"
+ #include "start.h"
+-#include "storage.h"
++#include "storage/storage.h"
+ #include "storage/overlay.h"
+ #include "syscall_wrappers.h"
+ #include "terminal.h"
+diff --git a/src/lxc/confile.c b/src/lxc/confile.c
+index da0da5ff9..b69ab3ad2 100644
+--- a/src/lxc/confile.c
++++ b/src/lxc/confile.c
+@@ -35,7 +35,7 @@
+ #include "memory_utils.h"
+ #include "network.h"
+ #include "parse.h"
+-#include "storage.h"
++#include "storage/storage.h"
+ #include "utils.h"
+ 
+ #if HAVE_SYS_PERSONALITY_H

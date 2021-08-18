@@ -1,0 +1,37 @@
+From 150b2d2272128a2ae5595e5e34fa6137987828b3 Mon Sep 17 00:00:00 2001
+From: Christian Brauner <christian.brauner@ubuntu.com>
+Date: Wed, 27 Jan 2021 20:37:42 +0100
+Subject: attach: use __do_close for labelfd
+
+Cc: stable-4.0
+Signed-off-by: Christian Brauner <christian.brauner@ubuntu.com>
+---
+ src/lxc/attach.c | 5 +----
+ 1 file changed, 1 insertion(+), 4 deletions(-)
+
+diff --git a/src/lxc/attach.c b/src/lxc/attach.c
+index b9b721642..3409a2091 100644
+--- a/src/lxc/attach.c
++++ b/src/lxc/attach.c
+@@ -1340,7 +1340,7 @@ int lxc_attach(struct lxc_container *container, lxc_attach_exec_t exec_function,
+ 	/* Open LSM fd and send it to child. */
+ 	if ((options->namespaces & CLONE_NEWNS) &&
+ 	    (options->attach_flags & LXC_ATTACH_LSM) && init_ctx->lsm_label) {
+-		int labelfd;
++		__do_close int labelfd = -EBADF;
+ 		bool on_exec;
+ 
+ 		ret = -1;
+@@ -1357,12 +1357,9 @@ int lxc_attach(struct lxc_container *container, lxc_attach_exec_t exec_function,
+ 		if (ret <= 0) {
+ 			if (ret < 0)
+ 				SYSERROR("Failed to send lsm label fd");
+-
+-			close(labelfd);
+ 			goto close_mainloop;
+ 		}
+ 
+-		close(labelfd);
+ 		TRACE("Sent LSM label file descriptor %d to child", labelfd);
+ 	}
+ 

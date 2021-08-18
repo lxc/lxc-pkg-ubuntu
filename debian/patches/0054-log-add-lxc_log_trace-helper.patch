@@ -1,0 +1,53 @@
+From fdd0612fae8c2a94f349e6f960be7744cb11df25 Mon Sep 17 00:00:00 2001
+From: Christian Brauner <christian.brauner@ubuntu.com>
+Date: Sat, 30 Jan 2021 12:17:08 +0100
+Subject: log: add lxc_log_trace() helper
+
+Signed-off-by: Christian Brauner <christian.brauner@ubuntu.com>
+---
+ src/lxc/cgroups/cgroup2_devices.c | 2 +-
+ src/lxc/log.h                     | 4 ++++
+ src/lxc/seccomp.c                 | 2 +-
+ 3 files changed, 6 insertions(+), 2 deletions(-)
+
+diff --git a/src/lxc/cgroups/cgroup2_devices.c b/src/lxc/cgroups/cgroup2_devices.c
+index 21d560904..cd23b2c4e 100644
+--- a/src/lxc/cgroups/cgroup2_devices.c
++++ b/src/lxc/cgroups/cgroup2_devices.c
+@@ -331,7 +331,7 @@ static int bpf_program_load_kernel(struct bpf_program *prog)
+ 	if (prog->kernel_fd >= 0)
+ 		return 0;
+ 
+-	if (lxc_log_get_level() <= LXC_LOG_LEVEL_TRACE) {
++	if (lxc_log_trace()) {
+ 		log_buf = zalloc(BPF_LOG_BUF_SIZE);
+ 		if (!log_buf) {
+ 			WARN("Failed to allocate bpf log buffer");
+diff --git a/src/lxc/log.h b/src/lxc/log.h
+index 68e87eb06..e4081950e 100644
+--- a/src/lxc/log.h
++++ b/src/lxc/log.h
+@@ -568,6 +568,10 @@ __hidden extern void lxc_log_syslog_enable(void);
+ __hidden extern void lxc_log_syslog_disable(void);
+ __hidden extern int lxc_log_set_level(int *dest, int level);
+ __hidden extern int lxc_log_get_level(void);
++static inline bool lxc_log_trace(void)
++{
++	return lxc_log_get_level() <= LXC_LOG_LEVEL_TRACE;
++}
+ __hidden extern bool lxc_log_has_valid_level(void);
+ __hidden extern int lxc_log_set_file(int *fd, const char *fname);
+ __hidden extern const char *lxc_log_get_file(void);
+diff --git a/src/lxc/seccomp.c b/src/lxc/seccomp.c
+index 53614a496..94d33d26d 100644
+--- a/src/lxc/seccomp.c
++++ b/src/lxc/seccomp.c
+@@ -1260,7 +1260,7 @@ int lxc_seccomp_load(struct lxc_conf *conf)
+ /* After load seccomp filter into the kernel successfully, export the current seccomp
+  * filter to log file */
+ #if HAVE_SCMP_FILTER_CTX
+-	if (lxc_log_get_level() <= LXC_LOG_LEVEL_TRACE) {
++	if (lxc_log_trace()) {
+ 		int fd_log;
+ 
+ 		fd_log = lxc_log_get_fd();

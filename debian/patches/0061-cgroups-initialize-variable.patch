@@ -1,0 +1,24 @@
+From 5d55dfafae3d85e406e21251f281a05ddde63503 Mon Sep 17 00:00:00 2001
+From: Christian Brauner <christian.brauner@ubuntu.com>
+Date: Mon, 1 Feb 2021 15:44:59 +0100
+Subject: cgroups: initialize variable
+
+Fixes: Coverity 1472651
+Signed-off-by: Christian Brauner <christian.brauner@ubuntu.com>
+---
+ src/lxc/cgroups/cgfsng.c | 2 +-
+ 1 file changed, 1 insertion(+), 1 deletion(-)
+
+diff --git a/src/lxc/cgroups/cgfsng.c b/src/lxc/cgroups/cgfsng.c
+index fb46846fb..3d6d3c7d9 100644
+--- a/src/lxc/cgroups/cgfsng.c
++++ b/src/lxc/cgroups/cgfsng.c
+@@ -3337,7 +3337,7 @@ static int cg_unified_init(struct cgroup_ops *ops, bool relative,
+ {
+ 	__do_close int cgroup_root_fd = -EBADF;
+ 	__do_free char *base_cgroup = NULL, *controllers_path = NULL;
+-	__do_free_string_list char **delegatable;
++	__do_free_string_list char **delegatable = NULL;
+ 	int ret;
+ 	struct hierarchy *new;
+ 

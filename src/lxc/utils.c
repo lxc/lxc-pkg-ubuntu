@@ -238,7 +238,7 @@ int mkdir_p(const char *dir, mode_t mode)
 	return 0;
 }
 
-char *get_rundir()
+char *get_rundir(void)
 {
 	__do_free char *rundir = NULL;
 	char *static_rundir;
@@ -1103,7 +1103,7 @@ int __safe_mount_beneath_at(int beneath_fd, const char *src, const char *dst, co
 
 	target_fd = openat2(beneath_fd, dst, &how, sizeof(how));
 	if (target_fd < 0)
-		return -errno;
+		return log_error_errno(-errno, errno, "Failed to open %d(%s)", beneath_fd, dst);
 	ret = snprintf(tgt_buf, sizeof(tgt_buf), "/proc/self/fd/%d", target_fd);
 	if (ret < 0 || ret >= sizeof(tgt_buf))
 		return -EIO;
@@ -1206,6 +1206,58 @@ int safe_mount(const char *src, const char *dest, const char *fstype,
 	}
 
 	return 0;
+}
+
+int mount_at(int dfd,
+	     const char *src_under_dfd,
+	     const char *dst_under_dfd,
+	     __u64 o_flags,
+	     __u64 resolve_flags,
+	     const char *fstype,
+	     unsigned int mnt_flags,
+	     const void *data)
+{
+	__do_close int source_fd = -EBADF, target_fd = -EBADF;
+	struct lxc_open_how how = {
+		.flags		= o_flags,
+		.resolve	= resolve_flags,
+	};
+	int ret;
+	char src_buf[LXC_PROC_PID_FD_LEN], dst_buf[LXC_PROC_PID_FD_LEN];
+
+	if (dfd < 0)
+		return ret_errno(EINVAL);
+
+	if (!is_empty_string(src_buf) && *src_buf == '/')
+		return log_error_errno(-EINVAL, EINVAL, "Absolute path specified");
+
+	if (is_empty_string(dst_under_dfd))
+		return log_error_errno(-EINVAL, EINVAL, "No target path specified");
+
+	if (!is_empty_string(src_under_dfd)) {
+		source_fd = openat2(dfd, src_under_dfd, &how, sizeof(how));
+		if (source_fd < 0)
+			return -errno;
+
+		ret = snprintf(src_buf, sizeof(src_buf), "/proc/self/fd/%d", source_fd);
+		if (ret < 0 || ret >= sizeof(src_buf))
+			return -EIO;
+	}
+
+	target_fd = openat2(dfd, dst_under_dfd, &how, sizeof(how));
+	if (target_fd < 0)
+		return log_error_errno(-errno, errno, "Failed to open %d(%s)", dfd, dst_under_dfd);
+
+	ret = snprintf(dst_buf, sizeof(dst_buf), "/proc/self/fd/%d", target_fd);
+	if (ret < 0 || ret >= sizeof(dst_buf))
+		return -EIO;
+
+	if (!is_empty_string(src_buf))
+		ret = mount(src_buf, dst_buf, fstype, mnt_flags, data);
+	else
+		ret = mount(NULL, dst_buf, fstype, mnt_flags, data);
+
+	return ret;
 }
 
 /*
@@ -1909,15 +1961,15 @@ int fix_stdio_permissions(uid_t uid)
 
 		ret = fchown(std_fds[i], uid, st.st_gid);
 		if (ret) {
-			TRACE("Failed to chown standard I/O file descriptor %d to uid %d and gid %d",
-			      std_fds[i], uid, st.st_gid);
+			SYSTRACE("Failed to chown standard I/O file descriptor %d to uid %d and gid %d",
+			         std_fds[i], uid, st.st_gid);
 			fret = -1;
 			continue;
 		}
 
 		ret = fchmod(std_fds[i], 0700);
 		if (ret) {
-			TRACE("Failed to chmod standard I/O file descriptor %d", std_fds[i]);
+			SYSTRACE("Failed to chmod standard I/O file descriptor %d", std_fds[i]);
 			fret = -1;
 		}
 	}

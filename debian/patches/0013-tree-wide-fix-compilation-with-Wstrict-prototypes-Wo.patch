@@ -1,0 +1,139 @@
+From c6cb1f04cb3ae0a68418ee1be8c7fe0657f084dc Mon Sep 17 00:00:00 2001
+From: Christian Brauner <christian.brauner@ubuntu.com>
+Date: Sun, 24 Jan 2021 22:19:34 +0100
+Subject: tree-wide: fix compilation with-Wstrict-prototypes
+ -Wold-style-definition
+
+Fixes: #3630
+Signed-off-by: Christian Brauner <christian.brauner@ubuntu.com>
+---
+ src/lxc/log.c               | 4 ++--
+ src/lxc/lsm/apparmor.c      | 2 +-
+ src/lxc/tools/arguments.c   | 2 +-
+ src/lxc/tools/lxc_copy.c    | 2 +-
+ src/lxc/utils.c             | 2 +-
+ src/tests/cgpath.c          | 2 +-
+ src/tests/lxcpath.c         | 2 +-
+ src/tests/mount_injection.c | 4 ++--
+ 8 files changed, 10 insertions(+), 10 deletions(-)
+
+diff --git a/src/lxc/log.c b/src/lxc/log.c
+index 824c3f5fa..6c7574453 100644
+--- a/src/lxc/log.c
++++ b/src/lxc/log.c
+@@ -82,7 +82,7 @@ static int lxc_log_priority_to_syslog(int priority)
+ 	return LOG_NOTICE;
+ }
+ 
+-static const char *lxc_log_get_container_name()
++static const char *lxc_log_get_container_name(void)
+ {
+ #ifndef NO_LXC_CONF
+ 	if (current_config && !log_vmname)
+@@ -814,7 +814,7 @@ inline const char *lxc_log_get_prefix(void)
+ 	return log_prefix;
+ }
+ 
+-inline void lxc_log_options_no_override()
++inline void lxc_log_options_no_override(void)
+ {
+ 	lxc_quiet_specified = 1;
+ 	lxc_loglevel_specified = 1;
+diff --git a/src/lxc/lsm/apparmor.c b/src/lxc/lsm/apparmor.c
+index 21945b826..ec946ad18 100644
+--- a/src/lxc/lsm/apparmor.c
++++ b/src/lxc/lsm/apparmor.c
+@@ -588,7 +588,7 @@ static bool file_is_yes(const char *path)
+ 	return rd >= 4 && strncmp(buf, "yes\n", 4) == 0;
+ }
+ 
+-static bool apparmor_can_stack()
++static bool apparmor_can_stack(void)
+ {
+ 	int major, minor, scanned;
+ 	FILE *f;
+diff --git a/src/lxc/tools/arguments.c b/src/lxc/tools/arguments.c
+index dfed2a9ab..447031fc0 100644
+--- a/src/lxc/tools/arguments.c
++++ b/src/lxc/tools/arguments.c
+@@ -116,7 +116,7 @@ __noreturn static void print_usage_exit(const struct option longopts[],
+ 	exit(EXIT_SUCCESS);
+ }
+ 
+-__noreturn static void print_version_exit()
++__noreturn static void print_version_exit(void)
+ {
+ 	printf("%s\n", lxc_get_version());
+ 	exit(EXIT_SUCCESS);
+diff --git a/src/lxc/tools/lxc_copy.c b/src/lxc/tools/lxc_copy.c
+index db26094ad..c40692927 100644
+--- a/src/lxc/tools/lxc_copy.c
++++ b/src/lxc/tools/lxc_copy.c
+@@ -509,7 +509,7 @@ static int do_clone_task(struct lxc_container *c, enum task task, int flags,
+ 	return ret;
+ }
+ 
+-static void free_mnts()
++static void free_mnts(void)
+ {
+ 	unsigned int i;
+ 	struct mnts *n = NULL;
+diff --git a/src/lxc/utils.c b/src/lxc/utils.c
+index 7d813957a..a5508ef8f 100644
+--- a/src/lxc/utils.c
++++ b/src/lxc/utils.c
+@@ -238,7 +238,7 @@ int mkdir_p(const char *dir, mode_t mode)
+ 	return 0;
+ }
+ 
+-char *get_rundir()
++char *get_rundir(void)
+ {
+ 	__do_free char *rundir = NULL;
+ 	char *static_rundir;
+diff --git a/src/tests/cgpath.c b/src/tests/cgpath.c
+index 5a7d6839c..5e3eb56c3 100644
+--- a/src/tests/cgpath.c
++++ b/src/tests/cgpath.c
+@@ -173,7 +173,7 @@ out1:
+ 	return ret;
+ }
+ 
+-int main()
++int main(int argc, char *argv[])
+ {
+ 	int ret = EXIT_FAILURE;
+ 
+diff --git a/src/tests/lxcpath.c b/src/tests/lxcpath.c
+index b5141b464..64cc57b64 100644
+--- a/src/tests/lxcpath.c
++++ b/src/tests/lxcpath.c
+@@ -33,7 +33,7 @@
+ 	fprintf(stderr, "%d: %s\n", __LINE__, x); \
+ } while (0)
+ 
+-int main()
++int main(int argc, char *argv[])
+ {
+ 	struct lxc_container *c;
+ 	const char *p1, *p2;
+diff --git a/src/tests/mount_injection.c b/src/tests/mount_injection.c
+index 3c44d4014..c05455880 100644
+--- a/src/tests/mount_injection.c
++++ b/src/tests/mount_injection.c
+@@ -371,13 +371,13 @@ out:
+ 	return ret;
+ }
+ 
+-static int do_priv_container_test()
++static int do_priv_container_test(void)
+ {
+ 	const char *config_items[] = {"lxc.mount.auto", "shmounts:/tmp/mount_injection_test", NULL};
+ 	return perform_container_test(NAME"privileged", config_items);
+ }
+ 
+-static int do_unpriv_container_test()
++static int do_unpriv_container_test(void)
+ {
+ 	const char *config_items[] = {
+ 		"lxc.mount.auto", "shmounts:/tmp/mount_injection_test",

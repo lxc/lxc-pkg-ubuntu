@@ -43,6 +43,7 @@ AM_INIT_AUTOMAKE([-Wall -Werror -Wno-portability subdir-objects])
 AC_CANONICAL_HOST
 AM_PROG_CC_C_O
 AC_USE_SYSTEM_EXTENSIONS
+AC_SYS_LARGEFILE
 
 # Test if we have a new enough compiler.
 AC_COMPILE_IFELSE([AC_LANG_PROGRAM([[
@@ -59,6 +60,18 @@ AC_COMPILE_IFELSE([AC_LANG_PROGRAM([[
 if test "x$valid_compiler" = "xno"; then
 	AC_MSG_ERROR([Sorry, your compiler is too old - please upgrade it])
 fi
+
+AC_PROG_GCC_TRADITIONAL
+AC_ENABLE_SHARED
+AC_ENABLE_STATIC
+# Check binaries
+AC_PROG_SED
+case $CC in clang*)
+	AC_CHECK_TOOL([AR], llvm-ar)
+	AC_CHECK_TOOL([NM], llvm-nm)
+	AC_CHECK_TOOL([OBJCOPY], llvm-objcopy)
+	AC_CHECK_TOOL([RANLIB], llvm-ranlib)
+esac
 
 # libtool
 LT_INIT
@@ -278,9 +291,14 @@ if test "$enable_openssl" = "auto" ; then
 fi
 AM_CONDITIONAL([ENABLE_OPENSSL], [test "x$enable_openssl" = "xyes"])
 
+AC_ARG_ENABLE([static-binaries],
+	[AS_HELP_STRING([--enable-static-binaries], [build all binaries statically [default=no]])],
+	[enable_static_binaries=$enableval], [enable_static_binaries=no])
+AM_CONDITIONAL([ENABLE_STATIC_BINARIES], [test "x$enable_static_binaries" = "xyes"])
+
 AM_COND_IF([ENABLE_OPENSSL],
 	[AC_CHECK_HEADER([openssl/engine.h],[],[AC_MSG_ERROR([You must install the OpenSSL development package in order to compile lxc])])
-	AC_SUBST([OPENSSL_LIBS], '-lssl -lcrypto')])
+	AM_COND_IF([ENABLE_STATIC_BINARIES], [AC_SUBST([OPENSSL_LIBS], '-lssl -lcrypto -ldl')], [AC_SUBST([OPENSSL_LIBS], '-lssl -lcrypto')])])
 
 # SELinux
 AC_ARG_ENABLE([selinux],
@@ -312,6 +330,14 @@ AM_COND_IF([ENABLE_SECCOMP],
 		AC_CHECK_LIB([seccomp], [seccomp_init],[],[AC_MSG_ERROR([You must install the seccomp development package in order to compile lxc])])
 		AC_SUBST([SECCOMP_LIBS], [-lseccomp])
 		])
+	# HAVE_SCMP_FILTER_CTX=1 will tell us we have libseccomp api >= 1.0.0
+	OLD_CFLAGS="$CFLAGS"
+	CFLAGS="$CFLAGS $SECCOMP_CFLAGS"
+	AC_CHECK_TYPES([scmp_filter_ctx], [], [], [[#include <seccomp.h>]])
+	AC_CHECK_DECLS([seccomp_notify_fd], [], [], [[#include <seccomp.h>]])
+	AC_CHECK_TYPES([struct seccomp_notif_sizes], [], [], [[#include <seccomp.h>]])
+	AC_CHECK_DECLS([seccomp_syscall_resolve_name_arch], [], [], [[#include <seccomp.h>]])
+	CFLAGS="$OLD_CFLAGS"
 	])
 
 AC_MSG_CHECKING(for static libcap)
@@ -358,15 +384,6 @@ AM_COND_IF([ENABLE_CAP],
         # Test whether we support getting file capabilities via cap_get_file().
         AC_CHECK_LIB(cap,cap_get_file, AC_DEFINE(LIBCAP_SUPPORTS_FILE_CAPABILITIES,1,[Have cap_get_file]),[],[])
         AC_SUBST([CAP_LIBS], [-lcap])])
-
-# HAVE_SCMP_FILTER_CTX=1 will tell us we have libseccomp api >= 1.0.0
-OLD_CFLAGS="$CFLAGS"
-CFLAGS="$CFLAGS $SECCOMP_CFLAGS"
-AC_CHECK_TYPES([scmp_filter_ctx], [], [], [[#include <seccomp.h>]])
-AC_CHECK_DECLS([seccomp_notify_fd], [], [], [[#include <seccomp.h>]])
-AC_CHECK_TYPES([struct seccomp_notif_sizes], [], [], [[#include <seccomp.h>]])
-AC_CHECK_DECLS([seccomp_syscall_resolve_name_arch], [], [], [[#include <seccomp.h>]])
-CFLAGS="$OLD_CFLAGS"
 
 AC_CHECK_HEADERS([linux/bpf.h], [
 	AC_CHECK_TYPES([struct bpf_cgroup_dev_ctx], [], [], [[#include <linux/bpf.h>]])
@@ -433,6 +450,11 @@ AC_ARG_ENABLE([commands],
 	[AS_HELP_STRING([--enable-commands], [build the liblxc commands [default=yes]])],
 	[enable_commands=$enableval], [enable_commands=yes])
 AM_CONDITIONAL([ENABLE_COMMANDS], [test "x$enable_commands" = "xyes"])
+
+AC_ARG_ENABLE([static-binaries],
+	[AS_HELP_STRING([--enable-static-binaries], [build all binaries statically [default=no]])],
+	[enable_static_binaries=$enableval], [enable_static_binaries=no])
+AM_CONDITIONAL([ENABLE_STATIC_BINARIES], [test "x$enable_static_binaries" = "xyes"])
 
 # Build with ASAN commands
 AC_ARG_ENABLE([asan],
@@ -721,53 +743,64 @@ AC_CHECK_TYPES([struct rtnl_link_stats64], [], [], [[#include <linux/if_link.h>]
 AX_PTHREAD
 AC_SEARCH_LIBS(clock_gettime, [rt])
 
-# Check for some standard binaries
-AC_PROG_GCC_TRADITIONAL
-AC_PROG_SED
-
 # See if we support thread-local storage.
 LXC_CHECK_TLS
 
 # Hardening flags
-AX_CHECK_COMPILE_FLAG([-fdiagnostics-color], [CFLAGS="$CFLAGS -fdiagnostics-color"],,[-Werror])
-AX_CHECK_COMPILE_FLAG([-Wimplicit-fallthrough=5], [CFLAGS="$CFLAGS -Wimplicit-fallthrough=5"],,[-Werror])
-AX_CHECK_COMPILE_FLAG([-Wcast-align], [CFLAGS="$CFLAGS -Wcast-align"],,[-Werror])
-AX_CHECK_COMPILE_FLAG([-Wstrict-prototypes], [CFLAGS="$CFLAGS -Wstrict-prototypes"],,[-Werror])
-AX_CHECK_COMPILE_FLAG([-fno-strict-aliasing], [CFLAGS="$CFLAGS -fno-strict-aliasing"],,[-Werror])
-AX_CHECK_COMPILE_FLAG([-fstack-clash-protection], [CFLAGS="$CFLAGS -fstack-clash-protection"],,[-Werror])
-AX_CHECK_LINK_FLAG([-fstack-protector-strong], [CFLAGS="$CFLAGS -fstack-protector-strong"],,[-Werror])
-AX_CHECK_LINK_FLAG([--param=ssp-buffer-size=4], [CFLAGS="$CFLAGS --param=ssp-buffer-size=4"],,[-Werror])
-AX_CHECK_COMPILE_FLAG([-g], [CFLAGS="$CFLAGS -g"],,[-Werror])
-AX_CHECK_COMPILE_FLAG([--mcet -fcf-protection], [CFLAGS="$CFLAGS --mcet -fcf-protection"],,[-Werror])
-AX_CHECK_COMPILE_FLAG([-Werror=implicit-function-declaration], [CFLAGS="$CFLAGS -Werror=implicit-function-declaration"],,[-Werror])
-AX_CHECK_COMPILE_FLAG([-Wlogical-op], [CFLAGS="$CFLAGS -Wlogical-op"],,[-Werror])
-AX_CHECK_COMPILE_FLAG([-Wmissing-include-dirs], [CFLAGS="$CFLAGS -Wmissing-include-dirs"],,[-Werror])
-AX_CHECK_COMPILE_FLAG([-Wold-style-definition], [CFLAGS="$CFLAGS -Wold-style-definition"],,[-Werror])
-AX_CHECK_COMPILE_FLAG([-Winit-self], [CFLAGS="$CFLAGS -Winit-self"],,[-Werror])
-AX_CHECK_COMPILE_FLAG([-Wunused-but-set-variable], [CFLAGS="$CFLAGS -Wunused-but-set-variable"],,[-Werror])
-AX_CHECK_COMPILE_FLAG([-Wfloat-equal], [CFLAGS="$CFLAGS -Wfloat-equal"],,[-Werror])
-AX_CHECK_COMPILE_FLAG([-Wsuggest-attribute=noreturn], [CFLAGS="$CFLAGS -Wsuggest-attribute=noreturn"],,[-Werror])
-AX_CHECK_COMPILE_FLAG([-Werror=return-type], [CFLAGS="$CFLAGS -Werror=return-type"],,[-Werror])
-AX_CHECK_COMPILE_FLAG([-Werror=incompatible-pointer-types], [CFLAGS="$CFLAGS -Werror=incompatible-pointer-types"],,[-Werror])
-AX_CHECK_COMPILE_FLAG([-Wformat=2], [CFLAGS="$CFLAGS -Wformat=2"],,[-Werror])
-AX_CHECK_COMPILE_FLAG([-Wshadow], [CFLAGS="$CFLAGS -Wshadow"],,[-Werror])
-AX_CHECK_COMPILE_FLAG([-Wendif-labels], [CFLAGS="$CFLAGS -Wendif-labels"],,[-Werror])
-AX_CHECK_COMPILE_FLAG([-Werror=overflow], [CFLAGS="$CFLAGS -Werror=overflow"],,[-Werror])
-AX_CHECK_COMPILE_FLAG([-fdiagnostics-show-option], [CFLAGS="$CFLAGS -fdiagnostics-show-option"],,[-Werror])
-AX_CHECK_COMPILE_FLAG([-Werror=shift-count-overflow], [CFLAGS="$CFLAGS -Werror=shift-count-overflow"],,[-Werror])
-AX_CHECK_COMPILE_FLAG([-Werror=shift-overflow=2], [CFLAGS="$CFLAGS -Werror=shift-overflow=2"],,[-Werror])
-AX_CHECK_COMPILE_FLAG([-Wdate-time], [CFLAGS="$CFLAGS -Wdate-time"],,[-Werror])
-AX_CHECK_COMPILE_FLAG([-Wnested-externs], [CFLAGS="$CFLAGS -Wnested-externs"],,[-Werror])
-AX_CHECK_COMPILE_FLAG([-fasynchronous-unwind-tables], [CFLAGS="$CFLAGS -fasynchronous-unwind-tables"],,[-Werror])
-AX_CHECK_COMPILE_FLAG([-pipe], [CFLAGS="$CFLAGS -pipe"],,[-Werror])
-AX_CHECK_COMPILE_FLAG([-fexceptions], [CFLAGS="$CFLAGS -fexceptions"],,[-Werror])
-AX_CHECK_COMPILE_FLAG([-Warray-bounds], [CFLAGS="$CFLAGS -Warray-bounds"],,[-Werror])
-AX_CHECK_COMPILE_FLAG([-Wrestrict], [CFLAGS="$CFLAGS -Wrestrict"],,[-Werror])
-AX_CHECK_COMPILE_FLAG([-Wreturn-local-addr], [CFLAGS="$CFLAGS -Wreturn-local-addr"],,[-Werror])
-AX_CHECK_COMPILE_FLAG([-Wstringop-overflow], [CFLAGS="$CFLAGS -Wstringop-overflow"],,[-Werror])
+CC_CHECK_FLAGS_APPEND([AM_CFLAGS],[CFLAGS],[ \
+	-fPIE \
+	-Wvla \
+	-std=gnu11 \
+	-fms-extensions \
+	-fdiagnostics-color \
+	-Wimplicit-fallthrough=5 \
+	-Wcast-align \
+	-Wstrict-prototypes \
+	-fno-strict-aliasing \
+	-fstack-clash-protection \
+	-fstack-protector-strong \
+	--param=ssp-buffer-size=4 \
+	-g \
+	--mcet -fcf-protection \
+	-Werror=implicit-function-declaration \
+	-Wlogical-op \
+	-Wmissing-include-dirs \
+	-Wold-style-definition \
+	-Winit-self \
+	-Wunused-but-set-variable \
+	-Wfloat-equal \
+	-Wsuggest-attribute=noreturn \
+	-Werror=return-type \
+	-Werror=incompatible-pointer-types \
+	-Wformat=2 \
+	-Wshadow \
+	-Wendif-labels \
+	-Werror=overflow \
+	-fdiagnostics-show-option \
+	-Werror=shift-count-overflow \
+	-Werror=shift-overflow=2 \
+	-Wdate-time \
+	-Wnested-externs \
+	-fasynchronous-unwind-tables \
+	-pipe \
+	-fexceptions \
+	-Warray-bounds \
+	-Wrestrict \
+	-Wreturn-local-addr \
+	-flto=thin \
+	-fsanitize=cfi \
+	-Wstringop-overflow])
+AC_SUBST(AM_CFLAGS)
 
-AX_CHECK_LINK_FLAG([-z relro], [LDFLAGS="$LDFLAGS -z relro"],,[])
-AX_CHECK_LINK_FLAG([-z now], [LDFLAGS="$LDFLAGS -z now"],,[])
+CC_CHECK_FLAGS_APPEND([AM_LDFLAGS],[LDFLAGS],[ \
+	-Wl,--as-needed \
+        -Wl,--no-undefined \
+        -Wl,--gc-sections \
+        -Wl,-z,relro \
+        -Wl,-z,now \
+        -pie \
+        -Wl,-fuse-ld=gold])
+AC_SUBST(AM_LDFLAGS)
 
 CFLAGS="$CFLAGS -Wvla -std=gnu11 -fms-extensions"
 if test "x$enable_werror" = "xyes"; then
@@ -1041,8 +1074,12 @@ Binaries
    - lxc-user-nic:      $enable_commands
    - lxc-usernsexec:    $enable_commands
 
+ - static binaries: $enable_static_binaries
+
 Environment:
  - compiler: $CC
+ - cflags: ${AM_CFLAGS} ${PTHREAD_CFLAGS}
+ - ldflags: ${AM_LDFLAGS} ${PTHREAD_LIBS}
  - distribution: $with_distro
  - init script type(s): $init_script
  - rpath: $enable_rpath

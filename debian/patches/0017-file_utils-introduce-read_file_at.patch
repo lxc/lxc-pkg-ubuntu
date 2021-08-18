@@ -1,0 +1,214 @@
+From 6949ef87f1335790f1972734d0efe8d03659e81b Mon Sep 17 00:00:00 2001
+From: Christian Brauner <christian.brauner@ubuntu.com>
+Date: Tue, 26 Jan 2021 11:01:34 +0100
+Subject: file_utils: introduce read_file_at()
+
+Cc: stable-4.0
+Signed-off-by: Christian Brauner <christian.brauner@ubuntu.com>
+---
+ src/lxc/cgroups/cgfsng.c | 61 ++++++++--------------------------------
+ src/lxc/file_utils.c     | 46 ++++++++++++++++++++++++++++++
+ src/lxc/file_utils.h     |  1 +
+ 3 files changed, 58 insertions(+), 50 deletions(-)
+
+diff --git a/src/lxc/cgroups/cgfsng.c b/src/lxc/cgroups/cgfsng.c
+index 001bd4d51..afc27107d 100644
+--- a/src/lxc/cgroups/cgfsng.c
++++ b/src/lxc/cgroups/cgfsng.c
+@@ -176,45 +176,6 @@ static struct hierarchy *get_hierarchy(struct cgroup_ops *ops, const char *contr
+ 	return ret_set_errno(NULL, ENOENT);
+ }
+ 
+-#define BATCH_SIZE 50
+-static void batch_realloc(char **mem, size_t oldlen, size_t newlen)
+-{
+-	int newbatches = (newlen / BATCH_SIZE) + 1;
+-	int oldbatches = (oldlen / BATCH_SIZE) + 1;
+-
+-	if (!*mem || newbatches > oldbatches)
+-		*mem = must_realloc(*mem, newbatches * BATCH_SIZE);
+-}
+-
+-static void append_line(char **dest, size_t oldlen, char *new, size_t newlen)
+-{
+-	size_t full = oldlen + newlen;
+-
+-	batch_realloc(dest, oldlen, full + 1);
+-
+-	memcpy(*dest + oldlen, new, newlen + 1);
+-}
+-
+-/* Slurp in a whole file */
+-static char *read_file(const char *fnam)
+-{
+-	__do_free char *buf = NULL, *line = NULL;
+-	__do_fclose FILE *f = NULL;
+-	size_t len = 0, fulllen = 0;
+-	int linelen;
+-
+-	f = fopen(fnam, "re");
+-	if (!f)
+-		return NULL;
+-
+-	while ((linelen = getline(&line, &len, f)) != -1) {
+-		append_line(&buf, fulllen, line, linelen);
+-		fulllen += linelen;
+-	}
+-
+-	return move_ptr(buf);
+-}
+-
+ /* Taken over modified from the kernel sources. */
+ #define NBITS 32 /* bits in uint32_t */
+ #define DIV_ROUND_UP(n, d) (((n) + (d)-1) / (d))
+@@ -350,7 +311,7 @@ static bool cg_legacy_filter_and_set_cpus(const char *parent_cgroup,
+ 	bool flipped_bit = false;
+ 
+ 	fpath = must_make_path(parent_cgroup, "cpuset.cpus", NULL);
+-	posscpus = read_file(fpath);
++	posscpus = read_file_at(-EBADF, fpath);
+ 	if (!posscpus)
+ 		return log_error_errno(false, errno, "Failed to read file \"%s\"", fpath);
+ 
+@@ -360,7 +321,7 @@ static bool cg_legacy_filter_and_set_cpus(const char *parent_cgroup,
+ 		return false;
+ 
+ 	if (file_exists(__ISOL_CPUS)) {
+-		isolcpus = read_file(__ISOL_CPUS);
++		isolcpus = read_file_at(-EBADF, __ISOL_CPUS);
+ 		if (!isolcpus)
+ 			return log_error_errno(false, errno, "Failed to read file \"%s\"", __ISOL_CPUS);
+ 
+@@ -379,7 +340,7 @@ static bool cg_legacy_filter_and_set_cpus(const char *parent_cgroup,
+ 	}
+ 
+ 	if (file_exists(__OFFLINE_CPUS)) {
+-		offlinecpus = read_file(__OFFLINE_CPUS);
++		offlinecpus = read_file_at(-EBADF, __OFFLINE_CPUS);
+ 		if (!offlinecpus)
+ 			return log_error_errno(false, errno, "Failed to read file \"%s\"", __OFFLINE_CPUS);
+ 
+@@ -691,14 +652,14 @@ static char **cg_unified_make_empty_controller(void)
+ 	return move_ptr(aret);
+ }
+ 
+-static char **cg_unified_get_controllers(const char *file)
++static char **cg_unified_get_controllers(int dfd, const char *file)
+ {
+ 	__do_free char *buf = NULL;
+ 	__do_free_string_list char **aret = NULL;
+ 	char *sep = " \t\n";
+ 	char *tok;
+ 
+-	buf = read_file(file);
++	buf = read_file_at(dfd, file);
+ 	if (!buf)
+ 		return NULL;
+ 
+@@ -3147,7 +3108,7 @@ static void cg_unified_delegate(char ***delegate)
+ 	char *token;
+ 	int idx;
+ 
+-	buf = read_file("/sys/kernel/cgroup/delegate");
++	buf = read_file_at(-EBADF, "/sys/kernel/cgroup/delegate");
+ 	if (!buf) {
+ 		for (char **p = standard; p && *p; p++) {
+ 			idx = append_null_to_list((void ***)delegate);
+@@ -3185,9 +3146,9 @@ static int cg_hybrid_init(struct cgroup_ops *ops, bool relative, bool unprivileg
+ 	 * cgroups as our base in that case.
+ 	 */
+ 	if (!relative && (geteuid() == 0))
+-		basecginfo = read_file("/proc/1/cgroup");
++		basecginfo = read_file_at(-EBADF, "/proc/1/cgroup");
+ 	else
+-		basecginfo = read_file("/proc/self/cgroup");
++		basecginfo = read_file_at(-EBADF, "/proc/self/cgroup");
+ 	if (!basecginfo)
+ 		return ret_set_errno(-1, ENOMEM);
+ 
+@@ -3271,7 +3232,7 @@ static int cg_hybrid_init(struct cgroup_ops *ops, bool relative, bool unprivileg
+ 							"cgroup.controllers",
+ 							NULL);
+ 
+-			controller_list = cg_unified_get_controllers(cgv2_ctrl_path);
++			controller_list = cg_unified_get_controllers(-EBADF, cgv2_ctrl_path);
+ 			free(cgv2_ctrl_path);
+ 			if (!controller_list) {
+ 				controller_list = cg_unified_make_empty_controller();
+@@ -3314,9 +3275,9 @@ static char *cg_unified_get_current_cgroup(bool relative)
+ 	char *base_cgroup;
+ 
+ 	if (!relative && (geteuid() == 0))
+-		basecginfo = read_file("/proc/1/cgroup");
++		basecginfo = read_file_at(-EBADF, "/proc/1/cgroup");
+ 	else
+-		basecginfo = read_file("/proc/self/cgroup");
++		basecginfo = read_file_at(-EBADF, "/proc/self/cgroup");
+ 	if (!basecginfo)
+ 		return NULL;
+ 
+diff --git a/src/lxc/file_utils.c b/src/lxc/file_utils.c
+index 66738ceb0..b6ec0d858 100644
+--- a/src/lxc/file_utils.c
++++ b/src/lxc/file_utils.c
+@@ -565,3 +565,49 @@ int fd_make_nonblocking(int fd)
+ 	flags &= ~O_NONBLOCK;
+ 	return fcntl(fd, F_SETFL, flags);
+ }
++
++#define BATCH_SIZE 50
++static void batch_realloc(char **mem, size_t oldlen, size_t newlen)
++{
++	int newbatches = (newlen / BATCH_SIZE) + 1;
++	int oldbatches = (oldlen / BATCH_SIZE) + 1;
++
++	if (!*mem || newbatches > oldbatches)
++		*mem = must_realloc(*mem, newbatches * BATCH_SIZE);
++}
++
++static void append_line(char **dest, size_t oldlen, char *new, size_t newlen)
++{
++	size_t full = oldlen + newlen;
++
++	batch_realloc(dest, oldlen, full + 1);
++
++	memcpy(*dest + oldlen, new, newlen + 1);
++}
++
++/* Slurp in a whole file */
++char *read_file_at(int dfd, const char *fnam)
++{
++	__do_close int fd = -EBADF;
++	__do_free char *buf = NULL, *line = NULL;
++	__do_fclose FILE *f = NULL;
++	size_t len = 0, fulllen = 0;
++	int linelen;
++
++	fd = openat(dfd, fnam, O_NOCTTY | O_CLOEXEC | O_NOFOLLOW | O_RDONLY);
++	if (fd < 0)
++		return NULL;
++
++	f = fdopen(fd, "re");
++	if (!f)
++		return NULL;
++	/* Transfer ownership to fdopen(). */
++	move_fd(fd);
++
++	while ((linelen = getline(&line, &len, f)) != -1) {
++		append_line(&buf, fulllen, line, linelen);
++		fulllen += linelen;
++	}
++
++	return move_ptr(buf);
++}
+diff --git a/src/lxc/file_utils.h b/src/lxc/file_utils.h
+index 4a5f876f5..c6650761d 100644
+--- a/src/lxc/file_utils.h
++++ b/src/lxc/file_utils.h
+@@ -80,5 +80,6 @@ __hidden extern bool exists_dir_at(int dir_fd, const char *path);
+ __hidden extern bool exists_file_at(int dir_fd, const char *path);
+ __hidden extern int open_beneath(int dir_fd, const char *path, unsigned int flags);
+ __hidden int fd_make_nonblocking(int fd);
++__hidden extern char *read_file_at(int dfd, const char *fnam);
+ 
+ #endif /* __LXC_FILE_UTILS_H */
