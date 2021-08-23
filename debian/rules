@@ -42,16 +42,6 @@ override_dh_install:
 	# move the examples
 	mv debian/tmp/usr/share/doc/lxc debian/tmp/usr/share/doc/liblxc-common
 
-	# move the bash completion profile
-	mkdir -p debian/tmp/usr/share/bash-completion/completions
-	if [ -f debian/tmp/etc/bash_completion.d/lxc ]; then \
-		mv debian/tmp/etc/bash_completion.d/lxc debian/tmp/usr/share/bash-completion/completions; \
-	fi
-	mv debian/tmp/usr/share/bash-completion/completions/lxc debian/tmp/usr/share/bash-completion/completions/lxc-utils
-	grep complete debian/tmp/usr/share/bash-completion/completions/lxc-utils | sed "s/.* //g" | while read cmd; do \
-		ln -s lxc-utils debian/tmp/usr/share/bash-completion/completions/$${cmd}; \
-	done
-
 	# move the special manpages
 	mkdir -p debian/libpam-cgfs/usr/share/man/man8/
 	mkdir -p debian/libpam-cgfs/usr/share/man/ja/man8/
