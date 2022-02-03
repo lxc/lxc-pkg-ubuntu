@@ -3,7 +3,7 @@ Section: admin
 Priority: optional
 Maintainer: Ubuntu Developers <ubuntu-devel-discuss@lists.ubuntu.com>
 Build-Depends: bash-completion,
-               debhelper (>= 10),
+               debhelper (>= 12),
                dh-apparmor,
                docbook2x,
                dpkg-dev (>= 1.16.1~) | hardening-wrapper,

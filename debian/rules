@@ -10,7 +10,7 @@ SHELL := sh -e
 DEB_HOST_MULTIARCH ?= $(shell dpkg-architecture -qDEB_HOST_MULTIARCH)
 
 %:
-	dh ${@} --with autoreconf
+	dh ${@}
 
 override_dh_auto_configure:
 	dh_auto_configure -- --libdir=\$${prefix}/lib/$(DEB_HOST_MULTIARCH) \
@@ -77,10 +77,10 @@ else
 	cp debian/lxc-utils/etc/init/lxc.conf debian/lxc-utils.upstart
 	cp debian/lxc-utils/etc/init/lxc-instance.conf debian/lxc-utils.lxc-instance.upstart
 	cp debian/lxc-utils/etc/init/lxc-net.conf debian/lxc-utils.lxc-net.upstart
-	dh_installinit --no-start --no-restart-on-upgrade --name=lxc-instance
+	dh_installinit --no-start --no-stop-on-upgrade --name=lxc-instance
 endif
-	dh_installinit --no-restart-on-upgrade --name=lxc
-	dh_installinit --no-restart-on-upgrade --name=lxc-net
+	dh_installinit --no-stop-on-upgrade --name=lxc
+	dh_installinit --no-stop-on-upgrade --name=lxc-net
 
-override_dh_systemd_start:
-	dh_systemd_start --no-restart-on-upgrade
+override_dh_installsystemd:
+	dh_installsystemd --no-stop-on-upgrade
