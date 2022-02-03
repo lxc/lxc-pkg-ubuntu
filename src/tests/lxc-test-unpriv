@@ -62,10 +62,9 @@ if modprobe -q overlayfs; then
         fi
 fi
 
-which newuidmap >/dev/null 2>&1 || { echo "'newuidmap' command is missing" >&2; exit 1; }
+command -v newuidmap >/dev/null 2>&1 || { echo "'newuidmap' command is missing" >&2; exit 1; }
 
 DONE=0
-KNOWN_RELEASES="precise trusty xenial yakkety zesty"
 UNPRIV_LOG=$(mktemp --dry-run)
 cleanup() {
 	cd /
@@ -105,11 +104,6 @@ run_cmd() {
 TUSER=lxcunpriv
 HDIR=/home/$TUSER
 
-ARCH=i386
-if type dpkg >/dev/null 2>&1; then
-	ARCH=$(dpkg --print-architecture)
-fi
-
 trap cleanup EXIT SIGHUP SIGINT SIGTERM
 set -eu
 
@@ -136,7 +130,7 @@ chown -R $TUSER: /run/user/$(id -u $TUSER)
 
 cd $HDIR
 
-if which cgm >/dev/null 2>&1; then
+if command -v cgm >/dev/null 2>&1; then
 	cgm create all $TUSER
 	cgm chown all $TUSER $(id -u $TUSER) $(id -g $TUSER)
 	cgm movepid all $TUSER $$
@@ -164,28 +158,11 @@ else
 	done
 fi
 
-# default release is trusty, or the systems release if recognized
-release=trusty
-if [ -f /etc/lsb-release ]; then
-    . /etc/lsb-release
-    rels=$(ubuntu-distro-info --supported 2>/dev/null) ||
-        rels="$KNOWN_RELEASES"
-    for r in $rels; do
-        [ "$DISTRIB_CODENAME" = "$r" ] && release="$r"
-    done
-fi
-
-# Copy the download template cache if available
-run_cmd mkdir -p $HDIR/.cache/lxc
-[ -d /var/cache/lxc/download ] && \
-    cp -R /var/cache/lxc/download $HDIR/.cache/lxc && \
-    chown -R $TUSER: $HDIR/.cache/lxc
-
-run_cmd lxc-create -t download -n c1 -l trace -o "${UNPRIV_LOG}" -- -d ubuntu -r $release -a $ARCH
+run_cmd lxc-create -t busybox -n c1 -l trace -o "${UNPRIV_LOG}"
 
 # Make sure we can start it - twice
 
-for count in `seq 1 2`; do
+for count in $(seq 1 2); do
     run_cmd lxc-start -n c1 -d -l trace -o "${UNPRIV_LOG}"
 
     p1=$(run_cmd lxc-info -n c1 -p -H -l trace -o "${UNPRIV_LOG}")
@@ -204,7 +181,7 @@ p1=$(run_cmd lxc-info -n c2 -p -H -l trace -o "${UNPRIV_LOG}")
 
 run_cmd lxc-stop -n c2 -k -l trace -o "${UNPRIV_LOG}"
 
-if which cgm >/dev/null 2>&1; then
+if command -v cgm >/dev/null 2>&1; then
     echo "Testing containers under different cgroups per subsystem"
     run_cmd cgm create freezer x1/x2
     cgm movepid freezer x1 $$

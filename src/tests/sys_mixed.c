@@ -18,8 +18,6 @@
 
 #include "config.h"
 
-#define __STDC_FORMAT_MACROS
-
 #include <errno.h>
 #include <fcntl.h>
 #include <inttypes.h>
@@ -32,8 +30,8 @@
 #include <sys/types.h>
 #include <sys/wait.h>
 
-#include <lxc/lxccontainer.h>
-#include <lxc/attach_options.h>
+#include "lxccontainer.h"
+#include "attach_options.h"
 
 #ifdef HAVE_STATVFS
 #include <sys/statvfs.h>
@@ -106,14 +104,14 @@ int main(int argc, char *argv[])
 
 	c->clear_config(c);
 
-	if (!c->set_config_item(c, "lxc.mount.auto", "sys:mixed")) {
-		lxc_error("%s\n", "Failed to set config item \"lxc.mount.auto=sys:mixed\"");
-		goto on_error_put;
-	}
-
 	if (!c->load_config(c, NULL)) {
 		lxc_error("%s\n", "Failed to load config for container \"sys-mixed\"");
 		goto on_error_stop;
+	}
+
+	if (!c->set_config_item(c, "lxc.mount.auto", "sys:mixed")) {
+		lxc_error("%s\n", "Failed to set config item \"lxc.mount.auto=sys:mixed\"");
+		goto on_error_put;
 	}
 
 	if (!c->want_daemonize(c, true)) {

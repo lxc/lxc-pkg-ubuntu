@@ -1,9 +1,7 @@
 /* SPDX-License-Identifier: LGPL-2.1+ */
 
-#ifndef _GNU_SOURCE
-#define _GNU_SOURCE 1
-#endif
-#define __STDC_FORMAT_MACROS /* Required for PRIu64 to work. */
+#include "config.h"
+
 #include <errno.h>
 #include <inttypes.h>
 #include <stdio.h>
@@ -13,10 +11,10 @@
 #include <sys/un.h>
 #include <unistd.h>
 
+#include "attach_options.h"
 #include "af_unix.h"
 #include "commands.h"
 #include "commands_utils.h"
-#include "config.h"
 #include "file_utils.h"
 #include "initutils.h"
 #include "log.h"
@@ -129,7 +127,7 @@ int lxc_make_abstract_socket_name(char *path, size_t pathlen,
 	 * ret >= len. This means lxcpath and name are too long. We need to
 	 * hash both.
 	 */
-	if (ret >= len) {
+	if ((size_t)ret >= len) {
 		tmplen = strlen(name) + strlen(lxcpath) + 2;
 		tmppath = must_realloc(NULL, tmplen);
 		ret = strnprintf(tmppath, tmplen, "%s/%s", lxcpath, name);
@@ -168,7 +166,6 @@ int lxc_add_state_client(int state_client_fd, struct lxc_handler *handler,
 			 lxc_state_t states[MAX_STATE])
 {
 	__do_free struct lxc_state_client *newclient = NULL;
-	__do_free struct lxc_list *tmplist = NULL;
 	int state;
 
 	newclient = zalloc(sizeof(*newclient));
@@ -179,14 +176,10 @@ int lxc_add_state_client(int state_client_fd, struct lxc_handler *handler,
 	memcpy(newclient->states, states, sizeof(newclient->states));
 	newclient->clientfd = state_client_fd;
 
-	tmplist = zalloc(sizeof(*tmplist));
-	if (!tmplist)
-		return -ENOMEM;
-
 	state = handler->state;
 	if (states[state] != 1) {
-		lxc_list_add_elem(tmplist, move_ptr(newclient));
-		lxc_list_add_tail(&handler->conf->state_clients, move_ptr(tmplist));
+		list_add_tail(&newclient->head, &handler->conf->state_clients);
+		move_ptr(newclient);
 	} else {
 		TRACE("Container already in requested state");
 		return state;

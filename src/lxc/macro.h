@@ -3,10 +3,8 @@
 #ifndef __LXC_MACRO_H
 #define __LXC_MACRO_H
 
-#ifndef _GNU_SOURCE
-#define _GNU_SOURCE 1
-#endif
-#define __STDC_FORMAT_MACROS
+#include "config.h"
+
 #include <asm/types.h>
 #include <limits.h>
 #include <linux/if_link.h>
@@ -22,7 +20,10 @@
 #include <unistd.h>
 
 #include "compiler.h"
-#include "config.h"
+
+#if HAVE_LIBURING
+#include <liburing.h>
+#endif
 
 #ifndef PATH_MAX
 #define PATH_MAX 4096
@@ -37,6 +38,27 @@
 /* Define __S_ISTYPE if missing from the C library. */
 #ifndef __S_ISTYPE
 #define __S_ISTYPE(mode, mask) (((mode)&S_IFMT) == (mask))
+#endif
+
+/*
+ * POLL_ADD flags. Note that since sqe->poll_events is the flag space, the
+ * command flags for POLL_ADD are stored in sqe->len.
+ *
+ * IORING_POLL_ADD_MULTI	Multishot poll. Sets IORING_CQE_F_MORE if
+ *				the poll handler will continue to report
+ *				CQEs on behalf of the same SQE.
+ */
+#ifndef IORING_POLL_ADD_MULTI
+#define IORING_POLL_ADD_MULTI (1U << 0)
+#endif
+
+/*
+ * cqe->flags
+ *
+ * IORING_CQE_F_MORE	If set, parent SQE will generate more CQE entries
+ */
+#ifndef IORING_CQE_F_MORE
+#define IORING_CQE_F_MORE (1U << 1)
 #endif
 
 /* capabilities */
@@ -734,7 +756,7 @@ enum {
 #define hweight32(w) __const_hweight32(w)
 #define hweight64(w) __const_hweight64(w)
 
-#ifndef HAVE___ALIGNED_U64
+#if !HAVE___ALIGNED_U64
 #define __aligned_u64 __u64 __attribute__((aligned(8)))
 #endif
 
@@ -742,9 +764,52 @@ enum {
 #define BITS_PER_TYPE(type) (sizeof(type) * 8)
 #define LAST_BIT_PER_TYPE(type) (BITS_PER_TYPE(type) - 1)
 
-#ifndef HAVE_SYS_PERSONALITY_H
+#if !HAVE_SYS_PERSONALITY_H
 #define PER_LINUX	0x0000
 #define PER_LINUX32	0x0008
 #endif
+
+static inline bool has_exact_flags(__u32 flags, __u32 mask)
+{
+	return (flags & mask) == mask;
+}
+
+/**
+ * container_of - cast a member of a structure out to the containing structure
+ * @ptr:	the pointer to the member.
+ * @type:	the type of the container struct this is embedded in.
+ * @member:	the name of the member within the struct.
+ *
+ */
+#define container_of(ptr, type, member) ({				\
+	void *__mptr = (void *)(ptr);					\
+	BUILD_BUG_ON_MSG(!__same_type(*(ptr), ((type *)0)->member) &&	\
+			 !__same_type(*(ptr), void),			\
+			 "pointer type mismatch in container_of()");	\
+	((type *)(__mptr - offsetof(type, member))); })
+
+typedef long long unsigned int llu;
+
+/* Taken over modified from the kernel sources. */
+#define NBITS 32 /* bits in uint32_t */
+#define DIV_ROUND_UP(n, d) (((n) + (d)-1) / (d))
+#define BITS_TO_LONGS(nr) DIV_ROUND_UP(nr, NBITS)
+
+static inline void set_bit(__u32 bit, __u32 *bitarr)
+{
+	bitarr[bit / NBITS] |= ((__u32)1 << (bit % NBITS));
+}
+
+static inline void clear_bit(__u32 bit, __u32 *bitarr)
+{
+	bitarr[bit / NBITS] &= ~((__u32)1 << (bit % NBITS));
+}
+
+static inline bool is_set(__u32 bit, __u32 *bitarr)
+{
+	return (bitarr[bit / NBITS] & ((__u32)1 << (bit % NBITS))) != 0;
+}
+
+#define BIT(nr) (1UL << (nr))
 
 #endif /* __LXC_MACRO_H */

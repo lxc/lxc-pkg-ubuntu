@@ -16,6 +16,8 @@
  * 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
  */
 
+#include "config.h"
+
 #include <errno.h>
 #include <signal.h>
 #include <stdio.h>
@@ -30,15 +32,15 @@
 #include "../lxc/lxc.h"
 #include "../lxc/memory_utils.h"
 
-#ifndef HAVE_STRLCPY
-#include "include/strlcpy.h"
+#if !HAVE_STRLCPY
+#include "strlcpy.h"
 #endif
 
 static const char *const arches[] = {
     "arm",   "armel",	"armhf",   "armv7l",	"athlon",  "i386",   "i486",
     "i586",  "i686",	"linux32", "mips",	"mipsel",  "ppc",    "powerpc",
     "x86",   "aarch64", "amd64",   "arm64",	"linux64", "mips64", "mips64el",
-    "ppc64", "ppc64el", "ppc64le", "powerpc64", "s390x",   "x86_64",
+    "ppc64", "ppc64el", "ppc64le", "powerpc64", "riscv64", "s390x",  "x86_64",
 };
 
 static bool parse_valid_architectures(void)

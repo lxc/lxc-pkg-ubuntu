@@ -1,8 +1,7 @@
 /* SPDX-License-Identifier: LGPL-2.1+ */
 
-#ifndef _GNU_SOURCE
-#define _GNU_SOURCE 1
-#endif
+#include "config.h"
+
 #include <errno.h>
 #include <fcntl.h>
 #include <grp.h>
@@ -22,7 +21,7 @@
 #include <termios.h>
 #include <unistd.h>
 
-#include <lxc/lxccontainer.h>
+#include "attach.h"
 
 #include "af_unix.h"
 #include "attach.h"
@@ -31,7 +30,6 @@
 #include "cgroups/cgroup_utils.h"
 #include "commands.h"
 #include "conf.h"
-#include "config.h"
 #include "confile.h"
 #include "log.h"
 #include "lsm/lsm.h"
@@ -55,33 +53,35 @@ static lxc_attach_options_t attach_static_default_options = LXC_ATTACH_OPTIONS_D
 
 /*
  * The context used to attach to the container.
- * @attach_flags    : the attach flags specified in lxc_attach_options_t
- * @init_pid        : the PID of the container's init process
- * @dfd_init_pid    : file descriptor to /proc/@init_pid
- *                    __Must be closed in attach_context_security_barrier()__!
- * @dfd_self_pid    : file descriptor to /proc/self
- *                    __Must be closed in attach_context_security_barrier()__!
- * @setup_ns_uid    : if CLONE_NEWUSER is specified will contain the uid used
- *                    during attach setup.
- * @setup_ns_gid    : if CLONE_NEWUSER is specified will contain the gid used
- *                    during attach setup.
- * @target_ns_uid   : if CLONE_NEWUSER is specified the uid that the final
- *                    program will be run with.
- * @target_ns_gid   : if CLONE_NEWUSER is specified the gid that the final
- *                    program will be run with.
- * @target_host_uid : if CLONE_NEWUSER is specified the uid that the final
- *                    program will be run with on the host.
- * @target_host_gid : if CLONE_NEWUSER is specified the gid that the final
- *                    program will be run with on the host.
- * @lsm_label       : LSM label to be used for the attaching process
- * @container       : the container we're attaching o
- * @personality     : the personality to use for the final program
- * @capability      : the capability mask of the @init_pid
- * @ns_inherited    : flags of namespaces that the final program will inherit
- *                    from @init_pid
- * @ns_fd           : file descriptors to @init_pid's namespaces
+ * @attach_flags	: the attach flags specified in lxc_attach_options_t
+ * @init_pid        	: the PID of the container's init process
+ * @dfd_init_pid    	: file descriptor to /proc/@init_pid
+ *                  	  __Must be closed in attach_context_security_barrier()__!
+ * @dfd_self_pid    	: file descriptor to /proc/self
+ *                  	  __Must be closed in attach_context_security_barrier()__!
+ * @setup_ns_uid    	: if CLONE_NEWUSER is specified will contain the uid used
+ *                  	  during attach setup.
+ * @setup_ns_gid    	: if CLONE_NEWUSER is specified will contain the gid used
+ *                  	  during attach setup.
+ * @target_ns_uid   	: if CLONE_NEWUSER is specified the uid that the final
+ *                  	  program will be run with.
+ * @target_ns_gid   	: if CLONE_NEWUSER is specified the gid that the final
+ *                  	  program will be run with.
+ * @target_host_uid 	: if CLONE_NEWUSER is specified the uid that the final
+ *                  	  program will be run with on the host.
+ * @target_host_gid 	: if CLONE_NEWUSER is specified the gid that the final
+ *                  	  program will be run with on the host.
+ * @lsm_label       	: LSM label to be used for the attaching process
+ * @container       	: the container we're attaching o
+ * @personality     	: the personality to use for the final program
+ * @capability      	: the capability mask of the @init_pid
+ * @ns_inherited    	: flags of namespaces that the final program will inherit
+ *                  	  from @init_pid
+ * @ns_fd           	: file descriptors to @init_pid's namespaces
+ * @core_sched_cookie	: core scheduling cookie
  */
 struct attach_context {
+	unsigned int ns_clone_flags;
 	unsigned int attach_flags;
 	int init_pid;
 	int init_pidfd;
@@ -100,6 +100,7 @@ struct attach_context {
 	int ns_inherited;
 	int ns_fd[LXC_NS_MAX];
 	struct lsm_ops *lsm_ops;
+	__u64 core_sched_cookie;
 };
 
 static pid_t pidfd_get_pid(int dfd_init_pid, int pidfd)
@@ -163,10 +164,9 @@ static inline bool sync_wait_fd(int fd, int *fd_recv)
 	return lxc_abstract_unix_recv_one_fd(fd, fd_recv, NULL, 0) > 0;
 }
 
-static bool attach_lsm(lxc_attach_options_t *options)
+static inline bool attach_lsm(lxc_attach_options_t *options)
 {
-	return (options->namespaces & CLONE_NEWNS) &&
-	       (options->attach_flags & (LXC_ATTACH_LSM | LXC_ATTACH_LSM_LABEL));
+	return (options->attach_flags & (LXC_ATTACH_LSM | LXC_ATTACH_LSM_LABEL));
 }
 
 static struct attach_context *alloc_attach_context(void)
@@ -189,6 +189,8 @@ static struct attach_context *alloc_attach_context(void)
 	ctx->target_ns_gid	= LXC_INVALID_GID;
 	ctx->target_host_uid	= LXC_INVALID_UID;
 	ctx->target_host_gid	= LXC_INVALID_GID;
+
+	ctx->core_sched_cookie	= INVALID_SCHED_CORE_COOKIE;
 
 	for (lxc_namespace_t i = 0; i < LXC_NS_MAX; i++)
 		ctx->ns_fd[i] = -EBADF;
@@ -233,7 +235,7 @@ static int userns_setup_ids(struct attach_context *ctx,
 
 	f_uidmap = fdopen_at(ctx->dfd_init_pid, "uid_map", "re", PROTECT_OPEN, PROTECT_LOOKUP_BENEATH);
 	if (!f_uidmap)
-		return log_error_errno(-errno, errno, "Failed to open uid_map");
+		return syserror("Failed to open uid_map");
 
 	while (getline(&line, &len, f_uidmap) != -1) {
 		if (sscanf(line, "%u %u %u", &nsuid, &hostuid, &range_uid) != 3)
@@ -253,7 +255,7 @@ static int userns_setup_ids(struct attach_context *ctx,
 
 	f_gidmap = fdopen_at(ctx->dfd_init_pid, "gid_map", "re", PROTECT_OPEN, PROTECT_LOOKUP_BENEATH);
 	if (!f_gidmap)
-		return log_error_errno(-errno, errno, "Failed to open gid_map");
+		return syserror("Failed to open gid_map");
 
 	while (getline(&line, &len, f_gidmap) != -1) {
 		if (sscanf(line, "%u %u %u", &nsgid, &hostgid, &range_gid) != 3)
@@ -313,7 +315,7 @@ static int parse_init_status(struct attach_context *ctx, lxc_attach_options_t *o
 
 	f = fdopen_at(ctx->dfd_init_pid, "status", "re", PROTECT_OPEN, PROTECT_LOOKUP_BENEATH);
 	if (!f)
-		return log_error_errno(-errno, errno, "Failed to open status file");
+		return syserror("Failed to open status file");
 
 	while (getline(&line, &len, f) != -1) {
 		signed long value = -1;
@@ -352,7 +354,7 @@ static int parse_init_status(struct attach_context *ctx, lxc_attach_options_t *o
 
 	ret = userns_setup_ids(ctx, options);
 	if (ret)
-		return log_error_errno(ret, errno, "Failed to get setup ids");
+		return syserror_ret(ret, "Failed to get setup ids");
 	userns_target_ids(ctx, options);
 
 	return 0;
@@ -392,7 +394,7 @@ static int get_attach_context(struct attach_context *ctx,
 				    PROTECT_OPATH_FILE & ~O_NOFOLLOW,
 				    (PROTECT_LOOKUP_ABSOLUTE_WITH_SYMLINKS & ~RESOLVE_NO_XDEV), 0);
 	if (ctx->dfd_self_pid < 0)
-		return log_error_errno(-errno, errno, "Failed to open /proc/self");
+		return syserror("Failed to open /proc/self");
 
 	ctx->init_pidfd = lxc_cmd_get_init_pidfd(container->name, container->config_path);
 	if (ctx->init_pidfd >= 0)
@@ -400,7 +402,19 @@ static int get_attach_context(struct attach_context *ctx,
 	else
 		ctx->init_pid = lxc_cmd_get_init_pid(container->name, container->config_path);
 	if (ctx->init_pid < 0)
-		return log_error(-1, "Failed to get init pid");
+		return syserror_ret(-1, "Failed to get init pid");
+
+	ret = lxc_cmd_get_clone_flags(container->name, container->config_path);
+	if (ret < 0)
+		SYSERROR("Failed to retrieve namespace flags");
+	ctx->ns_clone_flags = ret;
+
+	ret = core_scheduling_cookie_get(ctx->init_pid, &ctx->core_sched_cookie);
+	if (ret || !core_scheduling_cookie_valid(ctx->core_sched_cookie))
+		INFO("Container does not run in a separate core scheduling domain");
+	else
+		INFO("Container runs in separate core scheduling domain %llu",
+		     (llu)ctx->core_sched_cookie);
 
 	ret = strnprintf(path, sizeof(path), "/proc/%d", ctx->init_pid);
 	if (ret < 0)
@@ -410,19 +424,19 @@ static int get_attach_context(struct attach_context *ctx,
 				    PROTECT_OPATH_DIRECTORY,
 				    (PROTECT_LOOKUP_ABSOLUTE & ~RESOLVE_NO_XDEV), 0);
 	if (ctx->dfd_init_pid < 0)
-		return log_error_errno(-errno, errno, "Failed to open /proc/%d", ctx->init_pid);
+		return syserror("Failed to open /proc/%d", ctx->init_pid);
 
 	if (ctx->init_pidfd >= 0) {
 		ret = lxc_raw_pidfd_send_signal(ctx->init_pidfd, 0, NULL, 0);
 		if (ret)
-			return log_error_errno(-errno, errno, "Container process exited or PID has been recycled");
+			return syserror("Container process exited or PID has been recycled");
 		else
 			TRACE("Container process still running and PID was not recycled");
 
 		if (!pidfd_setns_supported(ctx)) {
 			/* We can't risk leaking file descriptors during attach. */
 			if (close(ctx->init_pidfd))
-				return log_error_errno(-errno, errno, "Failed to close pidfd");
+				return syserror("Failed to close pidfd");
 
 			ctx->init_pidfd = -EBADF;
 			TRACE("Attaching to namespaces via pidfds not supported");
@@ -431,9 +445,9 @@ static int get_attach_context(struct attach_context *ctx,
 
 	/* Determine which namespaces the container was created with. */
 	if (options->namespaces == -1) {
-		options->namespaces = lxc_cmd_get_clone_flags(container->name, container->config_path);
+		options->namespaces = ctx->ns_clone_flags;
 		if (options->namespaces == -1)
-			return log_error_errno(-EINVAL, EINVAL, "Failed to automatically determine the namespaces which the container uses");
+			return syserror_set(-EINVAL, "Failed to automatically determine the namespaces which the container uses");
 
 		for (lxc_namespace_t i = 0; i < LXC_NS_MAX; i++) {
 			if (ns_info[i].clone_flag & CLONE_NEWCGROUP)
@@ -450,7 +464,7 @@ static int get_attach_context(struct attach_context *ctx,
 
 	ret = parse_init_status(ctx, options);
 	if (ret)
-		return log_error_errno(-errno, errno, "Failed to open parse file");
+		return syserror("Failed to open parse file");
 
 	ctx->lsm_ops = lsm_init_static();
 
@@ -467,12 +481,12 @@ static int get_attach_context(struct attach_context *ctx,
 
 	ret = get_personality(container->name, container->config_path, &ctx->personality);
 	if (ret)
-		return log_error_errno(ret, errno, "Failed to get personality of the container");
+		return syserror_ret(ret, "Failed to get personality of the container");
 
 	if (!ctx->container->lxc_conf) {
 		ctx->container->lxc_conf = lxc_conf_init();
 		if (!ctx->container->lxc_conf)
-			return log_error_errno(-ENOMEM, ENOMEM, "Failed to allocate new lxc config");
+			return syserror_set(-ENOMEM, "Failed to allocate new lxc config");
 	}
 
 	ctx->lsm_label = move_ptr(lsm_label);
@@ -593,7 +607,7 @@ static int __prepare_namespaces_nsfd(struct attach_context *ctx,
 		for (j = 0; j < i; j++)
 			close_prot_errno_disarm(ctx->ns_fd[j]);
 
-		return -1;
+		return ret_errno(EINVAL);
 	}
 
 	return 0;
@@ -625,12 +639,11 @@ static int __attach_namespaces_pidfd(struct attach_context *ctx,
 	/* The common case is to attach to all namespaces. */
 	ret = setns(ctx->init_pidfd, ns_flags);
 	if (ret)
-		return log_error_errno(-errno, errno,
-				       "Failed to attach to namespaces via pidfd");
+		return syserror("Failed to attach to namespaces via pidfd");
 
 	/* We can't risk leaking file descriptors into the container. */
 	if (close(ctx->init_pidfd))
-		return log_error_errno(-errno, errno, "Failed to close pidfd");
+		return syserror("Failed to close pidfd");
 	ctx->init_pidfd = -EBADF;
 
 	return log_trace(0, "Attached to container namespaces via pidfd");
@@ -649,10 +662,8 @@ static int __attach_namespaces_nsfd(struct attach_context *ctx,
 
 		ret = setns(ctx->ns_fd[i], ns_info[i].clone_flag);
 		if (ret)
-			return log_error_errno(-errno, errno,
-					       "Failed to attach to %s namespace of %d",
-					       ns_info[i].proc_name,
-					       ctx->init_pid);
+			return syserror("Failed to attach to %s namespace of %d",
+					ns_info[i].proc_name, ctx->init_pid);
 
 		if (close(ctx->ns_fd[i])) {
 			fret = -errno;
@@ -730,7 +741,7 @@ int lxc_attach_remount_sys_proc(void)
 
 	ret = unshare(CLONE_NEWNS);
 	if (ret < 0)
-		return log_error_errno(-1, errno, "Failed to unshare mount namespace");
+		return syserror("Failed to unshare mount namespace");
 
 	if (detect_shared_rootfs() && mount(NULL, "/", NULL, MS_SLAVE | MS_REC, NULL))
 		SYSERROR("Failed to recursively turn root mount tree into dependent mount. Continuing...");
@@ -738,11 +749,11 @@ int lxc_attach_remount_sys_proc(void)
 	/* Assume /proc is always mounted, so remount it. */
 	ret = umount2("/proc", MNT_DETACH);
 	if (ret < 0)
-		return log_error_errno(-1, errno, "Failed to unmount /proc");
+		return syserror("Failed to unmount /proc");
 
 	ret = mount("none", "/proc", "proc", 0, NULL);
 	if (ret < 0)
-		return log_error_errno(-1, errno, "Failed to remount /proc");
+		return syserror("Failed to remount /proc");
 
 	/*
 	 * Try to umount /sys. If it's not a mount point, we'll get EINVAL, then
@@ -750,27 +761,31 @@ int lxc_attach_remount_sys_proc(void)
 	 */
 	ret = umount2("/sys", MNT_DETACH);
 	if (ret < 0 && errno != EINVAL)
-		return log_error_errno(-1, errno, "Failed to unmount /sys");
+		return syserror("Failed to unmount /sys");
 
 	/* Remount it. */
 	if (ret == 0 && mount("none", "/sys", "sysfs", 0, NULL))
-		return log_error_errno(-1, errno, "Failed to remount /sys");
+		return syserror("Failed to remount /sys");
 
 	return 0;
 }
 
 static int drop_capabilities(struct attach_context *ctx)
 {
-	int last_cap;
+	int ret;
+	__u32 last_cap;
 
-	last_cap = lxc_caps_last_cap();
-	for (int cap = 0; cap <= last_cap; cap++) {
+	ret = lxc_caps_last_cap(&last_cap);
+	if (ret)
+		return syserror_ret(ret, "%d - Failed to drop capabilities", ret);
+
+	for (__u32 cap = 0; cap <= last_cap; cap++) {
 		if (ctx->capability_mask & (1LL << cap))
 			continue;
 
 		if (prctl(PR_CAPBSET_DROP, prctl_arg(cap), prctl_arg(0),
 			  prctl_arg(0), prctl_arg(0)))
-			return log_error_errno(-1, errno, "Failed to drop capability %d", cap);
+			return syserror("Failed to drop capability %d", cap);
 
 		TRACE("Dropped capability %d", cap);
 	}
@@ -783,7 +798,6 @@ static int lxc_attach_set_environment(struct attach_context *ctx,
 				      char **extra_env, char **extra_keep)
 {
 	int ret;
-	struct lxc_list *iterator;
 
 	if (policy == LXC_ATTACH_CLEAR_ENV) {
 		int path_kept = 0;
@@ -827,7 +841,7 @@ static int lxc_attach_set_environment(struct attach_context *ctx,
 				free(extra_keep_store);
 			}
 
-			return log_error(-1, "Failed to clear environment");
+			return syserror("Failed to clear environment");
 		}
 
 		if (extra_keep_store) {
@@ -864,17 +878,9 @@ static int lxc_attach_set_environment(struct attach_context *ctx,
 
 	/* Set container environment variables.*/
 	if (ctx->container->lxc_conf) {
-		lxc_list_for_each(iterator, &ctx->container->lxc_conf->environment) {
-			char *env_tmp;
-
-			env_tmp = strdup((char *)iterator->elem);
-			if (!env_tmp)
-				return -1;
-
-			ret = putenv(env_tmp);
-			if (ret < 0)
-				return log_error_errno(-1, errno, "Failed to set environment variable: %s", (char *)iterator->elem);
-		}
+		ret = lxc_set_environment(ctx->container->lxc_conf);
+		if (ret < 0)
+			return -1;
 	}
 
 	/* Set extra environment variables. */
@@ -1129,6 +1135,39 @@ __noreturn static void do_attach(struct attach_payload *ap)
         struct attach_context *ctx = ap->ctx;
         struct lxc_conf *conf = ctx->container->lxc_conf;
 
+	/*
+	 * We currently artificially restrict core scheduling to be a pid
+	 * namespace concept since this makes the code easier. We can revisit
+	 * this no problem and make this work with shared pid namespaces as
+	 * well. This check here makes sure that the container was created with
+	 * a separate pid namespace (ctx->ns_clone_flags) and whether we are
+	 * actually attaching to this pid namespace (options->namespaces).
+	 */
+	if (core_scheduling_cookie_valid(ctx->core_sched_cookie) &&
+	    (ctx->ns_clone_flags & CLONE_NEWPID) &&
+	    (options->namespaces & CLONE_NEWPID)) {
+		__u64 core_sched_cookie;
+
+		ret = core_scheduling_cookie_share_with(1);
+		if (ret < 0) {
+			SYSERROR("Failed to join core scheduling domain of %d",
+				 ctx->init_pid);
+			goto on_error;
+		}
+
+		ret = core_scheduling_cookie_get(getpid(), &core_sched_cookie);
+		if (ret || !core_scheduling_cookie_valid(core_sched_cookie) ||
+		    (ctx->core_sched_cookie != core_sched_cookie)) {
+			SYSERROR("Invalid core scheduling domain cookie %llu != %llu",
+				 (llu)core_sched_cookie,
+				 (llu)ctx->core_sched_cookie);
+			goto on_error;
+		}
+
+		INFO("Joined core scheduling domain of %d with cookie %lld",
+		     ctx->init_pid, (llu)core_sched_cookie);
+	}
+
 	/* A description of the purpose of this functionality is provided in the
 	 * lxc-attach(1) manual page. We have to remount here and not in the
 	 * parent process, otherwise /proc may not properly reflect the new pid
@@ -1347,24 +1386,24 @@ static int lxc_attach_terminal(const char *name, const char *lxcpath, struct lxc
 
 	ret = lxc_terminal_create(name, lxcpath, conf, terminal);
 	if (ret < 0)
-		return log_error(-1, "Failed to create terminal");
+		return syserror("Failed to create terminal");
 
 	return 0;
 }
 
 static int lxc_attach_terminal_mainloop_init(struct lxc_terminal *terminal,
-					     struct lxc_epoll_descr *descr)
+					     struct lxc_async_descr *descr)
 {
 	int ret;
 
 	ret = lxc_mainloop_open(descr);
 	if (ret < 0)
-		return log_error(-1, "Failed to create mainloop");
+		return syserror("Failed to create mainloop");
 
 	ret = lxc_terminal_mainloop_add(descr, terminal);
 	if (ret < 0) {
 		lxc_mainloop_close(descr);
-		return log_error(-1, "Failed to add handlers to mainloop");
+		return syserror("Failed to add handlers to mainloop");
 	}
 
 	return 0;
@@ -1395,7 +1434,7 @@ int lxc_attach(struct lxc_container *container, lxc_attach_exec_t exec_function,
 	       pid_t *attached_process)
 {
 	int ret_parent = -1;
-	struct lxc_epoll_descr descr = {};
+	struct lxc_async_descr descr = {};
 	int ret;
 	char *name, *lxcpath;
 	int ipc_sockets[2];
@@ -1405,10 +1444,10 @@ int lxc_attach(struct lxc_container *container, lxc_attach_exec_t exec_function,
 	struct lxc_conf *conf;
 
 	if (!container)
-		return ret_set_errno(-1, EINVAL);
+		return ret_errno(EINVAL);
 
 	if (!lxc_container_get(container))
-		return ret_set_errno(-1, EINVAL);
+		return ret_errno(EINVAL);
 
 	name = container->name;
 	lxcpath = container->config_path;
@@ -1421,13 +1460,13 @@ int lxc_attach(struct lxc_container *container, lxc_attach_exec_t exec_function,
 	ctx = alloc_attach_context();
 	if (!ctx) {
 		lxc_container_put(container);
-		return log_error_errno(-ENOMEM, ENOMEM, "Failed to allocate attach context");
+		return syserror_set(-ENOMEM, "Failed to allocate attach context");
 	}
 
 	ret = get_attach_context(ctx, container, options);
 	if (ret) {
 		put_attach_context(ctx);
-		return log_error(-1, "Failed to get attach context");
+		return syserror("Failed to get attach context");
 	}
 
 	conf = ctx->container->lxc_conf;
@@ -1441,14 +1480,14 @@ int lxc_attach(struct lxc_container *container, lxc_attach_exec_t exec_function,
 	ret = prepare_namespaces(ctx, options);
 	if (ret) {
 		put_attach_context(ctx);
-		return log_error(-1, "Failed to get namespace file descriptors");
+		return syserror("Failed to get namespace file descriptors");
 	}
 
 	if (options->attach_flags & LXC_ATTACH_TERMINAL) {
 		ret = lxc_attach_terminal(name, lxcpath, conf, &terminal);
 		if (ret < 0) {
 			put_attach_context(ctx);
-			return log_error(-1, "Failed to setup new terminal");
+			return syserror("Failed to setup new terminal");
 		}
 
 		terminal.log_fd = options->log_fd;
@@ -1492,7 +1531,7 @@ int lxc_attach(struct lxc_container *container, lxc_attach_exec_t exec_function,
 	ret = socketpair(PF_LOCAL, SOCK_STREAM | SOCK_CLOEXEC, 0, ipc_sockets);
 	if (ret < 0) {
 		put_attach_context(ctx);
-		return log_error_errno(-1, errno, "Could not set up required IPC mechanism for attaching");
+		return syserror("Could not set up required IPC mechanism for attaching");
 	}
 
 	/* Create transient process, two reasons:
@@ -1505,7 +1544,7 @@ int lxc_attach(struct lxc_container *container, lxc_attach_exec_t exec_function,
 	pid = fork();
 	if (pid < 0) {
 		put_attach_context(ctx);
-		return log_error_errno(-1, errno, "Failed to create first subprocess");
+		return syserror("Failed to create first subprocess");
 	}
 
 	if (pid == 0) {
@@ -1660,22 +1699,14 @@ int lxc_attach(struct lxc_container *container, lxc_attach_exec_t exec_function,
 		goto on_error;
 
 	/* Setup /proc limits */
-	if (!lxc_list_empty(&conf->procs)) {
-		ret = setup_proc_filesystem(&conf->procs, pid);
-		if (ret < 0)
-			goto on_error;
-
-		TRACE("Setup /proc/%d settings", pid);
-	}
+	ret = setup_proc_filesystem(conf, pid);
+	if (ret < 0)
+		goto on_error;
 
 	/* Setup resource limits */
-	if (!lxc_list_empty(&conf->limits)) {
-		ret = setup_resource_limits(&conf->limits, pid);
-		if (ret < 0)
-			goto on_error;
-
-		TRACE("Setup resource limits");
-	}
+	ret = setup_resource_limits(conf, pid);
+	if (ret < 0)
+		goto on_error;
 
 	if (options->attach_flags & LXC_ATTACH_TERMINAL) {
 		ret = lxc_attach_terminal_mainloop_init(&terminal, &descr);
@@ -1805,7 +1836,7 @@ int lxc_attach_run_command(void *payload)
 		}
 	}
 
-	return log_error_errno(ret, errno, "Failed to exec \"%s\"", cmd->program);
+	return syserror_ret(ret, "Failed to exec \"%s\"", cmd->program);
 }
 
 int lxc_attach_run_shell(void* payload)
@@ -1815,7 +1846,7 @@ int lxc_attach_run_shell(void* payload)
 	struct passwd pwent;
 	struct passwd *pwentp = NULL;
 	char *user_shell;
-	size_t bufsize;
+	ssize_t bufsize;
 	int ret;
 
 	/* Ignore payload parameter. */
@@ -1824,7 +1855,7 @@ int lxc_attach_run_shell(void* payload)
 	uid = getuid();
 
 	bufsize = sysconf(_SC_GETPW_R_SIZE_MAX);
-	if (bufsize == -1)
+	if (bufsize < 0)
 		bufsize = 1024;
 
 	buf = malloc(bufsize);

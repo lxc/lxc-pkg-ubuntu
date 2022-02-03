@@ -1,11 +1,9 @@
 /* SPDX-License-Identifier: LGPL-2.1+ */
 
-#ifndef _GNU_SOURCE
-#define _GNU_SOURCE 1
-#endif
+#include "config.h"
+
 #include <errno.h>
 #include <fcntl.h>
-#include <lxc/lxccontainer.h>
 #include <pthread.h>
 #include <signal.h>
 #include <stdio.h>
@@ -15,11 +13,12 @@
 #include <termios.h>
 #include <unistd.h>
 
+#include "lxc.h"
+
 #include "af_unix.h"
 #include "caps.h"
 #include "commands.h"
 #include "conf.h"
-#include "config.h"
 #include "log.h"
 #include "lxclock.h"
 #include "mainloop.h"
@@ -32,7 +31,7 @@
 #if HAVE_OPENPTY
 #include <pty.h>
 #else
-#include <../include/openpty.h>
+#include "openpty.h"
 #endif
 
 #define LXC_TERMINAL_BUFFER_SIZE 1024
@@ -69,7 +68,7 @@ static void lxc_terminal_winch(struct lxc_terminal_state *ts)
 }
 
 int lxc_terminal_signalfd_cb(int fd, uint32_t events, void *cbdata,
-			     struct lxc_epoll_descr *descr)
+			     struct lxc_async_descr *descr)
 {
 	ssize_t ret;
 	struct signalfd_siginfo siginfo;
@@ -270,7 +269,7 @@ static int lxc_terminal_write_log_file(struct lxc_terminal *terminal, char *buf,
 		if (ret < 0)
 			return ret;
 
-		if (bytes_read <= terminal->log_size)
+		if ((uint64_t)bytes_read <= terminal->log_size)
 			return lxc_write_nointr(terminal->log_fd, buf, bytes_read);
 
 		/* Write as much as we can into the buffer and loose the rest. */
@@ -301,7 +300,7 @@ static int lxc_terminal_write_log_file(struct lxc_terminal *terminal, char *buf,
 	if (ret < 0)
 		return ret;
 
-	if (terminal->log_size < bytes_read) {
+	if (terminal->log_size < (uint64_t)bytes_read) {
 		/* Well, this is unfortunate because it means that there is more
 		 * to write than the user has granted us space. There are
 		 * multiple ways to handle this but let's use the simplest one:
@@ -328,48 +327,27 @@ static int lxc_terminal_write_log_file(struct lxc_terminal *terminal, char *buf,
 	return bytes_read;
 }
 
-int lxc_terminal_io_cb(int fd, uint32_t events, void *data,
-		       struct lxc_epoll_descr *descr)
+static int lxc_terminal_ptx_io(struct lxc_terminal *terminal)
 {
-	struct lxc_terminal *terminal = data;
 	char buf[LXC_TERMINAL_BUFFER_SIZE];
 	int r, w, w_log, w_rbuf;
 
-	w = r = lxc_read_nointr(fd, buf, sizeof(buf));
-	if (r <= 0) {
-		INFO("Terminal client on fd %d has exited", fd);
-		lxc_mainloop_del_handler(descr, fd);
-
-		if (fd == terminal->ptx) {
-			terminal->ptx = -EBADF;
-		} else if (fd == terminal->peer) {
-			lxc_terminal_signal_fini(terminal);
-			terminal->peer = -EBADF;
-		} else {
-			ERROR("Handler received unexpected file descriptor");
-		}
-		close(fd);
-
-		return LXC_MAINLOOP_CLOSE;
-	}
-
-	if (fd == terminal->peer)
-		w = lxc_write_nointr(terminal->ptx, buf, r);
+	w = r = lxc_read_nointr(terminal->ptx, buf, sizeof(buf));
+	if (r <= 0)
+		return -1;
 
 	w_rbuf = w_log = 0;
-	if (fd == terminal->ptx) {
-		/* write to peer first */
-		if (terminal->peer >= 0)
-			w = lxc_write_nointr(terminal->peer, buf, r);
+	/* write to peer first */
+	if (terminal->peer >= 0)
+		w = lxc_write_nointr(terminal->peer, buf, r);
 
-		/* write to terminal ringbuffer */
-		if (terminal->buffer_size > 0)
-			w_rbuf = lxc_ringbuf_write(&terminal->ringbuf, buf, r);
+	/* write to terminal ringbuffer */
+	if (terminal->buffer_size > 0)
+		w_rbuf = lxc_ringbuf_write(&terminal->ringbuf, buf, r);
 
-		/* write to terminal log */
-		if (terminal->log_fd >= 0)
-			w_log = lxc_terminal_write_log_file(terminal, buf, r);
-	}
+	/* write to terminal log */
+	if (terminal->log_fd >= 0)
+		w_log = lxc_terminal_write_log_file(terminal, buf, r);
 
 	if (w != r)
 		WARN("Short write on terminal r:%d != w:%d", r, w);
@@ -382,6 +360,52 @@ int lxc_terminal_io_cb(int fd, uint32_t events, void *data,
 	if (w_log < 0)
 		TRACE("Failed to write %d bytes to terminal log", r);
 
+	return 0;
+}
+
+static int lxc_terminal_peer_io(struct lxc_terminal *terminal)
+{
+	char buf[LXC_TERMINAL_BUFFER_SIZE];
+	int r, w;
+
+	w = r = lxc_read_nointr(terminal->peer, buf, sizeof(buf));
+	if (r <= 0)
+		return -1;
+
+	w = lxc_write_nointr(terminal->ptx, buf, r);
+	if (w != r)
+		WARN("Short write on terminal r:%d != w:%d", r, w);
+
+	return 0;
+}
+
+static int lxc_terminal_ptx_io_handler(int fd, uint32_t events, void *data,
+				       struct lxc_async_descr *descr)
+{
+	struct lxc_terminal *terminal = data;
+	int ret;
+
+	ret = lxc_terminal_ptx_io(data);
+	if (ret < 0)
+		return log_info(LXC_MAINLOOP_CLOSE,
+				"Terminal client on fd %d has exited",
+				terminal->ptx);
+
+	return LXC_MAINLOOP_CONTINUE;
+}
+
+static int lxc_terminal_peer_io_handler(int fd, uint32_t events, void *data,
+					struct lxc_async_descr *descr)
+{
+	struct lxc_terminal *terminal = data;
+	int ret;
+
+	ret = lxc_terminal_peer_io(data);
+	if (ret < 0)
+		return log_info(LXC_MAINLOOP_CLOSE,
+				"Terminal client on fd %d has exited",
+				terminal->peer);
+
 	return LXC_MAINLOOP_CONTINUE;
 }
 
@@ -391,7 +415,9 @@ static int lxc_terminal_mainloop_add_peer(struct lxc_terminal *terminal)
 
 	if (terminal->peer >= 0) {
 		ret = lxc_mainloop_add_handler(terminal->descr, terminal->peer,
-					       lxc_terminal_io_cb, terminal);
+					       lxc_terminal_peer_io_handler,
+					       default_cleanup_handler,
+					       terminal, "lxc_terminal_peer_io_handler");
 		if (ret < 0) {
 			WARN("Failed to add terminal peer handler to mainloop");
 			return -1;
@@ -401,8 +427,12 @@ static int lxc_terminal_mainloop_add_peer(struct lxc_terminal *terminal)
 	if (!terminal->tty_state || terminal->tty_state->sigfd < 0)
 		return 0;
 
-	ret = lxc_mainloop_add_handler(terminal->descr, terminal->tty_state->sigfd,
-				       lxc_terminal_signalfd_cb, terminal->tty_state);
+	ret = lxc_mainloop_add_handler(terminal->descr,
+				       terminal->tty_state->sigfd,
+				       lxc_terminal_signalfd_cb,
+				       default_cleanup_handler,
+				       terminal->tty_state,
+				       "lxc_terminal_signalfd_cb");
 	if (ret < 0) {
 		WARN("Failed to add signal handler to mainloop");
 		return -1;
@@ -411,7 +441,7 @@ static int lxc_terminal_mainloop_add_peer(struct lxc_terminal *terminal)
 	return 0;
 }
 
-int lxc_terminal_mainloop_add(struct lxc_epoll_descr *descr,
+int lxc_terminal_mainloop_add(struct lxc_async_descr *descr,
 			      struct lxc_terminal *terminal)
 {
 	int ret;
@@ -422,10 +452,11 @@ int lxc_terminal_mainloop_add(struct lxc_epoll_descr *descr,
 	}
 
 	ret = lxc_mainloop_add_handler(descr, terminal->ptx,
-				       lxc_terminal_io_cb, terminal);
+				       lxc_terminal_ptx_io_handler,
+				       default_cleanup_handler,
+				       terminal, "lxc_terminal_ptx_io_handler");
 	if (ret < 0) {
-		ERROR("Failed to add handler for terminal ptx fd %d to "
-		      "mainloop", terminal->ptx);
+		ERROR("Failed to add handler for terminal ptx fd %d to mainloop", terminal->ptx);
 		return -1;
 	}
 
@@ -583,7 +614,7 @@ on_error:
 
 int lxc_terminal_allocate(struct lxc_conf *conf, int sockfd, int *ttyreq)
 {
-	int ttynum;
+	size_t ttynum;
 	int ptxfd = -1;
 	struct lxc_tty_info *ttys = &conf->ttys;
 	struct lxc_terminal *terminal = &conf->console;
@@ -600,7 +631,7 @@ int lxc_terminal_allocate(struct lxc_conf *conf, int sockfd, int *ttyreq)
 	}
 
 	if (*ttyreq > 0) {
-		if (*ttyreq > ttys->max)
+		if ((size_t)*ttyreq > ttys->max)
 			goto out;
 
 		if (ttys->tty[*ttyreq - 1].busy >= 0)
@@ -620,7 +651,7 @@ int lxc_terminal_allocate(struct lxc_conf *conf, int sockfd, int *ttyreq)
 	if (ttynum > ttys->max)
 		goto out;
 
-	*ttyreq = ttynum;
+	*ttyreq = (int)ttynum;
 
 out_tty:
 	ttys->tty[ttynum - 1].busy = sockfd;
@@ -632,11 +663,10 @@ out:
 
 void lxc_terminal_free(struct lxc_conf *conf, int fd)
 {
-	int i;
 	struct lxc_tty_info *ttys = &conf->ttys;
 	struct lxc_terminal *terminal = &conf->console;
 
-	for (i = 0; i < ttys->max; i++)
+	for (size_t i = 0; i < ttys->max; i++)
 		if (ttys->tty[i].busy == fd)
 			ttys->tty[i].busy = -1;
 
@@ -844,7 +874,7 @@ static int lxc_terminal_map_ids(struct lxc_conf *c, struct lxc_terminal *termina
 {
 	int ret;
 
-	if (lxc_list_empty(&c->id_map))
+	if (list_empty(&c->id_map))
 		return 0;
 
 	if (is_empty_string(terminal->name) && terminal->pty < 0)
@@ -914,19 +944,41 @@ err:
 int lxc_devpts_terminal(int devpts_fd, int *ret_ptx, int *ret_pty,
 			int *ret_pty_nr, bool require_tiocgptpeer)
 {
-	__do_close int fd_ptx = -EBADF, fd_opath_pty = -EBADF, fd_pty = -EBADF;
+	__do_close int fd_devpts = -EBADF, fd_ptx = -EBADF,
+		       fd_opath_pty = -EBADF, fd_pty = -EBADF;
 	int pty_nr = -1;
 	int ret;
 
+	/*
+	 * When we aren't told what devpts instance to allocate from we assume
+	 * it is the one in the caller's mount namespace.
+	 * This poses a slight complication, a lot of distros will change
+	 * permissions on /dev/ptmx so it can be opened by unprivileged users
+	 * but will not change permissions on /dev/pts/ptmx itself. In
+	 * addition, /dev/ptmx can either be a symlink, a bind-mount, or a
+	 * separate device node. So we need to allow for fairly lax lookup.
+	 */
 	if (devpts_fd < 0)
-		return ret_errno(EBADF);
-
-	fd_ptx = open_beneath(devpts_fd, "ptmx", O_RDWR | O_NOCTTY | O_CLOEXEC);
+		fd_ptx = open_at(-EBADF, "/dev/ptmx", PROTECT_OPEN_RW & ~O_NOFOLLOW,
+				 PROTECT_LOOKUP_ABSOLUTE_XDEV_SYMLINKS, 0);
+	else
+		fd_ptx = open_beneath(devpts_fd, "ptmx", O_RDWR | O_NOCTTY | O_CLOEXEC);
 	if (fd_ptx < 0) {
 		if (errno == ENOSPC)
 			return systrace("Exceeded number of allocatable terminals");
 
-		return syserror("Failed to open terminal multiplexer device");
+		return syswarn("Failed to open terminal multiplexer device");
+	}
+
+	if (devpts_fd < 0) {
+		fd_devpts = open_at(-EBADF, "/dev/pts", PROTECT_OPATH_DIRECTORY,
+				    PROTECT_LOOKUP_ABSOLUTE_XDEV, 0);
+		if (fd_devpts < 0)
+			return syswarn("Failed to open devpts instance");
+
+		if (!same_device(fd_devpts, "ptmx", fd_ptx, ""))
+			return syswarn("The acquired ptmx devices don't match");
+		devpts_fd = fd_devpts;
 	}
 
 	ret = unlockpt(fd_ptx);
@@ -986,7 +1038,6 @@ int lxc_devpts_terminal(int devpts_fd, int *ret_ptx, int *ret_pty,
 
 int lxc_terminal_parent(struct lxc_conf *conf)
 {
-	__do_close int fd_devpts = -EBADF;
 	struct lxc_terminal *console = &conf->console;
 	int ret;
 
@@ -998,15 +1049,7 @@ int lxc_terminal_parent(struct lxc_conf *conf)
 		return 0;
 
 	/* Allocate console for the container from the host's devpts. */
-	fd_devpts = open_at(-EBADF,
-			    "/dev/pts",
-			    PROTECT_OPATH_DIRECTORY,
-			    PROTECT_LOOKUP_ABSOLUTE_XDEV,
-			    0);
-	if (fd_devpts < 0)
-		return syserror("Failed to open devpts instance");
-
-	ret = lxc_devpts_terminal(fd_devpts, &console->ptx, &console->pty,
+	ret = lxc_devpts_terminal(-EBADF, &console->ptx, &console->pty,
 				  &console->pty_nr, false);
 	if (ret < 0)
 		return syserror("Failed to allocate console");
@@ -1116,7 +1159,7 @@ int lxc_terminal_set_stdfds(int fd)
 }
 
 int lxc_terminal_stdin_cb(int fd, uint32_t events, void *cbdata,
-			  struct lxc_epoll_descr *descr)
+			  struct lxc_async_descr *descr)
 {
 	int ret;
 	char c;
@@ -1150,7 +1193,7 @@ int lxc_terminal_stdin_cb(int fd, uint32_t events, void *cbdata,
 }
 
 int lxc_terminal_ptx_cb(int fd, uint32_t events, void *cbdata,
-			   struct lxc_epoll_descr *descr)
+			   struct lxc_async_descr *descr)
 {
 	int r, w;
 	char buf[LXC_TERMINAL_BUFFER_SIZE];
@@ -1180,7 +1223,7 @@ int lxc_console(struct lxc_container *c, int ttynum,
 		int escape)
 {
 	int ptxfd, ret, ttyfd;
-	struct lxc_epoll_descr descr;
+	struct lxc_async_descr descr;
 	struct termios oldtios;
 	struct lxc_terminal_state *ts;
 	struct lxc_terminal terminal = {
@@ -1221,7 +1264,9 @@ int lxc_console(struct lxc_container *c, int ttynum,
 
 	if (ts->sigfd != -1) {
 		ret = lxc_mainloop_add_handler(&descr, ts->sigfd,
-					       lxc_terminal_signalfd_cb, ts);
+					       lxc_terminal_signalfd_cb,
+					       default_cleanup_handler,
+					       ts, "lxc_terminal_signalfd_cb");
 		if (ret < 0) {
 			ERROR("Failed to add signal handler to mainloop");
 			goto close_mainloop;
@@ -1229,14 +1274,18 @@ int lxc_console(struct lxc_container *c, int ttynum,
 	}
 
 	ret = lxc_mainloop_add_handler(&descr, ts->stdinfd,
-				       lxc_terminal_stdin_cb, ts);
+				       lxc_terminal_stdin_cb,
+				       default_cleanup_handler,
+				       ts, "lxc_terminal_stdin_cb");
 	if (ret < 0) {
 		ERROR("Failed to add stdin handler");
 		goto close_mainloop;
 	}
 
 	ret = lxc_mainloop_add_handler(&descr, ts->ptxfd,
-				       lxc_terminal_ptx_cb, ts);
+				       lxc_terminal_ptx_cb,
+				       default_cleanup_handler,
+				       ts, "lxc_terminal_ptx_cb");
 	if (ret < 0) {
 		ERROR("Failed to add ptx handler");
 		goto close_mainloop;

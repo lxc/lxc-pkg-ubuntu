@@ -39,12 +39,12 @@
 #include "syscall_wrappers.h"
 #include "utils.h"
 
-#ifndef HAVE_STRLCPY
-#include "include/strlcpy.h"
+#if !HAVE_STRLCPY
+#include "strlcpy.h"
 #endif
 
-#ifndef HAVE_STRLCAT
-#include "include/strlcat.h"
+#if !HAVE_STRLCAT
+#include "strlcat.h"
 #endif
 
 #ifndef O_PATH
@@ -329,6 +329,24 @@ again:
 	return status;
 }
 
+bool wait_exited(pid_t pid)
+{
+	int status;
+
+	status = lxc_wait_for_pid_status(pid);
+	if (status < 0)
+		return log_error(false, "Failed to reap on child process %d", pid);
+	if (WIFSIGNALED(status))
+		return log_error(false, "Child process %d terminated by signal %d", pid, WTERMSIG(status));
+	if (!WIFEXITED(status))
+		return log_error(false, "Child did not termiate correctly");
+	if (WEXITSTATUS(status))
+		return log_error(false, "Child terminated with error %d", WEXITSTATUS(status));
+
+	TRACE("Reaped child process %d", pid);
+	return true;
+}
+
 #ifdef HAVE_OPENSSL
 #include <openssl/evp.h>
 
@@ -356,7 +374,8 @@ int sha1sum_file(char *fnam, unsigned char *digest, unsigned int *md_len)
 	__do_free char *buf = NULL;
 	__do_fclose FILE *f = NULL;
 	int ret;
-	long flen;
+	ssize_t flen;
+	ssize_t nbytes;
 
 	if (!fnam)
 		return -1;
@@ -379,7 +398,8 @@ int sha1sum_file(char *fnam, unsigned char *digest, unsigned int *md_len)
 	if (!buf)
 		return log_error_errno(-1, ENOMEM, "Out of memory");
 
-	if (fread(buf, 1, flen, f) != flen)
+	nbytes = fread(buf, 1, flen, f);
+	if (nbytes < 0 || nbytes != flen)
 		return log_error_errno(-1, errno, "Failed to read template");
 
 	buf[flen] = '\0';
@@ -1815,7 +1835,7 @@ int fix_stdio_permissions(uid_t uid)
 	if (ret)
 		return log_trace_errno(-errno, errno, "Failed to stat \"/dev/null\"");
 
-	for (int i = 0; i < ARRAY_SIZE(std_fds); i++) {
+	for (size_t i = 0; i < ARRAY_SIZE(std_fds); i++) {
 		ret = fstat(std_fds[i], &st);
 		if (ret) {
 			SYSWARN("Failed to stat standard I/O file descriptor %d", std_fds[i]);
@@ -1846,13 +1866,13 @@ int fix_stdio_permissions(uid_t uid)
 
 bool multiply_overflow(int64_t base, uint64_t mult, int64_t *res)
 {
-	if (base > 0 && base > (INT64_MAX / mult))
+	if (base > 0 && base > (int64_t)(INT64_MAX / mult))
 		return false;
 
-	if (base < 0 && base < (INT64_MIN / mult))
+	if (base < 0 && base < (int64_t)(INT64_MIN / mult))
 		return false;
 
-	*res = base * mult;
+	*res = (int64_t)(base * mult);
 	return true;
 }
 

@@ -3,14 +3,16 @@
 #ifndef __LXC_COMPILER_H
 #define __LXC_COMPILER_H
 
-#ifndef _GNU_SOURCE
-#define _GNU_SOURCE 1
-#endif
-
-#include <stdbool.h>
-#include <linux/types.h>
-
 #include "config.h"
+
+#include <assert.h>
+#include <errno.h>
+#include <inttypes.h>
+#include <linux/types.h>
+#include <stdbool.h>
+#include <sys/param.h>
+#include <sys/sysmacros.h>
+#include <sys/types.h>
 
 #ifndef thread_local
 #if __STDC_VERSION__ >= 201112L &&    \
@@ -22,7 +24,7 @@
 #endif
 #endif
 
-#if __GNUC__ >= 7
+#if HAVE_COMPILER_ATTR_FALLTHROUGH || __GNUC__ >= 7
 #define __fallthrough __attribute__((__fallthrough__))
 #else
 #define __fallthrough /* fall through */
@@ -281,5 +283,36 @@ static inline bool __must_check __must_check_overflow(bool overflow)
 #ifndef __public
 #define __public __attribute__((visibility("default")))
 #endif
+
+/* Are two types/vars the same type (ignoring qualifiers)? */
+#define __same_type(a, b) __builtin_types_compatible_p(typeof(a), typeof(b))
+
+#define __compiletime_assert(condition, msg, prefix, suffix) \
+	do {                                                 \
+	} while (0)
+
+#define _compiletime_assert(condition, msg, prefix, suffix) \
+	__compiletime_assert(condition, msg, prefix, suffix)
+
+/**
+ * compiletime_assert - break build and emit msg if condition is false
+ * @condition: a compile-time constant condition to check
+ * @msg:       a message to emit if condition is false
+ *
+ * In tradition of POSIX assert, this macro will break the build if the
+ * supplied condition is *false*, emitting the supplied error message if the
+ * compiler has support to do so.
+ */
+#define compiletime_assert(condition, msg) \
+	_compiletime_assert(condition, msg, __compiletime_assert_, __COUNTER__)
+
+/**
+ * BUILD_BUG_ON_MSG - break compile if a condition is true & emit supplied
+ *		      error message.
+ * @condition: the condition which the compiler should know is false.
+ *
+ * See BUILD_BUG_ON for description.
+ */
+#define BUILD_BUG_ON_MSG(cond, msg) compiletime_assert(!(cond), msg)
 
 #endif /* __LXC_COMPILER_H */

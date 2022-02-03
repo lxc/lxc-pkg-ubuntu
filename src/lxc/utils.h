@@ -3,9 +3,6 @@
 #ifndef __LXC_UTILS_H
 #define __LXC_UTILS_H
 
-/* Properly support loop devices on 32bit systems. */
-#define _FILE_OFFSET_BITS 64
-
 #include <errno.h>
 #include <linux/loop.h>
 #include <linux/types.h>
@@ -33,9 +30,9 @@ __hidden extern int mkdir_p(const char *dir, mode_t mode);
 __hidden extern char *get_rundir(void);
 
 /* Define getline() if missing from the C library */
-#ifndef HAVE_GETLINE
-#ifdef HAVE_FGETLN
-#include <../include/getline.h>
+#if !HAVE_GETLINE
+#if !HAVE_FGETLN
+#include "getline.h"
 #endif
 #endif
 
@@ -84,6 +81,7 @@ static inline void __auto_lxc_pclose__(struct lxc_popen_FILE **f)
 __hidden extern int wait_for_pid(pid_t pid);
 __hidden extern int lxc_wait_for_pid_status(pid_t pid);
 __hidden extern int wait_for_pidfd(int pidfd);
+__hidden extern bool wait_exited(pid_t pid);
 
 #if HAVE_OPENSSL
 __hidden extern int sha1sum_file(char *fnam, unsigned char *md_value, unsigned int *md_len);

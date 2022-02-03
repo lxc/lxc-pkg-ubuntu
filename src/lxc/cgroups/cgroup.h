@@ -3,6 +3,8 @@
 #ifndef __LXC_CGROUP_H
 #define __LXC_CGROUP_H
 
+#include "config.h"
+
 #include <stdbool.h>
 #include <stddef.h>
 #include <linux/types.h>
@@ -26,7 +28,6 @@
 
 struct lxc_handler;
 struct lxc_conf;
-struct lxc_list;
 
 typedef enum {
         CGROUP_LAYOUT_UNKNOWN = -1,
@@ -312,7 +313,7 @@ static inline int cgroup_unified_fd(const struct cgroup_ops *ops)
 			       __first, __VA_ARGS__);                  \
 	})
 
-static void put_cgroup_ctx(struct cgroup_ctx *ctx)
+static inline void put_cgroup_ctx(struct cgroup_ctx *ctx)
 {
 	if (!IS_ERR_OR_NULL(ctx)) {
 		for (__u32 idx = 0; idx < ctx->fd_len; idx++)
@@ -326,8 +327,15 @@ static inline int prepare_cgroup_ctx(struct cgroup_ops *ops,
 {
 	__u32 idx;
 
-	if (!ops || !ops->hierarchies)
+	if (!ops)
 		return ret_errno(ENOENT);
+
+	/* Always let the client now what cgroup layout we're dealing with. */
+	ctx->layout = ops->cgroup_layout;
+
+	/* No writable cgroup hierarchies. */
+	if (!ops->hierarchies)
+		return 0;
 
 	for (idx = 0; ops->hierarchies[idx]; idx++) {
 		if (idx >= CGROUP_CTX_MAX_FD)
@@ -335,12 +343,8 @@ static inline int prepare_cgroup_ctx(struct cgroup_ops *ops,
 
 		ctx->fd[idx] = ops->hierarchies[idx]->dfd_con;
 	}
-
-	if (idx == 0)
-		return ret_errno(ENOENT);
-
 	ctx->fd_len = idx;
-	ctx->layout = ops->cgroup_layout;
+
 	if (ops->unified && ops->unified->dfd_con > 0)
 		ctx->utilities = ops->unified->utilities;
 

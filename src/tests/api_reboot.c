@@ -16,6 +16,8 @@
  * 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
  */
 
+#include "config.h"
+
 #include <alloca.h>
 #include <stdio.h>
 #include <sched.h>
@@ -31,8 +33,8 @@
 #include "lxctest.h"
 #include "utils.h"
 
-#ifndef HAVE_STRLCPY
-#include "include/strlcpy.h"
+#if !HAVE_STRLCPY
+#include "strlcpy.h"
 #endif
 
 #define TSTNAME "lxc-api-reboot"

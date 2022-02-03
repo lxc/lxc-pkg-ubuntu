@@ -3,6 +3,8 @@
 #ifndef __LXC_MEMORY_UTILS_H
 #define __LXC_MEMORY_UTILS_H
 
+#include "config.h"
+
 #include <dirent.h>
 #include <errno.h>
 #include <stdio.h>
@@ -20,7 +22,8 @@
 			cleaner(*ptr);                   \
 	}
 
-#define call_cleaner(cleaner) __attribute__((__cleanup__(cleaner##_function)))
+#define call_cleaner(cleaner) \
+	__attribute__((__cleanup__(cleaner##_function))) __attribute__((unused))
 
 #define close_prot_errno_disarm(fd) \
 	if (fd >= 0) {              \

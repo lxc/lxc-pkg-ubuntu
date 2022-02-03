@@ -1,8 +1,7 @@
 /* SPDX-License-Identifier: LGPL-2.1+ */
 
-#ifndef _GNU_SOURCE
-#define _GNU_SOURCE 1
-#endif
+#include "config.h"
+
 #include <dirent.h>
 #include <errno.h>
 #include <fcntl.h>
@@ -22,7 +21,6 @@
 
 #include "btrfs.h"
 #include "conf.h"
-#include "config.h"
 #include "dir.h"
 #include "error.h"
 #include "log.h"
@@ -42,8 +40,8 @@
 #include "utils.h"
 #include "zfs.h"
 
-#ifndef HAVE_STRLCPY
-#include "include/strlcpy.h"
+#if !HAVE_STRLCPY
+#include "strlcpy.h"
 #endif
 
 #ifndef BLKGETSIZE64
@@ -606,7 +604,7 @@ struct lxc_storage *storage_init(struct lxc_conf *conf)
 	const struct lxc_storage_type *q;
 	const char *src = conf->rootfs.path;
 	const char *dst = conf->rootfs.mount;
-	const char *mntopts = conf->rootfs.options;
+	const char *mntopts = conf->rootfs.mnt_opts.raw_options;
 
 	BUILD_BUG_ON(LXC_STORAGE_INTERNAL_OVERLAY_RESTORE <= LXC_CLONE_MAXFLAGS);
 

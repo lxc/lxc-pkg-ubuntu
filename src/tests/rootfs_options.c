@@ -18,8 +18,6 @@
 
 #include "config.h"
 
-#define __STDC_FORMAT_MACROS
-
 #include <errno.h>
 #include <fcntl.h>
 #include <inttypes.h>
@@ -32,8 +30,8 @@
 #include <sys/types.h>
 #include <sys/wait.h>
 
-#include <lxc/lxccontainer.h>
-#include <lxc/attach_options.h>
+#include "lxccontainer.h"
+#include "attach_options.h"
 
 #ifdef HAVE_STATVFS
 #include <sys/statvfs.h>
