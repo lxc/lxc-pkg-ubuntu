@@ -1,3 +1,34 @@
+lxc (1:4.0.12-0ubuntu1) jammy; urgency=medium
+  * Cherry-pick upstream bugfixes (stable-4.0):
+    - 0002-lxc-checkconfig-Fix-bashism.patch
+    - 0003-doc-Fix-reverse-allowlist-denylist.patch (LP: #1957934)
+
+  * New upstream bugfix release (4.0.12):
+    (https://discuss.linuxcontainers.org/t/lxc-4-0-12-has-been-released/13288)
+    - Fixed CRIU restoration of containers with pre-created veth interfaces
+    - Fixed issue with kernels lacking SMT support
+    - Extended cgroup2 config options in lxc.mount.auto (cgroup2)
+    - lxc-download now relies on HTTPS for validation (avoids GPG issues)
+
+  * New upstream bugfix release (4.0.11)
+    (LP: #1943441, LP: #1938771, LP: #1891903):
+    (https://discuss.linuxcontainers.org/t/lxc-4-0-11-has-been-released/12427)
+    - Core scheduling support (lxc.sched.core)
+    - riscv64 support in lxc.arch
+    - Significantly improved bash completion profile
+    - Greater use of the new VFS mount API (when supported by the kernel)
+    - Fix containers with empty network namespaces
+    - Handle kernels that lack TIOCGPTPEER
+    - Improve CPU bitmask/id handling (handle skipped CPU numbers)
+    - Reworked the tests to run offline
+
+  * Bump to debhelper 12 (allows focal SRUs)
+  * Bump standards to 4.6.0.1
+  * Add lintian overrides for incorrect bashism detection
+  * Remove bash completion install logic (now done upstream)
+
+ -- Stéphane Graber <stgraber@ubuntu.com>  Wed, 02 Feb 2022 20:48:39 -0500
+
 lxc (1:4.0.10-0ubuntu5) impish; urgency=medium
 
   * d/t/exercise: Skip tests that are incompatible with cgroups v2
