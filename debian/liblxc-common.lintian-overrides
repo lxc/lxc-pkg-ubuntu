@@ -18,3 +18,6 @@ executable-in-usr-lib usr/lib/*/lxc/hooks/unmount-namespace
 executable-in-usr-lib usr/lib/*/lxc/lxc-apparmor-load
 executable-in-usr-lib usr/lib/*/lxc/lxc-monitord
 executable-in-usr-lib usr/lib/*/lxc/lxc-user-nic
+
+# Incorrectly flagging help message as bash
+bash-term-in-posix-shell [usr/share/lxc/templates/lxc-download:131] '[ -a'
