@@ -3,6 +3,8 @@
 #ifndef __LXC_FILE_UTILS_H
 #define __LXC_FILE_UTILS_H
 
+#include "config.h"
+
 #include <fcntl.h>
 #include <stdbool.h>
 #include <stdio.h>
@@ -42,6 +44,22 @@ __hidden extern ssize_t lxc_send_nointr(int sockfd, void *buf, size_t len, int f
     __access_r(2, 3);
 
 __hidden extern ssize_t lxc_read_nointr(int fd, void *buf, size_t count) __access_w(2, 3);
+
+__access_w(2, 3) static inline int lxc_read_string_nointr(int fd, char *buf,
+							  size_t count)
+{
+	ssize_t ret;
+
+	ret = lxc_read_nointr(fd, buf, STRARRAYLEN(buf));
+	if (ret < 0)
+		return -errno;
+	if (ret == 0)
+		return ret_errno(ENODATA);
+	if ((size_t)ret >= sizeof(buf))
+		return ret_errno(E2BIG);
+	buf[ret] = '\0';
+	return 0;
+}
 
 __hidden extern ssize_t lxc_read_nointr_expect(int fd, void *buf, size_t count,
 					       const void *expected_buf) __access_w(2, 3);
@@ -87,6 +105,9 @@ __hidden extern bool exists_dir_at(int dir_fd, const char *path);
 __hidden extern bool exists_file_at(int dir_fd, const char *path);
 __hidden extern int open_at(int dfd, const char *path, unsigned int o_flags,
 			    unsigned int resolve_flags, mode_t mode);
+__hidden extern int open_at_same(int fd_same, int dfd, const char *path,
+				 unsigned int o_flags,
+				 unsigned int resolve_flags, mode_t mode);
 static inline int open_beneath(int dfd, const char *path, unsigned int flags)
 {
 	return open_at(dfd, path, flags, PROTECT_LOOKUP_BENEATH, 0);
@@ -119,5 +140,8 @@ static inline int dup_cloexec(int fd)
 
 	return move_fd(fd_dup);
 }
+
+__hidden extern bool same_device(int fda, const char *patha, int fdb,
+				 const char *pathb);
 
 #endif /* __LXC_FILE_UTILS_H */

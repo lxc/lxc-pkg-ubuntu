@@ -1,8 +1,7 @@
 /* SPDX-License-Identifier: LGPL-2.1+ */
 
-#ifndef _GNU_SOURCE
-#define _GNU_SOURCE 1
-#endif
+#include "config.h"
+
 #include <pthread.h>
 #include <signal.h>
 #include <sys/prctl.h>
@@ -11,7 +10,6 @@
 #include <unistd.h>
 
 #include "compiler.h"
-#include "config.h"
 #include "error.h"
 #include "file_utils.h"
 #include "initutils.h"
@@ -19,8 +17,8 @@
 #include "memory_utils.h"
 #include "process_utils.h"
 
-#ifndef HAVE_STRLCPY
-#include "include/strlcpy.h"
+#if !HAVE_STRLCPY
+#include "strlcpy.h"
 #endif
 
 static char *copy_global_config_value(char *p)
@@ -553,7 +551,7 @@ __noreturn int lxc_container_init(int argc, char *const *argv, bool quiet)
 
 	remove_self();
 
-	pid = vfork();
+	pid = fork();
 	if (pid < 0)
 		exit(EXIT_FAILURE);
 

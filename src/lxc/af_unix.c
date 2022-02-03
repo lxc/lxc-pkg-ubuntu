@@ -1,8 +1,7 @@
 /* SPDX-License-Identifier: LGPL-2.1+ */
 
-#ifndef _GNU_SOURCE
-#define _GNU_SOURCE 1
-#endif
+#include "config.h"
+
 #include <errno.h>
 #include <fcntl.h>
 #include <stddef.h>
@@ -15,15 +14,14 @@
 #include <sys/un.h>
 
 #include "af_unix.h"
-#include "config.h"
 #include "log.h"
 #include "macro.h"
 #include "memory_utils.h"
 #include "process_utils.h"
 #include "utils.h"
 
-#ifndef HAVE_STRLCPY
-#include "include/strlcpy.h"
+#if !HAVE_STRLCPY
+#include "strlcpy.h"
 #endif
 
 lxc_log_define(af_unix, lxc);
@@ -466,9 +464,7 @@ int lxc_abstract_unix_rcv_credential(int fd, void *data, size_t size)
 		memcpy(&cred, CMSG_DATA(cmsg), sizeof(cred));
 
 		if (cred.uid && (cred.uid != getuid() || cred.gid != getgid()))
-			return log_error_errno(-1, EACCES,
-					       "Message denied for '%d/%d'",
-					       cred.uid, cred.gid);
+			return syserror_set(-EACCES, "Message denied for '%d/%d'", cred.uid, cred.gid);
 	}
 
 	return ret;
@@ -480,17 +476,17 @@ int lxc_unix_sockaddr(struct sockaddr_un *ret, const char *path)
 
 	len = strlen(path);
 	if (len == 0)
-		return ret_set_errno(-1, EINVAL);
+		return ret_errno(EINVAL);
 	if (path[0] != '/' && path[0] != '@')
-		return ret_set_errno(-1, EINVAL);
+		return ret_errno(EINVAL);
 	if (path[1] == '\0')
-		return ret_set_errno(-1, EINVAL);
+		return ret_errno(EINVAL);
 
 	if (len + 1 > sizeof(ret->sun_path))
-		return ret_set_errno(-1, EINVAL);
+		return ret_errno(EINVAL);
 
 	*ret = (struct sockaddr_un){
-	    .sun_family = AF_UNIX,
+		.sun_family = AF_UNIX,
 	};
 
 	if (path[0] == '@') {
@@ -510,8 +506,7 @@ int lxc_unix_connect_type(struct sockaddr_un *addr, int type)
 
 	fd = socket(AF_UNIX, type | SOCK_CLOEXEC, 0);
 	if (fd < 0)
-		return log_error_errno(-1, errno,
-				       "Failed to open new AF_UNIX socket");
+		return syserror("Failed to open new AF_UNIX socket");
 
 	if (addr->sun_path[0] == '\0')
 		len = strlen(&addr->sun_path[1]);
@@ -521,8 +516,7 @@ int lxc_unix_connect_type(struct sockaddr_un *addr, int type)
 	ret = connect(fd, (struct sockaddr *)addr,
 		      offsetof(struct sockaddr_un, sun_path) + len);
 	if (ret < 0)
-		return log_error_errno(-1, errno,
-				       "Failed to bind new AF_UNIX socket");
+		return syserror("Failed to connect AF_UNIX socket");
 
 	return move_fd(fd);
 }

@@ -1,8 +1,7 @@
 /* SPDX-License-Identifier: LGPL-2.1+ */
 
-#ifndef _GNU_SOURCE
-#define _GNU_SOURCE 1
-#endif
+#include "config.h"
+
 #include <errno.h>
 #include <seccomp.h>
 #include <stdio.h>
@@ -11,11 +10,11 @@
 #include <sys/mount.h>
 #include <sys/utsname.h>
 
+#include "lxc.h"
+
 #include "af_unix.h"
 #include "commands.h"
-#include "config.h"
 #include "log.h"
-#include "lxccontainer.h"
 #include "lxcseccomp.h"
 #include "mainloop.h"
 #include "memory_utils.h"
@@ -93,9 +92,9 @@ static const char *get_action_name(uint32_t action)
 	return "invalid action";
 }
 
-static uint32_t get_v2_default_action(char *line)
+static int32_t get_v2_default_action(char *line)
 {
-	uint32_t ret_action = -1;
+	int32_t ret_action = -1;
 
 	while (*line == ' ')
 		line++;
@@ -129,7 +128,7 @@ static uint32_t get_v2_default_action(char *line)
 	return ret_action;
 }
 
-static uint32_t get_v2_action(char *line, uint32_t def_action)
+static int32_t get_v2_action(char *line, uint32_t def_action)
 {
 	char *p;
 	uint32_t ret;
@@ -264,12 +263,13 @@ static int parse_v2_rules(char *line, uint32_t def_action,
 		return -1;
 
 	/* read optional action which follows the syscall */
-	rules->action = get_v2_action(tmp, def_action);
-	if (rules->action == -1) {
+	ret = get_v2_action(tmp, def_action);
+	if (ret == -1) {
 		ERROR("Failed to interpret action");
-		ret = -1;
 		goto on_error;
 	}
+
+	rules->action = ret;
 
 	ret = 0;
 	rules->args_num = 0;
@@ -496,7 +496,7 @@ enum lxc_seccomp_rule_status_t {
 static enum lxc_seccomp_rule_status_t do_resolve_add_rule(uint32_t arch, char *line, scmp_filter_ctx ctx,
 				struct seccomp_v2_rule *rule)
 {
-	int i, nr, ret;
+	int nr, ret;
 	struct scmp_arg_cmp arg_cmp[6];
 
 	ret = seccomp_arch_exist(ctx, arch);
@@ -543,8 +543,8 @@ static enum lxc_seccomp_rule_status_t do_resolve_add_rule(uint32_t arch, char *l
 	}
 
 	memset(&arg_cmp, 0, sizeof(arg_cmp));
-	for (i = 0; i < rule->args_num; i++) {
-		INFO("arg_cmp[%d]: SCMP_CMP(%u, %llu, %llu, %llu)", i,
+	for (size_t i = 0; i < rule->args_num; i++) {
+		INFO("arg_cmp[%zu]: SCMP_CMP(%u, %llu, %llu, %llu)", i,
 		     rule->args_value[i].index,
 		     (long long unsigned int)rule->args_value[i].op,
 		     (long long unsigned int)rule->args_value[i].mask,
@@ -618,7 +618,7 @@ static int parse_config_v2(FILE *f, char *line, size_t *line_bufsz, struct lxc_c
 	char *p;
 	enum lxc_hostarch_t cur_rule_arch, native_arch;
 	bool denylist = false;
-	uint32_t default_policy_action = -1, default_rule_action = -1;
+	int32_t default_policy_action = -1, default_rule_action = -1;
 	struct seccomp_v2_rule rule;
 	struct scmp_ctx_info {
 		uint32_t architectures[3];
@@ -1358,8 +1358,28 @@ static void seccomp_notify_default_answer(int fd, struct seccomp_notif *req,
 }
 #endif
 
+int seccomp_notify_cleanup_handler(int fd, void *data)
+{
+#if HAVE_DECL_SECCOMP_NOTIFY_FD
+	struct lxc_handler *hdlr = data;
+	struct lxc_conf *conf = hdlr->conf;
+
+	/* TODO: Make sure that we don't need to free any memory in here. */
+	if (fd == conf->seccomp.notifier.notify_fd)
+		fd = move_fd(conf->seccomp.notifier.notify_fd);
+
+	/*
+	 * If this isn't the main notify_fd it means that someone registered a
+	 * seccomp notify handler through the command socket (e.g. for attach)
+	 * and so we won't touch the container's config.
+	 */
+	close(fd);
+#endif
+	return 0;
+}
+
 int seccomp_notify_handler(int fd, uint32_t events, void *data,
-			   struct lxc_epoll_descr *descr)
+			   struct lxc_async_descr *descr)
 {
 
 #if HAVE_DECL_SECCOMP_NOTIFY_FD
@@ -1384,11 +1404,8 @@ int seccomp_notify_handler(int fd, uint32_t events, void *data,
 	char *cookie = conf->seccomp.notifier.cookie;
 	__u64 req_id;
 
-	if (events & EPOLLHUP) {
-		lxc_mainloop_del_handler(descr, fd);
-		close(fd);
-		return log_trace(0, "Removing seccomp notifier fd %d", fd);
-	}
+	if (events & EPOLLHUP)
+		return log_trace(LXC_MAINLOOP_DISARM, "Removing seccomp notifier fd %d", fd);
 
 	memset(req, 0, conf->seccomp.notifier.sizes.seccomp_notif);
 	ret = seccomp_notify_receive(fd, req);
@@ -1566,7 +1583,7 @@ void seccomp_conf_init(struct lxc_conf *conf)
 }
 
 int lxc_seccomp_setup_proxy(struct lxc_seccomp *seccomp,
-			    struct lxc_epoll_descr *descr,
+			    struct lxc_async_descr *descr,
 			    struct lxc_handler *handler)
 {
 #if HAVE_DECL_SECCOMP_NOTIFY_FD
@@ -1604,9 +1621,11 @@ int lxc_seccomp_setup_proxy(struct lxc_seccomp *seccomp,
 			return -1;
 		}
 
-		ret = lxc_mainloop_add_handler(descr,
-					       seccomp->notifier.notify_fd,
-					       seccomp_notify_handler, handler);
+		ret = lxc_mainloop_add_handler(descr, seccomp->notifier.notify_fd,
+					       seccomp_notify_handler,
+					       seccomp_notify_cleanup_handler,
+					       handler,
+					       "seccomp_notify_handler");
 		if (ret < 0) {
 			ERROR("Failed to add seccomp notify handler for %d to mainloop",
 			      notify_fd);

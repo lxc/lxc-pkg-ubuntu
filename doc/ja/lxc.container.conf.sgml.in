@@ -446,6 +446,42 @@ by KATOH Yasufumi <karma at jazz.email.ne.jp>
     </refsect2>
 
     <refsect2>
+      <title><!-- Core Scheduling -->コアスケジューリング</title>
+      <para>
+        <!--
+        Core scheduling defines if the container payload
+        is marked as being schedulable on the same core. Doing so will cause
+        the kernel scheduler to ensure that tasks that are not in the same
+        group never run simultaneously on a core. This can serve as an extra
+        security measure to prevent the container payload from using
+        cross hyper thread attacks.
+        -->
+        コアスケジューリングは、コンテナのペイロードが同じコアでスケジュール可能であるとマークするかどうかを指定します。
+        これによりカーネルスケジューラーは、同じグループに属さないタスクが同一コア上で同時に実行されないようにします。
+        これは、コンテナペイロードがクロスハイパースレッド攻撃を受けることを防ぐための、追加のセキュリティ対策として機能させることができます。
+      </para>
+      <variablelist>
+        <varlistentry>
+          <term>
+            <option>lxc.sched.core</option>
+          </term>
+          <listitem>
+            <para>
+              <!--
+              The only allowed values are 0 and 1. Set this to 1 to create a
+              core scheduling domain for the container or 0 to not create one.
+              If not set explicitly no core scheduling domain will be created
+              for the container.
+                -->
+              0 または 1 のみ指定できます。1 を設定すると、コンテナに対するコアスケジューリングドメインを作成し、0 を設定すると作成しません。
+              明示的に指定していない場合は、コンテナに対するコアスケジューリングドメインは作成されません。
+            </para>
+          </listitem>
+        </varlistentry>
+      </variablelist>
+    </refsect2>
+
+    <refsect2>
       <title>Proc</title>
       <para>
         <!--
@@ -2079,7 +2115,7 @@ by KATOH Yasufumi <karma at jazz.email.ne.jp>
         ignore <option>lxc.cgroup.</option> settings on systems that only use
         the unified hierarchy. Conversely, it will ignore
         <option>lxc.cgroup2.</option> options on systems that only use legacy
-        hierachies.
+        hierarchies.
         -->
         LXC は cgroup1（レガシー階層構造）と cgroup2（単一階層構造）に対する設定を、異なる設定プレフィックスを使って区別しています。
         cgroup1 に対する設定を変更するには <option>lxc.cgroup.</option> というプレフィックスを使う必要があり、cgroup2 の設定を変更するには <option>lxc.cgroup2.</option> を使う必要があります。
@@ -2097,7 +2133,7 @@ by KATOH Yasufumi <karma at jazz.email.ne.jp>
         however do not fall into the category of distributing a system
         resource, instead they are often referred to as "utility" controllers.
         One utility controller is the device controller. Instead of
-        distributing a system resource it allows to manage device access.
+        distributing a system resource it allows one to manage device access.
         -->
         cgroup 階層の本質は、プロセスを階層的に構造化する方法です。通常は、cgroup 階層では 1 つ以上の「コントローラー」が有効になっています。
         通常、cgroup 階層の「コントローラー」は階層に従って特定のタイプのシステムリソースを分配する役割を果たします。
@@ -2210,7 +2246,7 @@ by KATOH Yasufumi <karma at jazz.email.ne.jp>
           <listitem>
             <para>
               <!--
-              Specifying any of the aformentioned two rules will cause all
+              Specifying any of the aforementioned two rules will cause all
               previous rules to be cleared, i.e. the device list will be reset.
               -->
               前述の 2 つのルールのいずれかを指定すると、それ以前に指定していたルールがすべてクリアされます。つまり、デバイスリストがリセットされます。

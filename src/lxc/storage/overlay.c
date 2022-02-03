@@ -1,18 +1,17 @@
 /* SPDX-License-Identifier: LGPL-2.1+ */
 
-#ifndef _GNU_SOURCE
-#define _GNU_SOURCE 1
-#endif
+#include "config.h"
+
 #include <errno.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 
+#include "lxc.h"
+
 #include "conf.h"
-#include "config.h"
 #include "confile.h"
 #include "log.h"
-#include "lxccontainer.h"
 #include "macro.h"
 #include "memory_utils.h"
 #include "overlay.h"
@@ -57,7 +56,7 @@ int ovl_clonepaths(struct lxc_storage *orig, struct lxc_storage *new, const char
 		return -1;
 	}
 
-	if (am_guest_unpriv() || !lxc_list_empty(&conf->id_map)) {
+	if (am_guest_unpriv() || !list_empty(&conf->id_map)) {
 		ret = chown_mapped_root(new->dest, conf);
 		if (ret < 0)
 			WARN("Failed to update ownership of %s", new->dest);
@@ -88,7 +87,7 @@ int ovl_clonepaths(struct lxc_storage *orig, struct lxc_storage *new, const char
 		if (ret < 0 && errno != EEXIST)
 			return log_error_errno(-errno, errno, "Failed to create directory \"%s\"", work);
 
-		if (am_guest_unpriv() || !lxc_list_empty(&conf->id_map)) {
+		if (am_guest_unpriv() || !list_empty(&conf->id_map)) {
 			__do_free char *lxc_overlay_delta_dir = NULL,
 				       *lxc_overlay_private_dir = NULL;
 
@@ -116,7 +115,7 @@ int ovl_clonepaths(struct lxc_storage *orig, struct lxc_storage *new, const char
 			return log_error_errno(-ENOMEM, ENOMEM, "Failed to allocate memory");
 
 		ret = snprintf(new->src, len, "overlay:%s:%s", src, delta);
-		if (ret < 0 || (size_t)ret >= len)
+		if (ret < 0 || ret >= len)
 			return log_error_errno(-EIO, EIO, "Failed to create string");
 	} else if (!strcmp(orig->type, "overlayfs") ||
 		   !strcmp(orig->type, "overlay")) {
@@ -155,7 +154,7 @@ int ovl_clonepaths(struct lxc_storage *orig, struct lxc_storage *new, const char
 		if (ret < 0 && errno != EEXIST)
 			return log_error_errno(-errno, errno, "Failed to create directory \"%s\"", ndelta);
 
-		if (am_guest_unpriv() || !lxc_list_empty(&conf->id_map)) {
+		if (am_guest_unpriv() || !list_empty(&conf->id_map)) {
 			__do_free char *lxc_overlay_delta_dir = NULL,
 				       *lxc_overlay_private_dir = NULL;
 
@@ -276,7 +275,7 @@ int ovl_create(struct lxc_storage *bdev, const char *dest, const char *n,
 	if (ret < 0 && errno != EEXIST)
 		return log_error_errno(-errno, errno, "Failed to create directory \"%s\"", delta);
 
-	if (am_guest_unpriv() || !lxc_list_empty(&conf->id_map)) {
+	if (am_guest_unpriv() || !list_empty(&conf->id_map)) {
 		__do_free char *lxc_overlay_private_dir = NULL;
 
 		lxc_overlay_private_dir = must_make_path(tmp, LXC_OVERLAY_PRIVATE_DIR, NULL);
@@ -467,7 +466,7 @@ int ovl_mount(struct lxc_storage *bdev)
 				lower, work);
 	}
 
-	if (ret < 0 || ret >= len || ret2 < 0 || ret2 >= len2) {
+	if (ret < 0 || (size_t)ret >= len || ret2 < 0 || (size_t)ret2 >= len2) {
 		ERROR("Failed to create string");
 		free(mntdata);
 		free(dup);
@@ -656,7 +655,7 @@ err:
 /* To be called from lxcapi_clone() in lxccontainer.c: When we clone a container
  * with overlay lxc.mount.entry entries we need to update absolute paths for
  * upper- and workdir. This update is done in two locations:
- * lxc_conf->unexpanded_config and lxc_conf->mount_list. Both updates are done
+ * lxc_conf->unexpanded_config and lxc_conf->mount_entries. Both updates are done
  * independent of each other since lxc_conf->mountlist may contain more mount
  * entries (e.g. from other included files) than lxc_conf->unexpanded_config.
  */
@@ -667,7 +666,7 @@ int ovl_update_abs_paths(struct lxc_conf *lxc_conf, const char *lxc_path,
 	char new_upper[PATH_MAX], new_work[PATH_MAX], old_upper[PATH_MAX],
 	    old_work[PATH_MAX];
 	size_t i;
-	struct lxc_list *iterator;
+	struct string_entry *entry;
 	char *cleanpath = NULL;
 	int fret = -1;
 	int ret = 0;
@@ -681,7 +680,7 @@ int ovl_update_abs_paths(struct lxc_conf *lxc_conf, const char *lxc_path,
 
 	/*
 	 * We have to update lxc_conf->unexpanded_config separately from
-	 * lxc_conf->mount_list.
+	 * lxc_conf->mount_entries.
 	 */
 	for (i = 0; i < sizeof(ovl_dirs) / sizeof(ovl_dirs[0]); i++) {
 		if (!clone_update_unexp_ovl_paths(lxc_conf, lxc_path, newpath,
@@ -700,11 +699,11 @@ int ovl_update_abs_paths(struct lxc_conf *lxc_conf, const char *lxc_path,
 	if (ret < 0 || ret >= PATH_MAX)
 		goto err;
 
-	lxc_list_for_each(iterator, &lxc_conf->mount_list) {
+	list_for_each_entry(entry, &lxc_conf->mount_entries, head) {
 		char *mnt_entry = NULL, *new_mnt_entry = NULL, *tmp = NULL,
 		     *tmp_mnt_entry = NULL;
 
-		mnt_entry = iterator->elem;
+		mnt_entry = entry->val;
 
 		if (strstr(mnt_entry, "overlay"))
 			tmp = "upperdir";
@@ -721,26 +720,26 @@ int ovl_update_abs_paths(struct lxc_conf *lxc_conf, const char *lxc_path,
 		if (ret < 0 || ret >= PATH_MAX)
 			goto err;
 
-		if (strstr(mnt_entry, old_upper)) {
-			tmp_mnt_entry =
-			    lxc_string_replace(old_upper, new_upper, mnt_entry);
-		}
+		if (strstr(mnt_entry, old_upper))
+			tmp_mnt_entry = lxc_string_replace(old_upper, new_upper, mnt_entry);
 
 		if (strstr(mnt_entry, old_work)) {
 			if (tmp_mnt_entry)
-				new_mnt_entry = lxc_string_replace(
-				    old_work, new_work, tmp_mnt_entry);
+				new_mnt_entry = lxc_string_replace(old_work,
+								   new_work,
+								   tmp_mnt_entry);
 			else
-				new_mnt_entry = lxc_string_replace(
-				    old_work, new_work, mnt_entry);
+				new_mnt_entry = lxc_string_replace(old_work,
+								   new_work,
+								   mnt_entry);
 		}
 
 		if (new_mnt_entry) {
-			free(iterator->elem);
-			iterator->elem = strdup(new_mnt_entry);
+			free(entry->val);
+			entry->val = strdup(new_mnt_entry);
 		} else if (tmp_mnt_entry) {
-			free(iterator->elem);
-			iterator->elem = strdup(tmp_mnt_entry);
+			free(entry->val);
+			entry->val = strdup(tmp_mnt_entry);
 		}
 
 		free(new_mnt_entry);

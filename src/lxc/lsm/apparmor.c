@@ -1,8 +1,7 @@
 /* SPDX-License-Identifier: LGPL-2.1+ */
 
-#ifndef _GNU_SOURCE
-#define _GNU_SOURCE 1
-#endif
+#include "config.h"
+
 #include <errno.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -15,7 +14,6 @@
 #include "caps.h"
 #include "cgroups/cgroup_utils.h"
 #include "conf.h"
-#include "config.h"
 #include "initutils.h"
 #include "file_utils.h"
 #include "log.h"
@@ -406,7 +404,7 @@ static int __apparmor_process_label_open(struct lsm_ops *ops, pid_t pid, int o_f
 
 	/* first try the apparmor subdir */
 	ret = snprintf(path, LXC_LSMATTRLEN, "/proc/%d/attr/apparmor/current", pid);
-	if (ret < 0 || ret >= LXC_LSMATTRLEN)
+	if (ret < 0 || (size_t)ret >= LXC_LSMATTRLEN)
 		return -1;
 
 	labelfd = open(path, o_flags);
@@ -417,7 +415,7 @@ static int __apparmor_process_label_open(struct lsm_ops *ops, pid_t pid, int o_f
 
 	/* fallback to legacy global attr directory */
 	ret = snprintf(path, LXC_LSMATTRLEN, "/proc/%d/attr/current", pid);
-	if (ret < 0 || ret >= LXC_LSMATTRLEN)
+	if (ret < 0 || (size_t)ret >= LXC_LSMATTRLEN)
 		return -1;
 
 	labelfd = open(path, o_flags);
@@ -611,8 +609,8 @@ out:
 
 static bool file_is_yes(const char *path)
 {
+	__do_close int fd = -EBADF;
 	ssize_t rd;
-	int fd;
 	char buf[8]; /* we actually just expect "yes" or "no" */
 
 	fd = open(path, O_RDONLY | O_CLOEXEC);
@@ -620,7 +618,6 @@ static bool file_is_yes(const char *path)
 		return false;
 
 	rd = lxc_read_nointr(fd, buf, sizeof(buf));
-	close(fd);
 
 	return rd >= 4 && strnequal(buf, "yes\n", 4);
 }
@@ -669,7 +666,7 @@ static void must_append_sized(char **buf, size_t *bufsz, const char *data, size_
 
 static bool is_privileged(struct lxc_conf *conf)
 {
-	return lxc_list_empty(&conf->id_map);
+	return list_empty(&conf->id_map);
 }
 
 static const char* AA_ALL_DEST_PATH_LIST[] = {
@@ -722,13 +719,12 @@ static void append_all_remount_rules(char **profile, size_t *size)
 	const size_t buf_append_pos = strlen(buf);
 
 	const size_t opt_count = ARRAY_SIZE(REMOUNT_OPTIONS);
-	size_t opt_bits;
 
 	must_append_sized(profile, size,
 			  "# allow various ro-bind-*re*mounts\n",
 			  sizeof("# allow various ro-bind-*re*mounts\n")-1);
 
-	for (opt_bits = 0; opt_bits != 1 << opt_count; ++opt_bits) {
+	for (size_t opt_bits = 0; opt_bits != (size_t)1 << opt_count; ++opt_bits) {
 		size_t at = buf_append_pos;
 		unsigned bit = 1;
 		size_t o;
@@ -756,7 +752,7 @@ static char *get_apparmor_profile_content(struct lsm_ops *ops, struct lxc_conf *
 {
 	char *profile, *profile_name_full;
 	size_t size;
-	struct lxc_list *it;
+	struct string_entry *rule;
 
 	profile_name_full = apparmor_profile_full(conf->name, lxcpath);
 
@@ -816,8 +812,8 @@ static char *get_apparmor_profile_content(struct lsm_ops *ops, struct lxc_conf *
 		must_append_sized(&profile, &size, AA_PROFILE_UNPRIVILEGED,
 		                  STRARRAYLEN(AA_PROFILE_UNPRIVILEGED));
 
-	lxc_list_for_each(it, &conf->lsm_aa_raw) {
-		const char *line = it->elem;
+	list_for_each_entry(rule, &conf->lsm_aa_raw, head) {
+		const char *line = rule->val;
 
 		must_append_sized_full(&profile, &size, line, strlen(line), true);
 	}
@@ -1163,7 +1159,8 @@ static int apparmor_process_label_fd_get(struct lsm_ops *ops, pid_t pid, bool on
 	return __apparmor_process_label_open(ops, pid, O_RDWR, on_exec);
 }
 
-static int apparmor_process_label_set_at(struct lsm_ops *ops, int label_fd, const char *label, bool on_exec)
+static int apparmor_process_label_set_at(struct lsm_ops *ops, int label_fd,
+					 const char *label, bool on_exec)
 {
 	__do_free char *command = NULL;
 	int ret = -1;
@@ -1182,9 +1179,12 @@ static int apparmor_process_label_set_at(struct lsm_ops *ops, int label_fd, cons
 		return -EFBIG;
 
 	ret = lxc_write_nointr(label_fd, command, len - 1);
+	if (ret < 0)
+		return syserror("Failed to write AppArmor profile \"%s\" to %d",
+				label, label_fd);
 
 	INFO("Set AppArmor label to \"%s\"", label);
-	return ret;
+	return 0;
 }
 
 /*

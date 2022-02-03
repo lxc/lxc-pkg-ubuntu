@@ -19,6 +19,8 @@
  * 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
  */
 
+#include "config.h"
+
 #include <errno.h>
 #include <string.h>
 #include <unistd.h>
@@ -32,8 +34,8 @@
 
 #include <lxc/lxccontainer.h>
 
-#ifndef HAVE_STRLCPY
-#include "include/strlcpy.h"
+#if !HAVE_STRLCPY
+#include "strlcpy.h"
 #endif
 
 #define TSTNAME    "lxc-attach-test"

@@ -3,20 +3,19 @@
 #ifndef __LXC_PROCESS_UTILS_H
 #define __LXC_PROCESS_UTILS_H
 
-#ifndef _GNU_SOURCE
-#define _GNU_SOURCE 1
-#endif
+#include "config.h"
+
 #include <linux/sched.h>
 #include <sched.h>
 #include <signal.h>
 #include <stdbool.h>
 #include <stdio.h>
 #include <stdlib.h>
+#include <string.h>
 #include <sys/syscall.h>
 #include <unistd.h>
 
 #include "compiler.h"
-#include "config.h"
 #include "syscall_numbers.h"
 
 #ifndef CSIGNAL
@@ -256,7 +255,7 @@ __hidden extern pid_t lxc_raw_legacy_clone(unsigned long flags, int *pidfd);
 __hidden extern pid_t lxc_raw_clone_cb(int (*fn)(void *), void *args, unsigned long flags,
 				       int *pidfd);
 
-#ifndef HAVE_EXECVEAT
+#if !HAVE_EXECVEAT
 static inline int execveat(int dirfd, const char *pathname, char *const argv[],
 			   char *const envp[], int flags)
 {
@@ -287,5 +286,17 @@ static inline pid_t lxc_raw_gettid(void)
 
 __hidden extern int lxc_raw_pidfd_send_signal(int pidfd, int sig, siginfo_t *info,
 					      unsigned int flags);
+
+static inline const char *signal_name(int sig)
+{
+	const char *s;
+
+#if HAVE_SIGDESCR_NP
+	s = sigdescr_np(sig);
+#else
+	s = "UNSUPPORTED";
+#endif
+	return s ?: "INVALID_SIGNAL_NUMBER";
+}
 
 #endif /* __LXC_PROCESS_UTILS_H */

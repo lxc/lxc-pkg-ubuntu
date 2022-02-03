@@ -108,6 +108,7 @@ features. This includes (but isn't limited to):
 - i686
 - x86_64
 - ppc, ppc64, ppc64le
+- riscv64
 - s390x
 - armvl7, arm64
 
@@ -168,7 +169,7 @@ versioning](http://semver.org/) scheme.
 
 Source for the latest released version can always be downloaded from
 
-- https://linuxcontainers.org/downloads/
+- https://linuxcontainers.org/lxc/downloads/
 
 You can browse the up to the minute source code and change history online
 

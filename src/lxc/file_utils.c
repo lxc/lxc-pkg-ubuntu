@@ -1,8 +1,7 @@
 /* SPDX-License-Identifier: LGPL-2.1+ */
 
-#ifndef _GNU_SOURCE
-#define _GNU_SOURCE 1
-#endif
+#include "config.h"
+
 #include <errno.h>
 #include <fcntl.h>
 #include <linux/magic.h>
@@ -13,7 +12,6 @@
 #include <sys/types.h>
 #include <time.h>
 
-#include "config.h"
 #include "file_utils.h"
 #include "macro.h"
 #include "memory_utils.h"
@@ -259,14 +257,19 @@ bool file_exists(const char *f)
 int print_to_file(const char *file, const char *content)
 {
 	__do_fclose FILE *f = NULL;
-	int ret = 0;
+	int ret;
+	size_t len;
 
 	f = fopen(file, "we");
 	if (!f)
 		return -1;
 
-	if (fprintf(f, "%s", content) != strlen(content))
+	len = strlen(content);
+	ret = fprintf(f, "%s", content);
+	if (ret < 0 || (size_t)ret != len)
 		ret = -1;
+	else
+		ret = 0;
 
 	return ret;
 }
@@ -593,8 +596,7 @@ FILE *fdopen_at(int dfd, const char *path, const char *mode,
 int timens_offset_write(clockid_t clk_id, int64_t s_offset, int64_t ns_offset)
 {
 	__do_close int fd = -EBADF;
-	int ret;
-	ssize_t len;
+	ssize_t len, ret;
 	char buf[INTTYPE_TO_STRLEN(int) +
 		 STRLITERALLEN(" ") + INTTYPE_TO_STRLEN(int64_t) +
 		 STRLITERALLEN(" ") + INTTYPE_TO_STRLEN(int64_t) + 1];
@@ -611,7 +613,7 @@ int timens_offset_write(clockid_t clk_id, int64_t s_offset, int64_t ns_offset)
 		return ret_errno(EFBIG);
 
 	ret = lxc_write_nointr(fd, buf, len);
-	if (ret < 0 || (size_t)ret != len)
+	if (ret < 0 || ret != len)
 		return -EIO;
 
 	return 0;
@@ -666,6 +668,21 @@ int open_at(int dfd, const char *path, unsigned int o_flags,
 	fd = openat(dfd, path, o_flags, mode);
 	if (fd < 0)
 		return -errno;
+
+	return move_fd(fd);
+}
+
+int open_at_same(int fd_same, int dfd, const char *path, unsigned int o_flags,
+		 unsigned int resolve_flags, mode_t mode)
+{
+	__do_close int fd = -EBADF;
+
+	fd = open_at(dfd, path, o_flags, resolve_flags, mode);
+	if (fd < 0)
+		return -errno;
+
+	if (!same_file_lax(fd_same, fd))
+		return ret_errno(EINVAL);
 
 	return move_fd(fd);
 }
@@ -750,4 +767,36 @@ bool same_file_lax(int fda, int fdb)
 	errno = EINVAL;
 	return (st_fda.st_dev == st_fdb.st_dev) &&
 	       (st_fda.st_ino == st_fdb.st_ino);
+}
+
+bool same_device(int fda, const char *patha, int fdb, const char *pathb)
+{
+	int ret;
+	mode_t modea, modeb;
+	struct stat st_fda, st_fdb;
+
+        if (fda == fdb)
+                return true;
+
+	if (is_empty_string(patha))
+		ret = fstat(fda, &st_fda);
+	else
+		ret = fstatat(fda, patha, &st_fda, 0);
+	if (ret)
+		return false;
+
+	if (is_empty_string(pathb))
+		ret = fstat(fdb, &st_fdb);
+	else
+		ret = fstatat(fdb, pathb, &st_fdb, 0);
+	if (ret)
+		return false;
+
+	errno = EINVAL;
+	modea = (st_fda.st_mode & S_IFMT);
+	modeb = (st_fdb.st_mode & S_IFMT);
+	if (modea != modeb || !IN_SET(modea, S_IFCHR, S_IFBLK))
+		return false;
+
+	return (st_fda.st_rdev == st_fdb.st_rdev);
 }

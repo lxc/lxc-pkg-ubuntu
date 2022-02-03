@@ -1,8 +1,7 @@
 /* SPDX-License-Identifier: LGPL-2.1+ */
 
-#ifndef _GNU_SOURCE
-#define _GNU_SOURCE 1
-#endif
+#include "config.h"
+
 #include <ctype.h>
 #include <dirent.h>
 #include <errno.h>
@@ -23,7 +22,6 @@
 #include <syslog.h>
 #include <unistd.h>
 
-#include "config.h"
 #include "file_utils.h"
 #include "macro.h"
 #include "memory_utils.h"
@@ -33,12 +31,12 @@
 #include <security/_pam_macros.h>
 #include <security/pam_modules.h>
 
-#ifndef HAVE_STRLCPY
-#include "include/strlcpy.h"
+#if !HAVE_STRLCPY
+#include "strlcpy.h"
 #endif
 
-#ifndef HAVE_STRLCAT
-#include "include/strlcat.h"
+#if !HAVE_STRLCAT
+#include "strlcat.h"
 #endif
 
 #define pam_cgfs_debug_stream(stream, format, ...)                                \
@@ -55,11 +53,6 @@
 #define pam_cgfs_debug(format, ...)
 #endif /* DEBUG */
 
-/* Taken over modified from the kernel sources. */
-#define NBITS 32 /* bits in uint32_t */
-#define DIV_ROUND_UP(n, d) (((n) + (d)-1) / (d))
-#define BITS_TO_LONGS(nr) DIV_ROUND_UP(nr, NBITS)
-
 static enum cg_mount_mode {
 	CGROUP_UNKNOWN = -1,
 	CGROUP_MIXED = 0,
@@ -72,18 +65,10 @@ static enum cg_mount_mode {
 static void append_line(char **dest, size_t oldlen, char *new, size_t newlen);
 static int append_null_to_list(void ***list);
 static void batch_realloc(char **mem, size_t oldlen, size_t newlen);
-static inline void clear_bit(unsigned bit, uint32_t *bitarr)
-{
-	bitarr[bit / NBITS] &= ~(1 << (bit % NBITS));
-}
 static char *copy_to_eol(char *s);
 static char *get_mountpoint(char *line);
 static bool get_uid_gid(const char *user, uid_t *uid, gid_t *gid);
 static int handle_login(const char *user, uid_t uid, gid_t gid);
-static inline bool is_set(unsigned bit, uint32_t *bitarr)
-{
-	return (bitarr[bit / NBITS] & (1 << (bit % NBITS))) != 0;
-}
 static bool is_lxcfs(const char *line);
 static bool is_cgv1(char *line);
 static bool is_cgv2(char *line);
@@ -94,10 +79,6 @@ static void must_append_string(char ***list, char *entry);
 static void mysyslog(int err, const char *format, ...) __attribute__((sentinel));
 static char *read_file(char *fnam);
 static int recursive_rmdir(char *dirname);
-static inline void set_bit(unsigned bit, uint32_t *bitarr)
-{
-	bitarr[bit / NBITS] |= (1 << (bit % NBITS));
-}
 static bool string_in_list(char **list, const char *entry);
 static char *string_join(const char *sep, const char **parts, bool use_as_prefix);
 static void trim(char *s);

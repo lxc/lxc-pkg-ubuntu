@@ -1,8 +1,7 @@
 /* SPDX-License-Identifier: LGPL-2.1+ */
 
-#ifndef _GNU_SOURCE
-#define _GNU_SOURCE 1
-#endif
+#include "config.h"
+
 #include <fcntl.h>
 #include <stdbool.h>
 #include <stdio.h>
@@ -11,6 +10,7 @@
 #include <sys/stat.h>
 #include <sys/types.h>
 
+#include "conf.h"
 #include "file_utils.h"
 #include "log.h"
 #include "macro.h"
@@ -24,6 +24,25 @@
 #endif
 
 lxc_log_define(mount_utils, lxc);
+
+/*
+ * Since the MOUNT_ATTR_<atime> values are an enum, not a bitmap, users wanting
+ * to transition to a different atime setting cannot simply specify the atime
+ * setting in @attr_set, but must also specify MOUNT_ATTR__ATIME in the
+ * @attr_clr field.
+ */
+static inline void set_atime(struct lxc_mount_attr *attr)
+{
+	switch (attr->attr_set & MOUNT_ATTR__ATIME) {
+	case MOUNT_ATTR_RELATIME:
+		__fallthrough;
+	case MOUNT_ATTR_NOATIME:
+		__fallthrough;
+	case MOUNT_ATTR_STRICTATIME:
+		attr->attr_clr = MOUNT_ATTR__ATIME;
+		break;
+	}
+}
 
 int mnt_attributes_new(unsigned int old_flags, unsigned int *new_flags)
 {
@@ -197,6 +216,18 @@ int fs_set_property(int fd_fs, const char *key, const char *val)
 	return 0;
 }
 
+int fs_set_flag(int fd_fs, const char *key)
+{
+	int ret;
+
+	ret = fsconfig(fd_fs, FSCONFIG_SET_FLAG, key, NULL, 0);
+	if (ret < 0)
+		return syserror("Failed to set \"%s\" flag on filesystem context %d", key, fd_fs);
+
+	TRACE("Set \"%s\" flag on filesystem context %d", key, fd_fs);
+	return 0;
+}
+
 int fs_attach(int fd_fs,
 	      int dfd_to, const char *path_to,
 	      __u64 o_flags_to, __u64 resolve_flags_to,
@@ -236,17 +267,21 @@ int fs_attach(int fd_fs,
 	return 0;
 }
 
-int create_detached_idmapped_mount(const char *path, int userns_fd, bool recursive)
+int create_detached_idmapped_mount(const char *path, int userns_fd,
+				   bool recursive, __u64 attr_set, __u64 attr_clr)
 {
 	__do_close int fd_tree_from = -EBADF;
 	unsigned int open_tree_flags = OPEN_TREE_CLONE | OPEN_TREE_CLOEXEC;
 	struct lxc_mount_attr attr = {
-		.attr_set	= MOUNT_ATTR_IDMAP,
+		.attr_set	= MOUNT_ATTR_IDMAP | attr_set,
+		.attr_clr	= attr_clr,
 		.userns_fd	= userns_fd,
 		.propagation	= MS_SLAVE,
 
 	};
 	int ret;
+
+	set_atime(&attr);
 
 	TRACE("Idmapped mount \"%s\" requested with user namespace fd %d", path, userns_fd);
 
@@ -294,19 +329,23 @@ int move_detached_mount(int dfd_from, int dfd_to, const char *path_to,
 	return 0;
 }
 
-static int __fd_bind_mount(int dfd_from, const char *path_from,
-			   __u64 o_flags_from, __u64 resolve_flags_from,
-			   int dfd_to, const char *path_to, __u64 o_flags_to,
-			   __u64 resolve_flags_to, unsigned int attr_flags,
-			   int userns_fd, bool recursive)
+int __fd_bind_mount(int dfd_from, const char *path_from, __u64 o_flags_from,
+		    __u64 resolve_flags_from, int dfd_to, const char *path_to,
+		    __u64 o_flags_to, __u64 resolve_flags_to, __u64 attr_set,
+		    __u64 attr_clr, __u64 propagation, int userns_fd,
+		    bool recursive)
 {
 	struct lxc_mount_attr attr = {
-		.attr_set = attr_flags,
+		.attr_set	= attr_set,
+		.attr_clr	= attr_clr,
+		.propagation	= propagation,
 	};
 	__do_close int __fd_from = -EBADF;
 	__do_close int fd_tree_from = -EBADF;
 	unsigned int open_tree_flags = AT_EMPTY_PATH | OPEN_TREE_CLONE | OPEN_TREE_CLOEXEC;
 	int fd_from, ret;
+
+	set_atime(&attr);
 
 	if (!is_empty_string(path_from)) {
 		struct lxc_open_how how = {
@@ -345,28 +384,6 @@ static int __fd_bind_mount(int dfd_from, const char *path_from,
 
 	return move_detached_mount(fd_tree_from, dfd_to, path_to, o_flags_to,
 				   resolve_flags_to);
-}
-
-int fd_mount_idmapped(int dfd_from, const char *path_from,
-		      __u64 o_flags_from, __u64 resolve_flags_from,
-		      int dfd_to, const char *path_to,
-		      __u64 o_flags_to, __u64 resolve_flags_to,
-		      unsigned int attr_flags, int userns_fd, bool recursive)
-{
-	return __fd_bind_mount(dfd_from, path_from, o_flags_from, resolve_flags_from,
-			       dfd_to, path_to, o_flags_to, resolve_flags_to,
-			       attr_flags, userns_fd, recursive);
-}
-
-int fd_bind_mount(int dfd_from, const char *path_from,
-		  __u64 o_flags_from, __u64 resolve_flags_from,
-		  int dfd_to, const char *path_to,
-		  __u64 o_flags_to, __u64 resolve_flags_to,
-		  unsigned int attr_flags, bool recursive)
-{
-	return __fd_bind_mount(dfd_from, path_from, o_flags_from, resolve_flags_from,
-			       dfd_to, path_to, o_flags_to, resolve_flags_to,
-			       attr_flags, -EBADF, recursive);
 }
 
 int calc_remount_flags_new(int dfd_from, const char *path_from,
@@ -591,4 +608,58 @@ bool can_use_bind_mounts(void)
 	}
 
 	return supported == 1;
+}
+
+int mount_at(int dfd_from, const char *path_from, __u64 resolve_flags_from,
+	     int dfd_to, const char *path_to, __u64 resolve_flags_to,
+	     const char *fs_name, unsigned int flags, const void *data)
+{
+	__do_close int __fd_from = -EBADF, __fd_to = -EBADF;
+	char *from = NULL, *to = NULL;
+	int fd_from, fd_to, ret;
+	char buf_from[LXC_PROC_SELF_FD_LEN], buf_to[LXC_PROC_SELF_FD_LEN];
+
+	if (dfd_from < 0 && !abspath(path_from))
+		return ret_errno(EINVAL);
+
+	if (dfd_to < 0 && !abspath(path_to))
+		return ret_errno(EINVAL);
+
+	if (!is_empty_string(path_from)) {
+		__fd_from = open_at(dfd_from, path_from, PROTECT_OPATH_FILE, resolve_flags_from, 0);
+		if (__fd_from < 0)
+			return -errno;
+		fd_from = __fd_from;
+	} else {
+		fd_from = dfd_from;
+	}
+	if (fd_from >= 0) {
+		ret = strnprintf(buf_from, sizeof(buf_from), "/proc/self/fd/%d", fd_from);
+		if (ret < 0)
+			return syserror("Failed to create path");
+		from = buf_from;
+	}
+
+	if (!is_empty_string(path_to)) {
+		__fd_to = open_at(dfd_to, path_to, PROTECT_OPATH_FILE, resolve_flags_to, 0);
+		if (__fd_to < 0)
+			return -errno;
+		fd_to = __fd_to;
+	} else {
+		fd_to = dfd_to;
+	}
+	if (fd_to >= 0) {
+		ret = strnprintf(buf_to, sizeof(buf_to), "/proc/self/fd/%d", fd_to);
+		if (ret < 0)
+			return syserror("Failed to create path");
+		to = buf_to;
+	}
+
+	ret = mount(from ?: fs_name, to, fs_name, flags, data);
+	if (ret < 0)
+		return syserror("Failed to mount \"%s\" to \"%s\"",
+				maybe_empty(from), maybe_empty(to));
+
+	TRACE("Mounted \"%s\" to \"%s\"", maybe_empty(from), maybe_empty(to));
+	return 0;
 }

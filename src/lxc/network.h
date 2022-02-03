@@ -3,6 +3,8 @@
 #ifndef __LXC_NETWORK_H
 #define __LXC_NETWORK_H
 
+#include "config.h"
+
 #include <arpa/inet.h>
 #include <linux/types.h>
 #include <stdbool.h>
@@ -11,6 +13,7 @@
 #include <unistd.h>
 
 #include "compiler.h"
+#include "hlist.h"
 #include "list.h"
 
 struct lxc_conf;
@@ -38,10 +41,7 @@ struct lxc_inetdev {
 	struct in_addr addr;
 	struct in_addr bcast;
 	unsigned int prefix;
-};
-
-struct lxc_route {
-	struct in_addr addr;
+	struct list_head head;
 };
 
 /*
@@ -56,10 +56,7 @@ struct lxc_inet6dev {
 	struct in6_addr mcast;
 	struct in6_addr acast;
 	unsigned int prefix;
-};
-
-struct lxc_route6 {
-	struct in6_addr addr;
+	struct list_head head;
 };
 
 /* Contains information about the host side veth device.
@@ -77,8 +74,8 @@ struct ifla_veth {
 	char pair[IFNAMSIZ];
 	char veth1[IFNAMSIZ];
 	int ifindex;
-	struct lxc_list ipv4_routes;
-	struct lxc_list ipv6_routes;
+	struct list_head ipv4_routes;
+	struct list_head ipv6_routes;
 	int mode; /* bridge, router */
 	short vlan_id;
 	bool vlan_id_set;
@@ -170,8 +167,8 @@ struct lxc_netdev {
 	char *hwaddr;
 	char *mtu;
 	union netdev_p priv;
-	struct lxc_list ipv4;
-	struct lxc_list ipv6;
+	struct list_head ipv4_addresses;
+	struct list_head ipv6_addresses;
 	bool ipv4_gateway_auto;
 	bool ipv4_gateway_dev;
 	struct in_addr *ipv4_gateway;
@@ -180,6 +177,7 @@ struct lxc_netdev {
 	struct in6_addr *ipv6_gateway;
 	char *upscript;
 	char *downscript;
+	struct list_head head;
 };
 
 /* Convert a string mac address to a socket structure. */
@@ -267,8 +265,7 @@ __hidden extern void lxc_delete_network(struct lxc_handler *handler);
 __hidden extern int lxc_find_gateway_addresses(struct lxc_handler *handler);
 __hidden extern int lxc_requests_empty_network(struct lxc_handler *handler);
 __hidden extern int lxc_restore_phys_nics_to_netns(struct lxc_handler *handler);
-__hidden extern int lxc_setup_network_in_child_namespaces(const struct lxc_conf *conf,
-							  struct lxc_list *network);
+__hidden extern int lxc_setup_network_in_child_namespaces(const struct lxc_conf *conf);
 __hidden extern int lxc_network_send_to_child(struct lxc_handler *handler);
 __hidden extern int lxc_network_recv_from_parent(struct lxc_handler *handler);
 __hidden extern int lxc_network_send_name_and_ifindex_to_parent(struct lxc_handler *handler);
