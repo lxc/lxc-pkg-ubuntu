@@ -1,0 +1,45 @@
+From d7bed799b8232c1b3decf30366ce8d8a5902f2cd Mon Sep 17 00:00:00 2001
+From: =?UTF-8?q?St=C3=A9phane=20Graber?= <stgraber@ubuntu.com>
+Date: Wed, 2 Feb 2022 21:28:55 -0500
+Subject: doc: Fix reverse allowlist/denylist
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+Reported at: https://bugs.launchpad.net/ubuntu/+source/lxc/+bug/1957934
+Signed-off-by: Stéphane Graber <stgraber@ubuntu.com>
+---
+ doc/lxc.container.conf.sgml.in | 6 +++---
+ 1 file changed, 3 insertions(+), 3 deletions(-)
+
+diff --git a/doc/lxc.container.conf.sgml.in b/doc/lxc.container.conf.sgml.in
+index c1054ddbc..a29cee08b 100644
+--- a/doc/lxc.container.conf.sgml.in
++++ b/doc/lxc.container.conf.sgml.in
+@@ -1646,7 +1646,7 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA
+         <itemizedlist>
+           <listitem>
+ 	    <para>
+-	      A allowlist device rule
++	      A denylist device rule
+               <programlisting>
+ 	        lxc.cgroup2.devices.deny = a
+               </programlisting>
+@@ -1659,7 +1659,7 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA
+ 
+           <listitem>
+ 	    <para>
+-	      A denylist device rule
++	      An allowlist device rule
+               <programlisting>
+ 	        lxc.cgroup2.devices.allow = a
+               </programlisting>
+@@ -1749,7 +1749,7 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA
+           lxc.cgroup2.devices.deny = a
+         </programlisting>
+ 	instead then the last line will cause LXC to reset the device list and
+-	switch from a allowlist program to a denylist program.
++	switch from an allowlist program to a denylist program.
+       </para>
+       <variablelist>
+         <varlistentry>
