@@ -16,7 +16,8 @@
  * 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
  */
 
-#define _GNU_SOURCE
+#include "config.h"
+
 #include <alloca.h>
 #include <errno.h>
 #include <pthread.h>
@@ -137,7 +138,7 @@ __noreturn static void *ns_sharing_wrapper(void *data)
 		lxc_error("Failed to retrieve ipc namespace for container \"%s\"\n", name);
 		goto out;
 	}
-	ns_buf[ret == 0 ? ret : ret - 1] = '\0';
+	ns_buf[ret] = '\0';
 
 	if (strcmp(args->inherited_ipc_ns, ns_buf) != 0) {
 		lxc_error("Failed to inherit ipc namespace from container \"owning-ns\": %s != %s\n", args->inherited_ipc_ns, ns_buf);
@@ -157,7 +158,7 @@ __noreturn static void *ns_sharing_wrapper(void *data)
 		lxc_error("Failed to retrieve ipc namespace for container \"%s\"\n", name);
 		goto out;
 	}
-	ns_buf[ret == 0 ? ret : ret - 1] = '\0';
+	ns_buf[ret] = '\0';
 
 	if (strcmp(args->inherited_net_ns, ns_buf) != 0) {
 		lxc_error("Failed to inherit net namespace from container \"owning-ns\": %s != %s\n", args->inherited_net_ns, ns_buf);

@@ -1,9 +1,7 @@
 /* SPDX-License-Identifier: LGPL-2.1+ */
 
-#ifndef _GNU_SOURCE
-#define _GNU_SOURCE 1
-#endif
-#define __STDC_FORMAT_MACROS /* Required for PRIu64 to work. */
+#include "config.h"
+
 #include <errno.h>
 #include <fcntl.h>
 #include <inttypes.h>
@@ -18,16 +16,16 @@
 #include <syslog.h>
 #include <unistd.h>
 
+#include "lxc.h"
+
 #include "caps.h"
-#include "config.h"
 #include "file_utils.h"
 #include "log.h"
-#include "lxccontainer.h"
 #include "memory_utils.h"
 #include "utils.h"
 
-#ifndef HAVE_STRLCPY
-#include "include/strlcpy.h"
+#if !HAVE_STRLCPY
+#include "strlcpy.h"
 #endif
 
 #if HAVE_DLOG
@@ -280,19 +278,19 @@ static int lxc_unix_epoch_to_utc(char *buf, size_t bufsize, const struct timespe
 	seconds = (time->tv_sec - d_in_s - h_in_s - (minutes * 60));
 
 	/* Make string from nanoseconds. */
-	ret = snprintf(nanosec, sizeof(nanosec), "%"PRId64, (int64_t)time->tv_nsec);
-	if (ret < 0 || (size_t)ret >= sizeof(nanosec))
+	ret = strnprintf(nanosec, sizeof(nanosec), "%"PRId64, (int64_t)time->tv_nsec);
+	if (ret < 0)
 		return ret_errno(EIO);
 
 	/*
 	 * Create final timestamp for the log and shorten nanoseconds to 3
 	 * digit precision.
 	 */
-	ret = snprintf(buf, bufsize,
+	ret = strnprintf(buf, bufsize,
 		       "%" PRId64 "%02" PRId64 "%02" PRId64 "%02" PRId64
 		       "%02" PRId64 "%02" PRId64 ".%.3s",
 		       year, month, day, hours, minutes, seconds, nanosec);
-	if (ret < 0 || (size_t)ret >= bufsize)
+	if (ret < 0)
 		return ret_errno(EIO);
 
 	return 0;
@@ -346,6 +344,10 @@ static int log_append_logfile(const struct lxc_log_appender *appender,
 	if (ret)
 		return ret;
 
+	/*
+	 * We allow truncation here which is why we use snprintf() directly
+	 * instead of strnprintf().
+	 */
 	n = snprintf(buffer, sizeof(buffer),
 		     "%s%s%s %s %-8s %s - %s:%s:%d - ",
 		     log_prefix,
@@ -485,6 +487,9 @@ static int build_dir(const char *name)
 	__do_free char *n = NULL;
 	char *e, *p;
 
+	if (is_empty_string(name))
+		return ret_errno(EINVAL);
+
 	/* Make copy of the string since we'll be modifying it. */
 	n = strdup(name);
 	if (!n)
@@ -498,7 +503,14 @@ static int build_dir(const char *name)
 			continue;
 		*p = '\0';
 
+#ifndef FUZZING_BUILD_MODE_UNSAFE_FOR_PRODUCTION
 		ret = lxc_unpriv(mkdir(n, 0755));
+#else
+		if (RUN_ON_OSS_FUZZ || is_in_comm("fuzz-lxc-") > 0)
+			ret = errno = EEXIST;
+		else
+			ret = lxc_unpriv(mkdir(n, 0755));
+#endif /*!FUZZING_BUILD_MODE_UNSAFE_FOR_PRODUCTION */
 		*p = '/';
 		if (ret && errno != EEXIST)
 			return log_error_errno(-errno, errno, "Failed to create directory \"%s\"", n);
@@ -509,10 +521,15 @@ static int build_dir(const char *name)
 
 static int log_open(const char *name)
 {
+	int newfd = -EBADF;
 	__do_close int fd = -EBADF;
-	int newfd;
 
+#ifndef FUZZING_BUILD_MODE_UNSAFE_FOR_PRODUCTION
 	fd = lxc_unpriv(open(name, O_CREAT | O_WRONLY | O_APPEND | O_CLOEXEC, 0660));
+#else
+	if (!RUN_ON_OSS_FUZZ && is_in_comm("fuzz-lxc-") <= 0)
+		fd = lxc_unpriv(open(name, O_CREAT | O_WRONLY | O_APPEND | O_CLOEXEC, 0660));
+#endif /* !FUZZING_BUILD_MODE_UNSAFE_FOR_PRODUCTION */
 	if (fd < 0)
 		return log_error_errno(-errno, errno, "Failed to open log file \"%s\"", name);
 
@@ -522,7 +539,6 @@ static int log_open(const char *name)
 	newfd = fcntl(fd, F_DUPFD_CLOEXEC, STDERR_FILENO);
 	if (newfd < 0)
 		return log_error_errno(-errno, errno, "Failed to dup log fd %d", fd);
-
 	return newfd;
 }
 
@@ -572,10 +588,10 @@ static char *build_log_path(const char *name, const char *lxcpath)
 		return ret_set_errno(NULL, ENOMEM);
 
 	if (use_dir)
-		ret = snprintf(p, len, "%s/%s/%s.log", lxcpath, name, name);
+		ret = strnprintf(p, len, "%s/%s/%s.log", lxcpath, name, name);
 	else
-		ret = snprintf(p, len, "%s/%s.log", lxcpath, name);
-	if (ret < 0 || (size_t)ret >= len)
+		ret = strnprintf(p, len, "%s/%s.log", lxcpath, name);
+	if (ret < 0)
 		return ret_set_errno(NULL, EIO);
 
 	return move_ptr(p);
@@ -595,7 +611,7 @@ static int __lxc_log_set_file(const char *fname, int create_dirs)
 	if (lxc_log_fd >= 0)
 		lxc_log_close();
 
-	if (!fname)
+	if (is_empty_string(fname))
 		return ret_errno(EINVAL);
 
 	if (strlen(fname) == 0) {
@@ -666,7 +682,7 @@ int lxc_log_init(struct lxc_log *log)
 		log_vmname = strdup(log->name);
 
 	if (log->file) {
-		if (strcmp(log->file, "none") == 0)
+		if (strequal(log->file, "none"))
 			return 0;
 
 		ret = __lxc_log_set_file(log->file, 1);
@@ -685,7 +701,7 @@ int lxc_log_init(struct lxc_log *log)
 			log->lxcpath = LOGPATH;
 
 		/* try LOGPATH if lxcpath is the default for the privileged containers */
-		if (!geteuid() && strcmp(LXCPATH, log->lxcpath) == 0)
+		if (!geteuid() && strequal(LXCPATH, log->lxcpath))
 			ret = _lxc_log_set_file(log->name, NULL, 0);
 
 		/* try in lxcpath */
@@ -811,13 +827,15 @@ int lxc_log_set_file(int *fd, const char *fname)
 	if (*fd >= 0)
 		close_prot_errno_disarm(*fd);
 
+	if (is_empty_string(fname))
+		return ret_errno(EINVAL);
+
 	if (build_dir(fname))
 		return -errno;
 
 	*fd = log_open(fname);
 	if (*fd < 0)
 		return -errno;
-
 	return 0;
 }
 

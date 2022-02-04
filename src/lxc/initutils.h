@@ -3,6 +3,8 @@
 #ifndef __LXC_INITUTILS_H
 #define __LXC_INITUTILS_H
 
+#include "config.h"
+
 #include <errno.h>
 #include <fcntl.h>
 #include <inttypes.h>
@@ -11,6 +13,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include <sys/mount.h>
+#include <sys/prctl.h>
 #include <sys/stat.h>
 #include <sys/types.h>
 #include <unistd.h>
@@ -53,5 +56,7 @@ struct prctl_mm_map {
 __hidden extern const char *lxc_global_config_value(const char *option_name);
 
 __hidden extern int setproctitle(char *title);
+
+__hidden __noreturn int lxc_container_init(int argc, char *const *argv, bool quiet);
 
 #endif /* __LXC_INITUTILS_H */

@@ -1,8 +1,7 @@
 /* SPDX-License-Identifier: LGPL-2.1+ */
 
-#ifndef _GNU_SOURCE
-#define _GNU_SOURCE 1
-#endif
+#include "config.h"
+
 #include <arpa/inet.h>
 #include <ctype.h>
 #include <errno.h>
@@ -30,7 +29,6 @@
 #include <unistd.h>
 
 #include "compiler.h"
-#include "config.h"
 #include "file_utils.h"
 #include "log.h"
 #include "memory_utils.h"
@@ -42,8 +40,8 @@
 #include "syscall_wrappers.h"
 #include "utils.h"
 
-#ifndef HAVE_STRLCPY
-#include "include/strlcpy.h"
+#if !HAVE_STRLCPY
+#include "strlcpy.h"
 #endif
 
 #define usernic_debug_stream(stream, format, ...)                              \
@@ -111,11 +109,11 @@ static char *get_username(void)
 	__do_free char *buf = NULL;
 	struct passwd pwent;
 	struct passwd *pwentp = NULL;
-	size_t bufsize;
+	ssize_t bufsize;
 	int ret;
 
 	bufsize = sysconf(_SC_GETPW_R_SIZE_MAX);
-	if (bufsize == -1)
+	if (bufsize < 0)
 		bufsize = 1024;
 
 	buf = malloc(bufsize);
@@ -144,7 +142,7 @@ static char **get_groupnames(void)
 	int ret, i;
 	struct group grent;
 	struct group *grentp = NULL;
-	size_t bufsize;
+	ssize_t bufsize;
 
 	ngroups = getgroups(0, NULL);
 	if (ngroups < 0) {
@@ -174,7 +172,7 @@ static char **get_groupnames(void)
 	}
 
 	bufsize = sysconf(_SC_GETGR_R_SIZE_MAX);
-	if (bufsize == -1)
+	if (bufsize < 0)
 		bufsize = 1024;
 
 	buf = malloc(bufsize);
@@ -233,10 +231,10 @@ struct alloted_s {
 	struct alloted_s *next;
 };
 
-static struct alloted_s *append_alloted(struct alloted_s **head, char *name,
-					int n)
+static struct alloted_s *append_alloted(struct alloted_s **head, char *name, int n)
 {
-	struct alloted_s *cur, *al;
+	__do_free struct alloted_s *al = NULL;
+	struct alloted_s *cur;
 
 	if (!head || !name) {
 		/* Sanity check. Parameters should not be null. */
@@ -244,32 +242,29 @@ static struct alloted_s *append_alloted(struct alloted_s **head, char *name,
 		return NULL;
 	}
 
-	al = malloc(sizeof(struct alloted_s));
+	al = zalloc(sizeof(struct alloted_s));
 	if (!al) {
 		CMD_SYSERROR("Failed to allocate memory\n");
 		return NULL;
 	}
 
 	al->name = strdup(name);
-	if (!al->name) {
-		free(al);
+	if (!al->name)
 		return NULL;
-	}
 
 	al->allowed = n;
 	al->next = NULL;
 
-	if (!*head) {
+	if (*head) {
+		cur = *head;
+		while (cur->next)
+			cur = cur->next;
+		cur->next = al;
+	} else {
 		*head = al;
-		return al;
 	}
 
-	cur = *head;
-	while (cur->next)
-		cur = cur->next;
-	cur->next = al;
-
-	return al;
+	return move_ptr(al);
 }
 
 static void free_alloted(struct alloted_s **head)
@@ -321,10 +316,10 @@ static int get_alloted(char *me, char *intype, char *link,
 		if (ret != 4)
 			continue;
 
-		if (strlen(name) == 0)
+		if (is_empty_string(name))
 			continue;
 
-		if (strcmp(name, me)) {
+		if (!strequal(name, me)) {
 			if (name[0] != '@')
 				continue;
 
@@ -332,17 +327,17 @@ static int get_alloted(char *me, char *intype, char *link,
 				continue;
 		}
 
-		if (strcmp(type, intype))
+		if (!strequal(type, intype))
 			continue;
 
-		if (strcmp(link, br))
+		if (!strequal(link, br))
 			continue;
 
-		/* Found the user or group with the appropriate settings,
-		 * therefore finish the search. What to do if there are more
-		 * than one applicable lines? not specified in the docs. Since
-		 * getline is implemented with realloc, we don't need to free
-		 * line until exiting func.
+		/*
+		 * Found the user or group with the appropriate settings,
+		 * therefore finish the search. What to do if there are is more
+		 * than one applicable line? Currently this is not specified in
+		 * the docs.
 		 *
 		 * If append_alloted returns NULL, e.g. due to a malloc error,
 		 * we set count to 0 and break the loop, allowing cleanup and
@@ -662,6 +657,7 @@ static char *get_nic_if_avail(int fd, struct alloted_s *names, int pid,
 	size_t length = 0;
 	int ret;
 	size_t slen;
+	ssize_t nbytes;
 	char *owner;
 	char nicname[IFNAMSIZ];
 	struct alloted_s *n;
@@ -758,7 +754,8 @@ static char *get_nic_if_avail(int fd, struct alloted_s *names, int pid,
 		return NULL;
 	}
 
-	if (lxc_pwrite_nointr(fd, newline, slen, length) != slen) {
+	nbytes = lxc_pwrite_nointr(fd, newline, slen, length);
+	if (nbytes < 0 || (size_t)nbytes != slen) {
 		CMD_SYSERROR("Failed to append new entry \"%s\" to database file", newline);
 
 		if (lxc_netdev_delete_by_name(nicname) != 0)

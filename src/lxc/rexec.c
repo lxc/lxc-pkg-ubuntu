@@ -1,15 +1,13 @@
 /* SPDX-License-Identifier: LGPL-2.1+ */
 
-#ifndef _GNU_SOURCE
-#define _GNU_SOURCE 1
-#endif
+#include "config.h"
+
 #include <errno.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 #include <unistd.h>
 
-#include "config.h"
 #include "file_utils.h"
 #include "macro.h"
 #include "memory_utils.h"
@@ -19,7 +17,7 @@
 #include "syscall_wrappers.h"
 
 #if IS_BIONIC
-#include "../include/fexecve.h"
+#include "fexecve.h"
 #endif
 
 #define LXC_MEMFD_REXEC_SEALS \
@@ -98,9 +96,9 @@ static void lxc_rexec_as_memfd(char **argv, char **envp, const char *memfd_name)
 	if (memfd < 0) {
 		char template[PATH_MAX];
 
-		ret = snprintf(template, sizeof(template),
-			       P_tmpdir "/.%s_XXXXXX", memfd_name);
-		if (ret < 0 || (size_t)ret >= sizeof(template))
+		ret = strnprintf(template, sizeof(template),
+				 P_tmpdir "/.%s_XXXXXX", memfd_name);
+		if (ret < 0)
 			return;
 
 		tmpfd = lxc_make_tmpfile(template, true);
@@ -151,8 +149,8 @@ static void lxc_rexec_as_memfd(char **argv, char **envp, const char *memfd_name)
 	} else {
 		char procfd[LXC_PROC_PID_FD_LEN];
 
-		ret = snprintf(procfd, sizeof(procfd), "/proc/self/fd/%d", tmpfd);
-		if (ret < 0 || (size_t)ret >= sizeof(procfd))
+		ret = strnprintf(procfd, sizeof(procfd), "/proc/self/fd/%d", tmpfd);
+		if (ret < 0)
 			return;
 
 		execfd = open(procfd, O_PATH | O_CLOEXEC);

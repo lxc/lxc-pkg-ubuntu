@@ -1,0 +1,24 @@
+From bc77c3843591b1663b2cd24871f3fec9484b84fb Mon Sep 17 00:00:00 2001
+From: Christian Brauner <christian.brauner@ubuntu.com>
+Date: Fri, 22 Jan 2021 17:56:14 +0100
+Subject: initutils: fix missing includes
+
+Cc: stable-4.0
+Signed-off-by: Christian Brauner <christian.brauner@ubuntu.com>
+---
+ src/lxc/initutils.h | 2 ++
+ 1 file changed, 2 insertions(+)
+
+diff --git a/src/lxc/initutils.h b/src/lxc/initutils.h
+index 2e749063f..49901aeae 100644
+--- a/src/lxc/initutils.h
++++ b/src/lxc/initutils.h
+@@ -18,6 +18,8 @@
+ #include <sys/types.h>
+ #include <unistd.h>
+ 
++#include "config.h"
++#include "cgroups/cgroup.h"
+ #include "compiler.h"
+ #include "string_utils.h"
+ 

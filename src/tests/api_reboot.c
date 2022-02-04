@@ -16,6 +16,8 @@
  * 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
  */
 
+#include "config.h"
+
 #include <alloca.h>
 #include <stdio.h>
 #include <sched.h>
@@ -31,8 +33,8 @@
 #include "lxctest.h"
 #include "utils.h"
 
-#ifndef HAVE_STRLCPY
-#include "include/strlcpy.h"
+#if !HAVE_STRLCPY
+#include "strlcpy.h"
 #endif
 
 #define TSTNAME "lxc-api-reboot"
@@ -109,7 +111,7 @@ int main(int argc, char *argv[])
 	/* reboot 10 times */
 	for (i = 0; i < 10; i++) {
 		/* Give the init system some time to setup it's signal handlers
-		 * otherwise we will hang indefinitely.
+		 * otherwise we will wait indefinitely.
 		 */
 		sleep(5);
 
@@ -126,7 +128,7 @@ int main(int argc, char *argv[])
 	}
 
 	/* Give the init system some time to setup it's signal handlers
-	 * otherwise we will hang indefinitely.
+	 * otherwise we will wait indefinitely.
 	 */
 	sleep(5);
 

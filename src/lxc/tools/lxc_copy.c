@@ -1,8 +1,7 @@
 /* SPDX-License-Identifier: GPL-2.0-only */
 
-#ifndef _GNU_SOURCE
-#define _GNU_SOURCE 1
-#endif
+#include "config.h"
+
 #include <errno.h>
 #include <fcntl.h>
 #include <getopt.h>
@@ -18,15 +17,14 @@
 #include <time.h>
 #include <unistd.h>
 
-#include <lxc/lxccontainer.h>
+#include "lxc.h"
 
 #include "arguments.h"
-#include "config.h"
 #include "log.h"
 #include "storage_utils.h"
 #include "utils.h"
 
-#ifndef HAVE_GETSUBOPT
+#if !HAVE_GETSUBOPT
 #include "include/getsubopt.h"
 #endif
 
@@ -287,6 +285,41 @@ static int mk_rand_ovl_dirs(struct mnts *mnts, unsigned int num, struct lxc_argu
 	}
 
 	return 0;
+}
+
+static char **lxc_normalize_path(const char *path)
+{
+	char **components;
+	size_t components_len = 0;
+	size_t pos = 0;
+
+	components = lxc_string_split(path, '/');
+	if (!components)
+		return NULL;
+
+	/* resolve '.' and '..' */
+	for (pos = 0; pos < components_len;) {
+		if (strequal(components[pos], ".") ||
+		    (strequal(components[pos], "..") && pos == 0)) {
+			/* eat this element */
+			free(components[pos]);
+			memmove(&components[pos], &components[pos + 1],
+				sizeof(char *) * (components_len - pos));
+			components_len--;
+		} else if (strequal(components[pos], "..")) {
+			/* eat this and the previous element */
+			free(components[pos - 1]);
+			free(components[pos]);
+			memmove(&components[pos - 1], &components[pos + 1],
+				sizeof(char *) * (components_len - pos));
+			components_len -= 2;
+			pos--;
+		} else {
+			pos++;
+		}
+	}
+
+	return components;
 }
 
 static char *construct_path(char *path, bool as_prefix)

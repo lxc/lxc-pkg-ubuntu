@@ -1,8 +1,7 @@
 /* SPDX-License-Identifier: LGPL-2.1+ */
 
-#ifndef _GNU_SOURCE
-#define _GNU_SOURCE 1
-#endif
+#include "config.h"
+
 #include <errno.h>
 #include <sched.h>
 #include <signal.h>
@@ -12,7 +11,6 @@
 #include <unistd.h>
 
 #include "compiler.h"
-#include "config.h"
 #include "log.h"
 #include "macro.h"
 #include "process_utils.h"
@@ -146,14 +144,12 @@ int lxc_raw_pidfd_send_signal(int pidfd, int sig, siginfo_t *info,
 #define __LXC_STACK_SIZE (8 * 1024 * 1024)
 pid_t lxc_clone(int (*fn)(void *), void *arg, int flags, int *pidfd)
 {
+	__do_free void *stack = NULL;
 	pid_t ret;
-	void *stack;
 
 	stack = malloc(__LXC_STACK_SIZE);
-	if (!stack) {
-		SYSERROR("Failed to allocate clone stack");
-		return -ENOMEM;
-	}
+	if (!stack)
+		return syserror_set(-ENOMEM, "Failed to allocate clone stack");
 
 #ifdef __ia64__
 	ret = __clone2(fn, stack, __LXC_STACK_SIZE, flags | SIGCHLD, arg, pidfd);

@@ -3,13 +3,25 @@
 #ifndef __LXC_MOUNT_UTILS_H
 #define __LXC_MOUNT_UTILS_H
 
+#include "config.h"
+
+#include <linux/types.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <sys/mount.h>
 
 #include "compiler.h"
+#include "memory_utils.h"
+#include "syscall_wrappers.h"
+
+struct lxc_rootfs;
 
 /* open_tree() flags */
+
+#ifndef AT_RECURSIVE
+#define AT_RECURSIVE 0x8000 /* Apply to the entire subtree */
+#endif
+
 #ifndef OPEN_TREE_CLONE
 #define OPEN_TREE_CLONE 1
 #endif
@@ -144,10 +156,104 @@
 #define MOUNT_ATTR_NODIRATIME 0x00000080 /* Do not update directory access times */
 #endif
 
+#ifndef MOUNT_ATTR_IDMAP
+#define MOUNT_ATTR_IDMAP 0x00100000
+#endif
+
 __hidden extern int mnt_attributes_new(unsigned int old_flags, unsigned int *new_flags);
 
 __hidden extern int mnt_attributes_old(unsigned int new_flags, unsigned int *old_flags);
 
-__hidden extern int mount_filesystem(const char *fs_name, const char *path, unsigned int attr_flags);
+__hidden extern int fs_prepare(const char *fs_name, int dfd_from,
+			       const char *path_from, __u64 o_flags_from,
+			       __u64 resolve_flags_from);
+__hidden extern int fs_set_property(int fd_fs, const char *key, const char *val);
+__hidden extern int fs_set_flag(int fd_fs, const char *key);
+__hidden extern int fs_attach(int fd_fs, int dfd_to, const char *path_to,
+			      __u64 o_flags_to, __u64 resolve_flags_to,
+			      unsigned int attr_flags);
+
+static inline int fs_mount(const char *fs_name, int dfd_from,
+			   const char *path_from, __u64 o_flags_from,
+			   __u64 resolve_flags_from, int dfd_to,
+			   const char *path_to, __u64 o_flags_to,
+			   __u64 resolve_flags_to,
+			   unsigned int attr_flags)
+{
+	__do_close int fd_fs = -EBADF;
+
+	fd_fs = fs_prepare(fs_name, dfd_from, path_from, o_flags_from, resolve_flags_from);
+	if (fd_fs < 0)
+		return -errno;
+	return fs_attach(fd_fs, dfd_to, path_to, o_flags_to, resolve_flags_to, attr_flags);
+}
+
+__hidden extern int __fd_bind_mount(int dfd_from, const char *path_from,
+				    __u64 o_flags_from,
+				    __u64 resolve_flags_from, int dfd_to,
+				    const char *path_to, __u64 o_flags_to,
+				    __u64 resolve_flags_to, __u64 attr_set,
+				    __u64 attr_clr, __u64 propagation,
+				    int userns_fd, bool recursive);
+static inline int fd_mount_idmapped(int dfd_from, const char *path_from,
+				    __u64 o_flags_from,
+				    __u64 resolve_flags_from, int dfd_to,
+				    const char *path_to, __u64 o_flags_to,
+				    __u64 resolve_flags_to, __u64 attr_set,
+				    __u64 attr_clr, __u64 propagation,
+				    int userns_fd, bool recursive)
+{
+	return __fd_bind_mount(dfd_from, path_from, o_flags_from,
+			       resolve_flags_from, dfd_to, path_to, o_flags_to,
+			       resolve_flags_to, attr_set, attr_clr,
+			       propagation, userns_fd, recursive);
+}
+
+static inline int fd_bind_mount(int dfd_from, const char *path_from,
+				__u64 o_flags_from, __u64 resolve_flags_from,
+				int dfd_to, const char *path_to,
+				__u64 o_flags_to, __u64 resolve_flags_to,
+				__u64 attr_set, __u64 attr_clr,
+				__u64 propagation, bool recursive)
+{
+	return __fd_bind_mount(dfd_from, path_from, o_flags_from, resolve_flags_from,
+			       dfd_to, path_to, o_flags_to, resolve_flags_to,
+			       attr_set, attr_clr, propagation, -EBADF, recursive);
+}
+__hidden extern int create_detached_idmapped_mount(const char *path,
+						   int userns_fd, bool recursive,
+						   __u64 attr_set, __u64 attr_clr);
+__hidden extern int move_detached_mount(int dfd_from, int dfd_to,
+					const char *path_to, __u64 o_flags_to,
+					__u64 resolve_flags_to);
+
+__hidden extern int calc_remount_flags_new(int dfd_from, const char *path_from,
+					   __u64 o_flags_from,
+					   __u64 resolve_flags_from,
+					   bool remount, unsigned long cur_flags,
+					   unsigned int *new_flags);
+
+__hidden extern int calc_remount_flags_old(int dfd_from, const char *path_from,
+					   __u64 o_flags_from,
+					   __u64 resolve_flags_from,
+					   bool remount, unsigned long cur_flags,
+					   unsigned int *old_flags);
+
+__hidden extern unsigned long add_required_remount_flags(const char *s,
+							 const char *d,
+							 unsigned long flags);
+
+__hidden extern bool can_use_mount_api(void);
+__hidden extern bool can_use_bind_mounts(void);
+__hidden extern int mount_at(int dfd_from, const char *path_from,
+			     __u64 resolve_flags_from, int dfd_to,
+			     const char *path_to, __u64 resolve_flags_to,
+			     const char *fs_name, unsigned int flags,
+			     const void *data);
+static inline int mount_fd(int fd_from, int fd_to, const char *fs_name,
+			   unsigned int flags, const void *data)
+{
+	return mount_at(fd_from, "", 0, fd_to, "", 0, fs_name, flags, data);
+}
 
 #endif /* __LXC_MOUNT_UTILS_H */

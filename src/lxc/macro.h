@@ -3,10 +3,8 @@
 #ifndef __LXC_MACRO_H
 #define __LXC_MACRO_H
 
-#ifndef _GNU_SOURCE
-#define _GNU_SOURCE 1
-#endif
-#define __STDC_FORMAT_MACROS
+#include "config.h"
+
 #include <asm/types.h>
 #include <limits.h>
 #include <linux/if_link.h>
@@ -21,6 +19,12 @@
 #include <sys/un.h>
 #include <unistd.h>
 
+#include "compiler.h"
+
+#if HAVE_LIBURING
+#include <liburing.h>
+#endif
+
 #ifndef PATH_MAX
 #define PATH_MAX 4096
 #endif
@@ -34,6 +38,27 @@
 /* Define __S_ISTYPE if missing from the C library. */
 #ifndef __S_ISTYPE
 #define __S_ISTYPE(mode, mask) (((mode)&S_IFMT) == (mask))
+#endif
+
+/*
+ * POLL_ADD flags. Note that since sqe->poll_events is the flag space, the
+ * command flags for POLL_ADD are stored in sqe->len.
+ *
+ * IORING_POLL_ADD_MULTI	Multishot poll. Sets IORING_CQE_F_MORE if
+ *				the poll handler will continue to report
+ *				CQEs on behalf of the same SQE.
+ */
+#ifndef IORING_POLL_ADD_MULTI
+#define IORING_POLL_ADD_MULTI (1U << 0)
+#endif
+
+/*
+ * cqe->flags
+ *
+ * IORING_CQE_F_MORE	If set, parent SQE will generate more CQE entries
+ */
+#ifndef IORING_CQE_F_MORE
+#define IORING_CQE_F_MORE (1U << 1)
 #endif
 
 /* capabilities */
@@ -293,8 +318,29 @@
  *                +
  * \0           =    1
  */
+#define LXC_PROC_PID_LEN \
+	(6 + INTTYPE_TO_STRLEN(pid_t) + 1)
+
+/* /proc/       =    6
+ *                +
+ * <pid-as-str> =   INTTYPE_TO_STRLEN(pid_t)
+ *                +
+ * /fd/         =    4
+ *                +
+ * <fd-as-str>  =   INTTYPE_TO_STRLEN(int)
+ *                +
+ * \0           =    1
+ */
 #define LXC_PROC_PID_FD_LEN \
 	(6 + INTTYPE_TO_STRLEN(pid_t) + 4 + INTTYPE_TO_STRLEN(int) + 1)
+
+/* /proc/self/fd/ =    14
+ *                   +
+ * <fd-as-str>    =    INTTYPE_TO_STRLEN(int)
+ *                   +
+ * \0           =      1
+ */
+#define LXC_PROC_SELF_FD_LEN (14 + INTTYPE_TO_STRLEN(int) + 1)
 
 /* /proc/        = 6
  *               +
@@ -312,11 +358,31 @@
  *               +
  * /attr/        = 6
  *               +
+ * /apparmor/    = 10
+ *               +
  * /current      = 8
  *               +
  * \0            = 1
  */
-#define LXC_LSMATTRLEN (6 + INTTYPE_TO_STRLEN(pid_t) + 6 + 8 + 1)
+#define LXC_LSMATTRLEN (6 + INTTYPE_TO_STRLEN(pid_t) + 6 + 10 + 8 + 1)
+
+/* MAX_NS_PROC_NAME = MAX_NS_PROC_NAME
+ *                  +
+ * :                = 1
+ *                  +
+ * /proc/           = 6
+ *                  +
+ * <pid-as_str>     = INTTYPE_TO_STRLEN(pid_t)
+ *                  +
+ * /fd/             = 4
+ *                  +
+ * <int-as-str>     = INTTYPE_TO_STRLEN(int)
+ *                  +
+ * \0               = 1
+ */
+#define LXC_EXPOSE_NAMESPACE_LEN                                   \
+	(MAX_NS_PROC_NAME + 1 + 6 + INTTYPE_TO_STRLEN(pid_t) + 4 + \
+	 INTTYPE_TO_STRLEN(int) + 1)
 
 #define LXC_CMD_DATA_MAX (PATH_MAX * 2)
 
@@ -364,11 +430,6 @@ extern int __build_bug_on_failed;
 			__build_bug_on_failed = 1;           \
 	} while (0)
 #endif
-
-#define lxc_iterate_parts(__iterator, __splitme, __separators)                  \
-	for (char *__p = NULL, *__it = strtok_r(__splitme, __separators, &__p); \
-	     (__iterator = __it);                                               \
-	     __iterator = __it = strtok_r(NULL, __separators, &__p))
 
 #define prctl_arg(x) ((unsigned long)x)
 
@@ -510,6 +571,34 @@ extern int __build_bug_on_failed;
 #define IPVLAN_ISOLATION_VEPA 2
 #endif
 
+#ifndef BRIDGE_VLAN_NONE
+#define BRIDGE_VLAN_NONE -1 /* Bridge VLAN option set to "none". */
+#endif
+
+#ifndef BRIDGE_VLAN_ID_MAX
+#define BRIDGE_VLAN_ID_MAX 4094 /* Bridge VLAN MAX VLAN ID. */
+#endif
+
+#ifndef BRIDGE_FLAGS_MASTER
+#define BRIDGE_FLAGS_MASTER 1 /* Bridge command to/from parent */
+#endif
+
+#ifndef BRIDGE_VLAN_INFO_PVID
+#define BRIDGE_VLAN_INFO_PVID (1<<1) /* VLAN is PVID, ingress untagged */
+#endif
+
+#ifndef BRIDGE_VLAN_INFO_UNTAGGED
+#define BRIDGE_VLAN_INFO_UNTAGGED (1<<2) /* VLAN egresses untagged */
+#endif
+
+#ifndef IFLA_BRIDGE_FLAGS
+#define IFLA_BRIDGE_FLAGS 0
+#endif
+
+#ifndef IFLA_BRIDGE_VLAN_INFO
+#define IFLA_BRIDGE_VLAN_INFO 2
+#endif
+
 /* Attributes of RTM_NEWNSID/RTM_GETNSID messages */
 enum {
 	__LXC_NETNSA_NONE,
@@ -597,16 +686,10 @@ enum {
 		__internal_ret__;                             \
 	})
 
-#define ret_errno(__errno__)         \
-	({                           \
-		errno = (__errno__); \
-		-(__errno__);        \
-	})
-
-#define free_move_ptr(a, b)          \
-	({                           \
-		free(a);             \
-		(a) = move_ptr((b)); \
+#define ret_errno(__errno__)             \
+	({                               \
+		errno = labs(__errno__); \
+		-errno;                  \
 	})
 
 /* Container's specific file/directory names */
@@ -628,5 +711,105 @@ enum {
 		#define TIOCGPTPEER _IO('T', 0x41)
 	#endif
 #endif
+
+#define ENOCGROUP2 ENOMEDIUM
+
+#define MAX_FILENO ~0U
+
+#define swap(a, b)                     \
+	do {                           \
+		typeof(a) __tmp = (a); \
+		(a) = (b);             \
+		(b) = __tmp;           \
+	} while (0)
+
+#define min(x, y)                              \
+	({                                     \
+		typeof(x) _min1 = (x);         \
+		typeof(y) _min2 = (y);         \
+		(void)(&_min1 == &_min2);      \
+		_min1 < _min2 ? _min1 : _min2; \
+	})
+
+#define BUILD_BUG_ON_ZERO(e) ((int)(sizeof(struct { int:(-!!(e)); })))
+
+/*
+ * Compile time versions of __arch_hweightN()
+ */
+#define __const_hweight8(w)		\
+	((unsigned int)			\
+	 ((!!((w) & (1ULL << 0))) +	\
+	  (!!((w) & (1ULL << 1))) +	\
+	  (!!((w) & (1ULL << 2))) +	\
+	  (!!((w) & (1ULL << 3))) +	\
+	  (!!((w) & (1ULL << 4))) +	\
+	  (!!((w) & (1ULL << 5))) +	\
+	  (!!((w) & (1ULL << 6))) +	\
+	  (!!((w) & (1ULL << 7)))))
+
+#define __const_hweight16(w) (__const_hweight8(w)  + __const_hweight8((w)  >> 8 ))
+#define __const_hweight32(w) (__const_hweight16(w) + __const_hweight16((w) >> 16))
+#define __const_hweight64(w) (__const_hweight32(w) + __const_hweight32((w) >> 32))
+
+#define hweight8(w) __const_hweight8(w)
+#define hweight16(w) __const_hweight16(w)
+#define hweight32(w) __const_hweight32(w)
+#define hweight64(w) __const_hweight64(w)
+
+#if !HAVE___ALIGNED_U64
+#define __aligned_u64 __u64 __attribute__((aligned(8)))
+#endif
+
+#define BITS_PER_BYTE 8
+#define BITS_PER_TYPE(type) (sizeof(type) * 8)
+#define LAST_BIT_PER_TYPE(type) (BITS_PER_TYPE(type) - 1)
+
+#if !HAVE_SYS_PERSONALITY_H
+#define PER_LINUX	0x0000
+#define PER_LINUX32	0x0008
+#endif
+
+static inline bool has_exact_flags(__u32 flags, __u32 mask)
+{
+	return (flags & mask) == mask;
+}
+
+/**
+ * container_of - cast a member of a structure out to the containing structure
+ * @ptr:	the pointer to the member.
+ * @type:	the type of the container struct this is embedded in.
+ * @member:	the name of the member within the struct.
+ *
+ */
+#define container_of(ptr, type, member) ({				\
+	void *__mptr = (void *)(ptr);					\
+	BUILD_BUG_ON_MSG(!__same_type(*(ptr), ((type *)0)->member) &&	\
+			 !__same_type(*(ptr), void),			\
+			 "pointer type mismatch in container_of()");	\
+	((type *)(__mptr - offsetof(type, member))); })
+
+typedef long long unsigned int llu;
+
+/* Taken over modified from the kernel sources. */
+#define NBITS 32 /* bits in uint32_t */
+#define DIV_ROUND_UP(n, d) (((n) + (d)-1) / (d))
+#define BITS_TO_LONGS(nr) DIV_ROUND_UP(nr, NBITS)
+
+static inline void set_bit(__u32 bit, __u32 *bitarr)
+{
+	bitarr[bit / NBITS] |= ((__u32)1 << (bit % NBITS));
+}
+
+static inline void clear_bit(__u32 bit, __u32 *bitarr)
+{
+	bitarr[bit / NBITS] &= ~((__u32)1 << (bit % NBITS));
+}
+
+static inline bool is_set(__u32 bit, __u32 *bitarr)
+{
+	return (bitarr[bit / NBITS] & ((__u32)1 << (bit % NBITS))) != 0;
+}
+
+#define BIT(nr) (1UL << (nr))
 
 #endif /* __LXC_MACRO_H */

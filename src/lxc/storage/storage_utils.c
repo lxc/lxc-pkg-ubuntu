@@ -1,8 +1,7 @@
 /* SPDX-License-Identifier: LGPL-2.1+ */
 
-#ifndef _GNU_SOURCE
-#define _GNU_SOURCE 1
-#endif
+#include "config.h"
+
 #include <ctype.h>
 #include <dirent.h>
 #include <errno.h>
@@ -21,7 +20,6 @@
 #include <sys/wait.h>
 #include <unistd.h>
 
-#include "config.h"
 #include "log.h"
 #include "nbd.h"
 #include "parse.h"
@@ -30,8 +28,8 @@
 #include "syscall_wrappers.h"
 #include "utils.h"
 
-#ifndef HAVE_STRLCPY
-#include "include/strlcpy.h"
+#if !HAVE_STRLCPY
+#include "strlcpy.h"
 #endif
 
 #ifndef BLKGETSIZE64
@@ -184,6 +182,8 @@ int detect_fs(struct lxc_storage *bdev, char *type, int len)
 		_exit(EXIT_FAILURE);
 
 	while (getline(&line, &linelen, f) != -1) {
+		ssize_t nbytes;
+
 		sp1 = strchr(line, ' ');
 		if (!sp1)
 			_exit(EXIT_FAILURE);
@@ -203,7 +203,8 @@ int detect_fs(struct lxc_storage *bdev, char *type, int len)
 		*sp3 = '\0';
 
 		sp2++;
-		if (write(p[1], sp2, strlen(sp2)) != strlen(sp2))
+		nbytes = write(p[1], sp2, strlen(sp2));
+		if (nbytes < 0 || (size_t)nbytes != strlen(sp2))
 			_exit(EXIT_FAILURE);
 
 		_exit(EXIT_SUCCESS);
@@ -327,7 +328,7 @@ int find_fstype_cb(char *buffer, void *data)
 	DEBUG("Trying to mount \"%s\"->\"%s\" with FSType \"%s\"", cbarg->rootfs,
 	      cbarg->target, fstype);
 
-	if (parse_mntopts(cbarg->options, &mntflags, &mntdata) < 0) {
+	if (parse_mntopts_legacy(cbarg->options, &mntflags, &mntdata) < 0) {
 		free(mntdata);
 		return 0;
 	}
@@ -461,7 +462,7 @@ int storage_destroy_wrapper(void *data)
 {
 	struct lxc_conf *conf = data;
 
-	(void)lxc_setgroups(0, NULL);
+	(void)lxc_drop_groups();
 
 	if (setgid(0) < 0) {
 		SYSERROR("Failed to setgid to 0");

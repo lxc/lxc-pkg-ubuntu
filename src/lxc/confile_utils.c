@@ -1,31 +1,30 @@
 /* SPDX-License-Identifier: LGPL-2.1+ */
 
-#ifndef _GNU_SOURCE
-#define _GNU_SOURCE 1
-#endif
+#include "config.h"
+
 #include <arpa/inet.h>
 #include <ctype.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 
+#include "lxc.h"
+
 #include "conf.h"
-#include "config.h"
 #include "confile.h"
 #include "confile_utils.h"
 #include "error.h"
 #include "list.h"
 #include "lxc.h"
 #include "log.h"
-#include "lxccontainer.h"
 #include "macro.h"
 #include "memory_utils.h"
 #include "network.h"
 #include "parse.h"
 #include "utils.h"
 
-#ifndef HAVE_STRLCPY
-#include "include/strlcpy.h"
+#if !HAVE_STRLCPY
+#include "strlcpy.h"
 #endif
 
 lxc_log_define(confile_utils, lxc);
@@ -159,36 +158,25 @@ bool lxc_config_value_empty(const char *value)
 	return true;
 }
 
-struct lxc_netdev *lxc_network_add(struct lxc_list *networks, int idx, bool tail)
+static struct lxc_netdev *lxc_network_add(struct list_head *head, int idx, bool tail)
 {
-	__do_free struct lxc_list *newlist = NULL;
 	__do_free struct lxc_netdev *netdev = NULL;
 
 	/* network does not exist */
-	netdev = malloc(sizeof(*netdev));
+	netdev = zalloc(sizeof(*netdev));
 	if (!netdev)
 		return ret_set_errno(NULL, ENOMEM);
 
-	memset(netdev, 0, sizeof(*netdev));
-	lxc_list_init(&netdev->ipv4);
-	lxc_list_init(&netdev->ipv6);
+	INIT_LIST_HEAD(&netdev->ipv4_addresses);
+	INIT_LIST_HEAD(&netdev->ipv6_addresses);
 
 	/* give network a unique index */
 	netdev->idx = idx;
 
-	/* prepare new list */
-	newlist = malloc(sizeof(*newlist));
-	if (!newlist)
-		return ret_set_errno(NULL, ENOMEM);
-
-	lxc_list_init(newlist);
-	newlist->elem = netdev;
-
 	if (tail)
-		lxc_list_add_tail(networks, newlist);
+		list_add_tail(&netdev->head, head);
 	else
-		lxc_list_add(networks, newlist);
-	move_ptr(newlist);
+		list_add(&netdev->head, head);
 
 	return move_ptr(netdev);
 }
@@ -199,47 +187,48 @@ struct lxc_netdev *lxc_network_add(struct lxc_list *networks, int idx, bool tail
 struct lxc_netdev *lxc_get_netdev_by_idx(struct lxc_conf *conf,
 					 unsigned int idx, bool allocate)
 {
-	struct lxc_netdev *netdev = NULL;
-	struct lxc_list *networks = &conf->network;
-	struct lxc_list *insert = networks;
+	struct list_head *netdevs = &conf->netdevs;
+	struct list_head *head = netdevs;
+	struct lxc_netdev *netdev;
 
 	/* lookup network */
-	if (!lxc_list_empty(networks)) {
-		lxc_list_for_each(insert, networks) {
-			netdev = insert->elem;
+	if (!list_empty(netdevs)) {
+		list_for_each_entry(netdev, netdevs, head) {
+			/* found network device */
 			if (netdev->idx == idx)
 				return netdev;
-			else if (netdev->idx > idx)
+
+			if (netdev->idx > idx) {
+				head = &netdev->head;
 				break;
+			}
 		}
 	}
 
-	if (!allocate)
-		return ret_set_errno(NULL, EINVAL);
+	if (allocate)
+		return lxc_network_add(head, idx, true);
 
-	return lxc_network_add(insert, idx, true);
+	return NULL;
 }
 
 void lxc_log_configured_netdevs(const struct lxc_conf *conf)
 {
 	struct lxc_netdev *netdev;
-	struct lxc_list *it = (struct lxc_list *)&conf->network;;
+	const struct list_head *netdevs = &conf->netdevs;
 
 	if (!lxc_log_trace())
 		return;
 
-	if (lxc_list_empty(it)) {
+	if (list_empty(netdevs)) {
 		TRACE("container has no networks configured");
 		return;
 	}
 
-	lxc_list_for_each(it, &conf->network) {
+	list_for_each_entry(netdev, netdevs, head) {
 		struct lxc_list *cur, *next;
 		struct lxc_inetdev *inet4dev;
 		struct lxc_inet6dev *inet6dev;
 		char bufinet4[INET_ADDRSTRLEN], bufinet6[INET6_ADDRSTRLEN];
-
-		netdev = it->elem;
 
 		TRACE("index: %zd", netdev->idx);
 		TRACE("ifindex: %d", netdev->ifindex);
@@ -247,6 +236,7 @@ void lxc_log_configured_netdevs(const struct lxc_conf *conf)
 		switch (netdev->type) {
 		case LXC_NET_VETH:
 			TRACE("type: veth");
+			TRACE("veth mode: %d", netdev->priv.veth_attr.mode);
 
 			if (netdev->priv.veth_attr.pair[0] != '\0')
 				TRACE("veth pair: %s",
@@ -259,6 +249,15 @@ void lxc_log_configured_netdevs(const struct lxc_conf *conf)
 			if (netdev->priv.veth_attr.ifindex > 0)
 				TRACE("host side ifindex for veth device: %d",
 				      netdev->priv.veth_attr.ifindex);
+
+			if (netdev->priv.veth_attr.vlan_id_set)
+				TRACE("veth vlan id: %d", netdev->priv.veth_attr.vlan_id);
+
+			lxc_list_for_each_safe(cur, &netdev->priv.veth_attr.vlan_tagged_ids, next) {
+				unsigned short vlan_tagged_id = PTR_TO_USHORT(cur->elem);
+				TRACE("veth vlan tagged id: %u", vlan_tagged_id);
+			}
+
 			break;
 		case LXC_NET_MACVLAN:
 			TRACE("type: macvlan");
@@ -343,8 +342,7 @@ void lxc_log_configured_netdevs(const struct lxc_conf *conf)
 				TRACE("ipv4 gateway: %s", bufinet4);
 			}
 
-			lxc_list_for_each_safe(cur, &netdev->ipv4, next) {
-				inet4dev = cur->elem;
+			list_for_each_entry(inet4dev, &netdev->ipv4_addresses, head) {
 				inet_ntop(AF_INET, &inet4dev->addr, bufinet4,
 					  sizeof(bufinet4));
 				TRACE("ipv4 addr: %s", bufinet4);
@@ -362,16 +360,14 @@ void lxc_log_configured_netdevs(const struct lxc_conf *conf)
 				TRACE("ipv6 gateway: %s", bufinet6);
 			}
 
-			lxc_list_for_each_safe(cur, &netdev->ipv6, next) {
-				inet6dev = cur->elem;
+			list_for_each_entry(inet6dev, &netdev->ipv6_addresses, head) {
 				inet_ntop(AF_INET6, &inet6dev->addr, bufinet6,
 					  sizeof(bufinet6));
 				TRACE("ipv6 addr: %s", bufinet6);
 			}
 
 			if (netdev->type == LXC_NET_VETH) {
-				lxc_list_for_each_safe(cur, &netdev->priv.veth_attr.ipv4_routes, next) {
-					inet4dev = cur->elem;
+				list_for_each_entry(inet4dev, &netdev->priv.veth_attr.ipv4_routes, head) {
 					if (!inet_ntop(AF_INET, &inet4dev->addr, bufinet4, sizeof(bufinet4))) {
 						ERROR("Invalid ipv4 veth route");
 						return;
@@ -380,8 +376,7 @@ void lxc_log_configured_netdevs(const struct lxc_conf *conf)
 					TRACE("ipv4 veth route: %s/%u", bufinet4, inet4dev->prefix);
 				}
 
-				lxc_list_for_each_safe(cur, &netdev->priv.veth_attr.ipv6_routes, next) {
-					inet6dev = cur->elem;
+				list_for_each_entry(inet6dev, &netdev->priv.veth_attr.ipv6_routes, head) {
 					if (!inet_ntop(AF_INET6, &inet6dev->addr, bufinet6, sizeof(bufinet6))) {
 						ERROR("Invalid ipv6 veth route");
 						return;
@@ -394,82 +389,103 @@ void lxc_log_configured_netdevs(const struct lxc_conf *conf)
 	}
 }
 
-static void lxc_free_netdev(struct lxc_netdev *netdev)
+void lxc_clear_netdev(struct lxc_netdev *netdev)
 {
 	struct lxc_list *cur, *next;
+	struct list_head head;
+	struct lxc_inetdev *inetdev, *ninetdev;
+	struct lxc_inet6dev *inet6dev, *ninet6dev;
+	ssize_t idx;
 
 	if (!netdev)
 		return;
 
-	free(netdev->upscript);
-	free(netdev->downscript);
-	free(netdev->hwaddr);
-	free(netdev->mtu);
+	idx = netdev->idx;
 
-	free(netdev->ipv4_gateway);
-	lxc_list_for_each_safe(cur, &netdev->ipv4, next) {
-		lxc_list_del(cur);
-		free(cur->elem);
-		free(cur);
+	free_disarm(netdev->upscript);
+	free_disarm(netdev->downscript);
+	free_disarm(netdev->hwaddr);
+	free_disarm(netdev->mtu);
+
+	free_disarm(netdev->ipv4_gateway);
+	list_for_each_entry_safe(inetdev, ninetdev, &netdev->ipv4_addresses, head) {
+		list_del(&inetdev->head);
+		free(inetdev);
 	}
 
-	free(netdev->ipv6_gateway);
-	lxc_list_for_each_safe(cur, &netdev->ipv6, next) {
-		lxc_list_del(cur);
-		free(cur->elem);
-		free(cur);
+	free_disarm(netdev->ipv6_gateway);
+	list_for_each_entry_safe(inet6dev, ninet6dev, &netdev->ipv6_addresses, head) {
+		list_del(&inet6dev->head);
+		free(inet6dev);
 	}
 
 	if (netdev->type == LXC_NET_VETH) {
-		lxc_list_for_each_safe(cur, &netdev->priv.veth_attr.ipv4_routes, next) {
-			lxc_list_del(cur);
-			free(cur->elem);
-			free(cur);
+		list_for_each_entry_safe(inetdev, ninetdev, &netdev->priv.veth_attr.ipv4_routes, head) {
+			list_del(&inetdev->head);
+			free(inetdev);
 		}
 
-		lxc_list_for_each_safe(cur, &netdev->priv.veth_attr.ipv6_routes, next) {
+		list_for_each_entry_safe(inet6dev, ninet6dev, &netdev->priv.veth_attr.ipv6_routes, head) {
+			list_del(&inet6dev->head);
+			free(inet6dev);
+		}
+
+		lxc_list_for_each_safe(cur, &netdev->priv.veth_attr.vlan_tagged_ids, next) {
 			lxc_list_del(cur);
-			free(cur->elem);
 			free(cur);
 		}
 	}
 
-	free(netdev);
+	head = netdev->head;
+	memset(netdev, 0, sizeof(struct lxc_netdev));
+	netdev->head = head;
+	INIT_LIST_HEAD(&netdev->ipv4_addresses);
+	INIT_LIST_HEAD(&netdev->ipv6_addresses);
+	netdev->type = -1;
+	netdev->idx = idx;
 }
 
-define_cleanup_function(struct lxc_netdev *, lxc_free_netdev);
+static void lxc_free_netdev(struct lxc_netdev *netdev)
+{
+	if (netdev) {
+		lxc_clear_netdev(netdev);
+		free(netdev);
+	}
+}
 
 bool lxc_remove_nic_by_idx(struct lxc_conf *conf, unsigned int idx)
 {
-	call_cleaner(lxc_free_netdev) struct lxc_netdev *netdev = NULL;
-	struct lxc_list *cur, *next;
+	struct lxc_netdev *netdev;
 
-	lxc_list_for_each_safe(cur, &conf->network, next) {
-		netdev = cur->elem;
+	if (list_empty(&conf->netdevs))
+		return false;
+
+	list_for_each_entry(netdev, &conf->netdevs, head) {
 		if (netdev->idx != idx)
 			continue;
 
-		lxc_list_del(cur);
-		free(cur);
+		list_del(&netdev->head);
+		lxc_free_netdev(netdev);
 		return true;
 	}
 
 	return false;
 }
 
-void lxc_free_networks(struct lxc_list *networks)
+void lxc_free_networks(struct lxc_conf *conf)
 {
-	struct lxc_list *cur, *next;
+	struct lxc_netdev *netdev, *n;
 
-	lxc_list_for_each_safe (cur, networks, next) {
-		struct lxc_netdev *netdev = cur->elem;
-		netdev = cur->elem;
+	if (list_empty(&conf->netdevs))
+		return;
+
+	list_for_each_entry_safe(netdev, n, &conf->netdevs, head) {
+		list_del(&netdev->head);
 		lxc_free_netdev(netdev);
-		free(cur);
 	}
 
 	/* prevent segfaults */
-	lxc_list_init(networks);
+	INIT_LIST_HEAD(&conf->netdevs);
 }
 
 static struct lxc_veth_mode {
@@ -483,7 +499,7 @@ static struct lxc_veth_mode {
 int lxc_veth_mode_to_flag(int *mode, const char *value)
 {
 	for (size_t i = 0; i < sizeof(veth_mode) / sizeof(veth_mode[0]); i++) {
-		if (strcmp(veth_mode[i].name, value) != 0)
+		if (!strequal(veth_mode[i].name, value))
 			continue;
 
 		*mode = veth_mode[i].mode;
@@ -518,7 +534,7 @@ static struct lxc_macvlan_mode {
 int lxc_macvlan_mode_to_flag(int *mode, const char *value)
 {
 	for (size_t i = 0; i < sizeof(macvlan_mode) / sizeof(macvlan_mode[0]); i++) {
-		if (strcmp(macvlan_mode[i].name, value))
+		if (!strequal(macvlan_mode[i].name, value))
 			continue;
 
 		*mode = macvlan_mode[i].mode;
@@ -552,7 +568,7 @@ static struct lxc_ipvlan_mode {
 int lxc_ipvlan_mode_to_flag(int *mode, const char *value)
 {
 	for (size_t i = 0; i < sizeof(ipvlan_mode) / sizeof(ipvlan_mode[0]); i++) {
-		if (strcmp(ipvlan_mode[i].name, value) != 0)
+		if (!strequal(ipvlan_mode[i].name, value))
 			continue;
 
 		*mode = ipvlan_mode[i].mode;
@@ -586,7 +602,7 @@ static struct lxc_ipvlan_isolation {
 int lxc_ipvlan_isolation_to_flag(int *flag, const char *value)
 {
 	for (size_t i = 0; i < sizeof(ipvlan_isolation) / sizeof(ipvlan_isolation[0]); i++) {
-		if (strcmp(ipvlan_isolation[i].name, value) != 0)
+		if (!strequal(ipvlan_isolation[i].name, value))
 			continue;
 
 		*flag = ipvlan_isolation[i].flag;
@@ -635,7 +651,13 @@ int set_config_string_item_max(char **conf_item, const char *value, size_t max)
 
 int set_config_path_item(char **conf_item, const char *value)
 {
-	return set_config_string_item_max(conf_item, value, PATH_MAX);
+	__do_free char *valdup = NULL;
+
+	valdup = path_simplify(value);
+	if (!valdup)
+		return -ENOMEM;
+
+	return set_config_string_item_max(conf_item, valdup, PATH_MAX);
 }
 
 int set_config_bool_item(bool *conf_item, const char *value, bool empty_conf_action)
@@ -697,18 +719,18 @@ bool lxc_config_net_is_hwaddr(const char *line)
 	unsigned index;
 	char tmp[7];
 
-	if (strncmp(line, "lxc.net", 7) != 0)
+	if (!strnequal(line, "lxc.net", 7))
 		return false;
 
-	if (strncmp(line, "lxc.net.hwaddr", 14) == 0)
+	if (strnequal(line, "lxc.net.hwaddr", 14))
 		return true;
 
-	if (strncmp(line, "lxc.network.hwaddr", 18) == 0)
+	if (strnequal(line, "lxc.network.hwaddr", 18))
 		return true;
 
 	if (sscanf(line, "lxc.net.%u.%6s", &index, tmp) == 2 ||
 	    sscanf(line, "lxc.network.%u.%6s", &index, tmp) == 2)
-		return strncmp(tmp, "hwaddr", 6) == 0;
+		return strnequal(tmp, "hwaddr", 6);
 
 	return false;
 }
@@ -753,18 +775,17 @@ bool new_hwaddr(char *hwaddr)
 
 	seed = randseed(false);
 
-	ret = snprintf(hwaddr, 18, "00:16:3e:%02x:%02x:%02x", rand_r(&seed) % 255,
+	ret = strnprintf(hwaddr, 18, "00:16:3e:%02x:%02x:%02x", rand_r(&seed) % 255,
 		       rand_r(&seed) % 255, rand_r(&seed) % 255);
 #else
 
 	(void)randseed(true);
 
-	ret = snprintf(hwaddr, 18, "00:16:3e:%02x:%02x:%02x", rand() % 255,
+	ret = strnprintf(hwaddr, 18, "00:16:3e:%02x:%02x:%02x", rand() % 255,
 		       rand() % 255, rand() % 255);
 #endif
-	if (ret < 0 || ret >= 18) {
-		return log_error_errno(false, EIO, "Failed to call snprintf()");
-	}
+	if (ret < 0)
+		return log_error_errno(false, EIO, "Failed to call strnprintf()");
 
 	return true;
 }
@@ -777,7 +798,7 @@ int lxc_get_conf_str(char *retv, int inlen, const char *value)
 		return 0;
 
 	value_len = strlen(value);
-	if (retv && inlen >= value_len + 1)
+	if (retv && (size_t)inlen >= value_len + 1)
 		memcpy(retv, value, value_len + 1);
 
 	return value_len;
@@ -1005,35 +1026,48 @@ static int sig_num(const char *sig)
 
 static int rt_sig_num(const char *signame)
 {
-	int rtmax = 0, sig_n = 0;
+	bool rtmax;
+	int sig_n = 0;
 
-	if (strncasecmp(signame, "max-", 4) == 0)
-		rtmax = 1;
+	if (is_empty_string(signame))
+		return ret_errno(EINVAL);
 
-	signame += 4;
-	if (!isdigit(*signame))
+	if (strncasecmp(signame, "max-", STRLITERALLEN("max-")) == 0) {
+		rtmax = true;
+		signame += STRLITERALLEN("max-");
+	} else if (strncasecmp(signame, "min+", STRLITERALLEN("min+")) == 0) {
+		rtmax = false;
+		signame += STRLITERALLEN("min+");
+	} else {
+		return ret_errno(EINVAL);
+	}
+
+	if (is_empty_string(signame) || !isdigit(*signame))
 		return ret_errno(EINVAL);
 
 	sig_n = sig_num(signame);
-	sig_n = rtmax ? SIGRTMAX - sig_n : SIGRTMIN + sig_n;
-	if (sig_n > SIGRTMAX || sig_n < SIGRTMIN)
+	if (sig_n < 0 || sig_n > SIGRTMAX - SIGRTMIN)
 		return ret_errno(EINVAL);
+
+	if (rtmax)
+		sig_n = SIGRTMAX - sig_n;
+	else
+		sig_n = SIGRTMIN + sig_n;
 
 	return sig_n;
 }
 
 int sig_parse(const char *signame)
 {
-	size_t n;
-
-	if (isdigit(*signame)) {
+	if (isdigit(*signame))
 		return sig_num(signame);
-	} else if (strncasecmp(signame, "sig", 3) == 0) {
-		signame += 3;
-		if (strncasecmp(signame, "rt", 2) == 0)
-			return rt_sig_num(signame + 2);
 
-		for (n = 0; n < sizeof(signames) / sizeof((signames)[0]); n++)
+	if (strncasecmp(signame, "sig", STRLITERALLEN("sig")) == 0) {
+		signame += STRLITERALLEN("sig");
+		if (strncasecmp(signame, "rt", STRLITERALLEN("rt")) == 0)
+			return rt_sig_num(signame + STRLITERALLEN("rt"));
+
+		for (size_t n = 0; n < ARRAY_SIZE(signames); n++)
 			if (strcasecmp(signames[n].name, signame) == 0)
 				return signames[n].num;
 	}

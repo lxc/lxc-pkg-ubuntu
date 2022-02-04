@@ -3,7 +3,7 @@ AC_PREREQ([2.69])
 m4_define([lxc_devel], 0)
 m4_define([lxc_version_major], 4)
 m4_define([lxc_version_minor], 0)
-m4_define([lxc_version_micro], 6)
+m4_define([lxc_version_micro], 12)
 m4_define([lxc_version_beta], [])
 
 m4_define([lxc_abi_major], 1)
@@ -44,6 +44,7 @@ AC_CANONICAL_HOST
 AM_PROG_CC_C_O
 AC_USE_SYSTEM_EXTENSIONS
 AC_SYS_LARGEFILE
+AC_GNU_SOURCE
 
 # Test if we have a new enough compiler.
 AC_COMPILE_IFELSE([AC_LANG_PROGRAM([[
@@ -62,6 +63,7 @@ if test "x$valid_compiler" = "xno"; then
 fi
 
 AC_PROG_GCC_TRADITIONAL
+AC_PROG_CXX
 AC_ENABLE_SHARED
 AC_ENABLE_STATIC
 # Check binaries
@@ -82,7 +84,7 @@ AC_SUBST([LIBTOOL_DEPS])
 AC_MSG_CHECKING([host distribution])
 AC_ARG_WITH(distro, AS_HELP_STRING([--with-distro=DISTRO], [Specify the Linux distribution to target: One of redhat, redhatenterpriseserver, oracle, centos, fedora, suse, gentoo, debian, arch, slackware, plamo, paldo, openmandriva, pardus, sparclinux, altlinux.]))
 if type lsb_release >/dev/null 2>&1 && test "z$with_distro" = "z"; then
-	with_distro=`lsb_release -is`
+	with_distro=$(lsb_release -is)
 fi
 if test "z$with_distro" = "z"; then
 	AC_CHECK_FILE(/etc/redhat-release,with_distro="redhat")
@@ -103,7 +105,7 @@ if test "z$with_distro" = "z"; then
 	AC_CHECK_FILE(/etc/altlinux-release,with_distro="altlinux")
 	AC_CHECK_FILE(/etc/pld-release,with_distro="pld")
 fi
-with_distro=`echo ${with_distro} | tr '[[:upper:]]' '[[:lower:]]'`
+with_distro=$(echo ${with_distro} | tr '[[:upper:]]' '[[:lower:]]')
 
 if test "z$with_distro" = "zforsparc"; then
 	with_distro="sparclinux"
@@ -199,6 +201,18 @@ fi
 AC_ARG_ENABLE([werror],
 	[AS_HELP_STRING([--disable-werror], [do not treat warnings as errors])],
 	[enable_werror=$enableval], [enable_werror=yes])
+
+AC_ARG_ENABLE([no_undefined],
+	[AS_HELP_STRING([--disable-no-undefined], [do not pass -Wl,--no-undefined])],
+	[enable_no_undefined=$enableval], [enable_no_undefined=yes])
+AM_CONDITIONAL([ENABLE_NO_UNDEFINED], [test "x$enable_no_undefined" = "xyes"])
+
+AC_ARG_ENABLE([fuzzers],
+	[AS_HELP_STRING([--enable-fuzzers], [compile with fuzzers])],
+	[enable_fuzzers=$enableval], [enable_fuzzers=no])
+AM_CONDITIONAL([ENABLE_FUZZERS], [test "x$enable_fuzzers" = "xyes"])
+
+AM_CONDITIONAL([OSS_FUZZ], [test "x$LIB_FUZZING_ENGINE" != x])
 
 # Allow disabling rpath
 AC_ARG_ENABLE([rpath],
@@ -385,10 +399,6 @@ AM_COND_IF([ENABLE_CAP],
         AC_CHECK_LIB(cap,cap_get_file, AC_DEFINE(LIBCAP_SUPPORTS_FILE_CAPABILITIES,1,[Have cap_get_file]),[],[])
         AC_SUBST([CAP_LIBS], [-lcap])])
 
-AC_CHECK_HEADERS([linux/bpf.h], [
-	AC_CHECK_TYPES([struct bpf_cgroup_dev_ctx], [], [], [[#include <linux/bpf.h>]])
-], [], [])
-
 # Configuration examples
 AC_ARG_ENABLE([examples],
 	[AS_HELP_STRING([--enable-examples], [install examples [default=yes]])],
@@ -456,17 +466,46 @@ AC_ARG_ENABLE([static-binaries],
 	[enable_static_binaries=$enableval], [enable_static_binaries=no])
 AM_CONDITIONAL([ENABLE_STATIC_BINARIES], [test "x$enable_static_binaries" = "xyes"])
 
-# Build with ASAN commands
-AC_ARG_ENABLE([asan],
-	[AS_HELP_STRING([--enable-asan], [build with address sanitizer enabled [default=no]])],
-	[enable_asan=$enableval], [enable_asan=no])
-AM_CONDITIONAL([ENABLE_ASAN], [test "x$enable_asan" = "xyes"])
+AC_ARG_ENABLE([sanitizers],
+	[AS_HELP_STRING([--enable-sanitizers], [build with sanitizers enabled [default=no]])],
+	[enable_sanitizers=$enableval], [enable_sanitizers=no])
+AM_CONDITIONAL([ENABLE_SANITIZERS], [test "x$enable_sanitizers" = "xyes"])
+if test "x$enable_sanitizers" = "xyes"; then
+	AC_DEFINE([ENABLE_SANITIZERS], 1, [build with sanitizers enabled])
 
-# Build with UBSAN commands
-AC_ARG_ENABLE([ubsan],
-	[AS_HELP_STRING([--enable-ubsan], [build with ubsan sanitizer enabled [default=no]])],
-	[enable_asan=$enableval], [enable_ubsan=no])
-AM_CONDITIONAL([ENABLE_UBSAN], [test "x$enable_ubsan" = "xyes"])
+	CC_CHECK_FLAGS_APPEND([AM_CFLAGS],[CFLAGS],[ \
+		-fsanitize=address \
+		-fsanitize=undefined \
+		-fno-optimize-sibling-calls \
+		-fno-omit-frame-pointer])
+	AC_SUBST(AM_CFLAGS)
+
+	CC_CHECK_FLAGS_APPEND([AM_LDFLAGS],[LDFLAGS],[ \
+		-fsanitize=address \
+		-fsanitize=undefined])
+	AC_SUBST(AM_LDFLAGS)
+
+	AC_MSG_RESULT([yes])
+else
+	AC_MSG_RESULT([no])
+fi
+
+if test "x$enable_fuzzers" = "xyes"; then
+	if test "x$LIB_FUZZING_ENGINE" = x; then
+		CC_CHECK_FLAGS_APPEND([AM_CFLAGS],[CFLAGS],[ \
+			-DFUZZING_BUILD_MODE_UNSAFE_FOR_PRODUCTION \
+			-DRUN_ON_OSS_FUZZ=0 \
+			-fsanitize=fuzzer-no-link])
+	else
+		CC_CHECK_FLAGS_APPEND([AM_CFLAGS],[CFLAGS],[ \
+			-DRUN_ON_OSS_FUZZ=1])
+	fi
+fi
+
+if test "x$enable_fuzzers" = "xno" -a "x$enable_sanitizers" = "xno"; then
+	CC_CHECK_FLAGS_APPEND([AM_CFLAGS],[CFLAGS],[-flto=thin])
+fi
+AC_SUBST(AM_CFLAGS)
 
 # Optional test binaries
 AC_ARG_ENABLE([tests],
@@ -599,19 +638,19 @@ AM_COND_IF([ENABLE_PAM],
 		[pamdir],
 		[AS_HELP_STRING([--with-pamdir=PATH],[Specify the directory where PAM modules are stored,
 							or "none" if PAM modules are not to be built])],
-		[pamdir=$withval],
+		[exec_pamdir=$withval],
 		[
 			if test "${prefix}" = "/usr"; then
-				pamdir="/lib${libdir##*/lib}/security"
+				exec_pamdir="/lib${libdir##*/lib}/security"
 			else
-				pamdir="\$(libdir)/security"
+				exec_pamdir="\$(libdir)/security"
 			fi
 		]
 	)])
 
-AM_CONDITIONAL([HAVE_PAM], [test x"$pamdir" != "xnone"])
+AM_CONDITIONAL([HAVE_PAM], [test x"$exec_pamdir" != "xnone"])
 AM_COND_IF([ENABLE_PAM],
-	[if test "z$pamdir" != "znone"; then
+	[if test "z$exec_pamdir" != "znone"; then
 		AC_ARG_VAR([PAM_CFLAGS], [C compiler flags for pam])
 		AC_ARG_VAR([PAM_LIBS], [linker flags for pam])
 		AC_CHECK_LIB(
@@ -622,7 +661,7 @@ AM_COND_IF([ENABLE_PAM],
 			])
 
 		AC_SUBST(PAM_LIBS)
-		AC_SUBST([pamdir])
+		AC_SUBST([exec_pamdir])
 	fi])
 
 # Some systems lack PR_CAPBSET_DROP definition => HAVE_DECL_PR_CAPBSET_DROP
@@ -640,11 +679,29 @@ AC_CHECK_HEADER([ifaddrs.h],
 	AC_DEFINE(HAVE_IFADDRS_H, 1, [Have ifaddrs.h]),
 	AM_CONDITIONAL(HAVE_IFADDRS_H, false))
 
+AC_ARG_ENABLE([liburing],
+	[AS_HELP_STRING([--enable-liburing], [enable liburing support [default=auto]])],
+	[enable_liburing=$enableval], [enable_liburing=auto])
+
+if test "x$enable_liburing" = "auto"; then
+	AC_CHECK_LIB([uring],[__io_uring_sqring_wait],[enable_liburing=yes],[enable_liburing=no])
+fi
+
+AM_CONDITIONAL([ENABLE_LIBURING], [test "x$enable_liburing" = "xyes"])
+
+AM_COND_IF([ENABLE_LIBURING],
+	[AC_CHECK_HEADER([liburing.h],[],[AC_MSG_ERROR([You must install the liburing development package in order to compile lxc])])
+	# We use __io_uring_sqring_wait as an indicator whether liburing is new enough to support poll.
+	AC_CHECK_LIB([uring],[__io_uring_sqring_wait],[],[AC_MSG_ERROR([The liburing development package in order to compile lxc])])
+        AC_SUBST([LIBURING_LIBS], [-luring])])
+
 # lookup major()/minor()/makedev()
 AC_HEADER_MAJOR
 
 # Check for some syscalls functions
-AC_CHECK_FUNCS([setns pivot_root sethostname unshare rand_r confstr faccessat gettid memfd_create move_mount open_tree execveat clone3 fsopen fspick fsconfig fsmount, openat2])
+AC_CHECK_FUNCS([setns pivot_root sethostname unshare rand_r confstr faccessat gettid memfd_create move_mount open_tree execveat clone3 fsopen fspick fsconfig fsmount openat2 close_range statvfs mount_setattr sigdescr_np])
+AC_CHECK_TYPES([__aligned_u64], [], [], [[#include <linux/types.h>]])
+AC_CHECK_TYPES([struct mount_attr], [], [], [[#include <linux/mount.h>]])
 AC_CHECK_TYPES([struct open_how], [], [], [[#include <linux/openat2.h>]])
 AC_CHECK_TYPES([struct clone_args], [], [], [[#include <linux/sched.h>]])
 AC_CHECK_MEMBERS([struct clone_args.set_tid],[],[],[[#include <linux/sched.h>]])
@@ -656,35 +713,8 @@ AC_CHECK_MEMBERS([struct clone_args.cgroup],[],[],[[#include <linux/sched.h>]])
 # - STRERROR_R_CHAR_P if it returns char *
 AC_FUNC_STRERROR_R
 
-# Check if "%m" is supported by printf and Co
-AC_MSG_CHECKING([%m format])
-AC_RUN_IFELSE([AC_LANG_SOURCE([[
-#include <stdio.h>
-int main(void)
-{
-  char msg[256];
-  int rc;
-
-  rc = snprintf(msg, sizeof(msg), "%m\n");
-  if ((rc > 1) && (msg[0] != '%'))
-  {
-    return 0;
-  }
-  else
-  {
-    return 1;
-  }
-}]])],[fmt_m=yes],[fmt_m=no],[fmt_m=no])
-if test "x$fmt_m" = "xyes"; then
-	AC_DEFINE([HAVE_M_FORMAT], 1, [Have %m format])
-	AC_MSG_RESULT([yes])
-else
-	AC_MSG_RESULT([no])
-fi
-
 # Check for some functions
 AC_CHECK_LIB(pthread, main)
-AC_CHECK_FUNCS(statvfs)
 AC_CHECK_LIB(util, openpty)
 AC_CHECK_FUNCS([hasmntopt setmntent endmntent utmpxname])
 AC_CHECK_FUNCS([getgrgid_r],
@@ -731,6 +761,10 @@ AC_CHECK_FUNCS([strlcat],
 	AM_CONDITIONAL(HAVE_STRLCAT, true)
 	AC_DEFINE(HAVE_STRLCAT,1,[Have strlcat]),
 	AM_CONDITIONAL(HAVE_STRLCAT, false))
+AC_CHECK_FUNCS([strchrnul],
+	AM_CONDITIONAL(HAVE_STRCHRNUL, true)
+	AC_DEFINE(HAVE_STRCHRNUL,1,[Have strchnul]),
+	AM_CONDITIONAL(HAVE_STRCHRNUL, false))
 AC_CHECK_FUNCS([fmemopen],
 	AM_CONDITIONAL(HAVE_FMEMOPEN, true)
 	AC_DEFINE(HAVE_FMEMOPEN,1,[Have fmemopen]),
@@ -742,9 +776,6 @@ AC_CHECK_TYPES([struct rtnl_link_stats64], [], [], [[#include <linux/if_link.h>]
 # Check for some libraries
 AX_PTHREAD
 AC_SEARCH_LIBS(clock_gettime, [rt])
-
-# See if we support thread-local storage.
-LXC_CHECK_TLS
 
 # Hardening flags
 CC_CHECK_FLAGS_APPEND([AM_CFLAGS],[CFLAGS],[ \
@@ -787,19 +818,21 @@ CC_CHECK_FLAGS_APPEND([AM_CFLAGS],[CFLAGS],[ \
 	-Warray-bounds \
 	-Wrestrict \
 	-Wreturn-local-addr \
-	-flto=thin \
 	-fsanitize=cfi \
 	-Wstringop-overflow])
 AC_SUBST(AM_CFLAGS)
 
 CC_CHECK_FLAGS_APPEND([AM_LDFLAGS],[LDFLAGS],[ \
 	-Wl,--as-needed \
-        -Wl,--no-undefined \
         -Wl,--gc-sections \
         -Wl,-z,relro \
         -Wl,-z,now \
         -pie \
         -Wl,-fuse-ld=gold])
+
+AM_COND_IF([ENABLE_NO_UNDEFINED],
+	[CC_CHECK_FLAGS_APPEND([AM_LDFLAGS],[LDFLAGS],[-Wl,--no-undefined])])
+
 AC_SUBST(AM_LDFLAGS)
 
 CFLAGS="$CFLAGS -Wvla -std=gnu11 -fms-extensions"
@@ -1095,7 +1128,7 @@ Security features:
 
 PAM:
  - PAM module: $enable_pam
- - cgroup PAM module: $pamdir
+ - cgroup PAM module: $exec_pamdir
 
 Documentation:
  - examples: $enable_examples
@@ -1103,10 +1136,11 @@ Documentation:
  - user documentation: $enable_doc
 
 Debugging:
- - ASAN: $enable_asan
+ - Sanitizers: $enable_sanitizers
  - Coverity: $enable_coverity_build
  - mutex debugging: $enable_mutex_debugging
  - tests: $enable_tests
+ - fuzzers: $enable_fuzzers
 
 Paths:
  - Logs in configpath: $enable_configpath_log

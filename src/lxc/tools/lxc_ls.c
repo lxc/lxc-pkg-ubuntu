@@ -1,9 +1,7 @@
 /* SPDX-License-Identifier: GPL-2.0-only */
 
-#ifndef _GNU_SOURCE
-#define _GNU_SOURCE 1
-#endif
-#include <dirent.h>
+#include "config.h"
+
 #include <getopt.h>
 #include <limits.h>
 #include <regex.h>
@@ -19,10 +17,9 @@
 #include <termios.h>
 #include <unistd.h>
 
-#include <lxc/lxccontainer.h>
+#include "lxc.h"
 
 #include "arguments.h"
-#include "config.h"
 #include "log.h"
 #include "memory_utils.h"
 #include "utils.h"
@@ -198,7 +195,7 @@ int main(int argc, char *argv[])
 
 	/*
 	 * The lxc parser requires that my_args.name is set. So let's satisfy
-	 * that condition by setting a dummy name which is never used.
+	 * that condition by setting a placeholder name which is never used.
 	 */
 	my_args.name  = "";
 	if (lxc_arguments_parse(&my_args, argc, argv))

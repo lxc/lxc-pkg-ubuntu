@@ -16,7 +16,8 @@
  * 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
  */
 
-#define __STDC_FORMAT_MACROS
+#include "config.h"
+
 #include <errno.h>
 #include <fcntl.h>
 #include <inttypes.h>
@@ -109,6 +110,7 @@ int main(int argc, char *argv[])
 		lxc_debug("Retrieved %" PRIu64
 			  " bytes from console log. Contents are \"%s\"\n",
 			  *log.read_max, log.data);
+		free(log.data);
 	}
 
 	/* Leave another two seconds to ensure boot is finished. */

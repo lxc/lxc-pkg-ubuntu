@@ -1,17 +1,17 @@
-From a1edf739546e6fff99d0075a434e4d17219b4b70 Mon Sep 17 00:00:00 2001
+From d693e01e5cbbe90ac3f98abe7b5220f31cd39d80 Mon Sep 17 00:00:00 2001
 From: =?UTF-8?q?St=C3=A9phane=20Graber?= <stgraber@ubuntu.com>
 Date: Tue, 3 Nov 2015 11:42:58 -0500
 Subject: Allocate new lxcbr0 subnet at startup time
 
 ---
- config/init/common/lxc-net.in | 100 +++++++++++++++++++++++++++++++---
- 1 file changed, 91 insertions(+), 9 deletions(-)
+ config/init/common/lxc-net.in | 91 +++++++++++++++++++++++++++++++----
+ 1 file changed, 82 insertions(+), 9 deletions(-)
 
 diff --git a/config/init/common/lxc-net.in b/config/init/common/lxc-net.in
-index 999f42cc5..a2170cd99 100644
+index 6648549ee..bc9b63261 100644
 --- a/config/init/common/lxc-net.in
 +++ b/config/init/common/lxc-net.in
-@@ -24,6 +24,85 @@ LXC_IPV6_MASK=""
+@@ -25,6 +25,85 @@ LXC_IPV6_MASK=""
  LXC_IPV6_NETWORK=""
  LXC_IPV6_NAT="false"
  
@@ -96,20 +96,10 @@ index 999f42cc5..a2170cd99 100644
 +
  [ ! -f $distrosysconfdir/lxc ] || . $distrosysconfdir/lxc
  
- use_iptables_lock="-w"
-@@ -51,7 +130,19 @@ _ifup() {
-     ip link set dev ${LXC_BRIDGE} up
+ use_nft() {
+@@ -112,6 +191,9 @@ add rule ip lxc postrouting ip saddr ${LXC_NETWORK} ip daddr != ${LXC_NETWORK} c
  }
  
-+cleanup() {
-+    set +e
-+    if [ "$FAILED" = "1" ]; then
-+        echo "Failed to setup lxc-net." >&2
-+        stop force
-+        exit 1
-+    fi
-+}
-+
  start() {
 +
 +    [ ! -f $distrosysconfdir/lxc-net ] && update_lxcnet_config
@@ -117,7 +107,7 @@ index 999f42cc5..a2170cd99 100644
      [ "x$USE_LXC_BRIDGE" = "xtrue" ] || { exit 0; }
  
      [ ! -f "${varrun}/network_up" ] || { echo "lxc-net is already running"; exit 1; }
-@@ -62,15 +153,6 @@ start() {
+@@ -122,15 +204,6 @@ start() {
  
      FAILED=1
  

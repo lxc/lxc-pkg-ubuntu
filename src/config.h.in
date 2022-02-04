@@ -6,6 +6,9 @@
 /* build for use with Coverity */
 #undef ENABLE_COVERITY_BUILD
 
+/* build with sanitizers enabled */
+#undef ENABLE_SANITIZERS
+
 /* Rexec liblxc as memfd */
 #undef ENFORCE_MEMFD_REXEC
 
@@ -14,6 +17,9 @@
 
 /* Define to 1 if you have the `clone3' function. */
 #undef HAVE_CLONE3
+
+/* Define to 1 if you have the `close_range' function. */
+#undef HAVE_CLOSE_RANGE
 
 /* Define to 1 if you have the `confstr' function. */
 #undef HAVE_CONFSTR
@@ -63,8 +69,8 @@
 /* Define to 1 if you have the `fsconfig' function. */
 #undef HAVE_FSCONFIG
 
-/* Define to 1 if you have the `fsmount,' function. */
-#undef HAVE_FSMOUNT_
+/* Define to 1 if you have the `fsmount' function. */
+#undef HAVE_FSMOUNT
 
 /* Define to 1 if you have the `fsopen' function. */
 #undef HAVE_FSOPEN
@@ -108,11 +114,11 @@
 /* Define to 1 if you have the `seccomp' library (-lseccomp). */
 #undef HAVE_LIBSECCOMP
 
+/* Define to 1 if you have the `uring' library (-luring). */
+#undef HAVE_LIBURING
+
 /* Define to 1 if you have the `util' library (-lutil). */
 #undef HAVE_LIBUTIL
-
-/* Define to 1 if you have the <linux/bpf.h> header file. */
-#undef HAVE_LINUX_BPF_H
 
 /* Define to 1 if you have the <linux/genetlink.h> header file. */
 #undef HAVE_LINUX_GENETLINK_H
@@ -126,14 +132,14 @@
 /* Define to 1 if you have the `memfd_create' function. */
 #undef HAVE_MEMFD_CREATE
 
-/* Define to 1 if you have the <memory.h> header file. */
-#undef HAVE_MEMORY_H
+/* Define to 1 if you have the <minix/config.h> header file. */
+#undef HAVE_MINIX_CONFIG_H
+
+/* Define to 1 if you have the `mount_setattr' function. */
+#undef HAVE_MOUNT_SETATTR
 
 /* Define to 1 if you have the `move_mount' function. */
 #undef HAVE_MOVE_MOUNT
-
-/* Have %m format */
-#undef HAVE_M_FORMAT
 
 /* Define to 1 if you have the `openat2' function. */
 #undef HAVE_OPENAT2
@@ -180,6 +186,9 @@
 /* Define to 1 if you have the `setns' function. */
 #undef HAVE_SETNS
 
+/* Define to 1 if you have the `sigdescr_np' function. */
+#undef HAVE_SIGDESCR_NP
+
 /* Have static libcap */
 #undef HAVE_STATIC_LIBCAP
 
@@ -189,10 +198,16 @@
 /* Define to 1 if you have the <stdint.h> header file. */
 #undef HAVE_STDINT_H
 
+/* Define to 1 if you have the <stdio.h> header file. */
+#undef HAVE_STDIO_H
+
 /* Define to 1 if you have the <stdlib.h> header file. */
 #undef HAVE_STDLIB_H
 
-/* Define to 1 if you have the `strerror_r' function. */
+/* Define to 1 if you have the `strchrnul' function. */
+#undef HAVE_STRCHRNUL
+
+/* Define if you have `strerror_r'. */
 #undef HAVE_STRERROR_R
 
 /* Define to 1 if you have the <strings.h> header file. */
@@ -207,9 +222,6 @@
 /* Define to 1 if you have the `strlcpy' function. */
 #undef HAVE_STRLCPY
 
-/* Define to 1 if the system has the type `struct bpf_cgroup_dev_ctx'. */
-#undef HAVE_STRUCT_BPF_CGROUP_DEV_CTX
-
 /* Define to 1 if the system has the type `struct clone_args'. */
 #undef HAVE_STRUCT_CLONE_ARGS
 
@@ -218,6 +230,9 @@
 
 /* Define to 1 if `set_tid' is a member of `struct clone_args'. */
 #undef HAVE_STRUCT_CLONE_ARGS_SET_TID
+
+/* Define to 1 if the system has the type `struct mount_attr'. */
+#undef HAVE_STRUCT_MOUNT_ATTR
 
 /* Define to 1 if the system has the type `struct open_how'. */
 #undef HAVE_STRUCT_OPEN_HOW
@@ -249,9 +264,6 @@
 /* Define to 1 if you have the <sys/types.h> header file. */
 #undef HAVE_SYS_TYPES_H
 
-/* Define if the compiler supports __thread */
-#undef HAVE_TLS
-
 /* Define to 1 if you have the <unistd.h> header file. */
 #undef HAVE_UNISTD_H
 
@@ -263,6 +275,12 @@
 
 /* Define to 1 if you have the <utmpx.h> header file. */
 #undef HAVE_UTMPX_H
+
+/* Define to 1 if you have the <wchar.h> header file. */
+#undef HAVE_WCHAR_H
+
+/* Define to 1 if the system has the type `__aligned_u64'. */
+#undef HAVE___ALIGNED_U64
 
 /* bionic libc */
 #undef IS_BIONIC
@@ -309,7 +327,9 @@
    your system. */
 #undef PTHREAD_CREATE_JOINABLE
 
-/* Define to 1 if you have the ANSI C header files. */
+/* Define to 1 if all of the C90 standard headers exist (not just the ones
+   required in a freestanding environment). This macro is provided for
+   backward compatibility; new code need not use it. */
 #undef STDC_HEADERS
 
 /* Define to 1 if strerror_r returns char *. */
@@ -319,36 +339,95 @@
 #ifndef _ALL_SOURCE
 # undef _ALL_SOURCE
 #endif
+/* Enable general extensions on macOS.  */
+#ifndef _DARWIN_C_SOURCE
+# undef _DARWIN_C_SOURCE
+#endif
+/* Enable general extensions on Solaris.  */
+#ifndef __EXTENSIONS__
+# undef __EXTENSIONS__
+#endif
 /* Enable GNU extensions on systems that have them.  */
 #ifndef _GNU_SOURCE
 # undef _GNU_SOURCE
 #endif
-/* Enable threading extensions on Solaris.  */
+/* Enable X/Open compliant socket functions that do not require linking
+   with -lxnet on HP-UX 11.11.  */
+#ifndef _HPUX_ALT_XOPEN_SOCKET_API
+# undef _HPUX_ALT_XOPEN_SOCKET_API
+#endif
+/* Identify the host operating system as Minix.
+   This macro does not affect the system headers' behavior.
+   A future release of Autoconf may stop defining this macro.  */
+#ifndef _MINIX
+# undef _MINIX
+#endif
+/* Enable general extensions on NetBSD.
+   Enable NetBSD compatibility extensions on Minix.  */
+#ifndef _NETBSD_SOURCE
+# undef _NETBSD_SOURCE
+#endif
+/* Enable OpenBSD compatibility extensions on NetBSD.
+   Oddly enough, this does nothing on OpenBSD.  */
+#ifndef _OPENBSD_SOURCE
+# undef _OPENBSD_SOURCE
+#endif
+/* Define to 1 if needed for POSIX-compatible behavior.  */
+#ifndef _POSIX_SOURCE
+# undef _POSIX_SOURCE
+#endif
+/* Define to 2 if needed for POSIX-compatible behavior.  */
+#ifndef _POSIX_1_SOURCE
+# undef _POSIX_1_SOURCE
+#endif
+/* Enable POSIX-compatible threading on Solaris.  */
 #ifndef _POSIX_PTHREAD_SEMANTICS
 # undef _POSIX_PTHREAD_SEMANTICS
+#endif
+/* Enable extensions specified by ISO/IEC TS 18661-5:2014.  */
+#ifndef __STDC_WANT_IEC_60559_ATTRIBS_EXT__
+# undef __STDC_WANT_IEC_60559_ATTRIBS_EXT__
+#endif
+/* Enable extensions specified by ISO/IEC TS 18661-1:2014.  */
+#ifndef __STDC_WANT_IEC_60559_BFP_EXT__
+# undef __STDC_WANT_IEC_60559_BFP_EXT__
+#endif
+/* Enable extensions specified by ISO/IEC TS 18661-2:2015.  */
+#ifndef __STDC_WANT_IEC_60559_DFP_EXT__
+# undef __STDC_WANT_IEC_60559_DFP_EXT__
+#endif
+/* Enable extensions specified by ISO/IEC TS 18661-4:2015.  */
+#ifndef __STDC_WANT_IEC_60559_FUNCS_EXT__
+# undef __STDC_WANT_IEC_60559_FUNCS_EXT__
+#endif
+/* Enable extensions specified by ISO/IEC TS 18661-3:2015.  */
+#ifndef __STDC_WANT_IEC_60559_TYPES_EXT__
+# undef __STDC_WANT_IEC_60559_TYPES_EXT__
+#endif
+/* Enable extensions specified by ISO/IEC TR 24731-2:2010.  */
+#ifndef __STDC_WANT_LIB_EXT2__
+# undef __STDC_WANT_LIB_EXT2__
+#endif
+/* Enable extensions specified by ISO/IEC 24747:2009.  */
+#ifndef __STDC_WANT_MATH_SPEC_FUNCS__
+# undef __STDC_WANT_MATH_SPEC_FUNCS__
 #endif
 /* Enable extensions on HP NonStop.  */
 #ifndef _TANDEM_SOURCE
 # undef _TANDEM_SOURCE
 #endif
-/* Enable general extensions on Solaris.  */
-#ifndef __EXTENSIONS__
-# undef __EXTENSIONS__
+/* Enable X/Open extensions.  Define to 500 only if necessary
+   to make mbstate_t available.  */
+#ifndef _XOPEN_SOURCE
+# undef _XOPEN_SOURCE
 #endif
 
 
 /* Version number of package */
 #undef VERSION
 
-/* Define to 1 if on MINIX. */
-#undef _MINIX
+/* Number of bits in a file offset, on hosts where this is settable. */
+#undef _FILE_OFFSET_BITS
 
-/* Define to 2 if the system does not provide POSIX.1 features except with
-   this defined. */
-#undef _POSIX_1_SOURCE
-
-/* Define to 1 if you need to in order for `stat' and other things to work. */
-#undef _POSIX_SOURCE
-
-/* Define to the compiler TLS keyword */
-#undef thread_local
+/* Define for large files, on AIX-style hosts. */
+#undef _LARGE_FILES

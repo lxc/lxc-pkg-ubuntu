@@ -16,6 +16,9 @@
  * with this program; if not, write to the Free Software Foundation, Inc.,
  * 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
  */
+
+#include "config.h"
+
 #include <lxc/lxccontainer.h>
 
 #include <errno.h>
@@ -368,17 +371,35 @@ int main(int argc, char *argv[])
 		goto non_test_error;
 	}
 
-	if (set_get_compare_clear_save_load(c, "lxc.apparmor.profile", "unconfined", tmpf, true) < 0) {
+	ret = set_get_compare_clear_save_load(c, "lxc.apparmor.profile", "unconfined", tmpf, true);
+#if HAVE_APPARMOR
+	if (ret < 0)
+#else
+	if (ret == 0)
+#endif
+	{
 		lxc_error("%s\n", "lxc.apparmor.profile");
 		goto non_test_error;
 	}
 
-	if (set_get_compare_clear_save_load(c, "lxc.apparmor.allow_incomplete", "1", tmpf, true) < 0) {
+	ret = set_get_compare_clear_save_load(c, "lxc.apparmor.allow_incomplete", "1", tmpf, true);
+#if HAVE_APPARMOR
+	if (ret < 0)
+#else
+	if (ret == 0)
+#endif
+	{
 		lxc_error("%s\n", "lxc.apparmor.allow_incomplete");
 		goto non_test_error;
 	}
 
-	if (set_get_compare_clear_save_load(c, "lxc.selinux.context", "system_u:system_r:lxc_t:s0:c22", tmpf, true) < 0) {
+	ret = set_get_compare_clear_save_load(c, "lxc.selinux.context", "system_u:system_r:lxc_t:s0:c22", tmpf, true);
+#if HAVE_SELINUX
+	if (ret < 0)
+#else
+	if (ret == 0)
+#endif
+	{
 		lxc_error("%s\n", "lxc.selinux.context");
 		goto non_test_error;
 	}
@@ -862,15 +883,13 @@ int main(int argc, char *argv[])
 		goto non_test_error;
 	}
 
-	ret = set_get_compare_clear_save_load(c, "lxc.hook.version", "2", tmpf, true);
-	if (ret == 0) {
-		lxc_error("%s\n", "lxc.hook.version");
+	if (c->set_config_item(c, "lxc.hook.version", "2")) {
+		lxc_error("%s\n", "Managed to set to set invalid config item \"lxc.hook.version\" to \"2\"");
 		goto non_test_error;
 	}
 
-	ret = set_get_compare_clear_save_load(c, "lxc.monitor.signal.pdeath", "SIGKILL", tmpf, true);
-	if (ret == 0) {
-		lxc_error("%s\n", "lxc.hook.version");
+	if (!c->set_config_item(c, "lxc.monitor.signal.pdeath", "SIGKILL")) {
+		lxc_error("%s\n", "Failed to set to set invalid config item \"lxc.monitor.signal.pdeath\" to \"SIGKILL\"");
 		goto non_test_error;
 	}
 
@@ -882,6 +901,21 @@ int main(int argc, char *argv[])
 	if (c->set_config_item(c, "lxc.notaconfigkey", "invalid")) {
 		lxc_error("%s\n", "Managed to set to set invalid config item \"lxc.notaconfigkey\" to \"invalid\"");
 		return -1;
+	}
+
+	if (c->set_config_item(c, "lxc.log.file=", "./")) {
+		lxc_error("%s\n", "Managed to set to set invalid config item \"lxc.log.file\" to \"./\"");
+		return -1;
+	}
+
+	if (c->set_config_item(c, "lxc.hook.versionasdfsadfsadf", "1")) {
+		lxc_error("%s\n", "Managed to set to set invalid config item \"lxc.hook.versionasdfsadfsadf\" to \"2\"");
+		goto non_test_error;
+	}
+
+	if (set_get_compare_clear_save_load(c, "lxc.sched.core", "1", tmpf, true) < 0) {
+		lxc_error("%s\n", "lxc.sched.core");
+		goto non_test_error;
 	}
 
 	fret = EXIT_SUCCESS;

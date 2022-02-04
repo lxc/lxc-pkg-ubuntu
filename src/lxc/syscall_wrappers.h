@@ -3,19 +3,18 @@
 #ifndef __LXC_SYSCALL_WRAPPER_H
 #define __LXC_SYSCALL_WRAPPER_H
 
-#ifndef _GNU_SOURCE
-#define _GNU_SOURCE 1
-#endif
+#include "config.h"
+
 #include <asm/unistd.h>
 #include <errno.h>
 #include <linux/keyctl.h>
 #include <sched.h>
 #include <stdint.h>
+#include <sys/prctl.h>
 #include <sys/syscall.h>
 #include <sys/types.h>
 #include <unistd.h>
 
-#include "config.h"
 #include "macro.h"
 #include "syscall_numbers.h"
 
@@ -27,8 +26,8 @@
 #include <sys/signalfd.h>
 #endif
 
-#ifdef HAVE_STRUCT_OPEN_HOW
-#include <linux/openat2.h>
+#if HAVE_SYS_PERSONALITY_H
+#include <sys/personality.h>
 #endif
 
 typedef int32_t key_serial_t;
@@ -56,7 +55,7 @@ static inline long __keyctl(int cmd, unsigned long arg2, unsigned long arg3,
 #define F_SEAL_WRITE 0x0008
 #endif
 
-#ifndef HAVE_MEMFD_CREATE
+#if !HAVE_MEMFD_CREATE
 static inline int memfd_create_lxc(const char *name, unsigned int flags)
 {
 	return syscall(__NR_memfd_create, name, flags);
@@ -66,8 +65,8 @@ static inline int memfd_create_lxc(const char *name, unsigned int flags)
 extern int memfd_create(const char *name, unsigned int flags);
 #endif
 
-#ifndef HAVE_PIVOT_ROOT
-static int pivot_root(const char *new_root, const char *put_old)
+#if !HAVE_PIVOT_ROOT
+static inline int pivot_root(const char *new_root, const char *put_old)
 {
 	return syscall(__NR_pivot_root, new_root, put_old);
 }
@@ -76,7 +75,7 @@ extern int pivot_root(const char *new_root, const char *put_old);
 #endif
 
 /* Define sethostname() if missing from the C library */
-#ifndef HAVE_SETHOSTNAME
+#if !HAVE_SETHOSTNAME
 static inline int sethostname(const char *name, size_t len)
 {
 	return syscall(__NR_sethostname, name, len);
@@ -84,14 +83,14 @@ static inline int sethostname(const char *name, size_t len)
 #endif
 
 /* Define setns() if missing from the C library */
-#ifndef HAVE_SETNS
+#if !HAVE_SETNS
 static inline int setns(int fd, int nstype)
 {
 	return syscall(__NR_setns, fd, nstype);
 }
 #endif
 
-#ifndef HAVE_SYS_SIGNALFD_H
+#if !HAVE_SYS_SIGNALFD_H
 struct signalfd_siginfo {
 	uint32_t ssi_signo;
 	int32_t ssi_errno;
@@ -127,7 +126,7 @@ static inline int signalfd(int fd, const sigset_t *mask, int flags)
 #endif
 
 /* Define unshare() if missing from the C library */
-#ifndef HAVE_UNSHARE
+#if !HAVE_UNSHARE
 static inline int unshare(int flags)
 {
 	return syscall(__NR_unshare, flags);
@@ -137,14 +136,14 @@ extern int unshare(int);
 #endif
 
 /* Define faccessat() if missing from the C library */
-#ifndef HAVE_FACCESSAT
+#if !HAVE_FACCESSAT
 static int faccessat(int __fd, const char *__file, int __type, int __flag)
 {
 	return syscall(__NR_faccessat, __fd, __file, __type, __flag);
 }
 #endif
 
-#ifndef HAVE_MOVE_MOUNT
+#if !HAVE_MOVE_MOUNT
 static inline int move_mount_lxc(int from_dfd, const char *from_pathname,
 				 int to_dfd, const char *to_pathname,
 				 unsigned int flags)
@@ -158,7 +157,7 @@ extern int move_mount(int from_dfd, const char *from_pathname, int to_dfd,
 		      const char *to_pathname, unsigned int flags);
 #endif
 
-#ifndef HAVE_OPEN_TREE
+#if !HAVE_OPEN_TREE
 static inline int open_tree_lxc(int dfd, const char *filename, unsigned int flags)
 {
 	return syscall(__NR_open_tree, dfd, filename, flags);
@@ -168,7 +167,7 @@ static inline int open_tree_lxc(int dfd, const char *filename, unsigned int flag
 extern int open_tree(int dfd, const char *filename, unsigned int flags);
 #endif
 
-#ifndef HAVE_FSOPEN
+#if !HAVE_FSOPEN
 static inline int fsopen_lxc(const char *fs_name, unsigned int flags)
 {
 	return syscall(__NR_fsopen, fs_name, flags);
@@ -178,7 +177,7 @@ static inline int fsopen_lxc(const char *fs_name, unsigned int flags)
 extern int fsopen(const char *fs_name, unsigned int flags);
 #endif
 
-#ifndef HAVE_FSPICK
+#if !HAVE_FSPICK
 static inline int fspick_lxc(int dfd, const char *path, unsigned int flags)
 {
 	return syscall(__NR_fspick, dfd, path, flags);
@@ -188,7 +187,7 @@ static inline int fspick_lxc(int dfd, const char *path, unsigned int flags)
 extern int fspick(int dfd, const char *path, unsigned int flags);
 #endif
 
-#ifndef HAVE_FSCONFIG
+#if !HAVE_FSCONFIG
 static inline int fsconfig_lxc(int fd, unsigned int cmd, const char *key, const void *value, int aux)
 {
 	return syscall(__NR_fsconfig, fd, cmd, key, value, aux);
@@ -198,7 +197,7 @@ static inline int fsconfig_lxc(int fd, unsigned int cmd, const char *key, const 
 extern int fsconfig(int fd, unsigned int cmd, const char *key, const void *value, int aux);
 #endif
 
-#ifndef HAVE_FSMOUNT
+#if !HAVE_FSMOUNT
 static inline int fsmount_lxc(int fs_fd, unsigned int flags, unsigned int attr_flags)
 {
 	return syscall(__NR_fsmount, fs_fd, flags, attr_flags);
@@ -206,6 +205,24 @@ static inline int fsmount_lxc(int fs_fd, unsigned int flags, unsigned int attr_f
 #define fsmount fsmount_lxc
 #else
 extern int fsmount(int fs_fd, unsigned int flags, unsigned int attr_flags);
+#endif
+
+/*
+ * mount_setattr()
+ */
+struct lxc_mount_attr {
+	__u64 attr_set;
+	__u64 attr_clr;
+	__u64 propagation;
+	__u64 userns_fd;
+};
+
+#if !HAVE_MOUNT_SETATTR
+static inline int mount_setattr(int dfd, const char *path, unsigned int flags,
+				struct lxc_mount_attr *attr, size_t size)
+{
+	return syscall(__NR_mount_setattr, dfd, path, flags, attr, size);
+}
 #endif
 
 /*
@@ -263,6 +280,7 @@ struct lxc_open_how {
 #define PROTECT_LOOKUP_ABSOLUTE_WITH_SYMLINKS (PROTECT_LOOKUP_ABSOLUTE & ~RESOLVE_NO_SYMLINKS)
 #define PROTECT_LOOKUP_ABSOLUTE_WITH_MAGICLINKS (PROTECT_LOOKUP_ABSOLUTE & ~(RESOLVE_NO_SYMLINKS | RESOLVE_NO_MAGICLINKS))
 #define PROTECT_LOOKUP_ABSOLUTE_XDEV (PROTECT_LOOKUP_ABSOLUTE & ~RESOLVE_NO_XDEV)
+#define PROTECT_LOOKUP_ABSOLUTE_XDEV_SYMLINKS (PROTECT_LOOKUP_ABSOLUTE_WITH_SYMLINKS & ~RESOLVE_NO_XDEV)
 
 #define PROTECT_OPATH_FILE (O_NOFOLLOW | O_PATH | O_CLOEXEC)
 #define PROTECT_OPATH_DIRECTORY (PROTECT_OPATH_FILE | O_DIRECTORY)
@@ -271,17 +289,117 @@ struct lxc_open_how {
 #define PROTECT_OPEN (PROTECT_OPEN_WITH_TRAILING_SYMLINKS | O_NOFOLLOW)
 
 #define PROTECT_OPEN_W_WITH_TRAILING_SYMLINKS (O_CLOEXEC | O_NOCTTY | O_WRONLY)
-#define PROTECT_OPEN_W (PROTECT_OPEN_WITH_TRAILING_SYMLINKS | O_NOFOLLOW)
+#define PROTECT_OPEN_W (PROTECT_OPEN_W_WITH_TRAILING_SYMLINKS | O_NOFOLLOW)
+#define PROTECT_OPEN_RW (O_CLOEXEC | O_NOCTTY | O_RDWR | O_NOFOLLOW)
 
-#ifndef HAVE_OPENAT2
+#if !HAVE_OPENAT2
 static inline int openat2(int dfd, const char *filename, struct lxc_open_how *how, size_t size)
 {
-	/* When struct open_how is updated we should update lxc as well. */
-#ifdef HAVE_STRUCT_OPEN_HOW
-	BUILD_BUG_ON(sizeof(struct lxc_open_how) != sizeof(struct open_how));
-#endif
-	return syscall(__NR_openat2, dfd, filename, (struct open_how *)how, size);
+	return syscall(__NR_openat2, dfd, filename, how, size);
 }
 #endif /* HAVE_OPENAT2 */
+
+#ifndef CLOSE_RANGE_UNSHARE
+#define CLOSE_RANGE_UNSHARE	(1U << 1)
+#endif
+
+#ifndef CLOSE_RANGE_CLOEXEC
+#define CLOSE_RANGE_CLOEXEC	(1U << 2)
+#endif
+
+#if !HAVE_CLOSE_RANGE
+static inline int close_range(unsigned int fd, unsigned int max_fd, unsigned int flags)
+{
+	return syscall(__NR_close_range, fd, max_fd, flags);
+}
+#endif
+
+#if !HAVE_SYS_PERSONALITY_H
+static inline int personality(unsigned long persona)
+{
+	return syscall(__NR_personality, persona);
+}
+#endif
+
+/* arg1 of prctl() */
+#ifndef PR_SCHED_CORE
+#define PR_SCHED_CORE 62
+#endif
+
+/* arg2 of prctl() */
+#ifndef PR_SCHED_CORE_GET
+#define PR_SCHED_CORE_GET 0
+#endif
+
+#ifndef PR_SCHED_CORE_CREATE
+#define PR_SCHED_CORE_CREATE 1 /* create unique core_sched cookie */
+#endif
+
+#ifndef PR_SCHED_CORE_SHARE_TO
+#define PR_SCHED_CORE_SHARE_TO 2 /* push core_sched cookie to pid */
+#endif
+
+#ifndef PR_SCHED_CORE_SHARE_FROM
+#define PR_SCHED_CORE_SHARE_FROM 3 /* pull core_sched cookie to pid */
+#endif
+
+#ifndef PR_SCHED_CORE_MAX
+#define PR_SCHED_CORE_MAX 4
+#endif
+
+/* arg3 of prctl() */
+#ifndef PR_SCHED_CORE_SCOPE_THREAD
+#define PR_SCHED_CORE_SCOPE_THREAD 0
+#endif
+
+#ifndef PR_SCHED_CORE_SCOPE_THREAD_GROUP
+#define PR_SCHED_CORE_SCOPE_THREAD_GROUP 1
+#endif
+
+#ifndef PR_SCHED_CORE_SCOPE_PROCESS_GROUP
+#define PR_SCHED_CORE_SCOPE_PROCESS_GROUP 2
+#endif
+
+#define INVALID_SCHED_CORE_COOKIE ((__u64)-1)
+
+static inline bool core_scheduling_cookie_valid(__u64 cookie)
+{
+	return (cookie > 0) && (cookie != INVALID_SCHED_CORE_COOKIE);
+}
+
+static inline int core_scheduling_cookie_get(pid_t pid, __u64 *cookie)
+{
+	int ret;
+
+	if (!cookie)
+		return ret_errno(EINVAL);
+
+	ret = prctl(PR_SCHED_CORE, PR_SCHED_CORE_GET, pid,
+		    PR_SCHED_CORE_SCOPE_THREAD, (unsigned long)cookie);
+	if (ret) {
+		*cookie = INVALID_SCHED_CORE_COOKIE;
+		return -errno;
+	}
+
+	return 0;
+}
+
+static inline int core_scheduling_cookie_create_threadgroup(pid_t pid)
+{
+	int ret;
+
+	ret = prctl(PR_SCHED_CORE, PR_SCHED_CORE_CREATE, pid,
+		    PR_SCHED_CORE_SCOPE_THREAD_GROUP, 0);
+	if (ret)
+		return -errno;
+
+	return 0;
+}
+
+static inline int core_scheduling_cookie_share_with(pid_t pid)
+{
+	return prctl(PR_SCHED_CORE, PR_SCHED_CORE_SHARE_FROM, pid,
+		     PR_SCHED_CORE_SCOPE_THREAD, 0);
+}
 
 #endif /* __LXC_SYSCALL_WRAPPER_H */

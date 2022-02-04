@@ -6,6 +6,8 @@ pkginclude_HEADERS = attach_options.h \
 
 noinst_HEADERS = api_extensions.h \
 		 attach.h \
+		 ../include/bpf.h \
+		 ../include/bpf_common.h \
 		 caps.h \
 		 cgroups/cgroup.h \
 		 cgroups/cgroup_utils.h \
@@ -16,7 +18,12 @@ noinst_HEADERS = api_extensions.h \
 		 confile_utils.h \
 		 criu.h \
 		 error.h \
+		 error_utils.h \
 		 file_utils.h \
+		 hlist.h \
+		 ../include/strchrnul.h \
+		 ../include/strlcat.h \
+		 ../include/strlcpy.h \
 		 ../include/netns_ifaddrs.h \
 		 initutils.h \
 		 list.h \
@@ -99,6 +106,8 @@ lib_LTLIBRARIES = liblxc.la
 liblxc_la_SOURCES = af_unix.c af_unix.h \
 		    api_extensions.h \
 		    attach.c attach.h \
+		    ../include/bpf.h \
+		    ../include/bpf_common.h \
 		    caps.c caps.h \
 		    cgroups/cgfsng.c \
 		    cgroups/cgroup.c cgroups/cgroup.h \
@@ -113,8 +122,10 @@ liblxc_la_SOURCES = af_unix.c af_unix.h \
 		    criu.c criu.h \
 		    error.c error.h \
 		    execute.c \
+		    error_utils.h \
 		    freezer.c \
 		    file_utils.c file_utils.h \
+		    hlist.h \
 		    ../include/netns_ifaddrs.c ../include/netns_ifaddrs.h \
 		    initutils.c initutils.h \
 		    list.h \
@@ -195,6 +206,10 @@ if !HAVE_STRLCAT
 liblxc_la_SOURCES += ../include/strlcat.c ../include/strlcat.h
 endif
 
+if !HAVE_STRCHRNUL
+liblxc_la_SOURCES += ../include/strchrnul.c ../include/strchrnul.h
+endif
+
 if ENFORCE_MEMFD_REXEC
 liblxc_la_SOURCES += rexec.c rexec.h
 endif
@@ -215,6 +230,7 @@ AM_CFLAGS += -DLXCROOTFSMOUNT=\"$(LXCROOTFSMOUNT)\" \
 	     -DSBINDIR=\"$(SBINDIR)\" \
 	     -DAPPARMOR_CACHE_DIR=\"$(APPARMOR_CACHE_DIR)\" \
 	     -I $(top_srcdir)/src \
+	     -I $(top_srcdir)/src/include \
 	     -I $(top_srcdir)/src/lxc \
 	     -I $(top_srcdir)/src/lxc/storage \
 	     -I $(top_srcdir)/src/lxc/cgroups
@@ -250,25 +266,21 @@ liblxc_la_CFLAGS = -fPIC \
 		   $(AM_CFLAGS) \
 		   $(LIBLXC_SANITIZER) \
 		   -pthread
-if ENABLE_ASAN
-liblxc_la_CFLAGS += -fsanitize=address \
-		    -fno-omit-frame-pointer
-endif
-
-if ENABLE_UBSAN
-liblxc_la_CFLAGS += -fsanitize=undefined
-endif
 
 liblxc_la_LDFLAGS = -pthread \
-		    -Wl,-no-undefined \
 		    -Wl,-soname,liblxc.so.$(firstword $(subst ., ,@LXC_ABI@)) \
 		    -version-info @LXC_ABI_MAJOR@
+
+if ENABLE_NO_UNDEFINED
+liblxc_la_LDFLAGS += -Wl,-no-undefined
+endif
 
 liblxc_la_LIBADD = $(CAP_LIBS) \
 		   $(OPENSSL_LIBS) \
 		   $(SELINUX_LIBS) \
 		   $(SECCOMP_LIBS) \
-		   $(DLOG_LIBS)
+		   $(DLOG_LIBS) \
+		   $(LIBURING_LIBS)
 
 bin_SCRIPTS=
 
@@ -327,7 +339,8 @@ LDADD = liblxc.la \
 	@OPENSSL_LIBS@ \
 	@SECCOMP_LIBS@ \
 	@SELINUX_LIBS@ \
-	@DLOG_LIBS@
+	@DLOG_LIBS@ \
+	@LIBURING_LIBS@
 
 if ENABLE_TOOLS
 lxc_attach_SOURCES = tools/lxc_attach.c \
@@ -356,6 +369,7 @@ lxc_attach_SOURCES += af_unix.c af_unix.h \
 		      lxclock.c lxclock.h \
 		      mainloop.c mainloop.h \
 		      monitor.c monitor.h \
+		      mount_utils.c mount_utils.h \
 		      namespace.c namespace.h \
 		      network.c network.h \
 		      nl.c nl.h \
@@ -385,6 +399,37 @@ lxc_attach_SOURCES += af_unix.c af_unix.h \
 if ENABLE_SECCOMP
 lxc_attach_SOURCES += seccomp.c lxcseccomp.h
 endif
+
+if !HAVE_STRCHRNUL
+lxc_attach_SOURCES += ../include/strchrnul.c ../include/strchrnul.h
+endif
+
+if !HAVE_STRLCPY
+lxc_attach_SOURCES += ../include/strlcpy.c ../include/strlcpy.h
+endif
+
+if !HAVE_STRLCAT
+lxc_attach_SOURCES += ../include/strlcat.c ../include/strlcat.h
+endif
+
+if !HAVE_OPENPTY
+lxc_attach_SOURCES += ../include/openpty.c ../include/openpty.h
+endif
+
+if IS_BIONIC
+lxc_attach_SOURCES += ../include/fexecve.c ../include/fexecve.h \
+		../include/lxcmntent.c ../include/lxcmntent.h
+endif
+
+if !HAVE_GETGRGID_R
+lxc_attach_SOURCES += ../include/getgrgid_r.c ../include/getgrgid_r.h
+endif
+
+if !HAVE_PRLIMIT
+if HAVE_PRLIMIT64
+lxc_attach_SOURCES += ../include/prlimit.c ../include/prlimit.h
+endif
+endif
 endif
 
 lxc_autostart_SOURCES = tools/lxc_autostart.c \
@@ -413,6 +458,7 @@ lxc_autostart_SOURCES += af_unix.c af_unix.h \
 			 lxclock.c lxclock.h \
 			 mainloop.c mainloop.h \
 			 monitor.c monitor.h \
+			 mount_utils.c mount_utils.h \
 			 namespace.c namespace.h \
 			 network.c network.h \
 			 nl.c nl.h \
@@ -440,6 +486,37 @@ lxc_autostart_SOURCES += af_unix.c af_unix.h \
 			 $(LSM_SOURCES)
 if ENABLE_SECCOMP
 lxc_autostart_SOURCES += seccomp.c lxcseccomp.h
+endif
+
+if !HAVE_STRCHRNUL
+lxc_autostart_SOURCES += ../include/strchrnul.c ../include/strchrnul.h
+endif
+
+if !HAVE_STRLCPY
+lxc_autostart_SOURCES += ../include/strlcpy.c ../include/strlcpy.h
+endif
+
+if !HAVE_STRLCAT
+lxc_autostart_SOURCES += ../include/strlcat.c ../include/strlcat.h
+endif
+
+if !HAVE_OPENPTY
+lxc_autostart_SOURCES += ../include/openpty.c ../include/openpty.h
+endif
+
+if IS_BIONIC
+lxc_autostart_SOURCES += ../include/fexecve.c ../include/fexecve.h \
+		../include/lxcmntent.c ../include/lxcmntent.h
+endif
+
+if !HAVE_GETGRGID_R
+lxc_autostart_SOURCES += ../include/getgrgid_r.c ../include/getgrgid_r.h
+endif
+
+if !HAVE_PRLIMIT
+if HAVE_PRLIMIT64
+lxc_autostart_SOURCES += ../include/prlimit.c ../include/prlimit.h
+endif
 endif
 endif
 
@@ -469,6 +546,7 @@ lxc_cgroup_SOURCES += af_unix.c af_unix.h \
 		      lxclock.c lxclock.h \
 		      mainloop.c mainloop.h \
 		      monitor.c monitor.h \
+		      mount_utils.c mount_utils.h \
 		      namespace.c namespace.h \
 		      network.c network.h \
 		      nl.c nl.h \
@@ -496,6 +574,37 @@ lxc_cgroup_SOURCES += af_unix.c af_unix.h \
 		      $(LSM_SOURCES)
 if ENABLE_SECCOMP
 lxc_cgroup_SOURCES += seccomp.c lxcseccomp.h
+endif
+
+if !HAVE_STRCHRNUL
+lxc_cgroup_SOURCES += ../include/strchrnul.c ../include/strchrnul.h
+endif
+
+if !HAVE_STRLCPY
+lxc_cgroup_SOURCES += ../include/strlcpy.c ../include/strlcpy.h
+endif
+
+if !HAVE_STRLCAT
+lxc_cgroup_SOURCES += ../include/strlcat.c ../include/strlcat.h
+endif
+
+if !HAVE_OPENPTY
+lxc_cgroup_SOURCES += ../include/openpty.c ../include/openpty.h
+endif
+
+if IS_BIONIC
+lxc_cgroup_SOURCES += ../include/fexecve.c ../include/fexecve.h \
+		../include/lxcmntent.c ../include/lxcmntent.h
+endif
+
+if !HAVE_GETGRGID_R
+lxc_cgroup_SOURCES += ../include/getgrgid_r.c ../include/getgrgid_r.h
+endif
+
+if !HAVE_PRLIMIT
+if HAVE_PRLIMIT64
+lxc_cgroup_SOURCES += ../include/prlimit.c ../include/prlimit.h
+endif
 endif
 endif
 
@@ -525,6 +634,7 @@ lxc_config_SOURCES += af_unix.c af_unix.h \
 		      lxclock.c lxclock.h \
 		      mainloop.c mainloop.h \
 		      monitor.c monitor.h \
+		      mount_utils.c mount_utils.h \
 		      namespace.c namespace.h \
 		      network.c network.h \
 		      nl.c nl.h \
@@ -552,6 +662,37 @@ lxc_config_SOURCES += af_unix.c af_unix.h \
 		      $(LSM_SOURCES)
 if ENABLE_SECCOMP
 lxc_config_SOURCES += seccomp.c lxcseccomp.h
+endif
+
+if !HAVE_STRCHRNUL
+lxc_config_SOURCES += ../include/strchrnul.c ../include/strchrnul.h
+endif
+
+if !HAVE_STRLCPY
+lxc_config_SOURCES += ../include/strlcpy.c ../include/strlcpy.h
+endif
+
+if !HAVE_STRLCAT
+lxc_config_SOURCES += ../include/strlcat.c ../include/strlcat.h
+endif
+
+if !HAVE_OPENPTY
+lxc_config_SOURCES += ../include/openpty.c ../include/openpty.h
+endif
+
+if IS_BIONIC
+lxc_config_SOURCES += ../include/fexecve.c ../include/fexecve.h \
+		../include/lxcmntent.c ../include/lxcmntent.h
+endif
+
+if !HAVE_GETGRGID_R
+lxc_config_SOURCES += ../include/getgrgid_r.c ../include/getgrgid_r.h
+endif
+
+if !HAVE_PRLIMIT
+if HAVE_PRLIMIT64
+lxc_config_SOURCES += ../include/prlimit.c ../include/prlimit.h
+endif
 endif
 endif
 
@@ -581,6 +722,7 @@ lxc_console_SOURCES += af_unix.c af_unix.h \
 		       lxclock.c lxclock.h \
 		       mainloop.c mainloop.h \
 		       monitor.c monitor.h \
+		       mount_utils.c mount_utils.h \
 		       namespace.c namespace.h \
 		       network.c network.h \
 		       nl.c nl.h \
@@ -608,6 +750,37 @@ lxc_console_SOURCES += af_unix.c af_unix.h \
 		       $(LSM_SOURCES)
 if ENABLE_SECCOMP
 lxc_console_SOURCES += seccomp.c lxcseccomp.h
+endif
+
+if !HAVE_STRCHRNUL
+lxc_console_SOURCES += ../include/strchrnul.c ../include/strchrnul.h
+endif
+
+if !HAVE_STRLCPY
+lxc_console_SOURCES += ../include/strlcpy.c ../include/strlcpy.h
+endif
+
+if !HAVE_STRLCAT
+lxc_console_SOURCES += ../include/strlcat.c ../include/strlcat.h
+endif
+
+if !HAVE_OPENPTY
+lxc_console_SOURCES += ../include/openpty.c ../include/openpty.h
+endif
+
+if IS_BIONIC
+lxc_console_SOURCES += ../include/fexecve.c ../include/fexecve.h \
+		../include/lxcmntent.c ../include/lxcmntent.h
+endif
+
+if !HAVE_GETGRGID_R
+lxc_console_SOURCES += ../include/getgrgid_r.c ../include/getgrgid_r.h
+endif
+
+if !HAVE_PRLIMIT
+if HAVE_PRLIMIT64
+lxc_console_SOURCES += ../include/prlimit.c ../include/prlimit.h
+endif
 endif
 endif
 
@@ -637,6 +810,7 @@ lxc_destroy_SOURCES += af_unix.c af_unix.h \
 		       lxclock.c lxclock.h \
 		       mainloop.c mainloop.h \
 		       monitor.c monitor.h \
+		       mount_utils.c mount_utils.h \
 		       namespace.c namespace.h \
 		       network.c network.h \
 		       nl.c nl.h \
@@ -664,6 +838,37 @@ lxc_destroy_SOURCES += af_unix.c af_unix.h \
 		       $(LSM_SOURCES)
 if ENABLE_SECCOMP
 lxc_destroy_SOURCES += seccomp.c lxcseccomp.h
+endif
+
+if !HAVE_STRCHRNUL
+lxc_destroy_SOURCES += ../include/strchrnul.c ../include/strchrnul.h
+endif
+
+if !HAVE_STRLCPY
+lxc_destroy_SOURCES += ../include/strlcpy.c ../include/strlcpy.h
+endif
+
+if !HAVE_STRLCAT
+lxc_destroy_SOURCES += ../include/strlcat.c ../include/strlcat.h
+endif
+
+if !HAVE_OPENPTY
+lxc_destroy_SOURCES += ../include/openpty.c ../include/openpty.h
+endif
+
+if IS_BIONIC
+lxc_destroy_SOURCES += ../include/fexecve.c ../include/fexecve.h \
+		../include/lxcmntent.c ../include/lxcmntent.h
+endif
+
+if !HAVE_GETGRGID_R
+lxc_destroy_SOURCES += ../include/getgrgid_r.c ../include/getgrgid_r.h
+endif
+
+if !HAVE_PRLIMIT
+if HAVE_PRLIMIT64
+lxc_destroy_SOURCES += ../include/prlimit.c ../include/prlimit.h
+endif
 endif
 endif
 
@@ -693,6 +898,7 @@ lxc_device_SOURCES += af_unix.c af_unix.h \
 		      lxclock.c lxclock.h \
 		      mainloop.c mainloop.h \
 		      monitor.c monitor.h \
+		      mount_utils.c mount_utils.h \
 		      namespace.c namespace.h \
 		      network.c network.h \
 		      nl.c nl.h \
@@ -720,6 +926,37 @@ lxc_device_SOURCES += af_unix.c af_unix.h \
 		      $(LSM_SOURCES)
 if ENABLE_SECCOMP
 lxc_device_SOURCES += seccomp.c lxcseccomp.h
+endif
+
+if !HAVE_STRCHRNUL
+lxc_device_SOURCES += ../include/strchrnul.c ../include/strchrnul.h
+endif
+
+if !HAVE_STRLCPY
+lxc_device_SOURCES += ../include/strlcpy.c ../include/strlcpy.h
+endif
+
+if !HAVE_STRLCAT
+lxc_device_SOURCES += ../include/strlcat.c ../include/strlcat.h
+endif
+
+if !HAVE_OPENPTY
+lxc_device_SOURCES += ../include/openpty.c ../include/openpty.h
+endif
+
+if IS_BIONIC
+lxc_device_SOURCES += ../include/fexecve.c ../include/fexecve.h \
+		../include/lxcmntent.c ../include/lxcmntent.h
+endif
+
+if !HAVE_GETGRGID_R
+lxc_device_SOURCES += ../include/getgrgid_r.c ../include/getgrgid_r.h
+endif
+
+if !HAVE_PRLIMIT
+if HAVE_PRLIMIT64
+lxc_device_SOURCES += ../include/prlimit.c ../include/prlimit.h
+endif
 endif
 endif
 
@@ -749,6 +986,7 @@ lxc_execute_SOURCES += af_unix.c af_unix.h \
 		       lxclock.c lxclock.h \
 		       mainloop.c mainloop.h \
 		       monitor.c monitor.h \
+		       mount_utils.c mount_utils.h \
 		       namespace.c namespace.h \
 		       network.c network.h \
 		       nl.c nl.h \
@@ -776,6 +1014,37 @@ lxc_execute_SOURCES += af_unix.c af_unix.h \
 		       $(LSM_SOURCES)
 if ENABLE_SECCOMP
 lxc_execute_SOURCES += seccomp.c lxcseccomp.h
+endif
+
+if !HAVE_STRCHRNUL
+lxc_execute_SOURCES += ../include/strchrnul.c ../include/strchrnul.h
+endif
+
+if !HAVE_STRLCPY
+lxc_execute_SOURCES += ../include/strlcpy.c ../include/strlcpy.h
+endif
+
+if !HAVE_STRLCAT
+lxc_execute_SOURCES += ../include/strlcat.c ../include/strlcat.h
+endif
+
+if !HAVE_OPENPTY
+lxc_execute_SOURCES += ../include/openpty.c ../include/openpty.h
+endif
+
+if IS_BIONIC
+lxc_execute_SOURCES += ../include/fexecve.c ../include/fexecve.h \
+		../include/lxcmntent.c ../include/lxcmntent.h
+endif
+
+if !HAVE_GETGRGID_R
+lxc_execute_SOURCES += ../include/getgrgid_r.c ../include/getgrgid_r.h
+endif
+
+if !HAVE_PRLIMIT
+if HAVE_PRLIMIT64
+lxc_execute_SOURCES += ../include/prlimit.c ../include/prlimit.h
+endif
 endif
 endif
 
@@ -805,6 +1074,7 @@ lxc_freeze_SOURCES += af_unix.c af_unix.h \
 		      lxclock.c lxclock.h \
 		      mainloop.c mainloop.h \
 		      monitor.c monitor.h \
+		      mount_utils.c mount_utils.h \
 		      namespace.c namespace.h \
 		      network.c network.h \
 		      nl.c nl.h \
@@ -832,6 +1102,37 @@ lxc_freeze_SOURCES += af_unix.c af_unix.h \
 		      $(LSM_SOURCES)
 if ENABLE_SECCOMP
 lxc_freeze_SOURCES += seccomp.c lxcseccomp.h
+endif
+
+if !HAVE_STRCHRNUL
+lxc_freeze_SOURCES += ../include/strchrnul.c ../include/strchrnul.h
+endif
+
+if !HAVE_STRLCPY
+lxc_freeze_SOURCES += ../include/strlcpy.c ../include/strlcpy.h
+endif
+
+if !HAVE_STRLCAT
+lxc_freeze_SOURCES += ../include/strlcat.c ../include/strlcat.h
+endif
+
+if !HAVE_OPENPTY
+lxc_freeze_SOURCES += ../include/openpty.c ../include/openpty.h
+endif
+
+if IS_BIONIC
+lxc_freeze_SOURCES += ../include/fexecve.c ../include/fexecve.h \
+		../include/lxcmntent.c ../include/lxcmntent.h
+endif
+
+if !HAVE_GETGRGID_R
+lxc_freeze_SOURCES += ../include/getgrgid_r.c ../include/getgrgid_r.h
+endif
+
+if !HAVE_PRLIMIT
+if HAVE_PRLIMIT64
+lxc_freeze_SOURCES += ../include/prlimit.c ../include/prlimit.h
+endif
 endif
 endif
 
@@ -861,6 +1162,7 @@ lxc_info_SOURCES += af_unix.c af_unix.h \
 		    lxclock.c lxclock.h \
 		    mainloop.c mainloop.h \
 		    monitor.c monitor.h \
+		    mount_utils.c mount_utils.h \
 		    namespace.c namespace.h \
 		    network.c network.h \
 		    nl.c nl.h \
@@ -888,6 +1190,37 @@ lxc_info_SOURCES += af_unix.c af_unix.h \
 		    $(LSM_SOURCES)
 if ENABLE_SECCOMP
 lxc_info_SOURCES += seccomp.c lxcseccomp.h
+endif
+
+if !HAVE_STRCHRNUL
+lxc_info_SOURCES += ../include/strchrnul.c ../include/strchrnul.h
+endif
+
+if !HAVE_STRLCPY
+lxc_info_SOURCES += ../include/strlcpy.c ../include/strlcpy.h
+endif
+
+if !HAVE_STRLCAT
+lxc_info_SOURCES += ../include/strlcat.c ../include/strlcat.h
+endif
+
+if !HAVE_OPENPTY
+lxc_info_SOURCES += ../include/openpty.c ../include/openpty.h
+endif
+
+if IS_BIONIC
+lxc_info_SOURCES += ../include/fexecve.c ../include/fexecve.h \
+		../include/lxcmntent.c ../include/lxcmntent.h
+endif
+
+if !HAVE_GETGRGID_R
+lxc_info_SOURCES += ../include/getgrgid_r.c ../include/getgrgid_r.h
+endif
+
+if !HAVE_PRLIMIT
+if HAVE_PRLIMIT64
+lxc_info_SOURCES += ../include/prlimit.c ../include/prlimit.h
+endif
 endif
 endif
 
@@ -918,6 +1251,7 @@ lxc_monitor_SOURCES += af_unix.c af_unix.h \
 		       macro.h \
 		       mainloop.c mainloop.h \
 		       monitor.c monitor.h \
+		       mount_utils.c mount_utils.h \
 		       namespace.c namespace.h \
 		       network.c network.h \
 		       nl.c nl.h \
@@ -945,6 +1279,37 @@ lxc_monitor_SOURCES += af_unix.c af_unix.h \
 		       $(LSM_SOURCES)
 if ENABLE_SECCOMP
 lxc_monitor_SOURCES += seccomp.c lxcseccomp.h
+endif
+
+if !HAVE_STRCHRNUL
+lxc_monitor_SOURCES += ../include/strchrnul.c ../include/strchrnul.h
+endif
+
+if !HAVE_STRLCPY
+lxc_monitor_SOURCES += ../include/strlcpy.c ../include/strlcpy.h
+endif
+
+if !HAVE_STRLCAT
+lxc_monitor_SOURCES += ../include/strlcat.c ../include/strlcat.h
+endif
+
+if !HAVE_OPENPTY
+lxc_monitor_SOURCES += ../include/openpty.c ../include/openpty.h
+endif
+
+if IS_BIONIC
+lxc_monitor_SOURCES += ../include/fexecve.c ../include/fexecve.h \
+		../include/lxcmntent.c ../include/lxcmntent.h
+endif
+
+if !HAVE_GETGRGID_R
+lxc_monitor_SOURCES += ../include/getgrgid_r.c ../include/getgrgid_r.h
+endif
+
+if !HAVE_PRLIMIT
+if HAVE_PRLIMIT64
+lxc_monitor_SOURCES += ../include/prlimit.c ../include/prlimit.h
+endif
 endif
 endif
 
@@ -975,6 +1340,7 @@ lxc_ls_SOURCES += af_unix.c af_unix.h \
 		  mainloop.c mainloop.h \
 		  memory_utils.h \
 		  monitor.c monitor.h \
+		  mount_utils.c mount_utils.h \
 		  namespace.c namespace.h \
 		  network.c network.h \
 		  nl.c nl.h \
@@ -1002,6 +1368,37 @@ lxc_ls_SOURCES += af_unix.c af_unix.h \
 		  $(LSM_SOURCES)
 if ENABLE_SECCOMP
 lxc_ls_SOURCES += seccomp.c lxcseccomp.h
+endif
+
+if !HAVE_STRCHRNUL
+lxc_ls_SOURCES += ../include/strchrnul.c ../include/strchrnul.h
+endif
+
+if !HAVE_STRLCPY
+lxc_ls_SOURCES += ../include/strlcpy.c ../include/strlcpy.h
+endif
+
+if !HAVE_STRLCAT
+lxc_ls_SOURCES += ../include/strlcat.c ../include/strlcat.h
+endif
+
+if !HAVE_OPENPTY
+lxc_ls_SOURCES += ../include/openpty.c ../include/openpty.h
+endif
+
+if IS_BIONIC
+lxc_ls_SOURCES += ../include/fexecve.c ../include/fexecve.h \
+		../include/lxcmntent.c ../include/lxcmntent.h
+endif
+
+if !HAVE_GETGRGID_R
+lxc_ls_SOURCES += ../include/getgrgid_r.c ../include/getgrgid_r.h
+endif
+
+if !HAVE_PRLIMIT
+if HAVE_PRLIMIT64
+lxc_ls_SOURCES += ../include/prlimit.c ../include/prlimit.h
+endif
 endif
 endif
 
@@ -1031,6 +1428,7 @@ lxc_copy_SOURCES += af_unix.c af_unix.h \
 		    lxclock.c lxclock.h \
 		    mainloop.c mainloop.h \
 		    monitor.c monitor.h \
+		    mount_utils.c mount_utils.h \
 		    namespace.c namespace.h \
 		    network.c network.h \
 		    nl.c nl.h \
@@ -1058,6 +1456,37 @@ lxc_copy_SOURCES += af_unix.c af_unix.h \
 		    $(LSM_SOURCES)
 if ENABLE_SECCOMP
 lxc_copy_SOURCES += seccomp.c lxcseccomp.h
+endif
+
+if !HAVE_STRCHRNUL
+lxc_copy_SOURCES += ../include/strchrnul.c ../include/strchrnul.h
+endif
+
+if !HAVE_STRLCPY
+lxc_copy_SOURCES += ../include/strlcpy.c ../include/strlcpy.h
+endif
+
+if !HAVE_STRLCAT
+lxc_copy_SOURCES += ../include/strlcat.c ../include/strlcat.h
+endif
+
+if !HAVE_OPENPTY
+lxc_copy_SOURCES += ../include/openpty.c ../include/openpty.h
+endif
+
+if IS_BIONIC
+lxc_copy_SOURCES += ../include/fexecve.c ../include/fexecve.h \
+		../include/lxcmntent.c ../include/lxcmntent.h
+endif
+
+if !HAVE_GETGRGID_R
+lxc_copy_SOURCES += ../include/getgrgid_r.c ../include/getgrgid_r.h
+endif
+
+if !HAVE_PRLIMIT
+if HAVE_PRLIMIT64
+lxc_copy_SOURCES += ../include/prlimit.c ../include/prlimit.h
+endif
 endif
 endif
 
@@ -1087,6 +1516,7 @@ lxc_start_SOURCES += af_unix.c af_unix.h \
 		     lxclock.c lxclock.h \
 		     mainloop.c mainloop.h \
 		     monitor.c monitor.h \
+		     mount_utils.c mount_utils.h \
 		     namespace.c namespace.h \
 		     network.c network.h \
 		     nl.c nl.h \
@@ -1114,6 +1544,37 @@ lxc_start_SOURCES += af_unix.c af_unix.h \
 		     $(LSM_SOURCES)
 if ENABLE_SECCOMP
 lxc_start_SOURCES += seccomp.c lxcseccomp.h
+endif
+
+if !HAVE_STRCHRNUL
+lxc_start_SOURCES += ../include/strchrnul.c ../include/strchrnul.h
+endif
+
+if !HAVE_STRLCPY
+lxc_start_SOURCES += ../include/strlcpy.c ../include/strlcpy.h
+endif
+
+if !HAVE_STRLCAT
+lxc_start_SOURCES += ../include/strlcat.c ../include/strlcat.h
+endif
+
+if !HAVE_OPENPTY
+lxc_start_SOURCES += ../include/openpty.c ../include/openpty.h
+endif
+
+if IS_BIONIC
+lxc_start_SOURCES += ../include/fexecve.c ../include/fexecve.h \
+		../include/lxcmntent.c ../include/lxcmntent.h
+endif
+
+if !HAVE_GETGRGID_R
+lxc_start_SOURCES += ../include/getgrgid_r.c ../include/getgrgid_r.h
+endif
+
+if !HAVE_PRLIMIT
+if HAVE_PRLIMIT64
+lxc_start_SOURCES += ../include/prlimit.c ../include/prlimit.h
+endif
 endif
 endif
 
@@ -1143,6 +1604,7 @@ lxc_stop_SOURCES += af_unix.c af_unix.h \
 		    lxclock.c lxclock.h \
 		    mainloop.c mainloop.h \
 		    monitor.c monitor.h \
+		    mount_utils.c mount_utils.h \
 		    namespace.c namespace.h \
 		    network.c network.h \
 		    nl.c nl.h \
@@ -1170,6 +1632,37 @@ lxc_stop_SOURCES += af_unix.c af_unix.h \
 		    $(LSM_SOURCES)
 if ENABLE_SECCOMP
 lxc_stop_SOURCES += seccomp.c lxcseccomp.h
+endif
+
+if !HAVE_STRCHRNUL
+lxc_stop_SOURCES += ../include/strchrnul.c ../include/strchrnul.h
+endif
+
+if !HAVE_STRLCPY
+lxc_stop_SOURCES += ../include/strlcpy.c ../include/strlcpy.h
+endif
+
+if !HAVE_STRLCAT
+lxc_stop_SOURCES += ../include/strlcat.c ../include/strlcat.h
+endif
+
+if !HAVE_OPENPTY
+lxc_stop_SOURCES += ../include/openpty.c ../include/openpty.h
+endif
+
+if IS_BIONIC
+lxc_stop_SOURCES += ../include/fexecve.c ../include/fexecve.h \
+		../include/lxcmntent.c ../include/lxcmntent.h
+endif
+
+if !HAVE_GETGRGID_R
+lxc_stop_SOURCES += ../include/getgrgid_r.c ../include/getgrgid_r.h
+endif
+
+if !HAVE_PRLIMIT
+if HAVE_PRLIMIT64
+lxc_stop_SOURCES += ../include/prlimit.c ../include/prlimit.h
+endif
 endif
 endif
 
@@ -1199,6 +1692,7 @@ lxc_top_SOURCES += af_unix.c af_unix.h \
 		   lxclock.c lxclock.h \
 		   mainloop.c mainloop.h \
 		   monitor.c monitor.h \
+		   mount_utils.c mount_utils.h \
 		   namespace.c namespace.h \
 		   network.c network.h \
 		   nl.c nl.h \
@@ -1226,6 +1720,37 @@ lxc_top_SOURCES += af_unix.c af_unix.h \
 		   $(LSM_SOURCES)
 if ENABLE_SECCOMP
 lxc_top_SOURCES += seccomp.c lxcseccomp.h
+endif
+
+if !HAVE_STRCHRNUL
+lxc_top_SOURCES += ../include/strchrnul.c ../include/strchrnul.h
+endif
+
+if !HAVE_STRLCPY
+lxc_top_SOURCES += ../include/strlcpy.c ../include/strlcpy.h
+endif
+
+if !HAVE_STRLCAT
+lxc_top_SOURCES += ../include/strlcat.c ../include/strlcat.h
+endif
+
+if !HAVE_OPENPTY
+lxc_top_SOURCES += ../include/openpty.c ../include/openpty.h
+endif
+
+if IS_BIONIC
+lxc_top_SOURCES += ../include/fexecve.c ../include/fexecve.h \
+		../include/lxcmntent.c ../include/lxcmntent.h
+endif
+
+if !HAVE_GETGRGID_R
+lxc_top_SOURCES += ../include/getgrgid_r.c ../include/getgrgid_r.h
+endif
+
+if !HAVE_PRLIMIT
+if HAVE_PRLIMIT64
+lxc_top_SOURCES += ../include/prlimit.c ../include/prlimit.h
+endif
 endif
 endif
 
@@ -1255,6 +1780,7 @@ lxc_unfreeze_SOURCES += af_unix.c af_unix.h \
 			lxclock.c lxclock.h \
 			mainloop.c mainloop.h \
 			monitor.c monitor.h \
+			mount_utils.c mount_utils.h \
 			namespace.c namespace.h \
 			network.c network.h \
 			nl.c nl.h \
@@ -1282,6 +1808,37 @@ lxc_unfreeze_SOURCES += af_unix.c af_unix.h \
 			$(LSM_SOURCES)
 if ENABLE_SECCOMP
 lxc_unfreeze_SOURCES += seccomp.c lxcseccomp.h
+endif
+
+if !HAVE_STRCHRNUL
+lxc_unfreeze_SOURCES += ../include/strchrnul.c ../include/strchrnul.h
+endif
+
+if !HAVE_STRLCPY
+lxc_unfreeze_SOURCES += ../include/strlcpy.c ../include/strlcpy.h
+endif
+
+if !HAVE_STRLCAT
+lxc_unfreeze_SOURCES += ../include/strlcat.c ../include/strlcat.h
+endif
+
+if !HAVE_OPENPTY
+lxc_unfreeze_SOURCES += ../include/openpty.c ../include/openpty.h
+endif
+
+if IS_BIONIC
+lxc_unfreeze_SOURCES += ../include/fexecve.c ../include/fexecve.h \
+		../include/lxcmntent.c ../include/lxcmntent.h
+endif
+
+if !HAVE_GETGRGID_R
+lxc_unfreeze_SOURCES += ../include/getgrgid_r.c ../include/getgrgid_r.h
+endif
+
+if !HAVE_PRLIMIT
+if HAVE_PRLIMIT64
+lxc_unfreeze_SOURCES += ../include/prlimit.c ../include/prlimit.h
+endif
 endif
 endif
 
@@ -1311,6 +1868,7 @@ lxc_unshare_SOURCES += af_unix.c af_unix.h \
 		       lxclock.c lxclock.h \
 		       mainloop.c mainloop.h \
 		       monitor.c monitor.h \
+		       mount_utils.c mount_utils.h \
 		       namespace.c namespace.h \
 		       network.c network.h \
 		       nl.c nl.h \
@@ -1341,6 +1899,37 @@ lxc_unshare_SOURCES += af_unix.c af_unix.h \
 if ENABLE_SECCOMP
 lxc_unshare_SOURCES += seccomp.c lxcseccomp.h
 endif
+
+if !HAVE_STRCHRNUL
+lxc_unshare_SOURCES += ../include/strchrnul.c ../include/strchrnul.h
+endif
+
+if !HAVE_STRLCPY
+lxc_unshare_SOURCES += ../include/strlcpy.c ../include/strlcpy.h
+endif
+
+if !HAVE_STRLCAT
+lxc_unshare_SOURCES += ../include/strlcat.c ../include/strlcat.h
+endif
+
+if !HAVE_OPENPTY
+lxc_unshare_SOURCES += ../include/openpty.c ../include/openpty.h
+endif
+
+if IS_BIONIC
+lxc_unshare_SOURCES += ../include/fexecve.c ../include/fexecve.h \
+		../include/lxcmntent.c ../include/lxcmntent.h
+endif
+
+if !HAVE_GETGRGID_R
+lxc_unshare_SOURCES += ../include/getgrgid_r.c ../include/getgrgid_r.h
+endif
+
+if !HAVE_PRLIMIT
+if HAVE_PRLIMIT64
+lxc_unshare_SOURCES += ../include/prlimit.c ../include/prlimit.h
+endif
+endif
 endif
 
 lxc_wait_SOURCES = tools/lxc_wait.c \
@@ -1369,6 +1958,7 @@ lxc_wait_SOURCES += af_unix.c af_unix.h \
 		    lxclock.c lxclock.h \
 		    mainloop.c mainloop.h \
 		    monitor.c monitor.h \
+		    mount_utils.c mount_utils.h \
 		    namespace.c namespace.h \
 		    network.c network.h \
 		    nl.c nl.h \
@@ -1396,6 +1986,37 @@ lxc_wait_SOURCES += af_unix.c af_unix.h \
 		    $(LSM_SOURCES)
 if ENABLE_SECCOMP
 lxc_wait_SOURCES += seccomp.c lxcseccomp.h
+endif
+
+if !HAVE_STRCHRNUL
+lxc_wait_SOURCES += ../include/strchrnul.c ../include/strchrnul.h
+endif
+
+if !HAVE_STRLCPY
+lxc_wait_SOURCES += ../include/strlcpy.c ../include/strlcpy.h
+endif
+
+if !HAVE_STRLCAT
+lxc_wait_SOURCES += ../include/strlcat.c ../include/strlcat.h
+endif
+
+if !HAVE_OPENPTY
+lxc_wait_SOURCES += ../include/openpty.c ../include/openpty.h
+endif
+
+if IS_BIONIC
+lxc_wait_SOURCES += ../include/fexecve.c ../include/fexecve.h \
+		../include/lxcmntent.c ../include/lxcmntent.h
+endif
+
+if !HAVE_GETGRGID_R
+lxc_wait_SOURCES += ../include/getgrgid_r.c ../include/getgrgid_r.h
+endif
+
+if !HAVE_PRLIMIT
+if HAVE_PRLIMIT64
+lxc_wait_SOURCES += ../include/prlimit.c ../include/prlimit.h
+endif
 endif
 endif
 
@@ -1425,6 +2046,7 @@ lxc_create_SOURCES += af_unix.c af_unix.h \
 		      lxclock.c lxclock.h \
 		      mainloop.c mainloop.h \
 		      monitor.c monitor.h \
+		      mount_utils.c mount_utils.h \
 		      namespace.c namespace.h \
 		      network.c network.h \
 		      nl.c nl.h \
@@ -1452,6 +2074,37 @@ lxc_create_SOURCES += af_unix.c af_unix.h \
 		      $(LSM_SOURCES)
 if ENABLE_SECCOMP
 lxc_create_SOURCES += seccomp.c lxcseccomp.h
+endif
+
+if !HAVE_STRCHRNUL
+lxc_create_SOURCES += ../include/strchrnul.c ../include/strchrnul.h
+endif
+
+if !HAVE_STRLCPY
+lxc_create_SOURCES += ../include/strlcpy.c ../include/strlcpy.h
+endif
+
+if !HAVE_STRLCAT
+lxc_create_SOURCES += ../include/strlcat.c ../include/strlcat.h
+endif
+
+if !HAVE_OPENPTY
+lxc_create_SOURCES += ../include/openpty.c ../include/openpty.h
+endif
+
+if IS_BIONIC
+lxc_create_SOURCES += ../include/fexecve.c ../include/fexecve.h \
+		../include/lxcmntent.c ../include/lxcmntent.h
+endif
+
+if !HAVE_GETGRGID_R
+lxc_create_SOURCES += ../include/getgrgid_r.c ../include/getgrgid_r.h
+endif
+
+if !HAVE_PRLIMIT
+if HAVE_PRLIMIT64
+lxc_create_SOURCES += ../include/prlimit.c ../include/prlimit.h
+endif
 endif
 endif
 
@@ -1481,6 +2134,7 @@ lxc_snapshot_SOURCES += af_unix.c af_unix.h \
 			lxclock.c lxclock.h \
 			mainloop.c mainloop.h \
 			monitor.c monitor.h \
+			mount_utils.c mount_utils.h \
 			namespace.c namespace.h \
 			network.c network.h \
 			nl.c nl.h \
@@ -1508,6 +2162,37 @@ lxc_snapshot_SOURCES += af_unix.c af_unix.h \
 			$(LSM_SOURCES)
 if ENABLE_SECCOMP
 lxc_snapshot_SOURCES += seccomp.c lxcseccomp.h
+endif
+
+if !HAVE_STRCHRNUL
+lxc_snapshot_SOURCES += ../include/strchrnul.c ../include/strchrnul.h
+endif
+
+if !HAVE_STRLCPY
+lxc_snapshot_SOURCES += ../include/strlcpy.c ../include/strlcpy.h
+endif
+
+if !HAVE_STRLCAT
+lxc_snapshot_SOURCES += ../include/strlcat.c ../include/strlcat.h
+endif
+
+if !HAVE_OPENPTY
+lxc_snapshot_SOURCES += ../include/openpty.c ../include/openpty.h
+endif
+
+if IS_BIONIC
+lxc_snapshot_SOURCES += ../include/fexecve.c ../include/fexecve.h \
+		../include/lxcmntent.c ../include/lxcmntent.h
+endif
+
+if !HAVE_GETGRGID_R
+lxc_snapshot_SOURCES += ../include/getgrgid_r.c ../include/getgrgid_r.h
+endif
+
+if !HAVE_PRLIMIT
+if HAVE_PRLIMIT64
+lxc_snapshot_SOURCES += ../include/prlimit.c ../include/prlimit.h
+endif
 endif
 endif
 
@@ -1537,6 +2222,7 @@ lxc_checkpoint_SOURCES += af_unix.c af_unix.h \
 			  lxclock.c lxclock.h \
 			  mainloop.c mainloop.h \
 			  monitor.c monitor.h \
+			  mount_utils.c mount_utils.h \
 			  namespace.c namespace.h \
 			  network.c network.h \
 			  nl.c nl.h \
@@ -1565,6 +2251,37 @@ lxc_checkpoint_SOURCES += af_unix.c af_unix.h \
 if ENABLE_SECCOMP
 lxc_checkpoint_SOURCES += seccomp.c lxcseccomp.h
 endif
+
+if !HAVE_STRCHRNUL
+lxc_checkpoint_SOURCES += ../include/strchrnul.c ../include/strchrnul.h
+endif
+
+if !HAVE_STRLCPY
+lxc_checkpoint_SOURCES += ../include/strlcpy.c ../include/strlcpy.h
+endif
+
+if !HAVE_STRLCAT
+lxc_checkpoint_SOURCES += ../include/strlcat.c ../include/strlcat.h
+endif
+
+if !HAVE_OPENPTY
+lxc_checkpoint_SOURCES += ../include/openpty.c ../include/openpty.h
+endif
+
+if IS_BIONIC
+lxc_checkpoint_SOURCES += ../include/fexecve.c ../include/fexecve.h \
+		../include/lxcmntent.c ../include/lxcmntent.h
+endif
+
+if !HAVE_GETGRGID_R
+lxc_checkpoint_SOURCES += ../include/getgrgid_r.c ../include/getgrgid_r.h
+endif
+
+if !HAVE_PRLIMIT
+if HAVE_PRLIMIT64
+lxc_checkpoint_SOURCES += ../include/prlimit.c ../include/prlimit.h
+endif
+endif
 endif
 endif
 
@@ -1581,6 +2298,15 @@ init_lxc_SOURCES = cmd/lxc_init.c \
 		   memory_utils.h \
 		   namespace.c namespace.h \
 		   string_utils.c string_utils.h
+
+if !HAVE_STRLCPY
+init_lxc_SOURCES += ../include/strlcpy.c ../include/strlcpy.h
+endif
+
+if !HAVE_STRLCAT
+init_lxc_SOURCES += ../include/strlcat.c ../include/strlcat.h
+endif
+
 init_lxc_LDFLAGS = -pthread
 
 lxc_monitord_SOURCES = cmd/lxc_monitord.c
@@ -1608,6 +2334,7 @@ lxc_monitord_SOURCES += af_unix.c af_unix.h \
 			lxclock.c lxclock.h \
 			mainloop.c mainloop.h \
 			monitor.c monitor.h \
+			mount_utils.c mount_utils.h \
 			namespace.c namespace.h \
 			network.c network.h \
 			nl.c nl.h \
@@ -1637,6 +2364,37 @@ lxc_monitord_SOURCES += af_unix.c af_unix.h \
 if ENABLE_SECCOMP
 lxc_monitord_SOURCES += seccomp.c lxcseccomp.h
 endif
+
+if !HAVE_STRCHRNUL
+lxc_monitord_SOURCES += ../include/strchrnul.c ../include/strchrnul.h
+endif
+
+if !HAVE_STRLCPY
+lxc_monitord_SOURCES += ../include/strlcpy.c ../include/strlcpy.h
+endif
+
+if !HAVE_STRLCAT
+lxc_monitord_SOURCES += ../include/strlcat.c ../include/strlcat.h
+endif
+
+if !HAVE_OPENPTY
+lxc_monitord_SOURCES += ../include/openpty.c ../include/openpty.h
+endif
+
+if IS_BIONIC
+lxc_monitord_SOURCES += ../include/fexecve.c ../include/fexecve.h \
+		../include/lxcmntent.c ../include/lxcmntent.h
+endif
+
+if !HAVE_GETGRGID_R
+lxc_monitord_SOURCES += ../include/getgrgid_r.c ../include/getgrgid_r.h
+endif
+
+if !HAVE_PRLIMIT
+if HAVE_PRLIMIT64
+lxc_monitord_SOURCES += ../include/prlimit.c ../include/prlimit.h
+endif
+endif
 endif
 
 lxc_user_nic_SOURCES = cmd/lxc_user_nic.c
@@ -1665,6 +2423,7 @@ lxc_user_nic_SOURCES += af_unix.c af_unix.h \
 			mainloop.c mainloop.h \
 			memory_utils.h \
 			monitor.c monitor.h \
+			mount_utils.c mount_utils.h \
 			namespace.c namespace.h \
 			network.c network.h \
 			nl.c nl.h \
@@ -1695,6 +2454,37 @@ lxc_user_nic_SOURCES += af_unix.c af_unix.h \
 if ENABLE_SECCOMP
 lxc_user_nic_SOURCES += seccomp.c lxcseccomp.h
 endif
+
+if !HAVE_STRCHRNUL
+lxc_user_nic_SOURCES += ../include/strchrnul.c ../include/strchrnul.h
+endif
+
+if !HAVE_STRLCPY
+lxc_user_nic_SOURCES += ../include/strlcpy.c ../include/strlcpy.h
+endif
+
+if !HAVE_STRLCAT
+lxc_user_nic_SOURCES += ../include/strlcat.c ../include/strlcat.h
+endif
+
+if !HAVE_OPENPTY
+lxc_user_nic_SOURCES += ../include/openpty.c ../include/openpty.h
+endif
+
+if IS_BIONIC
+lxc_user_nic_SOURCES += ../include/fexecve.c ../include/fexecve.h \
+		../include/lxcmntent.c ../include/lxcmntent.h
+endif
+
+if !HAVE_GETGRGID_R
+lxc_user_nic_SOURCES += ../include/getgrgid_r.c ../include/getgrgid_r.h
+endif
+
+if !HAVE_PRLIMIT
+if HAVE_PRLIMIT64
+lxc_user_nic_SOURCES += ../include/prlimit.c ../include/prlimit.h
+endif
+endif
 endif
 
 lxc_usernsexec_SOURCES = cmd/lxc_usernsexec.c
@@ -1716,6 +2506,7 @@ lxc_usernsexec_SOURCES += af_unix.c af_unix.h \
 			  confile_utils.c confile_utils.h \
 			  error.c error.h \
 			  file_utils.c file_utils.h \
+			  hlist.h \
 			  ../include/netns_ifaddrs.c ../include/netns_ifaddrs.h \
 			  initutils.c initutils.h \
 			  list.h \
@@ -1725,6 +2516,7 @@ lxc_usernsexec_SOURCES += af_unix.c af_unix.h \
 			  mainloop.c mainloop.h \
 			  memory_utils.h \
 			  monitor.c monitor.h \
+			  mount_utils.c mount_utils.h \
 			  namespace.c namespace.h \
 			  network.c network.h \
 			  nl.c nl.h \
@@ -1753,6 +2545,37 @@ lxc_usernsexec_SOURCES += af_unix.c af_unix.h \
 			  $(LSM_SOURCES)
 if ENABLE_SECCOMP
 lxc_usernsexec_SOURCES += seccomp.c lxcseccomp.h
+endif
+
+if !HAVE_STRCHRNUL
+lxc_usernsexec_SOURCES += ../include/strchrnul.c ../include/strchrnul.h
+endif
+
+if !HAVE_STRLCPY
+lxc_usernsexec_SOURCES += ../include/strlcpy.c ../include/strlcpy.h
+endif
+
+if !HAVE_STRLCAT
+lxc_usernsexec_SOURCES += ../include/strlcat.c ../include/strlcat.h
+endif
+
+if !HAVE_OPENPTY
+lxc_usernsexec_SOURCES += ../include/openpty.c ../include/openpty.h
+endif
+
+if IS_BIONIC
+lxc_usernsexec_SOURCES += ../include/fexecve.c ../include/fexecve.h \
+		../include/lxcmntent.c ../include/lxcmntent.h
+endif
+
+if !HAVE_GETGRGID_R
+lxc_usernsexec_SOURCES += ../include/getgrgid_r.c ../include/getgrgid_r.h
+endif
+
+if !HAVE_PRLIMIT
+if HAVE_PRLIMIT64
+lxc_usernsexec_SOURCES += ../include/prlimit.c ../include/prlimit.h
+endif
 endif
 endif
 endif
@@ -1797,12 +2620,18 @@ endif
 init_lxc_static_LDFLAGS = -all-static -pthread
 init_lxc_static_LDADD = @CAP_LIBS@
 init_lxc_static_CFLAGS = $(AM_CFLAGS) -DNO_LXC_CONF
+if ENABLE_SANITIZERS
+init_lxc_static_CFLAGS += -fno-sanitize=address,undefined
+endif
+if ENABLE_FUZZERS
+init_lxc_static_CFLAGS += -fno-sanitize=fuzzer-no-link
+endif
 endif
 endif
 
 if ENABLE_PAM
 if HAVE_PAM
-pam_LTLIBRARIES = pam_cgfs.la
+exec_pam_LTLIBRARIES = pam_cgfs.la
 
 pam_cgfs_la_SOURCES = pam/pam_cgfs.c \
 		      file_utils.c file_utils.h \
@@ -1828,12 +2657,11 @@ pam_cgfs_la_LIBADD = $(AM_LIBS) \
 pam_cgfs_la_LDFLAGS = $(AM_LDFLAGS) \
 		      -avoid-version \
 		      -module \
-		      -shared \
-		      -Wl,-no-undefined
+		      -shared
 endif
 endif
 
-install-exec-local: install-libLTLIBRARIES
+install-exec-hook:
 	mkdir -p $(DESTDIR)$(datadir)/lxc
 	install -c -m 644 lxc.functions $(DESTDIR)$(datadir)/lxc
 	mv $(shell readlink -f $(DESTDIR)$(libdir)/liblxc.so) $(DESTDIR)$(libdir)/liblxc.so.@LXC_ABI@
@@ -1841,21 +2669,35 @@ install-exec-local: install-libLTLIBRARIES
 	cd $(DESTDIR)$(libdir); \
 	ln -sf liblxc.so.@LXC_ABI@ liblxc.so.$(firstword $(subst ., ,@LXC_ABI@)); \
 	ln -sf liblxc.so.$(firstword $(subst ., ,@LXC_ABI@)) liblxc.so
-
+if ENABLE_PAM
+if HAVE_PAM
+	$(RM) "$(DESTDIR)$(exec_pamdir)/pam_cgfs.la"
+	$(RM) "$(DESTDIR)$(exec_pamdir)/pam_cgfs.a"
+endif
+endif
 if ENABLE_COMMANDS
-install-exec-hook:
 	chmod u+s $(DESTDIR)$(libexecdir)/lxc/lxc-user-nic
+
+if ENABLE_BASH
+install-data-local:
+	cd $(DESTDIR)$(bashcompdir); \
+	for bin in $(bin_PROGRAMS) ; do \
+		ln -sf lxc $$bin ; \
+	done
+endif
 endif
 
 uninstall-local:
 	$(RM) $(DESTDIR)$(libdir)/liblxc.so*
 	$(RM) $(DESTDIR)$(libdir)/liblxc.a
+if ENABLE_BASH
+	for bin in $(bin_PROGRAMS) ; do \
+		$(RM) $(DESTDIR)$(bashcompdir)/$$bin ; \
+	done
+endif
+
 if ENABLE_PAM
 if HAVE_PAM
-	$(RM) $(DESTDIR)$(pamdir)/pam_cgfs.so*
-
-install-data-hook: install-pamLTLIBRARIES
-	$(RM) "$(DESTDIR)$(pamdir)/pam_cgfs.la"
-	$(RM) "$(DESTDIR)$(pamdir)/pam_cgfs.a"
+	$(RM) $(DESTDIR)$(exec_pamdir)/pam_cgfs.so*
 endif
 endif
