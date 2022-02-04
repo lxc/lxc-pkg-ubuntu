@@ -1,8 +1,7 @@
 /* SPDX-License-Identifier: LGPL-2.1+ */
 
-#ifndef _GNU_SOURCE
-#define _GNU_SOURCE 1
-#endif
+#include "config.h"
+
 #include <errno.h>
 #include <fcntl.h>
 #include <getopt.h>
@@ -22,7 +21,6 @@
 
 #include "arguments.h"
 #include "caps.h"
-#include "config.h"
 #include "list.h"
 #include "log.h"
 #include "namespace.h"
@@ -149,14 +147,14 @@ static bool lookup_user(const char *oparg, uid_t *uid)
 	struct passwd pwent;
 	struct passwd *pwentp = NULL;
 	char *buf;
-	size_t bufsize;
+	ssize_t bufsize;
 	int ret;
 
 	if (!oparg || (oparg[0] == '\0'))
 		return false;
 
 	bufsize = sysconf(_SC_GETPW_R_SIZE_MAX);
-	if (bufsize == -1)
+	if (bufsize < 0)
 		bufsize = 1024;
 
 	buf = malloc(bufsize);
@@ -246,8 +244,13 @@ static int do_start(void *arg)
 		}
 	}
 
-	if ((start_arg->flags & CLONE_NEWNS) && start_arg->want_default_mounts)
-		lxc_setup_fs();
+	if (start_arg->flags & CLONE_NEWNS) {
+		if (mount(NULL, "/", NULL, MS_REC | MS_PRIVATE, 0) < 0)
+			_exit(EXIT_FAILURE);
+
+		if (start_arg->want_default_mounts)
+			lxc_setup_fs();
+	}
 
 	if ((start_arg->flags & CLONE_NEWUTS) && want_hostname)
 		if (sethostname(want_hostname, strlen(want_hostname)) < 0) {
@@ -411,7 +414,7 @@ int main(int argc, char *argv[])
 			if (lpid == 0) {
 				char buf[256];
 
-				ret = snprintf(buf, 256, "%d", lpid);
+				ret = snprintf(buf, 256, "%d", pid);
 				if (ret < 0 || ret >= 256)
 					_exit(EXIT_FAILURE);
 
@@ -420,8 +423,7 @@ int main(int argc, char *argv[])
 			}
 
 			if (wait_for_pid(lpid) != 0)
-				SYSERROR("Could not move interface \"%s\" into container %d",
-				         ifname, lpid);
+				SYSERROR("Could not move interface \"%s\" into container %d", ifname, lpid);
 		}
 
 		free_ifname_list();

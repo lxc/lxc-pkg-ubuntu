@@ -1,9 +1,7 @@
 /* SPDX-License-Identifier: LGPL-2.1+ */
 
-#ifndef _GNU_SOURCE
-#define _GNU_SOURCE 1
-#endif
-#define __STDC_FORMAT_MACROS
+#include "config.h"
+
 #include <arpa/inet.h>
 #include <ctype.h>
 #include <dirent.h>
@@ -21,33 +19,31 @@
 #include <sys/types.h>
 #include <sys/utsname.h>
 #include <syslog.h>
-#include <time.h>
+#include <sys/time.h>
 #include <unistd.h>
 
 #include "af_unix.h"
 #include "conf.h"
-#include "config.h"
 #include "confile.h"
 #include "confile_utils.h"
-#include "../include/netns_ifaddrs.h"
+#include "netns_ifaddrs.h"
 #include "log.h"
 #include "lxcseccomp.h"
 #include "memory_utils.h"
 #include "network.h"
 #include "parse.h"
-#include "storage.h"
 #include "utils.h"
 
-#if HAVE_SYS_PERSONALITY_H
-#include <sys/personality.h>
+#if !HAVE_STRLCPY
+#include "strlcpy.h"
 #endif
 
-#ifndef HAVE_STRLCPY
-#include "include/strlcpy.h"
+#if !HAVE_STRLCAT
+#include "strlcat.h"
 #endif
 
-#ifndef HAVE_STRLCAT
-#include "include/strlcat.h"
+#if HAVE_SYS_RESOURCE_H
+#include <sys/resource.h>
 #endif
 
 lxc_log_define(confile, lxc);
@@ -77,6 +73,7 @@ lxc_config_define(console_logfile);
 lxc_config_define(console_path);
 lxc_config_define(console_rotate);
 lxc_config_define(console_size);
+lxc_config_define(unsupported_key);
 lxc_config_define(environment);
 lxc_config_define(ephemeral);
 lxc_config_define(execute_cmd);
@@ -89,6 +86,8 @@ lxc_config_define(init_cmd);
 lxc_config_define(init_cwd);
 lxc_config_define(init_gid);
 lxc_config_define(init_uid);
+lxc_config_define(init_groups);
+lxc_config_define(jump_table_net);
 lxc_config_define(keyring_session);
 lxc_config_define(log_file);
 lxc_config_define(log_level);
@@ -115,7 +114,6 @@ lxc_config_define(net_ipvlan_mode);
 lxc_config_define(net_ipvlan_isolation);
 lxc_config_define(net_mtu);
 lxc_config_define(net_name);
-lxc_config_define(net_nic);
 lxc_config_define(net_script_down);
 lxc_config_define(net_script_up);
 lxc_config_define(net_type);
@@ -147,6 +145,25 @@ lxc_config_define(tty_dir);
 lxc_config_define(uts_name);
 lxc_config_define(sysctl);
 lxc_config_define(proc);
+lxc_config_define(sched_core);
+
+static int set_config_unsupported_key(const char *key, const char *value,
+				      struct lxc_conf *lxc_conf, void *data)
+{
+	return syserror_set(-EINVAL, "Unsupported config key \"%s\"", key);
+}
+
+static int get_config_unsupported_key(const char *key, char *retv, int inlen,
+				      struct lxc_conf *c, void *data)
+{
+	return syserror_set(-EINVAL, "Unsupported config key \"%s\"", key);
+}
+
+static int clr_config_unsupported_key(const char *key,
+				      struct lxc_conf *lxc_conf, void *data)
+{
+	return syserror_set(-EINVAL, "Unsupported config key \"%s\"", key);
+}
 
 /*
  * Important Note:
@@ -160,139 +177,208 @@ lxc_config_define(proc);
  * has to be placed above lxc.ab.
  */
 static struct lxc_config_t config_jump_table[] = {
-	{ "lxc.arch",                      set_config_personality,                 get_config_personality,                 clr_config_personality,               },
-	{ "lxc.apparmor.profile",          set_config_apparmor_profile,            get_config_apparmor_profile,            clr_config_apparmor_profile,          },
-	{ "lxc.apparmor.allow_incomplete", set_config_apparmor_allow_incomplete,   get_config_apparmor_allow_incomplete,   clr_config_apparmor_allow_incomplete, },
-	{ "lxc.apparmor.allow_nesting",    set_config_apparmor_allow_nesting,      get_config_apparmor_allow_nesting,      clr_config_apparmor_allow_nesting,    },
-	{ "lxc.apparmor.raw",              set_config_apparmor_raw,                get_config_apparmor_raw,                clr_config_apparmor_raw,              },
-	{ "lxc.autodev.tmpfs.size",        set_config_autodev_tmpfs_size,          get_config_autodev_tmpfs_size,          clr_config_autodev_tmpfs_size,        },
-	{ "lxc.autodev",                   set_config_autodev,                     get_config_autodev,                     clr_config_autodev,                   },
-	{ "lxc.cap.drop",                  set_config_cap_drop,                    get_config_cap_drop,                    clr_config_cap_drop,                  },
-	{ "lxc.cap.keep",                  set_config_cap_keep,                    get_config_cap_keep,                    clr_config_cap_keep,                  },
-	{ "lxc.cgroup2",                   set_config_cgroup2_controller,          get_config_cgroup2_controller,          clr_config_cgroup2_controller,        },
-	{ "lxc.cgroup.dir",                set_config_cgroup_dir,                  get_config_cgroup_dir,                  clr_config_cgroup_dir,                },
-	{ "lxc.cgroup.relative",           set_config_cgroup_relative,             get_config_cgroup_relative,             clr_config_cgroup_relative,           },
-	{ "lxc.cgroup",                    set_config_cgroup_controller,           get_config_cgroup_controller,           clr_config_cgroup_controller,         },
-	{ "lxc.console.buffer.size",       set_config_console_buffer_size,         get_config_console_buffer_size,         clr_config_console_buffer_size,       },
-	{ "lxc.console.logfile",           set_config_console_logfile,             get_config_console_logfile,             clr_config_console_logfile,           },
-	{ "lxc.console.path",              set_config_console_path,                get_config_console_path,                clr_config_console_path,              },
-	{ "lxc.console.rotate",            set_config_console_rotate,              get_config_console_rotate,              clr_config_console_rotate,            },
-	{ "lxc.console.size",              set_config_console_size,                get_config_console_size,                clr_config_console_size,              },
-	{ "lxc.environment",               set_config_environment,                 get_config_environment,                 clr_config_environment,               },
-	{ "lxc.ephemeral",                 set_config_ephemeral,                   get_config_ephemeral,                   clr_config_ephemeral,                 },
-	{ "lxc.execute.cmd",               set_config_execute_cmd,                 get_config_execute_cmd,                 clr_config_execute_cmd,               },
-	{ "lxc.group",                     set_config_group,                       get_config_group,                       clr_config_group,                     },
-	{ "lxc.hook.autodev",              set_config_hooks,                       get_config_hooks,                       clr_config_hooks,                     },
-	{ "lxc.hook.clone",                set_config_hooks,                       get_config_hooks,                       clr_config_hooks,                     },
-	{ "lxc.hook.destroy",              set_config_hooks,                       get_config_hooks,                       clr_config_hooks,                     },
-	{ "lxc.hook.mount",                set_config_hooks,                       get_config_hooks,                       clr_config_hooks,                     },
-	{ "lxc.hook.post-stop",            set_config_hooks,                       get_config_hooks,                       clr_config_hooks,                     },
-	{ "lxc.hook.pre-mount",            set_config_hooks,                       get_config_hooks,                       clr_config_hooks,                     },
-	{ "lxc.hook.pre-start",            set_config_hooks,                       get_config_hooks,                       clr_config_hooks,                     },
-	{ "lxc.hook.start",                set_config_hooks,                       get_config_hooks,                       clr_config_hooks,                     },
-	{ "lxc.hook.start-host",           set_config_hooks,                       get_config_hooks,                       clr_config_hooks,                     },
-	{ "lxc.hook.stop",                 set_config_hooks,                       get_config_hooks,                       clr_config_hooks,                     },
-	{ "lxc.hook.version",              set_config_hooks_version,               get_config_hooks_version,               clr_config_hooks_version,             },
-	{ "lxc.hook",                      set_config_hooks,                       get_config_hooks,                       clr_config_hooks,                     },
-	{ "lxc.idmap",                     set_config_idmaps,                      get_config_idmaps,                      clr_config_idmaps,                    },
-	{ "lxc.include",                   set_config_includefiles,                get_config_includefiles,                clr_config_includefiles,              },
-	{ "lxc.init.cmd",                  set_config_init_cmd,                    get_config_init_cmd,                    clr_config_init_cmd,                  },
-	{ "lxc.init.gid",                  set_config_init_gid,                    get_config_init_gid,                    clr_config_init_gid,                  },
-	{ "lxc.init.uid",                  set_config_init_uid,                    get_config_init_uid,                    clr_config_init_uid,                  },
-	{ "lxc.init.cwd",                  set_config_init_cwd,                    get_config_init_cwd,                    clr_config_init_cwd,                  },
-	{ "lxc.keyring.session",           set_config_keyring_session,             get_config_keyring_session,             clr_config_keyring_session            },
-	{ "lxc.log.file",                  set_config_log_file,                    get_config_log_file,                    clr_config_log_file,                  },
-	{ "lxc.log.level",                 set_config_log_level,                   get_config_log_level,                   clr_config_log_level,                 },
-	{ "lxc.log.syslog",                set_config_log_syslog,                  get_config_log_syslog,                  clr_config_log_syslog,                },
-	{ "lxc.monitor.unshare",           set_config_monitor,                     get_config_monitor,                     clr_config_monitor,                   },
-	{ "lxc.monitor.signal.pdeath",     set_config_monitor_signal_pdeath,       get_config_monitor_signal_pdeath,       clr_config_monitor_signal_pdeath,     },
-	{ "lxc.mount.auto",                set_config_mount_auto,                  get_config_mount_auto,                  clr_config_mount_auto,                },
-	{ "lxc.mount.entry",               set_config_mount,                       get_config_mount,                       clr_config_mount,                     },
-	{ "lxc.mount.fstab",               set_config_mount_fstab,                 get_config_mount_fstab,                 clr_config_mount_fstab,               },
-	{ "lxc.namespace.clone",           set_config_namespace_clone,             get_config_namespace_clone,             clr_config_namespace_clone,           },
-	{ "lxc.namespace.keep",            set_config_namespace_keep,              get_config_namespace_keep,              clr_config_namespace_keep,            },
-	{ "lxc.namespace.share",           set_config_namespace_share,             get_config_namespace_share,             clr_config_namespace_share,           },
-	{ "lxc.net.flags",                 set_config_net_flags,                   get_config_net_flags,                   clr_config_net_flags,                 },
-	{ "lxc.net.hwaddr",                set_config_net_hwaddr,                  get_config_net_hwaddr,                  clr_config_net_hwaddr,                },
-	{ "lxc.net.ipv4.address",          set_config_net_ipv4_address,            get_config_net_ipv4_address,            clr_config_net_ipv4_address,          },
-	{ "lxc.net.ipv4.gateway",          set_config_net_ipv4_gateway,            get_config_net_ipv4_gateway,            clr_config_net_ipv4_gateway,          },
-	{ "lxc.net.ipv6.address",          set_config_net_ipv6_address,            get_config_net_ipv6_address,            clr_config_net_ipv6_address,          },
-	{ "lxc.net.ipv6.gateway",          set_config_net_ipv6_gateway,            get_config_net_ipv6_gateway,            clr_config_net_ipv6_gateway,          },
-	{ "lxc.net.link",                  set_config_net_link,                    get_config_net_link,                    clr_config_net_link,                  },
-	{ "lxc.net.l2proxy",               set_config_net_l2proxy,                 get_config_net_l2proxy,                 clr_config_net_l2proxy,               },
-	{ "lxc.net.macvlan.mode",          set_config_net_macvlan_mode,            get_config_net_macvlan_mode,            clr_config_net_macvlan_mode,          },
-	{ "lxc.net.ipvlan.mode",           set_config_net_ipvlan_mode,             get_config_net_ipvlan_mode,             clr_config_net_ipvlan_mode,           },
-	{ "lxc.net.ipvlan.isolation",      set_config_net_ipvlan_isolation,        get_config_net_ipvlan_isolation,        clr_config_net_ipvlan_isolation,      },
-	{ "lxc.net.mtu",                   set_config_net_mtu,                     get_config_net_mtu,                     clr_config_net_mtu,                   },
-	{ "lxc.net.name",                  set_config_net_name,                    get_config_net_name,                    clr_config_net_name,                  },
-	{ "lxc.net.script.down",           set_config_net_script_down,             get_config_net_script_down,             clr_config_net_script_down,           },
-	{ "lxc.net.script.up",             set_config_net_script_up,               get_config_net_script_up,               clr_config_net_script_up,             },
-	{ "lxc.net.type",                  set_config_net_type,                    get_config_net_type,                    clr_config_net_type,                  },
-	{ "lxc.net.vlan.id",               set_config_net_vlan_id,                 get_config_net_vlan_id,                 clr_config_net_vlan_id,               },
-	{ "lxc.net.veth.mode",             set_config_net_veth_mode,               get_config_net_veth_mode,               clr_config_net_veth_mode,             },
-	{ "lxc.net.veth.pair",             set_config_net_veth_pair,               get_config_net_veth_pair,               clr_config_net_veth_pair,             },
-	{ "lxc.net.veth.ipv4.route",       set_config_net_veth_ipv4_route,         get_config_net_veth_ipv4_route,         clr_config_net_veth_ipv4_route,       },
-	{ "lxc.net.veth.ipv6.route",       set_config_net_veth_ipv6_route,         get_config_net_veth_ipv6_route,         clr_config_net_veth_ipv6_route,       },
-	{ "lxc.net.",                      set_config_net_nic,                     get_config_net_nic,                     clr_config_net_nic,                   },
-	{ "lxc.net",                       set_config_net,                         get_config_net,                         clr_config_net,                       },
-	{ "lxc.no_new_privs",	           set_config_no_new_privs,                get_config_no_new_privs,                clr_config_no_new_privs,              },
-	{ "lxc.prlimit",                   set_config_prlimit,                     get_config_prlimit,                     clr_config_prlimit,                   },
-	{ "lxc.pty.max",                   set_config_pty_max,                     get_config_pty_max,                     clr_config_pty_max,                   },
-	{ "lxc.rootfs.managed",            set_config_rootfs_managed,              get_config_rootfs_managed,              clr_config_rootfs_managed,            },
-	{ "lxc.rootfs.mount",              set_config_rootfs_mount,                get_config_rootfs_mount,                clr_config_rootfs_mount,              },
-	{ "lxc.rootfs.options",            set_config_rootfs_options,              get_config_rootfs_options,              clr_config_rootfs_options,            },
-	{ "lxc.rootfs.path",               set_config_rootfs_path,                 get_config_rootfs_path,                 clr_config_rootfs_path,               },
-	{ "lxc.seccomp.allow_nesting",     set_config_seccomp_allow_nesting,       get_config_seccomp_allow_nesting,       clr_config_seccomp_allow_nesting,     },
-	{ "lxc.seccomp.notify.cookie",     set_config_seccomp_notify_cookie,       get_config_seccomp_notify_cookie,       clr_config_seccomp_notify_cookie,     },
-	{ "lxc.seccomp.notify.proxy",      set_config_seccomp_notify_proxy,        get_config_seccomp_notify_proxy,        clr_config_seccomp_notify_proxy,      },
-	{ "lxc.seccomp.profile",           set_config_seccomp_profile,             get_config_seccomp_profile,             clr_config_seccomp_profile,           },
-	{ "lxc.selinux.context.keyring",   set_config_selinux_context_keyring,     get_config_selinux_context_keyring,     clr_config_selinux_context_keyring    },
-	{ "lxc.selinux.context",           set_config_selinux_context,             get_config_selinux_context,             clr_config_selinux_context,           },
-	{ "lxc.signal.halt",               set_config_signal_halt,                 get_config_signal_halt,                 clr_config_signal_halt,               },
-	{ "lxc.signal.reboot",             set_config_signal_reboot,               get_config_signal_reboot,               clr_config_signal_reboot,             },
-	{ "lxc.signal.stop",               set_config_signal_stop,                 get_config_signal_stop,                 clr_config_signal_stop,               },
-	{ "lxc.start.auto",                set_config_start,                       get_config_start,                       clr_config_start,                     },
-	{ "lxc.start.delay",               set_config_start,                       get_config_start,                       clr_config_start,                     },
-	{ "lxc.start.order",               set_config_start,                       get_config_start,                       clr_config_start,                     },
-	{ "lxc.tty.dir",                   set_config_tty_dir,                     get_config_tty_dir,                     clr_config_tty_dir,                   },
-	{ "lxc.tty.max",                   set_config_tty_max,                     get_config_tty_max,                     clr_config_tty_max,                   },
-	{ "lxc.uts.name",                  set_config_uts_name,                    get_config_uts_name,                    clr_config_uts_name,                  },
-	{ "lxc.sysctl",                    set_config_sysctl,                      get_config_sysctl,                      clr_config_sysctl,                    },
-	{ "lxc.proc",                      set_config_proc,                        get_config_proc,                        clr_config_proc,                      },
+	{ "lxc.arch",                       true,  set_config_personality,                get_config_personality,                clr_config_personality,                },
+	{ "lxc.apparmor.profile",           true,  set_config_apparmor_profile,           get_config_apparmor_profile,           clr_config_apparmor_profile,           },
+	{ "lxc.apparmor.allow_incomplete",  true,  set_config_apparmor_allow_incomplete,  get_config_apparmor_allow_incomplete,  clr_config_apparmor_allow_incomplete,  },
+	{ "lxc.apparmor.allow_nesting",     true,  set_config_apparmor_allow_nesting,     get_config_apparmor_allow_nesting,     clr_config_apparmor_allow_nesting,     },
+	{ "lxc.apparmor.raw",               true,  set_config_apparmor_raw,               get_config_apparmor_raw,               clr_config_apparmor_raw,               },
+	{ "lxc.autodev.tmpfs.size",         true,  set_config_autodev_tmpfs_size,         get_config_autodev_tmpfs_size,         clr_config_autodev_tmpfs_size,         },
+	{ "lxc.autodev",                    true,  set_config_autodev,                    get_config_autodev,                    clr_config_autodev,                    },
+	{ "lxc.cap.drop",                   true,  set_config_cap_drop,                   get_config_cap_drop,                   clr_config_cap_drop,                   },
+	{ "lxc.cap.keep",                   true,  set_config_cap_keep,                   get_config_cap_keep,                   clr_config_cap_keep,                   },
+	{ "lxc.cgroup2",                    false, set_config_cgroup2_controller,         get_config_cgroup2_controller,         clr_config_cgroup2_controller,         },
+	{ "lxc.cgroup.dir",                 true,  set_config_cgroup_dir,                 get_config_cgroup_dir,                 clr_config_cgroup_dir,                 },
+	{ "lxc.cgroup.relative",            true,  set_config_cgroup_relative,            get_config_cgroup_relative,            clr_config_cgroup_relative,            },
+	{ "lxc.cgroup",                     false, set_config_cgroup_controller,          get_config_cgroup_controller,          clr_config_cgroup_controller,          },
+	{ "lxc.console.buffer.size",        true,  set_config_console_buffer_size,        get_config_console_buffer_size,        clr_config_console_buffer_size,        },
+	{ "lxc.console.logfile",            true,  set_config_console_logfile,            get_config_console_logfile,            clr_config_console_logfile,            },
+	{ "lxc.console.path",               true,  set_config_console_path,               get_config_console_path,               clr_config_console_path,               },
+	{ "lxc.console.rotate",             true,  set_config_console_rotate,             get_config_console_rotate,             clr_config_console_rotate,             },
+	{ "lxc.console.size",               true,  set_config_console_size,               get_config_console_size,               clr_config_console_size,               },
+	{ "lxc.sched.core",		    true,  set_config_sched_core,		  get_config_sched_core,                 clr_config_sched_core,                 },
+	{ "lxc.environment",                true,  set_config_environment,                get_config_environment,                clr_config_environment,                },
+	{ "lxc.ephemeral",                  true,  set_config_ephemeral,                  get_config_ephemeral,                  clr_config_ephemeral,                  },
+	{ "lxc.execute.cmd",                true,  set_config_execute_cmd,                get_config_execute_cmd,                clr_config_execute_cmd,                },
+	{ "lxc.group",                      true,  set_config_group,                      get_config_group,                      clr_config_group,                      },
+	{ "lxc.hook.autodev",               true,  set_config_hooks,                      get_config_hooks,                      clr_config_hooks,                      },
+	{ "lxc.hook.clone",                 true,  set_config_hooks,                      get_config_hooks,                      clr_config_hooks,                      },
+	{ "lxc.hook.destroy",               true,  set_config_hooks,                      get_config_hooks,                      clr_config_hooks,                      },
+	{ "lxc.hook.mount",                 true,  set_config_hooks,                      get_config_hooks,                      clr_config_hooks,                      },
+	{ "lxc.hook.post-stop",             true,  set_config_hooks,                      get_config_hooks,                      clr_config_hooks,                      },
+	{ "lxc.hook.pre-mount",             true,  set_config_hooks,                      get_config_hooks,                      clr_config_hooks,                      },
+	{ "lxc.hook.pre-start",             true,  set_config_hooks,                      get_config_hooks,                      clr_config_hooks,                      },
+	{ "lxc.hook.start",                 true,  set_config_hooks,                      get_config_hooks,                      clr_config_hooks,                      },
+	{ "lxc.hook.start-host",            true,  set_config_hooks,                      get_config_hooks,                      clr_config_hooks,                      },
+	{ "lxc.hook.stop",                  true,  set_config_hooks,                      get_config_hooks,                      clr_config_hooks,                      },
+	{ "lxc.hook.version",               true,  set_config_hooks_version,              get_config_hooks_version,              clr_config_hooks_version,              },
+	{ "lxc.hook",                       true,  set_config_hooks,                      get_config_hooks,                      clr_config_hooks,                      },
+	{ "lxc.idmap",                      true,  set_config_idmaps,                     get_config_idmaps,                     clr_config_idmaps,                     },
+	{ "lxc.include",                    true,  set_config_includefiles,               get_config_includefiles,               clr_config_includefiles,               },
+	{ "lxc.init.cmd",                   true,  set_config_init_cmd,                   get_config_init_cmd,                   clr_config_init_cmd,                   },
+	{ "lxc.init.gid",                   true,  set_config_init_gid,                   get_config_init_gid,                   clr_config_init_gid,                   },
+	{ "lxc.init.groups",                true,  set_config_init_groups,                get_config_init_groups,                clr_config_init_groups,                },
+	{ "lxc.init.uid",                   true,  set_config_init_uid,                   get_config_init_uid,                   clr_config_init_uid,                   },
+	{ "lxc.init.cwd",                   true,  set_config_init_cwd,                   get_config_init_cwd,                   clr_config_init_cwd,                   },
+	{ "lxc.keyring.session",            true,  set_config_keyring_session,            get_config_keyring_session,            clr_config_keyring_session             },
+	{ "lxc.log.file",                   true,  set_config_log_file,                   get_config_log_file,                   clr_config_log_file,                   },
+	{ "lxc.log.level",                  true,  set_config_log_level,                  get_config_log_level,                  clr_config_log_level,                  },
+	{ "lxc.log.syslog",                 true,  set_config_log_syslog,                 get_config_log_syslog,                 clr_config_log_syslog,                 },
+	{ "lxc.monitor.unshare",            true,  set_config_monitor,                    get_config_monitor,                    clr_config_monitor,                    },
+	{ "lxc.monitor.signal.pdeath",      true,  set_config_monitor_signal_pdeath,      get_config_monitor_signal_pdeath,      clr_config_monitor_signal_pdeath,      },
+	{ "lxc.mount.auto",                 true,  set_config_mount_auto,                 get_config_mount_auto,                 clr_config_mount_auto,                 },
+	{ "lxc.mount.entry",                true,  set_config_mount,                      get_config_mount,                      clr_config_mount,                      },
+	{ "lxc.mount.fstab",                true,  set_config_mount_fstab,                get_config_mount_fstab,                clr_config_mount_fstab,                },
+	{ "lxc.namespace.clone",            true,  set_config_namespace_clone,            get_config_namespace_clone,            clr_config_namespace_clone,            },
+	{ "lxc.namespace.keep",             true,  set_config_namespace_keep,             get_config_namespace_keep,             clr_config_namespace_keep,             },
+	{ "lxc.namespace.share.",           false, set_config_namespace_share,            get_config_namespace_share,            clr_config_namespace_share,            },
+	{ "lxc.net.",                       false, set_config_jump_table_net,             get_config_jump_table_net,             clr_config_jump_table_net,             },
+	{ "lxc.net",                        true,  set_config_net,                        get_config_net,                        clr_config_net,                        },
+	{ "lxc.no_new_privs",	            true,  set_config_no_new_privs,               get_config_no_new_privs,               clr_config_no_new_privs,               },
+	{ "lxc.prlimit",                    false, set_config_prlimit,                    get_config_prlimit,                    clr_config_prlimit,                    },
+	{ "lxc.pty.max",                    true,  set_config_pty_max,                    get_config_pty_max,                    clr_config_pty_max,                    },
+	{ "lxc.rootfs.managed",             true,  set_config_rootfs_managed,             get_config_rootfs_managed,             clr_config_rootfs_managed,             },
+	{ "lxc.rootfs.mount",               true,  set_config_rootfs_mount,               get_config_rootfs_mount,               clr_config_rootfs_mount,               },
+	{ "lxc.rootfs.options",             true,  set_config_rootfs_options,             get_config_rootfs_options,             clr_config_rootfs_options,             },
+	{ "lxc.rootfs.path",                true,  set_config_rootfs_path,                get_config_rootfs_path,                clr_config_rootfs_path,                },
+	{ "lxc.seccomp.allow_nesting",      true,  set_config_seccomp_allow_nesting,      get_config_seccomp_allow_nesting,      clr_config_seccomp_allow_nesting,      },
+	{ "lxc.seccomp.notify.cookie",      true,  set_config_seccomp_notify_cookie,      get_config_seccomp_notify_cookie,      clr_config_seccomp_notify_cookie,      },
+	{ "lxc.seccomp.notify.proxy",       true,  set_config_seccomp_notify_proxy,       get_config_seccomp_notify_proxy,       clr_config_seccomp_notify_proxy,       },
+	{ "lxc.seccomp.profile",            true,  set_config_seccomp_profile,            get_config_seccomp_profile,            clr_config_seccomp_profile,            },
+	{ "lxc.selinux.context.keyring",    true,  set_config_selinux_context_keyring,    get_config_selinux_context_keyring,    clr_config_selinux_context_keyring     },
+	{ "lxc.selinux.context",            true,  set_config_selinux_context,            get_config_selinux_context,            clr_config_selinux_context,            },
+	{ "lxc.signal.halt",                true,  set_config_signal_halt,                get_config_signal_halt,                clr_config_signal_halt,                },
+	{ "lxc.signal.reboot",              true,  set_config_signal_reboot,              get_config_signal_reboot,              clr_config_signal_reboot,              },
+	{ "lxc.signal.stop",                true,  set_config_signal_stop,                get_config_signal_stop,                clr_config_signal_stop,                },
+	{ "lxc.start.auto",                 true,  set_config_start,                      get_config_start,                      clr_config_start,                      },
+	{ "lxc.start.delay",                true,  set_config_start,                      get_config_start,                      clr_config_start,                      },
+	{ "lxc.start.order",                true,  set_config_start,                      get_config_start,                      clr_config_start,                      },
+	{ "lxc.tty.dir",                    true,  set_config_tty_dir,                    get_config_tty_dir,                    clr_config_tty_dir,                    },
+	{ "lxc.tty.max",                    true,  set_config_tty_max,                    get_config_tty_max,                    clr_config_tty_max,                    },
+	{ "lxc.uts.name",                   true,  set_config_uts_name,                   get_config_uts_name,                   clr_config_uts_name,                   },
+	{ "lxc.sysctl",                     false, set_config_sysctl,                     get_config_sysctl,                     clr_config_sysctl,                     },
+	{ "lxc.proc",                       false, set_config_proc,                       get_config_proc,                       clr_config_proc,                       },
 };
 
-static const size_t config_jump_table_size = sizeof(config_jump_table) / sizeof(struct lxc_config_t);
+static struct lxc_config_t unsupported_config_key = {
+	NULL,
+	false,
+	set_config_unsupported_key,
+	get_config_unsupported_key,
+	clr_config_unsupported_key,
+};
+
+struct lxc_config_net_t {
+	LXC_CONFIG_MEMBERS;
+};
+
+static struct lxc_config_net_t config_jump_table_net[] = {
+	/* If a longer key is added please update. */
+	#define NETWORK_SUBKEY_SIZE_MAX (STRLITERALLEN("veth.vlan.tagged.id") * 2)
+	{ "flags",                  true,  set_config_net_flags,                  get_config_net_flags,                  clr_config_net_flags,                  },
+	{ "hwaddr",                 true,  set_config_net_hwaddr,                 get_config_net_hwaddr,                 clr_config_net_hwaddr,                 },
+	{ "ipv4.address",           true,  set_config_net_ipv4_address,           get_config_net_ipv4_address,           clr_config_net_ipv4_address,           },
+	{ "ipv4.gateway",           true,  set_config_net_ipv4_gateway,           get_config_net_ipv4_gateway,           clr_config_net_ipv4_gateway,           },
+	{ "ipv6.address",           true,  set_config_net_ipv6_address,           get_config_net_ipv6_address,           clr_config_net_ipv6_address,           },
+	{ "ipv6.gateway",           true,  set_config_net_ipv6_gateway,           get_config_net_ipv6_gateway,           clr_config_net_ipv6_gateway,           },
+	{ "link",                   true,  set_config_net_link,                   get_config_net_link,                   clr_config_net_link,                   },
+	{ "l2proxy",                true,  set_config_net_l2proxy,                get_config_net_l2proxy,                clr_config_net_l2proxy,                },
+	{ "macvlan.mode",           true,  set_config_net_macvlan_mode,           get_config_net_macvlan_mode,           clr_config_net_macvlan_mode,           },
+	{ "ipvlan.mode",            true,  set_config_net_ipvlan_mode,            get_config_net_ipvlan_mode,            clr_config_net_ipvlan_mode,            },
+	{ "ipvlan.isolation",       true,  set_config_net_ipvlan_isolation,       get_config_net_ipvlan_isolation,       clr_config_net_ipvlan_isolation,       },
+	{ "mtu",                    true,  set_config_net_mtu,                    get_config_net_mtu,                    clr_config_net_mtu,                    },
+	{ "name",                   true,  set_config_net_name,                   get_config_net_name,                   clr_config_net_name,                   },
+	{ "script.down",            true,  set_config_net_script_down,            get_config_net_script_down,            clr_config_net_script_down,            },
+	{ "script.up",              true,  set_config_net_script_up,              get_config_net_script_up,              clr_config_net_script_up,              },
+	{ "type",                   true,  set_config_net_type,                   get_config_net_type,                   clr_config_net_type,                   },
+	{ "vlan.id",                true,  set_config_net_vlan_id,                get_config_net_vlan_id,                clr_config_net_vlan_id,                },
+	{ "veth.mode",              true,  set_config_net_veth_mode,              get_config_net_veth_mode,              clr_config_net_veth_mode,              },
+	{ "veth.pair",              true,  set_config_net_veth_pair,              get_config_net_veth_pair,              clr_config_net_veth_pair,              },
+	{ "veth.ipv4.route",        true,  set_config_net_veth_ipv4_route,        get_config_net_veth_ipv4_route,        clr_config_net_veth_ipv4_route,        },
+	{ "veth.ipv6.route",        true,  set_config_net_veth_ipv6_route,        get_config_net_veth_ipv6_route,        clr_config_net_veth_ipv6_route,        },
+};
+
+static struct lxc_config_net_t unsupported_config_net_key = {
+	NULL,
+	false,
+	set_config_unsupported_key,
+	get_config_unsupported_key,
+	clr_config_unsupported_key,
+};
 
 struct lxc_config_t *lxc_get_config_exact(const char *key)
 {
 	size_t i;
 
-	for (i = 0; i < config_jump_table_size; i++)
-		if (!strcmp(config_jump_table[i].name, key))
+	for (i = 0; i < ARRAY_SIZE(config_jump_table); i++)
+		if (strequal(config_jump_table[i].name, key))
 			return &config_jump_table[i];
 
 	return NULL;
 }
 
+/* Assume a reasonable subkey size limit. */
+#define LXC_SUBKEY_LEN_MAX 256
+
+static inline int match_config_item(const struct lxc_config_t *entry, const char *key)
+{
+	size_t len;
+
+	if (entry->strict)
+		return strequal(entry->name, key);
+
+	/* There should be no subkey longer than this. */
+	len = strnlen(entry->name, LXC_SUBKEY_LEN_MAX);
+	if (len == LXC_SUBKEY_LEN_MAX)
+		return error_ret(-E2BIG, "Excessive subkey length");
+
+	return strnequal(entry->name, key, len);
+}
 
 struct lxc_config_t *lxc_get_config(const char *key)
 {
-	size_t i;
+	for (size_t i = 0; i < ARRAY_SIZE(config_jump_table); i++) {
+		struct lxc_config_t *cur = &config_jump_table[i];
 
-	for (i = 0; i < config_jump_table_size; i++)
-		if (!strncmp(config_jump_table[i].name, key, strlen(config_jump_table[i].name)))
-			return &config_jump_table[i];
+		switch (match_config_item(cur, key)) {
+		case 0:
+			continue;
+		case -E2BIG:
+			return &unsupported_config_key;
+		}
 
-	return NULL;
+		return cur;
+	}
+
+	return &unsupported_config_key;
+}
+
+static inline bool match_config_net_item(const struct lxc_config_net_t *entry,
+					 const char *key)
+{
+	if (entry->strict)
+		return strequal(entry->name, key);
+	return strnequal(entry->name, key, strlen(entry->name));
+}
+
+static struct lxc_config_net_t *lxc_get_config_net(const char *key)
+{
+	for (size_t i = 0; i < ARRAY_SIZE(config_jump_table_net); i++) {
+		struct lxc_config_net_t *cur = &config_jump_table_net[i];
+
+		if (!match_config_net_item(cur, key))
+			continue;
+
+		return cur;
+	}
+
+	return &unsupported_config_net_key;
 }
 
 static int set_config_net(const char *key, const char *value,
 			  struct lxc_conf *lxc_conf, void *data)
 {
-	if (!lxc_config_value_empty(value)) {
-		ERROR("lxc.net must not have a value");
-		return -1;
-	}
+	if (!lxc_config_value_empty(value))
+		return syserror_set(-EINVAL, "lxc.net must not have a value");
 
 	return clr_config_net(key, lxc_conf, data);
 }
@@ -302,35 +388,39 @@ static int set_config_net_type(const char *key, const char *value,
 {
 	struct lxc_netdev *netdev = data;
 
-	if (lxc_config_value_empty(value))
-		return clr_config_net_type(key, lxc_conf, data);
-
 	if (!netdev)
 		return ret_errno(EINVAL);
 
-	if (strcmp(value, "veth") == 0) {
+	clr_config_net_type(key, lxc_conf, data);
+	if (lxc_config_value_empty(value))
+		return 0;
+
+	if (strequal(value, "veth")) {
 		netdev->type = LXC_NET_VETH;
-		lxc_list_init(&netdev->priv.veth_attr.ipv4_routes);
-		lxc_list_init(&netdev->priv.veth_attr.ipv6_routes);
+		INIT_LIST_HEAD(&netdev->priv.veth_attr.ipv4_routes);
+		INIT_LIST_HEAD(&netdev->priv.veth_attr.ipv6_routes);
+		lxc_list_init(&netdev->priv.veth_attr.vlan_tagged_ids);
 		if (!lxc_veth_flag_to_mode(netdev->priv.veth_attr.mode))
 			lxc_veth_mode_to_flag(&netdev->priv.veth_attr.mode, "bridge");
-	} else if (strcmp(value, "macvlan") == 0) {
+	} else if (strequal(value, "macvlan")) {
 		netdev->type = LXC_NET_MACVLAN;
 		if (!lxc_macvlan_flag_to_mode(netdev->priv.veth_attr.mode))
 			lxc_macvlan_mode_to_flag(&netdev->priv.macvlan_attr.mode, "private");
-	} else if (strcmp(value, "ipvlan") == 0) {
+	} else if (strequal(value, "ipvlan")) {
 		netdev->type = LXC_NET_IPVLAN;
 		if (!lxc_ipvlan_flag_to_mode(netdev->priv.ipvlan_attr.mode))
 			lxc_ipvlan_mode_to_flag(&netdev->priv.ipvlan_attr.mode, "l3");
 		if (!lxc_ipvlan_flag_to_isolation(netdev->priv.ipvlan_attr.isolation))
 			lxc_ipvlan_isolation_to_flag(&netdev->priv.ipvlan_attr.isolation, "bridge");
-	} else if (strcmp(value, "vlan") == 0) {
+	} else if (strequal(value, "vlan")) {
 		netdev->type = LXC_NET_VLAN;
-	} else if (strcmp(value, "phys") == 0) {
+	} else if (strequal(value, "phys")) {
 		netdev->type = LXC_NET_PHYS;
-	} else if (strcmp(value, "empty") == 0) {
+	} else if (strequal(value, "empty")) {
 		netdev->type = LXC_NET_EMPTY;
-	} else if (strcmp(value, "none") == 0) {
+		/* We don't support custom loopback device names. */
+		(void)strlcpy(netdev->name, "lo", IFNAMSIZ);
+	} else if (strequal(value, "none")) {
 		netdev->type = LXC_NET_NONE;
 	} else {
 		return log_error(-1, "Invalid network type %s", value);
@@ -344,11 +434,11 @@ static int set_config_net_flags(const char *key, const char *value,
 {
 	struct lxc_netdev *netdev = data;
 
-	if (lxc_config_value_empty(value))
-		return clr_config_net_flags(key, lxc_conf, data);
-
 	if (!netdev)
 		return ret_errno(EINVAL);
+
+	if (lxc_config_value_empty(value))
+		return clr_config_net_flags(key, lxc_conf, data);
 
 	netdev->flags |= IFF_UP;
 
@@ -376,7 +466,7 @@ static int create_matched_ifnames(const char *value, struct lxc_conf *lxc_conf,
 		if (ifa->ifa_addr->sa_family != AF_PACKET)
 			continue;
 
-		if (!strncmp(value, ifa->ifa_name, strlen(value) - 1)) {
+		if (strnequal(value, ifa->ifa_name, strlen(value) - 1)) {
 			ret = set_config_net_type(type_key, tmpvalue, lxc_conf,
 						  netdev);
 			if (!ret) {
@@ -402,11 +492,11 @@ static int set_config_net_link(const char *key, const char *value,
 	struct lxc_netdev *netdev = data;
 	int ret = 0;
 
-	if (lxc_config_value_empty(value))
-		return clr_config_net_link(key, lxc_conf, data);
-
 	if (!netdev)
 		return ret_errno(EINVAL);
+
+	if (lxc_config_value_empty(value))
+		return clr_config_net_link(key, lxc_conf, data);
 
 	if (value[strlen(value) - 1] == '+' && netdev->type == LXC_NET_PHYS)
 		ret = create_matched_ifnames(value, lxc_conf, netdev);
@@ -423,11 +513,11 @@ static int set_config_net_l2proxy(const char *key, const char *value,
 	unsigned int val = 0;
 	int ret;
 
-	if (lxc_config_value_empty(value))
-		return clr_config_net_l2proxy(key, lxc_conf, data);
-
 	if (!netdev)
 		return ret_errno(EINVAL);
+
+	if (lxc_config_value_empty(value))
+		return clr_config_net_l2proxy(key, lxc_conf, data);
 
 	ret = lxc_safe_uint(value, &val);
 	if (ret < 0)
@@ -450,11 +540,11 @@ static int set_config_net_name(const char *key, const char *value,
 {
 	struct lxc_netdev *netdev = data;
 
-	if (lxc_config_value_empty(value))
-		return clr_config_net_name(key, lxc_conf, data);
-
 	if (!netdev)
 		return ret_errno(EINVAL);
+
+	if (lxc_config_value_empty(value))
+		return clr_config_net_name(key, lxc_conf, data);
 
 	return network_ifname(netdev->name, value, sizeof(netdev->name));
 }
@@ -464,6 +554,12 @@ static int set_config_net_veth_mode(const char *key, const char *value,
 				       struct lxc_conf *lxc_conf, void *data)
 {
 	struct lxc_netdev *netdev = data;
+
+	if (!netdev)
+		return ret_errno(EINVAL);
+
+	if (netdev->type != LXC_NET_VETH)
+		return ret_errno(EINVAL);
 
 	if (lxc_config_value_empty(value))
 		return clr_config_net_veth_mode(key, lxc_conf, data);
@@ -479,11 +575,14 @@ static int set_config_net_veth_pair(const char *key, const char *value,
 {
 	struct lxc_netdev *netdev = data;
 
-	if (lxc_config_value_empty(value))
-		return clr_config_net_veth_pair(key, lxc_conf, data);
-
 	if (!netdev)
 		return ret_errno(EINVAL);
+
+	if (netdev->type != LXC_NET_VETH)
+		return ret_errno(EINVAL);
+
+	if (lxc_config_value_empty(value))
+		return clr_config_net_veth_pair(key, lxc_conf, data);
 
 	return network_ifname(netdev->priv.veth_attr.pair, value,
 			      sizeof(netdev->priv.veth_attr.pair));
@@ -494,49 +593,48 @@ static int set_config_net_macvlan_mode(const char *key, const char *value,
 {
 	struct lxc_netdev *netdev = data;
 
-	if (lxc_config_value_empty(value))
-		return clr_config_net_macvlan_mode(key, lxc_conf, data);
-
 	if (!netdev)
 		return ret_errno(EINVAL);
+
+	if (netdev->type != LXC_NET_MACVLAN)
+		return ret_errno(EINVAL);
+
+	if (lxc_config_value_empty(value))
+		return clr_config_net_macvlan_mode(key, lxc_conf, data);
 
 	return lxc_macvlan_mode_to_flag(&netdev->priv.macvlan_attr.mode, value);
 }
 
 static int set_config_net_ipvlan_mode(const char *key, const char *value,
-				       struct lxc_conf *lxc_conf, void *data)
+				      struct lxc_conf *lxc_conf, void *data)
 {
 	struct lxc_netdev *netdev = data;
-
-	if (lxc_config_value_empty(value))
-		return clr_config_net_ipvlan_mode(key, lxc_conf, data);
 
 	if (!netdev)
 		return ret_errno(EINVAL);
 
 	if (netdev->type != LXC_NET_IPVLAN)
-		return log_error_errno(-EINVAL,
-				       EINVAL, "Invalid ipvlan mode \"%s\", can only be used with ipvlan network",
-				       value);
+		return syserror_set(-EINVAL, "Invalid ipvlan mode \"%s\", can only be used with ipvlan network", value);
+
+	if (lxc_config_value_empty(value))
+		return clr_config_net_ipvlan_mode(key, lxc_conf, data);
 
 	return lxc_ipvlan_mode_to_flag(&netdev->priv.ipvlan_attr.mode, value);
 }
 
 static int set_config_net_ipvlan_isolation(const char *key, const char *value,
-				       struct lxc_conf *lxc_conf, void *data)
+					   struct lxc_conf *lxc_conf, void *data)
 {
 	struct lxc_netdev *netdev = data;
-
-	if (lxc_config_value_empty(value))
-		return clr_config_net_ipvlan_isolation(key, lxc_conf, data);
 
 	if (!netdev)
 		return ret_errno(EINVAL);
 
 	if (netdev->type != LXC_NET_IPVLAN)
-		return log_error_errno(-EINVAL,
-				       EINVAL, "Invalid ipvlan isolation \"%s\", can only be used with ipvlan network",
-				       value);
+		return syserror_set(-EINVAL, "Invalid ipvlan isolation \"%s\", can only be used with ipvlan network", value);
+
+	if (lxc_config_value_empty(value))
+		return clr_config_net_ipvlan_isolation(key, lxc_conf, data);
 
 	return lxc_ipvlan_isolation_to_flag(&netdev->priv.ipvlan_attr.isolation, value);
 }
@@ -544,28 +642,23 @@ static int set_config_net_ipvlan_isolation(const char *key, const char *value,
 static int set_config_net_hwaddr(const char *key, const char *value,
 				 struct lxc_conf *lxc_conf, void *data)
 {
+	__do_free char *new_value = NULL;
 	struct lxc_netdev *netdev = data;
-	char *new_value;
-
-	if (lxc_config_value_empty(value))
-		return clr_config_net_hwaddr(key, lxc_conf, data);
 
 	if (!netdev)
 		return ret_errno(EINVAL);
+
+	clr_config_net_hwaddr(key, lxc_conf, data);
+	if (lxc_config_value_empty(value))
+		return 0;
 
 	new_value = strdup(value);
 	if (!new_value)
 		return ret_errno(ENOMEM);
 
 	rand_complete_hwaddr(new_value);
-
-	if (lxc_config_value_empty(new_value)) {
-		free(new_value);
-		netdev->hwaddr = NULL;
-		return 0;
-	}
-
-	netdev->hwaddr = new_value;
+	if (!lxc_config_value_empty(new_value))
+		netdev->hwaddr = move_ptr(new_value);
 
 	return 0;
 }
@@ -576,11 +669,14 @@ static int set_config_net_vlan_id(const char *key, const char *value,
 	int ret;
 	struct lxc_netdev *netdev = data;
 
-	if (lxc_config_value_empty(value))
-		return clr_config_net_vlan_id(key, lxc_conf, data);
-
 	if (!netdev)
 		return ret_errno(EINVAL);
+
+	if (netdev->type != LXC_NET_VLAN)
+		return ret_errno(EINVAL);
+
+	if (lxc_config_value_empty(value))
+		return clr_config_net_vlan_id(key, lxc_conf, data);
 
 	ret = get_u16(&netdev->priv.vlan_attr.vid, value, 0);
 	if (ret < 0)
@@ -594,11 +690,12 @@ static int set_config_net_mtu(const char *key, const char *value,
 {
 	struct lxc_netdev *netdev = data;
 
-	if (lxc_config_value_empty(value))
-		return clr_config_net_mtu(key, lxc_conf, data);
-
 	if (!netdev)
 		return ret_errno(EINVAL);
+
+	clr_config_net_mtu(key, lxc_conf, data);
+	if (lxc_config_value_empty(value))
+		return 0;
 
 	return set_config_string_item(&netdev->mtu, value);
 }
@@ -608,28 +705,20 @@ static int set_config_net_ipv4_address(const char *key, const char *value,
 {
 	__do_free char *addr = NULL;
 	__do_free struct lxc_inetdev *inetdev = NULL;
-	__do_free struct lxc_list *list = NULL;
 	int ret;
 	struct lxc_netdev *netdev = data;
 	char *cursor, *slash;
 	char *bcast = NULL, *prefix = NULL;
 
-	if (lxc_config_value_empty(value))
-		return clr_config_net_ipv4_address(key, lxc_conf, data);
-
 	if (!netdev)
 		return ret_errno(EINVAL);
 
-	inetdev = malloc(sizeof(*inetdev));
+	if (lxc_config_value_empty(value))
+		return clr_config_net_ipv4_address(key, lxc_conf, data);
+
+	inetdev = zalloc(sizeof(*inetdev));
 	if (!inetdev)
 		return ret_errno(ENOMEM);
-	memset(inetdev, 0, sizeof(*inetdev));
-
-	list = malloc(sizeof(*list));
-	if (!list)
-		return ret_errno(ENOMEM);
-
-	lxc_list_init(list);
 
 	addr = strdup(value);
 	if (!addr)
@@ -659,26 +748,26 @@ static int set_config_net_ipv4_address(const char *key, const char *value,
 	}
 
 	/* No prefix specified, determine it from the network class. */
-	if (prefix) {
+	ret = 0;
+	if (prefix)
 		ret = lxc_safe_uint(prefix, &inetdev->prefix);
-		if (ret < 0)
-			return ret;
-	} else {
+	else
 		inetdev->prefix = config_ip_prefix(&inetdev->addr);
-	}
+	if (ret || inetdev->prefix > 32)
+		return ret_errno(EINVAL);
 
-	/* If no broadcast address, let compute one from the
-	 * prefix and address.
-	 */
+	/* If no broadcast address, compute one from the prefix and address. */
 	if (!bcast) {
+		unsigned int shift = LAST_BIT_PER_TYPE(inetdev->prefix);
+
 		inetdev->bcast.s_addr = inetdev->addr.s_addr;
-		inetdev->bcast.s_addr |= htonl(INADDR_BROADCAST >> inetdev->prefix);
+		if (inetdev->prefix < shift)
+			shift = inetdev->prefix;
+		inetdev->bcast.s_addr |= htonl(INADDR_BROADCAST >> shift);
 	}
 
-	list->elem = inetdev;
-	lxc_list_add_tail(&netdev->ipv4, list);
+	list_add_tail(&inetdev->head, &netdev->ipv4_addresses);
 	move_ptr(inetdev);
-	move_ptr(list);
 
 	return 0;
 }
@@ -688,18 +777,17 @@ static int set_config_net_ipv4_gateway(const char *key, const char *value,
 {
 	struct lxc_netdev *netdev = data;
 
-	if (lxc_config_value_empty(value))
-		return clr_config_net_ipv4_gateway(key, lxc_conf, data);
-
 	if (!netdev)
-		return -1;
+		return ret_errno(EINVAL);
 
-	free(netdev->ipv4_gateway);
+	clr_config_net_ipv4_gateway(key, lxc_conf, data);
+	if (lxc_config_value_empty(value))
+		return 0;
 
-	if (strcmp(value, "auto") == 0) {
+	if (strequal(value, "auto")) {
 		netdev->ipv4_gateway = NULL;
 		netdev->ipv4_gateway_auto = true;
-	} else if (strcmp(value, "dev") == 0) {
+	} else if (strequal(value, "dev")) {
 		netdev->ipv4_gateway = NULL;
 		netdev->ipv4_gateway_auto = false;
 		netdev->ipv4_gateway_dev = true;
@@ -707,7 +795,7 @@ static int set_config_net_ipv4_gateway(const char *key, const char *value,
 		__do_free struct in_addr *gw = NULL;
 		int ret;
 
-		gw = malloc(sizeof(*gw));
+		gw = zalloc(sizeof(*gw));
 		if (!gw)
 			return ret_errno(ENOMEM);
 
@@ -723,37 +811,26 @@ static int set_config_net_ipv4_gateway(const char *key, const char *value,
 }
 
 static int set_config_net_veth_ipv4_route(const char *key, const char *value,
-				       struct lxc_conf *lxc_conf, void *data)
+					  struct lxc_conf *lxc_conf, void *data)
 {
 	__do_free char *valdup = NULL;
 	__do_free struct lxc_inetdev *inetdev = NULL;
-	__do_free struct lxc_list *list = NULL;
 	int ret;
 	char *netmask, *slash;
 	struct lxc_netdev *netdev = data;
-
-	if (lxc_config_value_empty(value))
-		return clr_config_net_veth_ipv4_route(key, lxc_conf, data);
 
 	if (!netdev)
 		return ret_errno(EINVAL);
 
 	if (netdev->type != LXC_NET_VETH)
-		return log_error_errno(-EINVAL,
-				       EINVAL, "Invalid ipv4 route \"%s\", can only be used with veth network",
-				       value);
+		return syserror_set(-EINVAL, "Invalid ipv4 route \"%s\", can only be used with veth network", value);
 
-	inetdev = malloc(sizeof(*inetdev));
+	if (lxc_config_value_empty(value))
+		return clr_config_net_veth_ipv4_route(key, lxc_conf, data);
+
+	inetdev = zalloc(sizeof(*inetdev));
 	if (!inetdev)
 		return ret_errno(ENOMEM);
-	memset(inetdev, 0, sizeof(*inetdev));
-
-	list = malloc(sizeof(*list));
-	if (!list)
-		return ret_errno(ENOMEM);
-
-	lxc_list_init(list);
-	list->elem = inetdev;
 
 	valdup = strdup(value);
 	if (!valdup)
@@ -778,9 +855,8 @@ static int set_config_net_veth_ipv4_route(const char *key, const char *value,
 	if (!ret || ret < 0)
 		return ret_errno(EINVAL);
 
-	lxc_list_add_tail(&netdev->priv.veth_attr.ipv4_routes, list);
+	list_add_tail(&inetdev->head, &netdev->priv.veth_attr.ipv4_routes);
 	move_ptr(inetdev);
-	move_ptr(list);
 
 	return 0;
 }
@@ -790,27 +866,19 @@ static int set_config_net_ipv6_address(const char *key, const char *value,
 {
 	__do_free char *valdup = NULL;
 	__do_free struct lxc_inet6dev *inet6dev = NULL;
-	__do_free struct lxc_list *list = NULL;
 	int ret;
 	struct lxc_netdev *netdev = data;
 	char *slash, *netmask;
 
-	if (lxc_config_value_empty(value))
-		return clr_config_net_ipv6_address(key, lxc_conf, data);
-
 	if (!netdev)
 		return ret_errno(EINVAL);
 
-	inet6dev = malloc(sizeof(*inet6dev));
+	if (lxc_config_value_empty(value))
+		return clr_config_net_ipv6_address(key, lxc_conf, data);
+
+	inet6dev = zalloc(sizeof(*inet6dev));
 	if (!inet6dev)
 		return ret_errno(ENOMEM);
-	memset(inet6dev, 0, sizeof(*inet6dev));
-
-	list = malloc(sizeof(*list));
-	if (!list)
-		return ret_errno(ENOMEM);
-
-	lxc_list_init(list);
 
 	valdup = strdup(value);
 	if (!valdup)
@@ -831,10 +899,8 @@ static int set_config_net_ipv6_address(const char *key, const char *value,
 	if (!ret || ret < 0)
 		return log_error_errno(-EINVAL, EINVAL, "Invalid ipv6 address \"%s\"", valdup);
 
-	list->elem = inet6dev;
-	lxc_list_add_tail(&netdev->ipv6, list);
+	list_add_tail(&inet6dev->head, &netdev->ipv6_addresses);
 	move_ptr(inet6dev);
-	move_ptr(list);
 
 	return 0;
 }
@@ -844,18 +910,17 @@ static int set_config_net_ipv6_gateway(const char *key, const char *value,
 {
 	struct lxc_netdev *netdev = data;
 
-	if (lxc_config_value_empty(value))
-		return clr_config_net_ipv6_gateway(key, lxc_conf, data);
-
 	if (!netdev)
 		return ret_errno(EINVAL);
 
-	free(netdev->ipv6_gateway);
+	clr_config_net_ipv6_gateway(key, lxc_conf, data);
+	if (lxc_config_value_empty(value))
+		return 0;
 
-	if (strcmp(value, "auto") == 0) {
+	if (strequal(value, "auto")) {
 		netdev->ipv6_gateway = NULL;
 		netdev->ipv6_gateway_auto = true;
-	} else if (strcmp(value, "dev") == 0) {
+	} else if (strequal(value, "dev")) {
 		netdev->ipv6_gateway = NULL;
 		netdev->ipv6_gateway_auto = false;
 		netdev->ipv6_gateway_dev = true;
@@ -863,7 +928,7 @@ static int set_config_net_ipv6_gateway(const char *key, const char *value,
 		int ret;
 		__do_free struct in6_addr *gw = NULL;
 
-		gw = malloc(sizeof(*gw));
+		gw = zalloc(sizeof(*gw));
 		if (!gw)
 			return ret_errno(ENOMEM);
 
@@ -880,40 +945,30 @@ static int set_config_net_ipv6_gateway(const char *key, const char *value,
 }
 
 static int set_config_net_veth_ipv6_route(const char *key, const char *value,
-				       struct lxc_conf *lxc_conf, void *data)
+					  struct lxc_conf *lxc_conf, void *data)
 {
 	__do_free char *valdup = NULL;
 	__do_free struct lxc_inet6dev *inet6dev = NULL;
-	__do_free struct lxc_list *list = NULL;
 	int ret;
 	char *netmask, *slash;
 	struct lxc_netdev *netdev = data;
-
-	if (lxc_config_value_empty(value))
-		return clr_config_net_veth_ipv6_route(key, lxc_conf, data);
 
 	if (!netdev)
 		return ret_errno(EINVAL);
 
 	if (netdev->type != LXC_NET_VETH)
-		return log_error_errno(-EINVAL,
-				       EINVAL, "Invalid ipv6 route \"%s\", can only be used with veth network",
-				       value);
+		return syserror_set(-EINVAL, "Invalid ipv6 route \"%s\", can only be used with veth network", value);
 
-	inet6dev = malloc(sizeof(*inet6dev));
+	if (lxc_config_value_empty(value))
+		return clr_config_net_veth_ipv6_route(key, lxc_conf, data);
+
+	inet6dev = zalloc(sizeof(*inet6dev));
 	if (!inet6dev)
 		return ret_errno(ENOMEM);
-	memset(inet6dev, 0, sizeof(*inet6dev));
-
-	list = malloc(sizeof(*list));
-	if (!list)
-		return ret_errno(ENOMEM);
-
-	lxc_list_init(list);
 
 	valdup = strdup(value);
 	if (!valdup)
-		return -1;
+		return ret_errno(ENOMEM);
 
 	slash = strchr(valdup, '/');
 	if (!slash)
@@ -934,10 +989,8 @@ static int set_config_net_veth_ipv6_route(const char *key, const char *value,
 	if (!ret || ret < 0)
 		return ret_errno(EINVAL);
 
-	list->elem = inet6dev;
-	lxc_list_add_tail(&netdev->priv.veth_attr.ipv6_routes, list);
+	list_add_tail(&inet6dev->head, &netdev->priv.veth_attr.ipv6_routes);
 	move_ptr(inet6dev);
-	move_ptr(list);
 
 	return 0;
 }
@@ -947,11 +1000,12 @@ static int set_config_net_script_up(const char *key, const char *value,
 {
 	struct lxc_netdev *netdev = data;
 
-	if (lxc_config_value_empty(value))
-		return clr_config_net_script_up(key, lxc_conf, data);
-
 	if (!netdev)
 		return ret_errno(EINVAL);
+
+	clr_config_net_script_up(key, lxc_conf, data);
+	if (lxc_config_value_empty(value))
+		return 0;
 
 	return set_config_string_item(&netdev->upscript, value);
 }
@@ -961,11 +1015,12 @@ static int set_config_net_script_down(const char *key, const char *value,
 {
 	struct lxc_netdev *netdev = data;
 
-	if (lxc_config_value_empty(value))
-		return clr_config_net_script_down(key, lxc_conf, data);
-
 	if (!netdev)
 		return ret_errno(EINVAL);
+
+	clr_config_net_script_down(key, lxc_conf, data);
+	if (lxc_config_value_empty(value))
+		return 0;
 
 	return set_config_string_item(&netdev->downscript, value);
 }
@@ -973,14 +1028,15 @@ static int set_config_net_script_down(const char *key, const char *value,
 static int add_hook(struct lxc_conf *lxc_conf, int which, __owns char *hook)
 {
 	__do_free char *val = hook;
-	struct lxc_list *hooklist;
+	__do_free struct string_entry *entry;
 
-	hooklist = malloc(sizeof(*hooklist));
-	if (!hooklist)
+	entry = zalloc(sizeof(struct string_entry));
+	if (!entry)
 		return ret_errno(ENOMEM);
 
-	hooklist->elem = move_ptr(val);
-	lxc_list_add_tail(&lxc_conf->hooks[which], hooklist);
+	entry->val = move_ptr(val);
+	list_add_tail(&entry->head, &lxc_conf->hooks[which]);
+	move_ptr(entry);
 
 	return 0;
 }
@@ -993,66 +1049,69 @@ static int set_config_seccomp_allow_nesting(const char *key, const char *value,
 		return clr_config_seccomp_allow_nesting(key, lxc_conf, NULL);
 
 	if (lxc_safe_uint(value, &lxc_conf->seccomp.allow_nesting) < 0)
-		return -1;
+		return -errno;
 
 	if (lxc_conf->seccomp.allow_nesting > 1)
-		return ret_set_errno(-1, EINVAL);
+		return ret_errno(EINVAL);
 
 	return 0;
 #else
-	errno = ENOSYS;
-	return -1;
+	return ret_errno(ENOSYS);
 #endif
 }
 
 static int set_config_seccomp_notify_cookie(const char *key, const char *value,
 					    struct lxc_conf *lxc_conf, void *data)
 {
-#ifdef HAVE_SECCOMP_NOTIFY
+#if HAVE_DECL_SECCOMP_NOTIFY_FD
 	return set_config_string_item(&lxc_conf->seccomp.notifier.cookie, value);
 #else
-	return ret_set_errno(-1, ENOSYS);
+	return ret_errno(ENOSYS);
 #endif
 }
 
 static int set_config_seccomp_notify_proxy(const char *key, const char *value,
 					   struct lxc_conf *lxc_conf, void *data)
 {
-#ifdef HAVE_SECCOMP_NOTIFY
+#if HAVE_DECL_SECCOMP_NOTIFY_FD
 	const char *offset;
 
 	if (lxc_config_value_empty(value))
 		return clr_config_seccomp_notify_proxy(key, lxc_conf, NULL);
 
-	if (strncmp(value, "unix:", 5) != 0)
-		return ret_set_errno(-1, EINVAL);
+	if (!strnequal(value, "unix:", 5))
+		return ret_errno(EINVAL);
 
 	offset = value + 5;
 	if (lxc_unix_sockaddr(&lxc_conf->seccomp.notifier.proxy_addr, offset) < 0)
-		return -1;
+		return -errno;
 
 	return 0;
 #else
-	return ret_set_errno(-1, ENOSYS);
+	return ret_errno(ENOSYS);
 #endif
 }
 
 static int set_config_seccomp_profile(const char *key, const char *value,
 				      struct lxc_conf *lxc_conf, void *data)
 {
+#ifdef HAVE_SECCOMP
 	return set_config_path_item(&lxc_conf->seccomp.seccomp, value);
+#else
+	return ret_errno(ENOSYS);
+#endif
 }
 
 static int set_config_execute_cmd(const char *key, const char *value,
 			       struct lxc_conf *lxc_conf, void *data)
 {
-	return set_config_path_item(&lxc_conf->execute_cmd, value);
+	return set_config_string_item(&lxc_conf->execute_cmd, value);
 }
 
 static int set_config_init_cmd(const char *key, const char *value,
 			       struct lxc_conf *lxc_conf, void *data)
 {
-	return set_config_path_item(&lxc_conf->init_cmd, value);
+	return set_config_string_item(&lxc_conf->init_cmd, value);
 }
 
 static int set_config_init_cwd(const char *key, const char *value,
@@ -1072,7 +1131,7 @@ static int set_config_init_uid(const char *key, const char *value,
 	}
 
 	if (lxc_safe_uint(value, &init_uid) < 0)
-		return -1;
+		return -errno;
 
 	lxc_conf->init_uid = init_uid;
 
@@ -1090,9 +1149,67 @@ static int set_config_init_gid(const char *key, const char *value,
 	}
 
 	if (lxc_safe_uint(value, &init_gid) < 0)
-		return -1;
+		return -errno;
 
 	lxc_conf->init_gid = init_gid;
+
+	return 0;
+}
+
+static int set_config_init_groups(const char *key, const char *value,
+				  struct lxc_conf *lxc_conf, void *data)
+{
+	__do_free char *value_dup = NULL;
+	gid_t *init_groups = NULL;
+	size_t num_groups = 0;
+	size_t idx;
+	char *token;
+
+	if (lxc_config_value_empty(value))
+		return clr_config_init_groups(key, lxc_conf, NULL);
+
+	value_dup = strdup(value);
+	if (!value_dup)
+		return -ENOMEM;
+
+	lxc_iterate_parts(token, value_dup, ",")
+		num_groups++;
+
+	if (num_groups == INT_MAX)
+		return log_error_errno(-ERANGE, ERANGE, "Excessive number of supplementary groups specified");
+
+	/* This means the string wasn't empty and all we found was garbage. */
+	if (num_groups == 0)
+		return log_error_errno(-EINVAL, EINVAL, "No valid groups specified %s", value);
+
+	idx = lxc_conf->init_groups.size;
+	init_groups = realloc(lxc_conf->init_groups.list, sizeof(gid_t) * (idx + num_groups));
+	if (!init_groups)
+		return ret_errno(ENOMEM);
+
+	/*
+	 * Once the realloc() succeeded we need to hand control of the memory
+	 * back to the config otherwise we risk a double-free when
+	 * lxc_conf_free() is called.
+	 */
+	lxc_conf->init_groups.list = init_groups;
+
+	/* Restore duplicated value so we can call lxc_iterate_parts() again. */
+	strcpy(value_dup, value);
+
+	lxc_iterate_parts(token, value_dup, ",") {
+		int ret;
+
+		gid_t group;
+
+		ret = lxc_safe_uint(token, &group);
+		if (ret)
+			return log_error_errno(ret, -ret, "Failed to parse group %s", token);
+
+		init_groups[idx++] = group;
+	}
+
+	lxc_conf->init_groups.size += num_groups;
 
 	return 0;
 }
@@ -1105,32 +1222,32 @@ static int set_config_hooks(const char *key, const char *value,
 	if (lxc_config_value_empty(value))
 		return lxc_clear_hooks(lxc_conf, key);
 
-	if (strcmp(key + 4, "hook") == 0)
+	if (strequal(key + 4, "hook"))
 		return log_error_errno(-EINVAL, EINVAL, "lxc.hook must not have a value");
 
 	copy = strdup(value);
 	if (!copy)
 		return ret_errno(ENOMEM);
 
-	if (strcmp(key + 9, "pre-start") == 0)
+	if (strequal(key + 9, "pre-start"))
 		return add_hook(lxc_conf, LXCHOOK_PRESTART, move_ptr(copy));
-	else if (strcmp(key + 9, "start-host") == 0)
+	else if (strequal(key + 9, "start-host"))
 		return add_hook(lxc_conf, LXCHOOK_START_HOST, move_ptr(copy));
-	else if (strcmp(key + 9, "pre-mount") == 0)
+	else if (strequal(key + 9, "pre-mount"))
 		return add_hook(lxc_conf, LXCHOOK_PREMOUNT, move_ptr(copy));
-	else if (strcmp(key + 9, "autodev") == 0)
+	else if (strequal(key + 9, "autodev"))
 		return add_hook(lxc_conf, LXCHOOK_AUTODEV, move_ptr(copy));
-	else if (strcmp(key + 9, "mount") == 0)
+	else if (strequal(key + 9, "mount"))
 		return add_hook(lxc_conf, LXCHOOK_MOUNT, move_ptr(copy));
-	else if (strcmp(key + 9, "start") == 0)
+	else if (strequal(key + 9, "start"))
 		return add_hook(lxc_conf, LXCHOOK_START, move_ptr(copy));
-	else if (strcmp(key + 9, "stop") == 0)
+	else if (strequal(key + 9, "stop"))
 		return add_hook(lxc_conf, LXCHOOK_STOP, move_ptr(copy));
-	else if (strcmp(key + 9, "post-stop") == 0)
+	else if (strequal(key + 9, "post-stop"))
 		return add_hook(lxc_conf, LXCHOOK_POSTSTOP, move_ptr(copy));
-	else if (strcmp(key + 9, "clone") == 0)
+	else if (strequal(key + 9, "clone"))
 		return add_hook(lxc_conf, LXCHOOK_CLONE, move_ptr(copy));
-	else if (strcmp(key + 9, "destroy") == 0)
+	else if (strequal(key + 9, "destroy"))
 		return add_hook(lxc_conf, LXCHOOK_DESTROY, move_ptr(copy));
 
 	return ret_errno(EINVAL);
@@ -1147,11 +1264,10 @@ static int set_config_hooks_version(const char *key, const char *value,
 
 	ret = lxc_safe_uint(value, &tmp);
 	if (ret < 0)
-		return -1;
+		return -errno;
 
 	if (tmp > 1)
-		return log_error_errno(-EINVAL,
-				       EINVAL, "Invalid hook version specified. Currently only 0 (legacy) and 1 are supported");
+		return syserror_set(-EINVAL, "Invalid hook version specified. Currently only 0 (legacy) and 1 are supported");
 
 	lxc_conf->hooks_version = tmp;
 
@@ -1161,14 +1277,14 @@ static int set_config_hooks_version(const char *key, const char *value,
 static int set_config_personality(const char *key, const char *value,
 				  struct lxc_conf *lxc_conf, void *data)
 {
-	signed long personality;
+	int ret;
+	personality_t personality;
 
-	personality = lxc_config_parse_arch(value);
-	if (personality >= 0)
-		lxc_conf->personality = personality;
-	else
-		WARN("Unsupported personality \"%s\"", value);
+	ret = lxc_config_parse_arch(value, &personality);
+	if (ret < 0)
+		return syserror("Unsupported personality \"%s\"", value);
 
+	lxc_conf->personality = personality;
 	return 0;
 }
 
@@ -1246,7 +1362,7 @@ static int set_config_monitor(const char *key, const char *value,
 		return 0;
 	}
 
-	if (strcmp(key + 12, "unshare") == 0)
+	if (strequal(key + 12, "unshare"))
 		return lxc_safe_uint(value, &lxc_conf->monitor_unshare);
 
 	return ret_errno(EINVAL);
@@ -1260,7 +1376,7 @@ static int set_config_monitor_signal_pdeath(const char *key, const char *value,
 		return 0;
 	}
 
-	if (strcmp(key + 12, "signal.pdeath") == 0) {
+	if (strequal(key + 12, "signal.pdeath")) {
 		int sig_n;
 
 		sig_n = sig_parse(value);
@@ -1287,21 +1403,25 @@ static int set_config_group(const char *key, const char *value,
 	if (!groups)
 		return ret_errno(ENOMEM);
 
-	/* In case several groups are specified in a single line split these
+	/*
+	 * In case several groups are specified in a single line split these
 	 * groups in a single element for the list.
 	 */
 	lxc_iterate_parts(token, groups, " \t") {
-		__do_free struct lxc_list *grouplist = NULL;
+		__do_free char *val = NULL;
+		__do_free struct string_entry *entry = NULL;
 
-		grouplist = malloc(sizeof(*grouplist));
-		if (!grouplist)
+		entry = zalloc(sizeof(struct string_entry));
+		if (!entry)
 			return ret_errno(ENOMEM);
 
-		grouplist->elem = strdup(token);
-		if (!grouplist->elem)
+		val = strdup(token);
+		if (!val)
 			return ret_errno(ENOMEM);
 
-		lxc_list_add_tail(&lxc_conf->groups, move_ptr(grouplist));
+		entry->val = move_ptr(val);
+		list_add_tail(&entry->head, &lxc_conf->groups);
+		move_ptr(entry);
 	}
 
 	return 0;
@@ -1310,35 +1430,40 @@ static int set_config_group(const char *key, const char *value,
 static int set_config_environment(const char *key, const char *value,
 				  struct lxc_conf *lxc_conf, void *data)
 {
-	__do_free struct lxc_list *list_item = NULL;
+	__do_free char *dup = NULL, *val = NULL;
+	__do_free struct environment_entry *new_env = NULL;
+	char *env_val;
 
 	if (lxc_config_value_empty(value))
 		return lxc_clear_environment(lxc_conf);
 
-	list_item = malloc(sizeof(*list_item));
-	if (!list_item)
+	new_env = zalloc(sizeof(struct environment_entry));
+	if (!new_env)
 		return ret_errno(ENOMEM);
 
-	if (!strchr(value, '=')) {
-		const char *env_val;
-		const char *env_key = value;
-		const char *env_var[3] = {0};
+	dup = strdup(value);
+	if (!dup)
+		return ret_errno(ENOMEM);
 
-		env_val = getenv(env_key);
-		if (!env_val)
-			return ret_errno(ENOENT);
-
-		env_var[0] = env_key;
-		env_var[1] = env_val;
-		list_item->elem = lxc_string_join("=", env_var, false);
+	env_val = strchr(dup, '=');
+	if (!env_val) {
+		env_val = getenv(dup);
 	} else {
-		list_item->elem = strdup(value);
+		*env_val = '\0';
+		env_val++;
 	}
+	if (!env_val)
+		return ret_errno(ENOENT);
 
-	if (!list_item->elem)
+	val = strdup(env_val);
+	if (!val)
 		return ret_errno(ENOMEM);
 
-	lxc_list_add_tail(&lxc_conf->environment, move_ptr(list_item));
+	new_env->key = move_ptr(dup);
+	new_env->val = move_ptr(val);
+
+	list_add_tail(&new_env->head, &lxc_conf->environment);
+	move_ptr(new_env);
 
 	return 0;
 }
@@ -1373,7 +1498,12 @@ static int set_config_tty_dir(const char *key, const char *value,
 static int set_config_apparmor_profile(const char *key, const char *value,
 				       struct lxc_conf *lxc_conf, void *data)
 {
+#if HAVE_APPARMOR
 	return set_config_string_item(&lxc_conf->lsm_aa_profile, value);
+#else
+	SYSWARN("Built without AppArmor support");
+	return 0;
+#endif
 }
 
 static int set_config_apparmor_allow_incomplete(const char *key,
@@ -1381,6 +1511,7 @@ static int set_config_apparmor_allow_incomplete(const char *key,
 						struct lxc_conf *lxc_conf,
 						void *data)
 {
+#if HAVE_APPARMOR
 	int ret;
 
 	if (lxc_config_value_empty(value)) {
@@ -1396,6 +1527,10 @@ static int set_config_apparmor_allow_incomplete(const char *key,
 		return ret_errno(EINVAL);
 
 	return 0;
+#else
+	SYSWARN("Built without AppArmor support");
+	return 0;
+#endif
 }
 
 static int set_config_apparmor_allow_nesting(const char *key,
@@ -1403,6 +1538,7 @@ static int set_config_apparmor_allow_nesting(const char *key,
 					     struct lxc_conf *lxc_conf,
 					     void *data)
 {
+#if HAVE_APPARMOR
 	int ret;
 
 	if (lxc_config_value_empty(value))
@@ -1416,6 +1552,10 @@ static int set_config_apparmor_allow_nesting(const char *key,
 		return ret_errno(EINVAL);
 
 	return 0;
+#else
+	SYSWARN("Built without AppArmor support");
+	return 0;
+#endif
 }
 
 static int set_config_apparmor_raw(const char *key,
@@ -1423,36 +1563,52 @@ static int set_config_apparmor_raw(const char *key,
 				   struct lxc_conf *lxc_conf,
 				   void *data)
 {
+#if HAVE_APPARMOR
 	__do_free char *elem = NULL;
-	__do_free struct lxc_list *list = NULL;
+	__do_free struct string_entry *entry = NULL;
 
 	if (lxc_config_value_empty(value))
 		return lxc_clear_apparmor_raw(lxc_conf);
 
-	list = malloc(sizeof(*list));
-	if (!list)
+	entry = zalloc(sizeof(struct string_entry));
+	if (!entry)
 		return ret_errno(ENOMEM);
 
 	elem = strdup(value);
 	if (!elem)
 		return ret_errno(ENOMEM);
 
-	list->elem = move_ptr(elem);
-	lxc_list_add_tail(&lxc_conf->lsm_aa_raw, move_ptr(list));
+	entry->val = move_ptr(elem);
+	list_add_tail(&entry->head, &lxc_conf->lsm_aa_raw);
+	move_ptr(entry);
 
 	return 0;
+#else
+	SYSWARN("Built without AppArmor support");
+	return 0;
+#endif
 }
 
 static int set_config_selinux_context(const char *key, const char *value,
 				      struct lxc_conf *lxc_conf, void *data)
 {
+#if HAVE_SELINUX
 	return set_config_string_item(&lxc_conf->lsm_se_context, value);
+#else
+	SYSWARN("Built without SELinux support");
+	return 0;
+#endif
 }
 
 static int set_config_selinux_context_keyring(const char *key, const char *value,
 					      struct lxc_conf *lxc_conf, void *data)
 {
+#if HAVE_SELINUX
 	return set_config_string_item(&lxc_conf->lsm_se_keyring_context, value);
+#else
+	SYSWARN("Built without SELinux support");
+	return 0;
+#endif
 }
 
 static int set_config_keyring_session(const char *key, const char *value,
@@ -1605,8 +1761,7 @@ static int set_config_signal_stop(const char *key, const char *value,
 static int __set_config_cgroup_controller(const char *key, const char *value,
 					  struct lxc_conf *lxc_conf, int version)
 {
-	__do_free struct lxc_list *cglist = NULL;
-	call_cleaner(free_lxc_cgroup) struct lxc_cgroup *cgelem = NULL;
+	call_cleaner(free_lxc_cgroup) struct lxc_cgroup *new_cgroup = NULL;
 	const char *subkey, *token;
 	size_t token_len;
 
@@ -1623,39 +1778,32 @@ static int __set_config_cgroup_controller(const char *key, const char *value,
 		return ret_errno(EINVAL);
 	}
 
-	if (strncmp(key, token, token_len) != 0)
+	if (!strnequal(key, token, token_len))
 		return ret_errno(EINVAL);
 
 	subkey = key + token_len;
 	if (*subkey == '\0')
 		return ret_errno(EINVAL);
 
-	cglist = malloc(sizeof(*cglist));
-	if (!cglist)
+	new_cgroup = zalloc(sizeof(*new_cgroup));
+	if (!new_cgroup)
 		return ret_errno(ENOMEM);
 
-	cgelem = malloc(sizeof(*cgelem));
-	if (!cgelem)
-		return ret_errno(ENOMEM);
-	memset(cgelem, 0, sizeof(*cgelem));
-
-	cgelem->subsystem = strdup(subkey);
-	if (!cgelem->subsystem)
+	new_cgroup->subsystem = strdup(subkey);
+	if (!new_cgroup->subsystem)
 		return ret_errno(ENOMEM);
 
-	cgelem->value = strdup(value);
-	if (!cgelem->value)
+	new_cgroup->value = strdup(value);
+	if (!new_cgroup->value)
 		return ret_errno(ENOMEM);
 
-	cgelem->version = version;
-
-	lxc_list_add_elem(cglist, move_ptr(cgelem));
+	new_cgroup->version = version;
 
 	if (version == CGROUP2_SUPER_MAGIC)
-		lxc_list_add_tail(&lxc_conf->cgroup2, cglist);
+		list_add_tail(&new_cgroup->head, &lxc_conf->cgroup2);
 	else
-		lxc_list_add_tail(&lxc_conf->cgroup, cglist);
-	move_ptr(cglist);
+		list_add_tail(&new_cgroup->head, &lxc_conf->cgroup);
+	move_ptr(new_cgroup);
 
 	return 0;
 }
@@ -1674,17 +1822,22 @@ static int set_config_cgroup2_controller(const char *key, const char *value,
 					      CGROUP2_SUPER_MAGIC);
 }
 
-
 static int set_config_cgroup_dir(const char *key, const char *value,
 				 struct lxc_conf *lxc_conf, void *data)
 {
-	if (strcmp(key, "lxc.cgroup.dir") != 0)
+	if (!strequal(key, "lxc.cgroup.dir"))
 		return ret_errno(EINVAL);
 
 	if (lxc_config_value_empty(value))
 		return clr_config_cgroup_dir(key, lxc_conf, NULL);
 
-	return set_config_string_item(&lxc_conf->cgroup_meta.dir, value);
+	if (abspath(value))
+		return syserror_set(-EINVAL, "%s paths may not be absolute", key);
+
+	if (dotdot(value))
+		return syserror_set(-EINVAL, "%s paths may not walk upwards via \"../\"", key);
+
+	return set_config_path_item(&lxc_conf->cgroup_meta.dir, value);
 }
 
 static int set_config_cgroup_relative(const char *key, const char *value,
@@ -1717,7 +1870,7 @@ static bool parse_limit_value(const char **value, rlim_t *res)
 {
 	char *endptr = NULL;
 
-	if (strncmp(*value, "unlimited", STRLITERALLEN("unlimited")) == 0) {
+	if (strnequal(*value, "unlimited", STRLITERALLEN("unlimited"))) {
 		*res = RLIM_INFINITY;
 		*value += STRLITERALLEN("unlimited");
 		return true;
@@ -1736,16 +1889,15 @@ static bool parse_limit_value(const char **value, rlim_t *res)
 static int set_config_prlimit(const char *key, const char *value,
 			    struct lxc_conf *lxc_conf, void *data)
 {
-	__do_free struct lxc_list *limlist = NULL;
-	call_cleaner(free_lxc_limit) struct lxc_limit *limelem = NULL;
-	struct lxc_list *iter;
+	call_cleaner(free_lxc_limit) struct lxc_limit *new_lim = NULL;
 	struct rlimit limit;
 	rlim_t limit_value;
+	struct lxc_limit *lim;
 
 	if (lxc_config_value_empty(value))
 		return lxc_clear_limits(lxc_conf, key);
 
-	if (strncmp(key, "lxc.prlimit.", STRLITERALLEN("lxc.prlimit.")) != 0)
+	if (!strnequal(key, "lxc.prlimit.", STRLITERALLEN("lxc.prlimit.")))
 		return ret_errno(EINVAL);
 
 	key += STRLITERALLEN("lxc.prlimit.");
@@ -1787,31 +1939,25 @@ static int set_config_prlimit(const char *key, const char *value,
 	}
 
 	/* find existing list element */
-	lxc_list_for_each(iter, &lxc_conf->limits) {
-		limelem = iter->elem;
-		if (!strcmp(key, limelem->resource)) {
-			limelem->limit = limit;
-			return 0;
-		}
+	list_for_each_entry(lim, &lxc_conf->limits, head) {
+		if (!strequal(key, lim->resource))
+			continue;
+
+		lim->limit = limit;
+		return 0;
 	}
 
-	/* allocate list element */
-	limlist = malloc(sizeof(*limlist));
-	if (!limlist)
+	new_lim = zalloc(sizeof(*new_lim));
+	if (!new_lim)
 		return ret_errno(ENOMEM);
 
-	limelem = malloc(sizeof(*limelem));
-	if (!limelem)
-		return ret_errno(ENOMEM);
-	memset(limelem, 0, sizeof(*limelem));
-
-	limelem->resource = strdup(key);
-	if (!limelem->resource)
+	new_lim->resource = strdup(key);
+	if (!new_lim->resource)
 		return ret_errno(ENOMEM);
 
-	limelem->limit = limit;
-	lxc_list_add_elem(limlist, move_ptr(limelem));;
-	lxc_list_add_tail(&lxc_conf->limits, move_ptr(limlist));
+	new_lim->limit = limit;
+	list_add_tail(&new_lim->head, &lxc_conf->limits);
+	move_ptr(new_lim);
 
 	return 0;
 }
@@ -1819,46 +1965,39 @@ static int set_config_prlimit(const char *key, const char *value,
 static int set_config_sysctl(const char *key, const char *value,
 			    struct lxc_conf *lxc_conf, void *data)
 {
-	__do_free struct lxc_list *sysctl_list = NULL;
 	call_cleaner(free_lxc_sysctl) struct lxc_sysctl *sysctl_elem = NULL;
-	struct lxc_list *iter;
+	struct lxc_sysctl *sysctl, *nsysctl;
 
 	if (lxc_config_value_empty(value))
 		return clr_config_sysctl(key, lxc_conf, NULL);
 
-	if (strncmp(key, "lxc.sysctl.", STRLITERALLEN("lxc.sysctl.")) != 0)
-		return -1;
+	if (!strnequal(key, "lxc.sysctl.", STRLITERALLEN("lxc.sysctl.")))
+		return ret_errno(EINVAL);
 
 	key += STRLITERALLEN("lxc.sysctl.");
+	if (is_empty_string(key))
+		return ret_errno(EINVAL);
 
 	/* find existing list element */
-	lxc_list_for_each(iter, &lxc_conf->sysctls) {
+	list_for_each_entry_safe(sysctl, nsysctl, &lxc_conf->sysctls, head) {
 		__do_free char *replace_value = NULL;
 
-		sysctl_elem = iter->elem;
-
-		if (strcmp(key, sysctl_elem->key) != 0)
+		if (!strequal(key, sysctl->key))
 			continue;
 
 		replace_value = strdup(value);
 		if (!replace_value)
 			return ret_errno(EINVAL);
 
-		free(sysctl_elem->value);
-		sysctl_elem->value = move_ptr(replace_value);
+		free(sysctl->value);
+		sysctl->value = move_ptr(replace_value);
 
 		return 0;
 	}
 
-	/* allocate list element */
-	sysctl_list = malloc(sizeof(*sysctl_list));
-	if (!sysctl_list)
-		return ret_errno(ENOMEM);
-
-	sysctl_elem = malloc(sizeof(*sysctl_elem));
+	sysctl_elem = zalloc(sizeof(*sysctl_elem));
 	if (!sysctl_elem)
 		return ret_errno(ENOMEM);
-	memset(sysctl_elem, 0, sizeof(*sysctl_elem));
 
 	sysctl_elem->key = strdup(key);
 	if (!sysctl_elem->key)
@@ -1868,8 +2007,8 @@ static int set_config_sysctl(const char *key, const char *value,
 	if (!sysctl_elem->value)
 		return ret_errno(ENOMEM);
 
-	lxc_list_add_elem(sysctl_list, move_ptr(sysctl_elem));
-	lxc_list_add_tail(&lxc_conf->sysctls, move_ptr(sysctl_list));
+	list_add_tail(&sysctl_elem->head, &lxc_conf->sysctls);
+	move_ptr(sysctl_elem);
 
 	return 0;
 }
@@ -1877,39 +2016,33 @@ static int set_config_sysctl(const char *key, const char *value,
 static int set_config_proc(const char *key, const char *value,
 			    struct lxc_conf *lxc_conf, void *data)
 {
-	__do_free struct lxc_list *proclist = NULL;
-	call_cleaner(free_lxc_proc) struct lxc_proc *procelem = NULL;
+	call_cleaner(free_lxc_proc) struct lxc_proc *new_proc = NULL;
 	const char *subkey;
 
 	if (lxc_config_value_empty(value))
 		return clr_config_proc(key, lxc_conf, NULL);
 
-	if (strncmp(key, "lxc.proc.", STRLITERALLEN("lxc.proc.")) != 0)
-		return -1;
+	if (!strnequal(key, "lxc.proc.", STRLITERALLEN("lxc.proc.")))
+		return ret_errno(EINVAL);
 
 	subkey = key + STRLITERALLEN("lxc.proc.");
 	if (*subkey == '\0')
 		return ret_errno(EINVAL);
 
-	proclist = malloc(sizeof(*proclist));
-	if (!proclist)
+	new_proc = zalloc(sizeof(*new_proc));
+	if (!new_proc)
 		return ret_errno(ENOMEM);
 
-	procelem = malloc(sizeof(*procelem));
-	if (!procelem)
-		return ret_errno(ENOMEM);
-	memset(procelem, 0, sizeof(*procelem));
-
-	procelem->filename = strdup(subkey);
-	if (!procelem->filename)
+	new_proc->filename = strdup(subkey);
+	if (!new_proc->filename)
 		return ret_errno(ENOMEM);
 
-	procelem->value = strdup(value);
-	if (!procelem->value)
+	new_proc->value = strdup(value);
+	if (!new_proc->value)
 		return ret_errno(ENOMEM);
 
-	proclist->elem = move_ptr(procelem);
-	lxc_list_add_tail(&lxc_conf->procs, move_ptr(proclist));
+	list_add_tail(&new_proc->head, &lxc_conf->procs);
+	move_ptr(new_proc);
 
 	return 0;
 }
@@ -1917,7 +2050,6 @@ static int set_config_proc(const char *key, const char *value,
 static int set_config_idmaps(const char *key, const char *value,
 			     struct lxc_conf *lxc_conf, void *data)
 {
-	__do_free struct lxc_list *idmaplist = NULL;
 	__do_free struct id_map *idmap = NULL;
 	unsigned long hostid, nsid, range;
 	char type;
@@ -1926,14 +2058,9 @@ static int set_config_idmaps(const char *key, const char *value,
 	if (lxc_config_value_empty(value))
 		return lxc_clear_idmaps(lxc_conf);
 
-	idmaplist = malloc(sizeof(*idmaplist));
-	if (!idmaplist)
-		return ret_errno(ENOMEM);
-
-	idmap = malloc(sizeof(*idmap));
+	idmap = zalloc(sizeof(*idmap));
 	if (!idmap)
 		return ret_errno(ENOMEM);
-	memset(idmap, 0, sizeof(*idmap));
 
 	ret = parse_idmaps(value, &type, &nsid, &hostid, &range);
 	if (ret < 0)
@@ -1950,8 +2077,7 @@ static int set_config_idmaps(const char *key, const char *value,
 	idmap->hostid = hostid;
 	idmap->nsid = nsid;
 	idmap->range = range;
-	idmaplist->elem = idmap;
-	lxc_list_add_tail(&lxc_conf->id_map, idmaplist);
+	list_add_tail(&idmap->head, &lxc_conf->id_map);
 
 	if (!lxc_conf->root_nsuid_map && idmap->idtype == ID_TYPE_UID)
 		if (idmap->nsid == 0)
@@ -1962,7 +2088,6 @@ static int set_config_idmaps(const char *key, const char *value,
 			lxc_conf->root_nsgid_map = idmap;
 
 	move_ptr(idmap);
-	move_ptr(idmaplist);
 
 	return 0;
 }
@@ -1996,6 +2121,10 @@ static int set_config_mount_auto(const char *key, const char *value,
 		{ "sys:ro",			LXC_AUTO_SYS_MASK,	LXC_AUTO_SYS_RO						},
 		{ "sys:mixed",			LXC_AUTO_SYS_MASK,	LXC_AUTO_SYS_MIXED					},
 		{ "sys:rw",			LXC_AUTO_SYS_MASK,	LXC_AUTO_SYS_RW						},
+		{ "cgroup2",			LXC_AUTO_CGROUP_MASK,	LXC_AUTO_CGROUP2_RW | LXC_AUTO_CGROUP_FORCE		},
+		{ "cgroup2:ro",			LXC_AUTO_CGROUP_MASK,	LXC_AUTO_CGROUP2_RO | LXC_AUTO_CGROUP_FORCE		},
+		{ "cgroup2:force",		LXC_AUTO_CGROUP_MASK,	LXC_AUTO_CGROUP2_RW | LXC_AUTO_CGROUP_FORCE		},
+		{ "cgroup2:ro:force",		LXC_AUTO_CGROUP_MASK,	LXC_AUTO_CGROUP2_RO | LXC_AUTO_CGROUP_FORCE		},
 		{ "cgroup",			LXC_AUTO_CGROUP_MASK,	LXC_AUTO_CGROUP_NOSPEC					},
 		{ "cgroup:mixed",		LXC_AUTO_CGROUP_MASK,	LXC_AUTO_CGROUP_MIXED					},
 		{ "cgroup:ro",			LXC_AUTO_CGROUP_MASK,	LXC_AUTO_CGROUP_RO					},
@@ -2034,11 +2163,11 @@ static int set_config_mount_auto(const char *key, const char *value,
 		bool is_shmounts = false;
 
 		for (i = 0; allowed_auto_mounts[i].token; i++) {
-			if (!strcmp(allowed_auto_mounts[i].token, token))
+			if (strequal(allowed_auto_mounts[i].token, token))
 				break;
 
-			if (strcmp("shmounts:", allowed_auto_mounts[i].token) == 0 &&
-			    strncmp("shmounts:", token, STRLITERALLEN("shmounts:")) == 0) {
+			if (strequal("shmounts:", allowed_auto_mounts[i].token) &&
+			    strnequal("shmounts:", token, STRLITERALLEN("shmounts:"))) {
 				is_shmounts = true;
 				break;
 			}
@@ -2072,7 +2201,10 @@ static int set_config_mount_auto(const char *key, const char *value,
 			if(!container_path)
 				return log_error_errno(-EINVAL, EINVAL, "Failed to copy shmounts container path");
 
+			free_disarm(lxc_conf->shmount.path_host);
 			lxc_conf->shmount.path_host = move_ptr(host_path);
+
+			free_disarm(lxc_conf->shmount.path_cont);
 			lxc_conf->shmount.path_cont = move_ptr(container_path);
 		}
 	}
@@ -2084,21 +2216,22 @@ static int set_config_mount(const char *key, const char *value,
 			    struct lxc_conf *lxc_conf, void *data)
 {
 	__do_free char *mntelem = NULL;
-	__do_free struct lxc_list *mntlist = NULL;
+	__do_free struct string_entry *entry = NULL;
 
 	if (lxc_config_value_empty(value))
 		return lxc_clear_mount_entries(lxc_conf);
 
-	mntlist = malloc(sizeof(*mntlist));
-	if (!mntlist)
+	entry = zalloc(sizeof(struct string_entry));
+	if (!entry)
 		return ret_errno(ENOMEM);
 
 	mntelem = strdup(value);
 	if (!mntelem)
 		return ret_errno(ENOMEM);
 
-	mntlist->elem = move_ptr(mntelem);
-	lxc_list_add_tail(&lxc_conf->mount_list, move_ptr(mntlist));
+	entry->val = move_ptr(mntelem);
+	list_add_tail(&entry->head, &lxc_conf->mount_entries);
+	move_ptr(entry);
 
 	return 0;
 }
@@ -2107,70 +2240,97 @@ int add_elem_to_mount_list(const char *value, struct lxc_conf *lxc_conf) {
 	return set_config_mount(NULL, value, lxc_conf, NULL);
 }
 
+static int add_cap_entry(struct lxc_conf *conf, char *caps, bool keep)
+{
+	char *token;
+
+	/*
+	 * In case several capability keep is specified in a single line split
+	 * these caps in a single element for the list.
+	 */
+	lxc_iterate_parts(token, caps, " \t") {
+		__do_free struct cap_entry *new_cap = NULL;
+		int ret;
+		__u32 cap;
+
+		if (strequal(token, "none")) {
+			if (!keep)
+				return syserror_set(-EINVAL, "The \"none\" keyword is only valid when keeping caps");
+
+			lxc_clear_config_caps(conf);
+			continue;
+		}
+
+		ret = parse_cap(token, &cap);
+		if (ret < 0) {
+			if (ret != -2)
+				return syserror_set(-EINVAL, "Invalid capability specified");
+
+			INFO("Ignoring unknown capability \"%s\"", token);
+			continue;
+		}
+
+		new_cap = zalloc(sizeof(struct cap_entry));
+		if (!new_cap)
+			return ret_errno(ENOMEM);
+
+		new_cap->cap_name = strdup(token);
+		if (!new_cap->cap_name)
+			return ret_errno(ENOMEM);
+		new_cap->cap = cap;
+
+		list_add_tail(&new_cap->head, &conf->caps.list);
+		move_ptr(new_cap);
+	}
+
+	return 0;
+}
+
 static int set_config_cap_keep(const char *key, const char *value,
 			       struct lxc_conf *lxc_conf, void *data)
 {
-	__do_free char *keepcaps = NULL;
-	__do_free struct lxc_list *keeplist = NULL;
-	char *token;
+	__do_free char *caps = NULL;
+	int ret;
 
 	if (lxc_config_value_empty(value))
-		return lxc_clear_config_keepcaps(lxc_conf);
+		return lxc_clear_config_caps(lxc_conf);
 
-	keepcaps = strdup(value);
-	if (!keepcaps)
+	caps = strdup(value);
+	if (!caps)
 		return ret_errno(ENOMEM);
 
-	/* In case several capability keep is specified in a single line
-	 * split these caps in a single element for the list.
-	 */
-	lxc_iterate_parts(token, keepcaps, " \t") {
-		if (!strcmp(token, "none"))
-			lxc_clear_config_keepcaps(lxc_conf);
+	if (!lxc_conf->caps.keep && !list_empty(&lxc_conf->caps.list))
+		return syserror_set(-EINVAL, "Keeping and dropping capabilities are mutually exclusive");
 
-		keeplist = malloc(sizeof(*keeplist));
-		if (!keeplist)
-			return ret_errno(ENOMEM);
+	ret = add_cap_entry(lxc_conf, caps, true);
+	if (ret < 0)
+		return ret;
 
-		keeplist->elem = strdup(token);
-		if (!keeplist->elem)
-			return ret_errno(ENOMEM);
-
-		lxc_list_add_tail(&lxc_conf->keepcaps, move_ptr(keeplist));
-	}
-
+	lxc_conf->caps.keep = true;
 	return 0;
 }
 
 static int set_config_cap_drop(const char *key, const char *value,
 			       struct lxc_conf *lxc_conf, void *data)
 {
-	__do_free char *dropcaps = NULL;
-	__do_free struct lxc_list *droplist = NULL;
-	char *token;
+	__do_free char *caps = NULL;
+	int ret;
 
 	if (lxc_config_value_empty(value))
 		return lxc_clear_config_caps(lxc_conf);
 
-	dropcaps = strdup(value);
-	if (!dropcaps)
+	if (lxc_conf->caps.keep)
+		return syserror_set(-EINVAL, "Keeping and dropping capabilities are mutually exclusive");
+
+	caps = strdup(value);
+	if (!caps)
 		return ret_errno(ENOMEM);
 
-	/* In case several capability drop is specified in a single line
-	 * split these caps in a single element for the list.
-	 */
-	lxc_iterate_parts(token, dropcaps, " \t") {
-		droplist = malloc(sizeof(*droplist));
-		if (!droplist)
-			return ret_errno(ENOMEM);
+	ret = add_cap_entry(lxc_conf, caps, false);
+	if (ret < 0)
+		return ret;
 
-		droplist->elem = strdup(token);
-		if (!droplist->elem)
-			return ret_errno(ENOMEM);
-
-		lxc_list_add_tail(&lxc_conf->caps, move_ptr(droplist));
-	}
-
+	lxc_conf->caps.keep = false;
 	return 0;
 }
 
@@ -2210,7 +2370,7 @@ static int set_config_console_buffer_size(const char *key, const char *value,
 					  struct lxc_conf *lxc_conf, void *data)
 {
 	int ret;
-	int64_t size;
+	long long int size;
 	uint64_t buffer_size, pgsz;
 
 	if (lxc_config_value_empty(value)) {
@@ -2219,7 +2379,7 @@ static int set_config_console_buffer_size(const char *key, const char *value,
 	}
 
 	/* If the user specified "auto" the default log size is 2^17 = 128 Kib */
-	if (!strcmp(value, "auto")) {
+	if (strequal(value, "auto")) {
 		lxc_conf->console.buffer_size = 1 << 17;
 		return 0;
 	}
@@ -2234,7 +2394,7 @@ static int set_config_console_buffer_size(const char *key, const char *value,
 	/* must be at least a page size */
 	pgsz = lxc_getpagesize();
 	if ((uint64_t)size < pgsz) {
-		NOTICE("Requested ringbuffer size for the console is %" PRId64 " but must be at least %" PRId64 " bytes. Setting ringbuffer size to %" PRId64 " bytes",
+		NOTICE("Requested ringbuffer size for the console is %lld but must be at least %" PRId64 " bytes. Setting ringbuffer size to %" PRId64 " bytes",
 		       size, pgsz, pgsz);
 		size = pgsz;
 	}
@@ -2243,7 +2403,7 @@ static int set_config_console_buffer_size(const char *key, const char *value,
 	if (buffer_size == 0)
 		return ret_errno(EINVAL);
 
-	if (buffer_size != size)
+	if (buffer_size != (uint64_t)size)
 		NOTICE("Passed size was not a power of 2. Rounding log size to next power of two: %" PRIu64 " bytes", buffer_size);
 
 	lxc_conf->console.buffer_size = buffer_size;
@@ -2255,7 +2415,7 @@ static int set_config_console_size(const char *key, const char *value,
 				   struct lxc_conf *lxc_conf, void *data)
 {
 	int ret;
-	int64_t size;
+	long long int size;
 	uint64_t log_size, pgsz;
 
 	if (lxc_config_value_empty(value)) {
@@ -2264,7 +2424,7 @@ static int set_config_console_size(const char *key, const char *value,
 	}
 
 	/* If the user specified "auto" the default log size is 2^17 = 128 Kib */
-	if (!strcmp(value, "auto")) {
+	if (strequal(value, "auto")) {
 		lxc_conf->console.log_size = 1 << 17;
 		return 0;
 	}
@@ -2279,7 +2439,7 @@ static int set_config_console_size(const char *key, const char *value,
 	/* must be at least a page size */
 	pgsz = lxc_getpagesize();
 	if ((uint64_t)size < pgsz) {
-		NOTICE("Requested ringbuffer size for the console is %" PRId64 " but must be at least %" PRId64 " bytes. Setting ringbuffer size to %" PRId64 " bytes",
+		NOTICE("Requested ringbuffer size for the console is %lld but must be at least %" PRId64 " bytes. Setting ringbuffer size to %" PRId64 " bytes",
 		       size, pgsz, pgsz);
 		size = pgsz;
 	}
@@ -2288,7 +2448,7 @@ static int set_config_console_size(const char *key, const char *value,
 	if (log_size == 0)
 		return ret_errno(EINVAL);
 
-	if (log_size != size)
+	if (log_size != (uint64_t)size)
 		NOTICE("Passed size was not a power of 2. Rounding log size to next power of two: %" PRIu64 " bytes", log_size);
 
 	lxc_conf->console.log_size = log_size;
@@ -2369,25 +2529,25 @@ static int do_includedir(const char *dirp, struct lxc_conf *lxc_conf)
 
 	dir = opendir(dirp);
 	if (!dir)
-		return -errno;
+		return errno == ENOENT ? 0 : -errno;
 
 	while ((direntp = readdir(dir))) {
 		const char *fnam;
 		char path[PATH_MAX];
 
 		fnam = direntp->d_name;
-		if (!strcmp(fnam, "."))
+		if (strequal(fnam, "."))
 			continue;
 
-		if (!strcmp(fnam, ".."))
+		if (strequal(fnam, ".."))
 			continue;
 
 		len = strlen(fnam);
-		if (len < 6 || strncmp(fnam + len - 5, ".conf", 5) != 0)
+		if (len < 6 || !strnequal(fnam + len - 5, ".conf", 5))
 			continue;
 
-		len = snprintf(path, PATH_MAX, "%s/%s", dirp, fnam);
-		if (len < 0 || len >= PATH_MAX)
+		len = strnprintf(path, sizeof(path), "%s/%s", dirp, fnam);
+		if (len < 0)
 			return ret_errno(EIO);
 
 		ret = lxc_config_read(path, lxc_conf, true);
@@ -2406,7 +2566,7 @@ static int set_config_includefiles(const char *key, const char *value,
 		return 0;
 	}
 
-	if (is_dir(value))
+	if (value[strlen(value)-1] == '/' || is_dir(value))
 		return do_includedir(value, lxc_conf);
 
 	return lxc_config_read(value, lxc_conf, true);
@@ -2466,27 +2626,37 @@ static int set_config_rootfs_mount(const char *key, const char *value,
 static int set_config_rootfs_options(const char *key, const char *value,
 				     struct lxc_conf *lxc_conf, void *data)
 {
-	__do_free char *mdata = NULL, *opts = NULL;
-	unsigned long mflags = 0, pflags = 0;
+	__do_free char *dup = NULL, *raw_options = NULL;
 	struct lxc_rootfs *rootfs = &lxc_conf->rootfs;
+	struct lxc_mount_options *mnt_opts = &rootfs->mnt_opts;
 	int ret;
 
-	ret = parse_mntopts(value, &mflags, &mdata);
-	if (ret < 0)
-		return ret_errno(EINVAL);
+	clr_config_rootfs_options(key, lxc_conf, data);
+	if (lxc_config_value_empty(value))
+		return 0;
 
-	ret = parse_propagationopts(value, &pflags);
-	if (ret < 0)
-		return ret_errno(EINVAL);
-
-	ret = set_config_string_item(&opts, value);
+	ret = set_config_string_item(&raw_options, value);
 	if (ret < 0)
 		return ret_errno(ENOMEM);
 
-	rootfs->mountflags = mflags | pflags;
-	rootfs->options = move_ptr(opts);
-	rootfs->data = move_ptr(mdata);
+	dup = strdup(value);
+	if (!dup)
+		return -ENOMEM;
 
+	ret = parse_lxc_mount_attrs(mnt_opts, dup);
+	if (ret < 0)
+		return ret;
+
+	/* Make sure we're only valid LXC specific mount options. */
+	if (mnt_opts->create_dir || mnt_opts->create_file ||
+	    mnt_opts->optional || mnt_opts->relative)
+		return syserror_set(-EINVAL, "Invalid LXC specific mount option for rootfs mount");
+
+	ret = parse_mount_attrs(mnt_opts, dup);
+	if (ret < 0)
+		return ret_errno(EINVAL);
+
+	rootfs->mnt_opts.raw_options = move_ptr(raw_options);
 	return 0;
 }
 
@@ -2500,7 +2670,7 @@ static int set_config_uts_name(const char *key, const char *value,
 		return 0;
 	}
 
-	utsname = malloc(sizeof(*utsname));
+	utsname = zalloc(sizeof(*utsname));
 	if (!utsname)
 		return ret_errno(ENOMEM);
 
@@ -2582,6 +2752,9 @@ static int set_config_namespace_share(const char *key, const char *value,
 		return clr_config_namespace_share(key, lxc_conf, data);
 
 	namespace = key + STRLITERALLEN("lxc.namespace.share.");
+	if (is_empty_string(namespace))
+		return ret_errno(EINVAL);
+
 	ns_idx = lxc_namespace_2_ns_idx(namespace);
 	if (ns_idx < 0)
 		return ns_idx;
@@ -2603,6 +2776,9 @@ static int parse_line(char *buffer, void *data)
 	int ret;
 	char *dup = buffer;
 	struct parse_line_conf *plc = data;
+
+	if (!plc->conf)
+		return syserror_set(-EINVAL, "Missing config");
 
 	/* If there are newlines in the config file we should keep them. */
 	empty_line = lxc_is_line_empty(dup);
@@ -2633,7 +2809,7 @@ static int parse_line(char *buffer, void *data)
 		return 0;
 
 	/* martian option - don't add it to the config itself */
-	if (strncmp(line, "lxc.", 4))
+	if (!strnequal(line, "lxc.", 4))
 		return 0;
 
 	dot = strchr(line, '=');
@@ -2660,9 +2836,6 @@ static int parse_line(char *buffer, void *data)
 	}
 
 	config = lxc_get_config(key);
-	if (!config)
-		return log_error_errno(-EINVAL, EINVAL, "Unknown configuration key \"%s\"", key);
-
 	return config->set(key, value, plc->conf, NULL);
 }
 
@@ -2673,6 +2846,9 @@ static struct new_config_item *parse_new_conf_line(char *buffer)
 	char *dup = buffer;
 	char *dot, *key, *line, *value;
 
+	if (is_empty_string(buffer))
+		return log_error_errno(NULL, EINVAL, "Empty configuration line");
+
 	linep = line = strdup(dup);
 	if (!line)
 		return NULL;
@@ -2680,7 +2856,7 @@ static struct new_config_item *parse_new_conf_line(char *buffer)
 	line += lxc_char_left_gc(line, strlen(line));
 
 	/* martian option - don't add it to the config itself */
-	if (strncmp(line, "lxc.", 4))
+	if (!strnequal(line, "lxc.", 4))
 		return 0;
 
 	dot = strchr(line, '=');
@@ -2706,7 +2882,7 @@ static struct new_config_item *parse_new_conf_line(char *buffer)
 		}
 	}
 
-	new = malloc(sizeof(struct new_config_item));
+	new = zalloc(sizeof(struct new_config_item));
 	if (!new)
 		return NULL;
 
@@ -2725,23 +2901,26 @@ static struct new_config_item *parse_new_conf_line(char *buffer)
 
 int lxc_config_read(const char *file, struct lxc_conf *conf, bool from_include)
 {
-	struct parse_line_conf c;
+	struct parse_line_conf plc;
 
-	c.conf = conf;
-	c.from_include = from_include;
+	if (!conf)
+		return syserror_set(-EINVAL, "Missing config");
+
+	plc.conf = conf;
+	plc.from_include = from_include;
 
 	/* Catch only the top level config file name in the structure. */
 	if (!conf->rcfile)
 		conf->rcfile = strdup(file);
 
-	return lxc_file_for_each_line_mmap(file, parse_line, &c);
+	return lxc_file_for_each_line_mmap(file, parse_line, &plc);
 }
 
 int lxc_config_define_add(struct lxc_list *defines, char *arg)
 {
 	__do_free struct lxc_list *dent = NULL;
 
-	dent = malloc(sizeof(struct lxc_list));
+	dent = lxc_list_new();
 	if (!dent)
 		return ret_errno(ENOMEM);
 
@@ -2766,7 +2945,9 @@ bool lxc_config_define_load(struct lxc_list *defines, struct lxc_container *c)
 			break;
 	}
 
+#ifndef FUZZING_BUILD_MODE_UNSAFE_FOR_PRODUCTION
 	lxc_config_define_free(defines);
+#endif /* !FUZZING_BUILD_MODE_UNSAFE_FOR_PRODUCTION */
 
 	return bret;
 }
@@ -2780,14 +2961,14 @@ void lxc_config_define_free(struct lxc_list *defines)
 		free(new_item->key);
 		free(new_item->val);
 		lxc_list_del(it);
+		free(it->elem);
 		free(it);
 	}
 }
 
-signed long lxc_config_parse_arch(const char *arch)
+int lxc_config_parse_arch(const char *arch, signed long *persona)
 {
-#if HAVE_SYS_PERSONALITY_H
-	struct per_name {
+	static struct per_name {
 		char *name;
 		unsigned long per;
 	} pername[] = {
@@ -2806,6 +2987,7 @@ signed long lxc_config_parse_arch(const char *arch)
 		{ "ppc",       PER_LINUX32 },
 		{ "powerpc",   PER_LINUX32 },
 		{ "x86",       PER_LINUX32 },
+		{ "aarch64",   PER_LINUX   },
 		{ "amd64",     PER_LINUX   },
 		{ "arm64",     PER_LINUX   },
 		{ "linux64",   PER_LINUX   },
@@ -2815,23 +2997,26 @@ signed long lxc_config_parse_arch(const char *arch)
 		{ "ppc64el",   PER_LINUX   },
 		{ "ppc64le",   PER_LINUX   },
 		{ "powerpc64", PER_LINUX   },
+		{ "riscv64",   PER_LINUX   },
 		{ "s390x",     PER_LINUX   },
 		{ "x86_64",    PER_LINUX   },
 	};
-	size_t len = sizeof(pername) / sizeof(pername[0]);
 
-	for (int i = 0; i < len; i++)
-		if (!strcmp(pername[i].name, arch))
-			return pername[i].per;
-#endif
+	for (size_t i = 0; i < ARRAY_SIZE(pername); i++) {
+		if (!strequal(pername[i].name, arch))
+			continue;
 
-	return -1;
+		*persona = pername[i].per;
+		return 0;
+	}
+
+	return ret_errno(EINVAL);
 }
 
-int lxc_fill_elevated_privileges(char *flaglist, int *flags)
+int lxc_fill_elevated_privileges(char *flaglist, unsigned int *flags)
 {
+	unsigned int flags_tmp = 0;
 	char *token;
-	int i, aflag;
 	struct {
 		const char *token;
 		int flag;
@@ -2843,28 +3028,33 @@ int lxc_fill_elevated_privileges(char *flaglist, int *flags)
 	};
 
 	if (!flaglist) {
-		/* For the sake of backward compatibility, drop all privileges
-		*  if none is specified.
+		/*
+		 * For the sake of backward compatibility, keep all privileges
+		 * if no specific privileges are specified.
 		 */
-		for (i = 0; all_privs[i].token; i++)
-			*flags |= all_privs[i].flag;
+		for (unsigned int i = 0; all_privs[i].token; i++)
+			flags_tmp |= all_privs[i].flag;
 
+		*flags = flags_tmp;
 		return 0;
 	}
 
 	lxc_iterate_parts(token, flaglist, "|") {
-		aflag = -1;
+		bool valid_token = false;
 
-		for (i = 0; all_privs[i].token; i++)
-			if (!strcmp(all_privs[i].token, token))
-				aflag = all_privs[i].flag;
+		for (unsigned int i = 0; all_privs[i].token; i++) {
+			if (!strequal(all_privs[i].token, token))
+				continue;
 
-		if (aflag < 0)
-			return ret_errno(EINVAL);
+			valid_token = true;
+			flags_tmp |= all_privs[i].flag;
+		}
 
-		*flags |= aflag;
+		if (!valid_token)
+			return syserror_set(-EINVAL, "Invalid elevated privilege \"%s\" requested", token);
 	}
 
+	*flags = flags_tmp;
 	return 0;
 }
 
@@ -2895,10 +3085,10 @@ bool do_append_unexp_config_line(struct lxc_conf *conf, const char *key,
 	tmp = must_realloc(NULL, len);
 
 	if (lxc_config_value_empty(v))
-		ret = snprintf(tmp, len, "%s =", key);
+		ret = strnprintf(tmp, len, "%s =", key);
 	else
-		ret = snprintf(tmp, len, "%s = %s", key, v);
-	if (ret < 0 || ret >= len)
+		ret = strnprintf(tmp, len, "%s = %s", key, v);
+	if (ret < 0)
 		return false;
 
 	/* Save the line verbatim into unexpanded_conf */
@@ -2926,7 +3116,7 @@ void clear_unexp_config_line(struct lxc_conf *conf, const char *key,
 		else
 			lend++;
 
-		if (strncmp(lstart, key, strlen(key)) != 0) {
+		if (!strnequal(lstart, key, strlen(key))) {
 			lstart = lend;
 			continue;
 		}
@@ -2963,16 +3153,14 @@ bool clone_update_unexp_ovl_paths(struct lxc_conf *conf, const char *oldpath,
 
 	olddirlen = strlen(ovldir) + strlen(oldpath) + strlen(oldname) + 2;
 	olddir = must_realloc(NULL, olddirlen + 1);
-	ret = snprintf(olddir, olddirlen + 1, "%s=%s/%s", ovldir, oldpath,
-		       oldname);
-	if (ret < 0 || ret >= olddirlen + 1)
+	ret = strnprintf(olddir, olddirlen + 1, "%s=%s/%s", ovldir, oldpath, oldname);
+	if (ret < 0)
 		return false;
 
 	newdirlen = strlen(ovldir) + strlen(newpath) + strlen(newname) + 2;
 	newdir = must_realloc(NULL, newdirlen + 1);
-	ret = snprintf(newdir, newdirlen + 1, "%s=%s/%s", ovldir, newpath,
-		       newname);
-	if (ret < 0 || ret >= newdirlen + 1)
+	ret = strnprintf(newdir, newdirlen + 1, "%s=%s/%s", ovldir, newpath, newname);
+	if (ret < 0)
 		return false;
 
 	if (!conf->unexpanded_config)
@@ -2985,7 +3173,7 @@ bool clone_update_unexp_ovl_paths(struct lxc_conf *conf, const char *oldpath,
 		else
 			lend++;
 
-		if (strncmp(lstart, key, strlen(key)) != 0)
+		if (!strnequal(lstart, key, strlen(key)))
 			goto next;
 
 		p = strchr(lstart + strlen(key), '=');
@@ -3072,14 +3260,14 @@ bool clone_update_unexp_hooks(struct lxc_conf *conf, const char *oldpath,
 
 	olddirlen = strlen(oldpath) + strlen(oldname) + 1;
 	olddir = must_realloc(NULL, olddirlen + 1);
-	ret = snprintf(olddir, olddirlen + 1, "%s/%s", oldpath, oldname);
-	if (ret < 0 || ret >= olddirlen + 1)
+	ret = strnprintf(olddir, olddirlen + 1, "%s/%s", oldpath, oldname);
+	if (ret < 0)
 		return false;
 
 	newdirlen = strlen(newpath) + strlen(newname) + 1;
 	newdir = must_realloc(NULL, newdirlen + 1);
-	ret = snprintf(newdir, newdirlen + 1, "%s/%s", newpath, newname);
-	if (ret < 0 || ret >= newdirlen + 1)
+	ret = strnprintf(newdir, newdirlen + 1, "%s/%s", newpath, newname);
+	if (ret < 0)
 		return false;
 
 	if (!conf->unexpanded_config)
@@ -3092,7 +3280,7 @@ bool clone_update_unexp_hooks(struct lxc_conf *conf, const char *oldpath,
 		else
 			lend++;
 
-		if (strncmp(lstart, key, strlen(key)) != 0)
+		if (!strnequal(lstart, key, strlen(key)))
 			goto next;
 
 		p = strchr(lstart + strlen(key), '=');
@@ -3106,7 +3294,7 @@ bool clone_update_unexp_hooks(struct lxc_conf *conf, const char *oldpath,
 		if (p >= lend)
 			goto next;
 
-		if (strncmp(p, olddir, strlen(olddir)) != 0)
+		if (!strnequal(p, olddir, strlen(olddir)))
 			goto next;
 
 		/* replace the olddir with newdir */
@@ -3173,7 +3361,6 @@ bool clone_update_unexp_hooks(struct lxc_conf *conf, const char *oldpath,
 bool network_new_hwaddrs(struct lxc_conf *conf)
 {
 	char *lend, *p, *p2;
-	struct lxc_list *it;
 	char *lstart = conf->unexpanded_config;
 
 	if (!conf->unexpanded_config)
@@ -3181,6 +3368,7 @@ bool network_new_hwaddrs(struct lxc_conf *conf)
 
 	while (*lstart) {
 		char newhwaddr[18], oldhwaddr[17];
+		struct lxc_netdev *netdev;
 
 		lend = strchr(lstart, '\n');
 		if (!lend)
@@ -3221,11 +3409,9 @@ bool network_new_hwaddrs(struct lxc_conf *conf)
 			return false;
 
 		memcpy(p, newhwaddr, 17);
-		lxc_list_for_each(it, &conf->network) {
-			struct lxc_netdev *n = it->elem;
-
-			if (n->hwaddr && memcmp(oldhwaddr, n->hwaddr, 17) == 0)
-				memcpy(n->hwaddr, newhwaddr, 17);
+		list_for_each_entry(netdev, &conf->netdevs, head) {
+			if (netdev->hwaddr && memcmp(oldhwaddr, netdev->hwaddr, 17) == 0)
+				memcpy(netdev->hwaddr, newhwaddr, 17);
 		}
 
 		lstart = lend;
@@ -3308,7 +3494,6 @@ static int get_config_personality(const char *key, char *retv, int inlen,
 	else
 		memset(retv, 0, inlen);
 
-#if HAVE_SYS_PERSONALITY_H
 	int len = 0;
 
 	switch (c->personality) {
@@ -3321,7 +3506,6 @@ static int get_config_personality(const char *key, char *retv, int inlen,
 	default:
 		break;
 	}
-#endif
 
 	return fulllen;
 }
@@ -3347,31 +3531,45 @@ static int get_config_tty_dir(const char *key, char *retv, int inlen,
 static int get_config_apparmor_profile(const char *key, char *retv, int inlen,
 				       struct lxc_conf *c, void *data)
 {
+#if HAVE_APPARMOR
 	return lxc_get_conf_str(retv, inlen, c->lsm_aa_profile);
+#else
+	SYSWARN("Built without AppArmor support");
+	return 0;
+#endif
 }
 
 static int get_config_apparmor_allow_incomplete(const char *key, char *retv,
 						int inlen, struct lxc_conf *c,
 						void *data)
 {
-	return lxc_get_conf_int(c, retv, inlen,
-				c->lsm_aa_allow_incomplete);
+#if HAVE_APPARMOR
+	return lxc_get_conf_int(c, retv, inlen, c->lsm_aa_allow_incomplete);
+#else
+	SYSWARN("Built without AppArmor support");
+	return 0;
+#endif
 }
 
 static int get_config_apparmor_allow_nesting(const char *key, char *retv,
 					     int inlen, struct lxc_conf *c,
 					     void *data)
 {
-	return lxc_get_conf_int(c, retv, inlen,
-				c->lsm_aa_allow_nesting);
+#if HAVE_APPARMOR
+	return lxc_get_conf_int(c, retv, inlen, c->lsm_aa_allow_nesting);
+#else
+	SYSWARN("Built without AppArmor support");
+	return 0;
+#endif
 }
 
 static int get_config_apparmor_raw(const char *key, char *retv,
 				   int inlen, struct lxc_conf *c,
 				   void *data)
 {
+#if HAVE_APPARMOR
 	int len;
-	struct lxc_list *it;
+	struct string_entry *entry;
 	int fulllen = 0;
 
 	if (!retv)
@@ -3379,23 +3577,37 @@ static int get_config_apparmor_raw(const char *key, char *retv,
 	else
 		memset(retv, 0, inlen);
 
-	lxc_list_for_each(it, &c->lsm_aa_raw) {
-		strprint(retv, inlen, "%s\n", (char *)it->elem);
+	list_for_each_entry(entry, &c->lsm_aa_raw, head) {
+		strprint(retv, inlen, "%s\n", entry->val);
 	}
 
 	return fulllen;
+#else
+	SYSWARN("Built without AppArmor support");
+	return 0;
+#endif
 }
 
 static int get_config_selinux_context(const char *key, char *retv, int inlen,
 				      struct lxc_conf *c, void *data)
 {
+#if HAVE_SELINUX
 	return lxc_get_conf_str(retv, inlen, c->lsm_se_context);
+#else
+	SYSWARN("Built without SELinux support");
+	return 0;
+#endif
 }
 
 static int get_config_selinux_context_keyring(const char *key, char *retv, int inlen,
 					      struct lxc_conf *c, void *data)
 {
+#if HAVE_SELINUX
 	return lxc_get_conf_str(retv, inlen, c->lsm_se_keyring_context);
+#else
+	SYSWARN("Built without SELinux support");
+	return 0;
+#endif
 }
 
 static int get_config_keyring_session(const char *key, char *retv, int inlen,
@@ -3417,12 +3629,13 @@ static int __get_config_cgroup_controller(const char *key, char *retv,
 					  int inlen, struct lxc_conf *c,
 					  int version)
 {
+	int fulllen = 0;
+	bool get_all = false;
 	int len;
 	size_t namespaced_token_len;
 	char *global_token, *namespaced_token;
-	struct lxc_list *it;
-	int fulllen = 0;
-	bool get_all = false;
+	struct list_head *list;
+	struct lxc_cgroup *cgroup;
 
 	if (!retv)
 		inlen = 0;
@@ -3433,32 +3646,32 @@ static int __get_config_cgroup_controller(const char *key, char *retv,
 		global_token = "lxc.cgroup2";
 		namespaced_token = "lxc.cgroup2.";
 		namespaced_token_len = STRLITERALLEN("lxc.cgroup2.");
+		list = &c->cgroup2;
 	} else if (version == CGROUP_SUPER_MAGIC) {
 		global_token = "lxc.cgroup";
 		namespaced_token = "lxc.cgroup.";
 		namespaced_token_len = STRLITERALLEN("lxc.cgroup.");
+		list = &c->cgroup;
 	} else {
 		return ret_errno(EINVAL);
 	}
 
-	if (strcmp(key, global_token) == 0)
+	if (strequal(key, global_token))
 		get_all = true;
-	else if (strncmp(key, namespaced_token, namespaced_token_len) == 0)
+	else if (strnequal(key, namespaced_token, namespaced_token_len))
 		key += namespaced_token_len;
 	else
 		return ret_errno(EINVAL);
 
-	lxc_list_for_each(it, &c->cgroup) {
-		struct lxc_cgroup *cg = it->elem;
-
+	list_for_each_entry(cgroup, list, head) {
 		if (get_all) {
-			if (version != cg->version)
+			if (version != cgroup->version)
 				continue;
 
 			strprint(retv, inlen, "%s.%s = %s\n", global_token,
-				 cg->subsystem, cg->value);
-		} else if (strcmp(cg->subsystem, key) == 0) {
-			strprint(retv, inlen, "%s\n", cg->value);
+				 cgroup->subsystem, cgroup->value);
+		} else if (strequal(cgroup->subsystem, key)) {
+			strprint(retv, inlen, "%s\n", cgroup->value);
 		}
 	}
 
@@ -3485,7 +3698,7 @@ static int get_config_cgroup_dir(const char *key, char *retv, int inlen,
 	int len;
 	int fulllen = 0;
 
-	if (strcmp(key, "lxc.cgroup.dir") != 0)
+	if (!strequal(key, "lxc.cgroup.dir"))
 		return ret_errno(EINVAL);
 
 	if (!retv)
@@ -3509,7 +3722,7 @@ static inline int get_config_cgroup_relative(const char *key, char *retv,
 static int get_config_idmaps(const char *key, char *retv, int inlen,
 			     struct lxc_conf *c, void *data)
 {
-	struct lxc_list *it;
+	struct id_map *map;
 	int len, listlen, ret;
 	int fulllen = 0;
 /* "u 1000 1000000 65536"
@@ -3540,13 +3753,12 @@ static int get_config_idmaps(const char *key, char *retv, int inlen,
 	else
 		memset(retv, 0, inlen);
 
-	listlen = lxc_list_len(&c->id_map);
-	lxc_list_for_each(it, &c->id_map) {
-		struct id_map *map = it->elem;
-		ret = snprintf(buf, __LXC_IDMAP_STR_BUF, "%c %lu %lu %lu",
-			       (map->idtype == ID_TYPE_UID) ? 'u' : 'g',
-			       map->nsid, map->hostid, map->range);
-		if (ret < 0 || ret >= __LXC_IDMAP_STR_BUF)
+	listlen = list_len(map, &c->id_map, head);
+	list_for_each_entry(map, &c->id_map, head) {
+		ret = strnprintf(buf, sizeof(buf), "%c %lu %lu %lu",
+				 (map->idtype == ID_TYPE_UID) ? 'u' : 'g',
+				 map->nsid, map->hostid, map->range);
+		if (ret < 0)
 			return ret_errno(EIO);
 
 		strprint(retv, inlen, "%s%s", buf, (listlen-- > 1) ? "\n" : "");
@@ -3655,15 +3867,15 @@ static int get_config_mount(const char *key, char *retv, int inlen,
 			    struct lxc_conf *c, void *data)
 {
 	int len, fulllen = 0;
-	struct lxc_list *it;
+	struct string_entry *entry;
 
 	if (!retv)
 		inlen = 0;
 	else
 		memset(retv, 0, inlen);
 
-	lxc_list_for_each(it, &c->mount_list) {
-		strprint(retv, inlen, "%s\n", (char *)it->elem);
+	list_for_each_entry(entry, &c->mount_entries, head) {
+		strprint(retv, inlen, "%s\n", entry->val);
 	}
 
 	return fulllen;
@@ -3690,7 +3902,7 @@ static int get_config_rootfs_mount(const char *key, char *retv, int inlen,
 static int get_config_rootfs_options(const char *key, char *retv, int inlen,
 				     struct lxc_conf *c, void *data)
 {
-	return lxc_get_conf_str(retv, inlen, c->rootfs.options);
+	return lxc_get_conf_str(retv, inlen, c->rootfs.mnt_opts.raw_options);
 }
 
 static int get_config_uts_name(const char *key, char *retv, int inlen,
@@ -3706,7 +3918,7 @@ static int get_config_hooks(const char *key, char *retv, int inlen,
 {
 	char *subkey;
 	int len, fulllen = 0, found = -1;
-	struct lxc_list *it;
+	struct string_entry *entry;
 	int i;
 
 	subkey = strchr(key, '.');
@@ -3721,7 +3933,7 @@ static int get_config_hooks(const char *key, char *retv, int inlen,
 		return ret_errno(EINVAL);
 
 	for (i = 0; i < NUM_LXC_HOOKS; i++) {
-		if (strcmp(lxchook_names[i], subkey) == 0) {
+		if (strequal(lxchook_names[i], subkey)) {
 			found = i;
 			break;
 		}
@@ -3735,8 +3947,8 @@ static int get_config_hooks(const char *key, char *retv, int inlen,
 	else
 		memset(retv, 0, inlen);
 
-	lxc_list_for_each(it, &c->hooks[found]) {
-		strprint(retv, inlen, "%s\n", (char *)it->elem);
+	list_for_each_entry(entry, &c->hooks[found], head) {
+		strprint(retv, inlen, "%s\n", entry->val);
 	}
 
 	return fulllen;
@@ -3752,16 +3964,15 @@ static int get_config_net(const char *key, char *retv, int inlen,
 			  struct lxc_conf *c, void *data)
 {
 	int len, fulllen = 0;
-	struct lxc_list *it;
+	struct lxc_netdev *netdev;
 
 	if (!retv)
 		inlen = 0;
 	else
 		memset(retv, 0, inlen);
 
-	lxc_list_for_each(it, &c->network) {
-		struct lxc_netdev *n = it->elem;
-		const char *t = lxc_net_type_to_str(n->type);
+	list_for_each_entry(netdev, &c->netdevs, head) {
+		const char *t = lxc_net_type_to_str(netdev->type);
 		strprint(retv, inlen, "%s\n", t ? t : "(invalid)");
 	}
 
@@ -3772,15 +3983,15 @@ static int get_config_cap_drop(const char *key, char *retv, int inlen,
 			       struct lxc_conf *c, void *data)
 {
 	int len, fulllen = 0;
-	struct lxc_list *it;
+	struct cap_entry *cap;
 
 	if (!retv)
 		inlen = 0;
 	else
 		memset(retv, 0, inlen);
 
-	lxc_list_for_each(it, &c->caps) {
-		strprint(retv, inlen, "%s\n", (char *)it->elem);
+	list_for_each_entry(cap, &c->caps.list, head) {
+		strprint(retv, inlen, "%s\n", cap->cap_name);
 	}
 
 	return fulllen;
@@ -3790,15 +4001,15 @@ static int get_config_cap_keep(const char *key, char *retv, int inlen,
 			       struct lxc_conf *c, void *data)
 {
 	int len, fulllen = 0;
-	struct lxc_list *it;
+	struct cap_entry *cap;
 
 	if (!retv)
 		inlen = 0;
 	else
 		memset(retv, 0, inlen);
 
-	lxc_list_for_each(it, &c->keepcaps) {
-		strprint(retv, inlen, "%s\n", (char *)it->elem);
+	list_for_each_entry(cap, &c->caps.list, head) {
+		strprint(retv, inlen, "%s\n", cap->cap_name);
 	}
 
 	return fulllen;
@@ -3850,7 +4061,7 @@ static int get_config_seccomp_allow_nesting(const char *key, char *retv,
 static int get_config_seccomp_notify_cookie(const char *key, char *retv, int inlen,
 					    struct lxc_conf *c, void *data)
 {
-#ifdef HAVE_SECCOMP_NOTIFY
+#if HAVE_DECL_SECCOMP_NOTIFY_FD
 	return lxc_get_conf_str(retv, inlen, c->seccomp.notifier.cookie);
 #else
 	return ret_errno(ENOSYS);
@@ -3860,7 +4071,7 @@ static int get_config_seccomp_notify_cookie(const char *key, char *retv, int inl
 static int get_config_seccomp_notify_proxy(const char *key, char *retv, int inlen,
 					   struct lxc_conf *c, void *data)
 {
-#ifdef HAVE_SECCOMP_NOTIFY
+#if HAVE_DECL_SECCOMP_NOTIFY_FD
 	return lxc_get_conf_str(retv, inlen,
 				(c->seccomp.notifier.proxy_addr.sun_path[0]) == '/'
 				    ? &c->seccomp.notifier.proxy_addr.sun_path[0]
@@ -3873,7 +4084,11 @@ static int get_config_seccomp_notify_proxy(const char *key, char *retv, int inle
 static int get_config_seccomp_profile(const char *key, char *retv, int inlen,
 				      struct lxc_conf *c, void *data)
 {
+#ifdef HAVE_SECCOMP
 	return lxc_get_conf_str(retv, inlen, c->seccomp.seccomp);
+#else
+	return ret_errno(ENOSYS);
+#endif
 }
 
 static int get_config_autodev(const char *key, char *retv, int inlen,
@@ -3909,14 +4124,14 @@ static int get_config_signal_stop(const char *key, char *retv, int inlen,
 static int get_config_start(const char *key, char *retv, int inlen,
 			    struct lxc_conf *c, void *data)
 {
-	if (strcmp(key + 10, "auto") == 0)
+	if (strequal(key + 10, "auto"))
 		return lxc_get_conf_int(c, retv, inlen, c->start_auto);
-	else if (strcmp(key + 10, "delay") == 0)
+	else if (strequal(key + 10, "delay"))
 		return lxc_get_conf_int(c, retv, inlen, c->start_delay);
-	else if (strcmp(key + 10, "order") == 0)
+	else if (strequal(key + 10, "order"))
 		return lxc_get_conf_int(c, retv, inlen, c->start_order);
 
-	return -1;
+	return ret_errno(EINVAL);
 }
 
 static int get_config_log_syslog(const char *key, char *retv, int inlen,
@@ -3942,15 +4157,15 @@ static int get_config_group(const char *key, char *retv, int inlen,
 			    struct lxc_conf *c, void *data)
 {
 	int len, fulllen = 0;
-	struct lxc_list *it;
+	struct string_entry *entry;
 
 	if (!retv)
 		inlen = 0;
 	else
 		memset(retv, 0, inlen);
 
-	lxc_list_for_each(it, &c->groups) {
-		strprint(retv, inlen, "%s\n", (char *)it->elem);
+	list_for_each_entry(entry, &c->groups, head) {
+		strprint(retv, inlen, "%s\n", entry->val);
 	}
 
 	return fulllen;
@@ -3960,15 +4175,15 @@ static int get_config_environment(const char *key, char *retv, int inlen,
 				  struct lxc_conf *c, void *data)
 {
 	int len, fulllen = 0;
-	struct lxc_list *it;
+	struct environment_entry *env;
 
 	if (!retv)
 		inlen = 0;
 	else
 		memset(retv, 0, inlen);
 
-	lxc_list_for_each(it, &c->environment) {
-		strprint(retv, inlen, "%s\n", (char *)it->elem);
+	list_for_each_entry(env, &c->environment, head) {
+		strprint(retv, inlen, "%s=%s\n", env->key, env->val);
 	}
 
 	return fulllen;
@@ -4004,6 +4219,26 @@ static int get_config_init_gid(const char *key, char *retv, int inlen,
 	return lxc_get_conf_int(c, retv, inlen, c->init_gid);
 }
 
+static int get_config_init_groups(const char *key, char *retv, int inlen,
+				  struct lxc_conf *c, void *data)
+{
+	int fulllen = 0, len;
+
+	if (!retv)
+		inlen = 0;
+	else
+		memset(retv, 0, inlen);
+
+	if (c->init_groups.size == 0)
+		return 0;
+
+	for (size_t i = 0; i < c->init_groups.size; i++)
+		strprint(retv, inlen, "%s%d", (i > 0) ? "," : "",
+			 c->init_groups.list[i]);
+
+	return fulllen;
+}
+
 static int get_config_ephemeral(const char *key, char *retv, int inlen,
 				struct lxc_conf *c, void *data)
 {
@@ -4025,25 +4260,24 @@ static int get_config_prlimit(const char *key, char *retv, int inlen,
 {
 	int fulllen = 0, len;
 	bool get_all = false;
-	struct lxc_list *it;
+	struct lxc_limit *lim;
 
 	if (!retv)
 		inlen = 0;
 	else
 		memset(retv, 0, inlen);
 
-	if (!strcmp(key, "lxc.prlimit"))
+	if (strequal(key, "lxc.prlimit"))
 		get_all = true;
-	else if (strncmp(key, "lxc.prlimit.", 12) == 0)
+	else if (strnequal(key, "lxc.prlimit.", 12))
 		key += 12;
 	else
 		return ret_errno(EINVAL);
 
-	lxc_list_for_each(it, &c->limits) {
+	list_for_each_entry(lim, &c->limits, head) {
 		/* 2 colon separated 64 bit integers or the word 'unlimited' */
 		char buf[INTTYPE_TO_STRLEN(uint64_t) * 2 + 2];
 		int partlen;
-		struct lxc_limit *lim = it->elem;
 
 		if (lim->limit.rlim_cur == RLIM_INFINITY) {
 			memcpy(buf, "unlimited", STRLITERALLEN("unlimited") + 1);
@@ -4065,7 +4299,7 @@ static int get_config_prlimit(const char *key, char *retv, int inlen,
 		if (get_all) {
 			strprint(retv, inlen, "lxc.prlimit.%s = %s\n",
 				 lim->resource, buf);
-		} else if (strcmp(lim->resource, key) == 0) {
+		} else if (strequal(lim->resource, key)) {
 			strprint(retv, inlen, "%s", buf);
 		}
 	}
@@ -4080,30 +4314,29 @@ static int get_config_prlimit(const char *key, char *retv, int inlen,
 static int get_config_sysctl(const char *key, char *retv, int inlen,
 			     struct lxc_conf *c, void *data)
 {
-	int len;
-	struct lxc_list *it;
 	int fulllen = 0;
 	bool get_all = false;
+	int len;
+	struct lxc_sysctl *sysctl;
 
 	if (!retv)
 		inlen = 0;
 	else
 		memset(retv, 0, inlen);
 
-	if (strcmp(key, "lxc.sysctl") == 0)
+	if (strequal(key, "lxc.sysctl"))
 		get_all = true;
-	else if (strncmp(key, "lxc.sysctl.", STRLITERALLEN("lxc.sysctl.")) == 0)
+	else if (strnequal(key, "lxc.sysctl.", STRLITERALLEN("lxc.sysctl.")))
 		key += STRLITERALLEN("lxc.sysctl.");
 	else
 		return ret_errno(EINVAL);
 
-	lxc_list_for_each(it, &c->sysctls) {
-		struct lxc_sysctl *elem = it->elem;
+	list_for_each_entry(sysctl, &c->sysctls, head) {
 		if (get_all) {
-			strprint(retv, inlen, "lxc.sysctl.%s = %s\n", elem->key,
-				 elem->value);
-		} else if (strcmp(elem->key, key) == 0) {
-			strprint(retv, inlen, "%s", elem->value);
+			strprint(retv, inlen, "lxc.sysctl.%s = %s\n", sysctl->key,
+				 sysctl->value);
+		} else if (strequal(sysctl->key, key)) {
+			strprint(retv, inlen, "%s", sysctl->value);
 		}
 	}
 
@@ -4113,30 +4346,28 @@ static int get_config_sysctl(const char *key, char *retv, int inlen,
 static int get_config_proc(const char *key, char *retv, int inlen,
 			   struct lxc_conf *c, void *data)
 {
-	struct lxc_list *it;
-	int len;
 	int fulllen = 0;
 	bool get_all = false;
+	int len;
+	struct lxc_proc *proc;
 
 	if (!retv)
 		inlen = 0;
 	else
 		memset(retv, 0, inlen);
 
-	if (strcmp(key, "lxc.proc") == 0)
+	if (strequal(key, "lxc.proc"))
 		get_all = true;
-	else if (strncmp(key, "lxc.proc.", STRLITERALLEN("lxc.proc.")) == 0)
+	else if (strnequal(key, "lxc.proc.", STRLITERALLEN("lxc.proc.")))
 		key += STRLITERALLEN("lxc.proc.");
 	else
 		return ret_errno(EINVAL);
 
-	lxc_list_for_each(it, &c->procs) {
-		struct lxc_proc *proc = it->elem;
-
+	list_for_each_entry(proc, &c->procs, head) {
 		if (get_all) {
 			strprint(retv, inlen, "lxc.proc.%s = %s\n",
 			         proc->filename, proc->value);
-		} else if (strcmp(proc->filename, key) == 0) {
+		} else if (strequal(proc->filename, key)) {
 			strprint(retv, inlen, "%s", proc->value);
 		}
 	}
@@ -4195,6 +4426,9 @@ static int get_config_namespace_share(const char *key, char *retv, int inlen,
 		memset(retv, 0, inlen);
 
 	namespace = key + STRLITERALLEN("lxc.namespace.share.");
+	if (is_empty_string(namespace))
+		return ret_errno(EINVAL);
+
 	ns_idx = lxc_namespace_2_ns_idx(namespace);
 	if (ns_idx < 0)
 		return ns_idx;
@@ -4236,45 +4470,75 @@ static inline int clr_config_tty_dir(const char *key, struct lxc_conf *c,
 static inline int clr_config_apparmor_profile(const char *key,
 					      struct lxc_conf *c, void *data)
 {
+#if HAVE_APPARMOR
 	free_disarm(c->lsm_aa_profile);
 	return 0;
+#else
+	SYSWARN("Built without AppArmor support");
+	return 0;
+#endif
 }
 
 static inline int clr_config_apparmor_allow_incomplete(const char *key,
 						       struct lxc_conf *c,
 						       void *data)
 {
+#if HAVE_APPARMOR
 	c->lsm_aa_allow_incomplete = 0;
 	return 0;
+#else
+	SYSWARN("Built without AppArmor support");
+	return 0;
+#endif
 }
 
 static inline int clr_config_apparmor_allow_nesting(const char *key,
 						    struct lxc_conf *c,
 						    void *data)
 {
+#if HAVE_APPARMOR
 	c->lsm_aa_allow_nesting = 0;
 	return 0;
+#else
+	SYSWARN("Built without AppArmor support");
+	return 0;
+#endif
 }
 
 static inline int clr_config_apparmor_raw(const char *key,
 					  struct lxc_conf *c,
 					  void *data)
 {
+#if HAVE_APPARMOR
 	return lxc_clear_apparmor_raw(c);
+#else
+	SYSWARN("Built without AppArmor support");
+	return 0;
+#endif
 }
 
 static inline int clr_config_selinux_context(const char *key,
 					     struct lxc_conf *c, void *data)
 {
+#if HAVE_SELINUX
 	free_disarm(c->lsm_se_context);
 	return 0;
+#else
+	SYSWARN("Built without SELinux support");
+	return 0;
+#endif
 }
 
 static inline int clr_config_selinux_context_keyring(const char *key,
 						     struct lxc_conf *c, void *data)
 {
+#if HAVE_SELINUX
 	free_disarm(c->lsm_se_keyring_context);
 	return 0;
+#else
+	SYSWARN("Built without SELinux support");
+	return 0;
+#endif
 }
 
 static inline int clr_config_keyring_session(const char *key,
@@ -4299,7 +4563,7 @@ static inline int clr_config_cgroup2_controller(const char *key,
 static int clr_config_cgroup_dir(const char *key, struct lxc_conf *lxc_conf,
 				 void *data)
 {
-	if (strcmp(key, "lxc.cgroup.dir") != 0)
+	if (!strequal(key, "lxc.cgroup.dir"))
 		return ret_errno(EINVAL);
 
 	if (lxc_conf->cgroup_meta.dir)
@@ -4379,8 +4643,7 @@ static inline int clr_config_rootfs_mount(const char *key, struct lxc_conf *c,
 static inline int clr_config_rootfs_options(const char *key, struct lxc_conf *c,
 					    void *data)
 {
-	free_disarm(c->rootfs.options);
-	free_disarm(c->rootfs.data);
+	put_lxc_mount_options(&c->rootfs.mnt_opts);
 
 	return 0;
 }
@@ -4409,7 +4672,7 @@ static inline int clr_config_hooks_version(const char *key, struct lxc_conf *c,
 static inline int clr_config_net(const char *key, struct lxc_conf *c,
 				 void *data)
 {
-	lxc_free_networks(&c->network);
+	lxc_free_networks(c);
 
 	return 0;
 }
@@ -4423,7 +4686,7 @@ static inline int clr_config_cap_drop(const char *key, struct lxc_conf *c,
 static inline int clr_config_cap_keep(const char *key, struct lxc_conf *c,
 				      void *data)
 {
-	return lxc_clear_config_keepcaps(c);
+	return lxc_clear_config_caps(c);
 }
 
 static inline int clr_config_console_path(const char *key, struct lxc_conf *c,
@@ -4475,7 +4738,7 @@ static inline int clr_config_seccomp_allow_nesting(const char *key,
 static inline int clr_config_seccomp_notify_cookie(const char *key,
 						   struct lxc_conf *c, void *data)
 {
-#ifdef HAVE_SECCOMP_NOTIFY
+#if HAVE_DECL_SECCOMP_NOTIFY_FD
 	free_disarm(c->seccomp.notifier.cookie);
 	return 0;
 #else
@@ -4486,7 +4749,7 @@ static inline int clr_config_seccomp_notify_cookie(const char *key,
 static inline int clr_config_seccomp_notify_proxy(const char *key,
 						   struct lxc_conf *c, void *data)
 {
-#ifdef HAVE_SECCOMP_NOTIFY
+#if HAVE_DECL_SECCOMP_NOTIFY_FD
 	memset(&c->seccomp.notifier.proxy_addr, 0,
 	       sizeof(c->seccomp.notifier.proxy_addr));
 	return 0;
@@ -4540,11 +4803,11 @@ static inline int clr_config_signal_stop(const char *key, struct lxc_conf *c,
 static inline int clr_config_start(const char *key, struct lxc_conf *c,
 				   void *data)
 {
-	if (strcmp(key + 10, "auto") == 0)
+	if (strequal(key + 10, "auto"))
 		c->start_auto = 0;
-	else if (strcmp(key + 10, "delay") == 0)
+	else if (strequal(key + 10, "delay"))
 		c->start_delay = 0;
-	else if (strcmp(key + 10, "order") == 0)
+	else if (strequal(key + 10, "order"))
 		c->start_order = 0;
 
 	return 0;
@@ -4618,6 +4881,14 @@ static inline int clr_config_init_gid(const char *key, struct lxc_conf *c,
 	return 0;
 }
 
+static inline int clr_config_init_groups(const char *key, struct lxc_conf *c,
+					 void *data)
+{
+	c->init_groups.size = 0;
+	free_disarm(c->init_groups.list);
+	return 0;
+}
+
 static inline int clr_config_ephemeral(const char *key, struct lxc_conf *c,
 				       void *data)
 {
@@ -4653,7 +4924,6 @@ static inline int clr_config_proc(const char *key, struct lxc_conf *c,
 static inline int clr_config_includefiles(const char *key, struct lxc_conf *c,
 					  void *data)
 {
-	lxc_clear_includes(c);
 	return 0;
 }
 
@@ -4678,6 +4948,9 @@ static int clr_config_namespace_share(const char *key,
 	const char *namespace;
 
 	namespace = key + STRLITERALLEN("lxc.namespace.share.");
+	if (is_empty_string(namespace))
+		return ret_errno(EINVAL);
+
 	ns_idx = lxc_namespace_2_ns_idx(namespace);
 	if (ns_idx < 0)
 		return ns_idx;
@@ -4694,119 +4967,94 @@ static int get_config_includefiles(const char *key, char *retv, int inlen,
 	return ret_errno(ENOSYS);
 }
 
-static struct lxc_config_t *get_network_config_ops(const char *key,
-						   struct lxc_conf *lxc_conf,
-						   ssize_t *idx,
-						   char **deindexed_key)
+struct config_net_info {
+	char buf[NETWORK_SUBKEY_SIZE_MAX];
+	const char *subkey;
+	const struct lxc_config_net_t *ops;
+	struct lxc_netdev *netdev;
+};
+
+static int get_network_config_ops(const char *key, struct lxc_conf *lxc_conf,
+				  struct config_net_info *info, bool allocate)
 {
-	__do_free char *copy = NULL;
-	struct lxc_config_t *config = NULL;
 	int ret;
-	unsigned int tmpidx;
-	size_t numstrlen;
-	char *idx_start, *idx_end;
+	int64_t tmpidx;
+	unsigned int idx;
+	const char *idx_start;
+
+	if (is_empty_string(key))
+		return ret_errno(EINVAL);
 
 	/* check that this is a sensible network key */
-	if (strncmp("lxc.net.", key, 8))
-		return log_error_errno(NULL, EINVAL, "Invalid network configuration key \"%s\"", key);
-
-	copy = strdup(key);
-	if (!copy)
-		return log_error_errno(NULL, ENOMEM, "Failed to duplicate string \"%s\"", key);
+	if (!strnequal("lxc.net.", key, STRLITERALLEN("lxc.net.")))
+		return syserror_set(-EINVAL, "Invalid network configuration key \"%s\"", key);
 
 	/* lxc.net.<n> */
-	if (!isdigit(*(key + 8)))
-		return log_error_errno(NULL, EINVAL, "Failed to detect digit in string \"%s\"", key + 8);
-
 	/* beginning of index string */
-	idx_start = (copy + 7);
-	*idx_start = '\0';
+	idx_start = key + STRLITERALLEN("lxc.net.");
+	if (!isdigit(*idx_start))
+		return syserror_set(-EINVAL, "Failed to detect digit in string \"%s\"", key + 8);
 
-	/* end of index string */
-	idx_end = strchr((copy + 8), '.');
-	if (idx_end)
-		*idx_end = '\0';
+	ret = lxc_safe_int64_residual(idx_start, &tmpidx, 10, info->buf, sizeof(info->buf));
+	if (ret)
+		return syserror("Failed to parse network index");
 
-	/* parse current index */
-	ret = lxc_safe_uint((idx_start + 1), &tmpidx);
-	if (ret < 0) {
-		*idx = ret;
-		return log_error_errno(NULL, -ret, "Failed to parse unsigned integer from string \"%s\"", idx_start + 1);
-	}
+	if (tmpidx < 0 || tmpidx >= INT_MAX)
+		return syserror_set(-ERANGE, "Number of configured networks would overflow the counter");
+	idx = (unsigned int)tmpidx;
 
-	/* This, of course is utterly nonsensical on so many levels, but
-	 * better safe than sorry.
-	 * (Checking for INT_MAX here is intentional.)
-	 */
-	if (tmpidx == INT_MAX)
-		return log_error_errno(NULL, ERANGE, "Number of configured networks would overflow the counter");
-	*idx = tmpidx;
+	info->netdev = lxc_get_netdev_by_idx(lxc_conf, idx, allocate);
+	if (!info->netdev)
+		return ret_errno(EINVAL);
 
-	numstrlen = strlen((idx_start + 1));
+	/* Make sure subkey points to the empty string. */
+	info->subkey = info->buf;
+	if (is_empty_string(info->subkey))
+		return ret_errno(ENOENT);
 
-	/* repair configuration key */
-	*idx_start = '.';
+	if (info->subkey[0] != '.')
+		return syserror_set(-EINVAL, "Invalid subkey");
+	info->subkey++;
 
 	/* lxc.net.<idx>.<subkey> */
-	if (idx_end) {
-		*idx_end = '.';
-		if (strlen(idx_end + 1) == 0)
-			return log_error_errno(NULL, EINVAL, "No subkey in network configuration key \"%s\"", key);
+	info->ops = lxc_get_config_net(info->subkey);
+	if (info->ops == &unsupported_config_net_key)
+		return syserror_set(-ENOENT, "Unknown network configuration key \"%s\"", key);
 
-		memmove(copy + 8, idx_end + 1, strlen(idx_end + 1));
-		copy[strlen(key) - (numstrlen + 1)] = '\0';
-
-		config = lxc_get_config(copy);
-		if (!config)
-			return log_error_errno(NULL, ENOENT, "Unknown network configuration key \"%s\"", key);
-	}
-
-	if (deindexed_key)
-		*deindexed_key = move_ptr(copy);
-
-	return config;
+	return 0;
 }
 
 /* Config entry is something like "lxc.net.0.ipv4" the key 'lxc.net.' was
  * found. So we make sure next comes an integer, find the right callback (by
  * rewriting the key), and call it.
  */
-static int set_config_net_nic(const char *key, const char *value,
-			      struct lxc_conf *lxc_conf, void *data)
+static int set_config_jump_table_net(const char *key, const char *value,
+				     struct lxc_conf *lxc_conf, void *data)
 {
-	__do_free char *deindexed_key = NULL;
-	ssize_t idx = -1;
+	struct config_net_info info = {};
+	int ret;
 	const char *idxstring;
-	struct lxc_config_t *config;
-	struct lxc_netdev *netdev;
 
-	idxstring = key + 8;
+	idxstring = key + STRLITERALLEN("lxc.net.");
 	if (!isdigit(*idxstring))
 		return ret_errno(EINVAL);
 
 	if (lxc_config_value_empty(value))
-		return clr_config_net_nic(key, lxc_conf, data);
+		return clr_config_jump_table_net(key, lxc_conf, data);
 
-	config = get_network_config_ops(key, lxc_conf, &idx, &deindexed_key);
-	if (!config || idx < 0)
-		return -errno;
+	ret = get_network_config_ops(key, lxc_conf, &info, true);
+	if (ret)
+		return ret;
 
-	netdev = lxc_get_netdev_by_idx(lxc_conf, (unsigned int)idx, true);
-	if (!netdev)
-		return ret_errno(EINVAL);
-
-	return config->set(deindexed_key, value, lxc_conf, netdev);
+	return info.ops->set(info.subkey, value, lxc_conf, info.netdev);
 }
 
-static int clr_config_net_nic(const char *key, struct lxc_conf *lxc_conf,
-			      void *data)
+static int clr_config_jump_table_net(const char *key, struct lxc_conf *lxc_conf,
+				     void *data)
 {
-	__do_free char *deindexed_key = NULL;
-	ssize_t idx = -1;
+	struct config_net_info info = {};
 	int ret;
 	const char *idxstring;
-	struct lxc_config_t *config;
-	struct lxc_netdev *netdev;
 
 	idxstring = key + 8;
 	if (!isdigit(*idxstring))
@@ -4829,15 +5077,11 @@ static int clr_config_net_nic(const char *key, struct lxc_conf *lxc_conf,
 		return 0;
 	}
 
-	config = get_network_config_ops(key, lxc_conf, &idx, &deindexed_key);
-	if (!config || idx < 0)
-		return -errno;
+	ret = get_network_config_ops(key, lxc_conf, &info, false);
+	if (ret)
+		return ret;
 
-	netdev = lxc_get_netdev_by_idx(lxc_conf, (unsigned int)idx, false);
-	if (!netdev)
-		return ret_errno(EINVAL);
-
-	return config->clr(deindexed_key, lxc_conf, netdev);
+	return info.ops->clr(info.subkey, lxc_conf, info.netdev);
 }
 
 static int clr_config_net_type(const char *key, struct lxc_conf *lxc_conf,
@@ -4848,7 +5092,7 @@ static int clr_config_net_type(const char *key, struct lxc_conf *lxc_conf,
 	if (!netdev)
 		return ret_errno(EINVAL);
 
-	netdev->type = -1;
+	lxc_clear_netdev(netdev);
 
 	return 0;
 }
@@ -4938,7 +5182,7 @@ static int clr_config_net_ipvlan_mode(const char *key,
 }
 
 static int clr_config_net_ipvlan_isolation(const char *key,
-				       struct lxc_conf *lxc_conf, void *data)
+					   struct lxc_conf *lxc_conf, void *data)
 {
 	struct lxc_netdev *netdev = data;
 
@@ -4976,6 +5220,9 @@ static int clr_config_net_veth_pair(const char *key, struct lxc_conf *lxc_conf,
 
 	if (!netdev)
 		return ret_errno(EINVAL);
+
+	if (netdev->type != LXC_NET_VETH)
+		return 0;
 
 	netdev->priv.veth_attr.pair[0] = '\0';
 
@@ -5042,6 +5289,9 @@ static int clr_config_net_vlan_id(const char *key, struct lxc_conf *lxc_conf,
 	if (!netdev)
 		return ret_errno(EINVAL);
 
+	if (netdev->type != LXC_NET_VLAN)
+		return 0;
+
 	netdev->priv.vlan_attr.vid = 0;
 
 	return 0;
@@ -5064,15 +5314,14 @@ static int clr_config_net_ipv4_address(const char *key,
 				       struct lxc_conf *lxc_conf, void *data)
 {
 	struct lxc_netdev *netdev = data;
-	struct lxc_list *cur, *next;
+	struct lxc_inetdev *inetdev, *ninetdev;
 
 	if (!netdev)
 		return ret_errno(EINVAL);
 
-	lxc_list_for_each_safe(cur, &netdev->ipv4, next) {
-		lxc_list_del(cur);
-		free(cur->elem);
-		free(cur);
+	list_for_each_entry_safe(inetdev, ninetdev, &netdev->ipv4_addresses, head) {
+		list_del(&inetdev->head);
+		free(inetdev);
 	}
 
 	return 0;
@@ -5082,15 +5331,17 @@ static int clr_config_net_veth_ipv4_route(const char *key,
 					  struct lxc_conf *lxc_conf, void *data)
 {
 	struct lxc_netdev *netdev = data;
-	struct lxc_list *cur, *next;
+	struct lxc_inetdev *inetdev, *ninetdev;
 
 	if (!netdev)
 		return ret_errno(EINVAL);
 
-	lxc_list_for_each_safe(cur, &netdev->priv.veth_attr.ipv4_routes, next) {
-		lxc_list_del(cur);
-		free(cur->elem);
-		free(cur);
+	if (netdev->type != LXC_NET_VETH)
+		return 0;
+
+	list_for_each_entry_safe(inetdev, ninetdev, &netdev->priv.veth_attr.ipv4_routes, head) {
+		list_del(&inetdev->head);
+		free(inetdev);
 	}
 
 	return 0;
@@ -5113,15 +5364,14 @@ static int clr_config_net_ipv6_address(const char *key,
 				       struct lxc_conf *lxc_conf, void *data)
 {
 	struct lxc_netdev *netdev = data;
-	struct lxc_list *cur, *next;
+	struct lxc_inet6dev *inet6dev, *ninet6dev;
 
 	if (!netdev)
 		return ret_errno(EINVAL);
 
-	lxc_list_for_each_safe(cur, &netdev->ipv6, next) {
-		lxc_list_del(cur);
-		free(cur->elem);
-		free(cur);
+	list_for_each_entry_safe(inet6dev, ninet6dev, &netdev->ipv6_addresses, head) {
+		list_del(&inet6dev->head);
+		free(inet6dev);
 	}
 
 	return 0;
@@ -5131,42 +5381,38 @@ static int clr_config_net_veth_ipv6_route(const char *key,
 					  struct lxc_conf *lxc_conf, void *data)
 {
 	struct lxc_netdev *netdev = data;
-	struct lxc_list *cur, *next;
+	struct lxc_inet6dev *inet6dev, *ninet6dev;
 
 	if (!netdev)
 		return ret_errno(EINVAL);
 
-	lxc_list_for_each_safe(cur, &netdev->priv.veth_attr.ipv6_routes, next) {
-		lxc_list_del(cur);
-		free(cur->elem);
-		free(cur);
+	if (netdev->type != LXC_NET_VETH)
+		return 0;
+
+	list_for_each_entry_safe(inet6dev, ninet6dev, &netdev->priv.veth_attr.ipv6_routes, head) {
+		list_del(&inet6dev->head);
+		free(inet6dev);
 	}
 
 	return 0;
 }
 
-static int get_config_net_nic(const char *key, char *retv, int inlen,
-			      struct lxc_conf *c, void *data)
+static int get_config_jump_table_net(const char *key, char *retv, int inlen,
+				     struct lxc_conf *c, void *data)
 {
-	__do_free char *deindexed_key = NULL;
-	ssize_t idx = -1;
+	struct config_net_info info = {};
+	int ret;
 	const char *idxstring;
-	struct lxc_config_t *config;
-	struct lxc_netdev *netdev;
 
-	idxstring = key + 8;
+	idxstring = key + STRLITERALLEN("lxc.net.");
 	if (!isdigit(*idxstring))
 		return ret_errno(EINVAL);
 
-	config = get_network_config_ops(key, c, &idx, &deindexed_key);
-	if (!config || idx < 0)
-		return -errno;
+	ret = get_network_config_ops(key, c, &info, false);
+	if (ret)
+		return ret;
 
-	netdev = lxc_get_netdev_by_idx(c, (unsigned int)idx, false);
-	if (!netdev)
-		return ret_errno(EINVAL);
-
-	return config->get(deindexed_key, retv, inlen, c, netdev);
+	return info.ops->get(info.subkey, retv, inlen, c, info.netdev);
 }
 
 static int get_config_net_type(const char *key, char *retv, int inlen,
@@ -5176,13 +5422,13 @@ static int get_config_net_type(const char *key, char *retv, int inlen,
 	int fulllen = 0;
 	struct lxc_netdev *netdev = data;
 
+	if (!netdev)
+		return ret_errno(EINVAL);
+
 	if (!retv)
 		inlen = 0;
 	else
 		memset(retv, 0, inlen);
-
-	if (!netdev)
-		return ret_errno(EINVAL);
 
 	strprint(retv, inlen, "%s", lxc_net_type_to_str(netdev->type));
 
@@ -5196,13 +5442,13 @@ static int get_config_net_flags(const char *key, char *retv, int inlen,
 	int fulllen = 0;
 	struct lxc_netdev *netdev = data;
 
+	if (!netdev)
+		return ret_errno(EINVAL);
+
 	if (!retv)
 		inlen = 0;
 	else
 		memset(retv, 0, inlen);
-
-	if (!netdev)
-		return ret_errno(EINVAL);
 
 	if (netdev->flags & IFF_UP)
 		strprint(retv, inlen, "up");
@@ -5217,13 +5463,13 @@ static int get_config_net_link(const char *key, char *retv, int inlen,
 	int fulllen = 0;
 	struct lxc_netdev *netdev = data;
 
+	if (!netdev)
+		return ret_errno(EINVAL);
+
 	if (!retv)
 		inlen = 0;
 	else
 		memset(retv, 0, inlen);
-
-	if (!netdev)
-		return ret_errno(EINVAL);
 
 	if (netdev->link[0] != '\0')
 		strprint(retv, inlen, "%s", netdev->link);
@@ -5235,6 +5481,10 @@ static int get_config_net_l2proxy(const char *key, char *retv, int inlen,
 				  struct lxc_conf *c, void *data)
 {
 	struct lxc_netdev *netdev = data;
+
+	if (!netdev)
+		return ret_errno(EINVAL);
+
 	return lxc_get_conf_bool(c, retv, inlen, netdev->l2proxy);
 }
 
@@ -5245,13 +5495,13 @@ static int get_config_net_name(const char *key, char *retv, int inlen,
 	int fulllen = 0;
 	struct lxc_netdev *netdev = data;
 
+	if (!netdev)
+		return ret_errno(EINVAL);
+
 	if (!retv)
 		inlen = 0;
 	else
 		memset(retv, 0, inlen);
-
-	if (!netdev)
-		return ret_errno(EINVAL);
 
 	if (netdev->name[0] != '\0')
 		strprint(retv, inlen, "%s", netdev->name);
@@ -5267,16 +5517,16 @@ static int get_config_net_macvlan_mode(const char *key, char *retv, int inlen,
 	const char *mode;
 	struct lxc_netdev *netdev = data;
 
-	if (!retv)
-		inlen = 0;
-	else
-		memset(retv, 0, inlen);
-
 	if (!netdev)
 		return ret_errno(EINVAL);
 
 	if (netdev->type != LXC_NET_MACVLAN)
-		return 0;
+		return ret_errno(EINVAL);
+
+	if (!retv)
+		inlen = 0;
+	else
+		memset(retv, 0, inlen);
 
 	switch (netdev->priv.macvlan_attr.mode) {
 	case MACVLAN_MODE_PRIVATE:
@@ -5309,16 +5559,16 @@ static int get_config_net_ipvlan_mode(const char *key, char *retv, int inlen,
 	int len;
 	const char *mode;
 
-	if (!retv)
-		inlen = 0;
-	else
-		memset(retv, 0, inlen);
-
 	if (!netdev)
 		return ret_errno(EINVAL);
 
 	if (netdev->type != LXC_NET_IPVLAN)
-		return 0;
+		return ret_errno(EINVAL);
+
+	if (!retv)
+		inlen = 0;
+	else
+		memset(retv, 0, inlen);
 
 	switch (netdev->priv.ipvlan_attr.mode) {
 	case IPVLAN_MODE_L3:
@@ -5348,16 +5598,16 @@ static int get_config_net_ipvlan_isolation(const char *key, char *retv, int inle
 	int len;
 	const char *mode;
 
-	if (!retv)
-		inlen = 0;
-	else
-		memset(retv, 0, inlen);
-
 	if (!netdev)
 		return ret_errno(EINVAL);
 
 	if (netdev->type != LXC_NET_IPVLAN)
-		return 0;
+		return ret_errno(EINVAL);
+
+	if (!retv)
+		inlen = 0;
+	else
+		memset(retv, 0, inlen);
 
 	switch (netdev->priv.ipvlan_attr.isolation) {
 	case IPVLAN_ISOLATION_BRIDGE:
@@ -5380,23 +5630,23 @@ static int get_config_net_ipvlan_isolation(const char *key, char *retv, int inle
 }
 
 static int get_config_net_veth_mode(const char *key, char *retv, int inlen,
-				       struct lxc_conf *c, void *data)
+				    struct lxc_conf *c, void *data)
 {
 	int fulllen = 0;
 	struct lxc_netdev *netdev = data;
 	int len;
 	const char *mode;
 
-	if (!retv)
-		inlen = 0;
-	else
-		memset(retv, 0, inlen);
-
 	if (!netdev)
 		return ret_errno(EINVAL);
 
 	if (netdev->type != LXC_NET_VETH)
-		return 0;
+		return ret_errno(EINVAL);
+
+	if (!retv)
+		inlen = 0;
+	else
+		memset(retv, 0, inlen);
 
 	switch (netdev->priv.veth_attr.mode) {
 	case VETH_MODE_BRIDGE:
@@ -5422,16 +5672,16 @@ static int get_config_net_veth_pair(const char *key, char *retv, int inlen,
 	int fulllen = 0;
 	struct lxc_netdev *netdev = data;
 
-	if (!retv)
-		inlen = 0;
-	else
-		memset(retv, 0, inlen);
-
 	if (!netdev)
 		return ret_errno(EINVAL);
 
 	if (netdev->type != LXC_NET_VETH)
-		return 0;
+		return ret_errno(EINVAL);
+
+	if (!retv)
+		inlen = 0;
+	else
+		memset(retv, 0, inlen);
 
 	strprint(retv, inlen, "%s",
 		 netdev->priv.veth_attr.pair[0] != '\0'
@@ -5448,13 +5698,13 @@ static int get_config_net_script_up(const char *key, char *retv, int inlen,
 	int fulllen = 0;
 	struct lxc_netdev *netdev = data;
 
+	if (!netdev)
+		return ret_errno(EINVAL);
+
 	if (!retv)
 		inlen = 0;
 	else
 		memset(retv, 0, inlen);
-
-	if (!netdev)
-		return ret_errno(EINVAL);
 
 	if (netdev->upscript)
 		strprint(retv, inlen, "%s", netdev->upscript);
@@ -5469,13 +5719,13 @@ static int get_config_net_script_down(const char *key, char *retv, int inlen,
 	int fulllen = 0;
 	struct lxc_netdev *netdev = data;
 
+	if (!netdev)
+		return ret_errno(EINVAL);
+
 	if (!retv)
 		inlen = 0;
 	else
 		memset(retv, 0, inlen);
-
-	if (!netdev)
-		return ret_errno(EINVAL);
 
 	if (netdev->downscript)
 		strprint(retv, inlen, "%s", netdev->downscript);
@@ -5490,13 +5740,13 @@ static int get_config_net_hwaddr(const char *key, char *retv, int inlen,
 	int fulllen = 0;
 	struct lxc_netdev *netdev = data;
 
+	if (!netdev)
+		return ret_errno(EINVAL);
+
 	if (!retv)
 		inlen = 0;
 	else
 		memset(retv, 0, inlen);
-
-	if (!netdev)
-		return ret_errno(EINVAL);
 
 	if (netdev->hwaddr)
 		strprint(retv, inlen, "%s", netdev->hwaddr);
@@ -5511,13 +5761,13 @@ static int get_config_net_mtu(const char *key, char *retv, int inlen,
 	int fulllen = 0;
 	struct lxc_netdev *netdev = data;
 
+	if (!netdev)
+		return ret_errno(EINVAL);
+
 	if (!retv)
 		inlen = 0;
 	else
 		memset(retv, 0, inlen);
-
-	if (!netdev)
-		return ret_errno(EINVAL);
 
 	if (netdev->mtu)
 		strprint(retv, inlen, "%s", netdev->mtu);
@@ -5532,16 +5782,16 @@ static int get_config_net_vlan_id(const char *key, char *retv, int inlen,
 	int fulllen = 0;
 	struct lxc_netdev *netdev = data;
 
-	if (!retv)
-		inlen = 0;
-	else
-		memset(retv, 0, inlen);
-
 	if (!netdev)
 		return ret_errno(EINVAL);
 
 	if (netdev->type != LXC_NET_VLAN)
-		return 0;
+		return ret_errno(EINVAL);
+
+	if (!retv)
+		inlen = 0;
+	else
+		memset(retv, 0, inlen);
 
 	strprint(retv, inlen, "%d", netdev->priv.vlan_attr.vid);
 
@@ -5556,13 +5806,13 @@ static int get_config_net_ipv4_gateway(const char *key, char *retv, int inlen,
 	int fulllen = 0;
 	struct lxc_netdev *netdev = data;
 
+	if (!netdev)
+		return ret_errno(EINVAL);
+
 	if (!retv)
 		inlen = 0;
 	else
 		memset(retv, 0, inlen);
-
-	if (!netdev)
-		return ret_errno(EINVAL);
 
 	if (netdev->ipv4_gateway_auto) {
 		strprint(retv, inlen, "auto");
@@ -5580,28 +5830,27 @@ static int get_config_net_ipv4_gateway(const char *key, char *retv, int inlen,
 static int get_config_net_ipv4_address(const char *key, char *retv, int inlen,
 				       struct lxc_conf *c, void *data)
 {
+	int fulllen = 0;
+	struct lxc_netdev *netdev = data;
 	int len;
 	size_t listlen;
 	char buf[INET_ADDRSTRLEN];
-	struct lxc_list *it;
-	int fulllen = 0;
-	struct lxc_netdev *netdev = data;
+	struct lxc_inetdev *inetdev;
+
+	if (!netdev)
+		return ret_errno(EINVAL);
 
 	if (!retv)
 		inlen = 0;
 	else
 		memset(retv, 0, inlen);
 
-	if (!netdev)
-		return ret_errno(EINVAL);
+	listlen = list_len(inetdev, &netdev->ipv4_addresses, head);
 
-	listlen = lxc_list_len(&netdev->ipv4);
-
-	lxc_list_for_each(it, &netdev->ipv4) {
-		struct lxc_inetdev *i = it->elem;
-		if (!inet_ntop(AF_INET, &i->addr, buf, sizeof(buf)))
+	list_for_each_entry(inetdev, &netdev->ipv4_addresses, head) {
+		if (!inet_ntop(AF_INET, &inetdev->addr, buf, sizeof(buf)))
 			return -errno;
-		strprint(retv, inlen, "%s/%u%s", buf, i->prefix,
+		strprint(retv, inlen, "%s/%u%s", buf, inetdev->prefix,
 			 (listlen-- > 1) ? "\n" : "");
 	}
 
@@ -5609,33 +5858,31 @@ static int get_config_net_ipv4_address(const char *key, char *retv, int inlen,
 }
 
 static int get_config_net_veth_ipv4_route(const char *key, char *retv, int inlen,
-				       struct lxc_conf *c, void *data)
+					  struct lxc_conf *c, void *data)
 {
 	int len;
 	size_t listlen;
 	char buf[INET_ADDRSTRLEN];
-	struct lxc_list *it;
+	struct lxc_inetdev *inetdev;
 	int fulllen = 0;
 	struct lxc_netdev *netdev = data;
+
+	if (!netdev)
+		return ret_errno(EINVAL);
+
+	if (netdev->type != LXC_NET_VETH)
+		return ret_errno(EINVAL);
 
 	if (!retv)
 		inlen = 0;
 	else
 		memset(retv, 0, inlen);
 
-	if (!netdev)
-		return ret_errno(EINVAL);
-
-	if (netdev->type != LXC_NET_VETH)
-		return 0;
-
-	listlen = lxc_list_len(&netdev->priv.veth_attr.ipv4_routes);
-
-	lxc_list_for_each(it, &netdev->priv.veth_attr.ipv4_routes) {
-		struct lxc_inetdev *i = it->elem;
-		if (!inet_ntop(AF_INET, &i->addr, buf, sizeof(buf)))
+	listlen = list_len(inetdev, &netdev->priv.veth_attr.ipv4_routes, head);
+	list_for_each_entry(inetdev, &netdev->priv.veth_attr.ipv4_routes, head) {
+		if (!inet_ntop(AF_INET, &inetdev->addr, buf, sizeof(buf)))
 			return -errno;
-		strprint(retv, inlen, "%s/%u%s", buf, i->prefix,
+		strprint(retv, inlen, "%s/%u%s", buf, inetdev->prefix,
 			 (listlen-- > 1) ? "\n" : "");
 	}
 
@@ -5650,13 +5897,13 @@ static int get_config_net_ipv6_gateway(const char *key, char *retv, int inlen,
 	int fulllen = 0;
 	struct lxc_netdev *netdev = data;
 
+	if (!netdev)
+		return ret_errno(EINVAL);
+
 	if (!retv)
 		inlen = 0;
 	else
 		memset(retv, 0, inlen);
-
-	if (!netdev)
-		return ret_errno(EINVAL);
 
 	if (netdev->ipv6_gateway_auto) {
 		strprint(retv, inlen, "auto");
@@ -5677,25 +5924,23 @@ static int get_config_net_ipv6_address(const char *key, char *retv, int inlen,
 	int len;
 	size_t listlen;
 	char buf[INET6_ADDRSTRLEN];
-	struct lxc_list *it;
 	int fulllen = 0;
 	struct lxc_netdev *netdev = data;
+	struct lxc_inet6dev *inet6dev;
+
+	if (!netdev)
+		return ret_errno(EINVAL);
 
 	if (!retv)
 		inlen = 0;
 	else
 		memset(retv, 0, inlen);
 
-	if (!netdev)
-		return ret_errno(EINVAL);
-
-	listlen = lxc_list_len(&netdev->ipv6);
-
-	lxc_list_for_each(it, &netdev->ipv6) {
-		struct lxc_inet6dev *i = it->elem;
-		if (!inet_ntop(AF_INET6, &i->addr, buf, sizeof(buf)))
+	listlen = list_len(inet6dev, &netdev->ipv6_addresses, head);
+	list_for_each_entry(inet6dev, &netdev->ipv6_addresses, head) {
+		if (!inet_ntop(AF_INET6, &inet6dev->addr, buf, sizeof(buf)))
 			return -errno;
-		strprint(retv, inlen, "%s/%u%s", buf, i->prefix,
+		strprint(retv, inlen, "%s/%u%s", buf, inet6dev->prefix,
 			 (listlen-- > 1) ? "\n" : "");
 	}
 
@@ -5708,28 +5953,26 @@ static int get_config_net_veth_ipv6_route(const char *key, char *retv, int inlen
 	int len;
 	size_t listlen;
 	char buf[INET6_ADDRSTRLEN];
-	struct lxc_list *it;
+	struct lxc_inet6dev *inet6dev;
 	int fulllen = 0;
 	struct lxc_netdev *netdev = data;
+
+	if (!netdev)
+		return ret_errno(EINVAL);
+
+	if (netdev->type != LXC_NET_VETH)
+		return ret_errno(EINVAL);
 
 	if (!retv)
 		inlen = 0;
 	else
 		memset(retv, 0, inlen);
 
-	if (!netdev)
-		return ret_errno(EINVAL);
-
-	if (netdev->type != LXC_NET_VETH)
-		return 0;
-
-	listlen = lxc_list_len(&netdev->priv.veth_attr.ipv6_routes);
-
-	lxc_list_for_each(it, &netdev->priv.veth_attr.ipv6_routes) {
-		struct lxc_inet6dev *i = it->elem;
-		if (!inet_ntop(AF_INET6, &i->addr, buf, sizeof(buf)))
+	listlen = list_len(inet6dev, &netdev->priv.veth_attr.ipv6_routes, head);
+	list_for_each_entry(inet6dev, &netdev->priv.veth_attr.ipv6_routes, head) {
+		if (!inet_ntop(AF_INET6, &inet6dev->addr, buf, sizeof(buf)))
 			return -errno;
-		strprint(retv, inlen, "%s/%u%s", buf, i->prefix,
+		strprint(retv, inlen, "%s/%u%s", buf, inet6dev->prefix,
 			 (listlen-- > 1) ? "\n" : "");
 	}
 
@@ -5747,7 +5990,7 @@ int lxc_list_config_items(char *retv, int inlen)
 	else
 		memset(retv, 0, inlen);
 
-	for (i = 0; i < config_jump_table_size; i++) {
+	for (i = 0; i < ARRAY_SIZE(config_jump_table); i++) {
 		char *s = config_jump_table[i].name;
 
 		if (s[strlen(s) - 1] == '.')
@@ -5770,27 +6013,27 @@ int lxc_list_subkeys(struct lxc_conf *conf, const char *key, char *retv,
 	else
 		memset(retv, 0, inlen);
 
-	if (!strcmp(key, "lxc.apparmor")) {
+	if (strequal(key, "lxc.apparmor")) {
 		strprint(retv, inlen, "allow_incomplete\n");
 		strprint(retv, inlen, "allow_nesting\n");
 		strprint(retv, inlen, "profile\n");
 		strprint(retv, inlen, "raw\n");
-	} else if (!strcmp(key, "lxc.cgroup")) {
+	} else if (strequal(key, "lxc.cgroup")) {
 		strprint(retv, inlen, "dir\n");
-	} else if (!strcmp(key, "lxc.selinux")) {
+	} else if (strequal(key, "lxc.selinux")) {
 		strprint(retv, inlen, "context\n");
 		strprint(retv, inlen, "context.keyring\n");
-	} else if (!strcmp(key, "lxc.mount")) {
+	} else if (strequal(key, "lxc.mount")) {
 		strprint(retv, inlen, "auto\n");
 		strprint(retv, inlen, "entry\n");
 		strprint(retv, inlen, "fstab\n");
-	} else if (!strcmp(key, "lxc.rootfs")) {
+	} else if (strequal(key, "lxc.rootfs")) {
 		strprint(retv, inlen, "mount\n");
 		strprint(retv, inlen, "options\n");
 		strprint(retv, inlen, "path\n");
-	} else if (!strcmp(key, "lxc.uts")) {
+	} else if (strequal(key, "lxc.uts")) {
 		strprint(retv, inlen, "name\n");
-	} else if (!strcmp(key, "lxc.hook")) {
+	} else if (strequal(key, "lxc.hook")) {
 		strprint(retv, inlen, "autodev\n");
 		strprint(retv, inlen, "autodevtmpfssize\n");
 		strprint(retv, inlen, "clone\n");
@@ -5802,25 +6045,25 @@ int lxc_list_subkeys(struct lxc_conf *conf, const char *key, char *retv,
 		strprint(retv, inlen, "start-host\n");
 		strprint(retv, inlen, "start\n");
 		strprint(retv, inlen, "stop\n");
-	} else if (!strcmp(key, "lxc.cap")) {
+	} else if (strequal(key, "lxc.cap")) {
 		strprint(retv, inlen, "drop\n");
 		strprint(retv, inlen, "keep\n");
-	} else if (!strcmp(key, "lxc.console")) {
+	} else if (strequal(key, "lxc.console")) {
 		strprint(retv, inlen, "logfile\n");
 		strprint(retv, inlen, "path\n");
-	} else if (!strcmp(key, "lxc.seccomp")) {
+	} else if (strequal(key, "lxc.seccomp")) {
 		strprint(retv, inlen, "profile\n");
-	} else if (!strcmp(key, "lxc.signal")) {
+	} else if (strequal(key, "lxc.signal")) {
 		strprint(retv, inlen, "halt\n");
 		strprint(retv, inlen, "reboot\n");
 		strprint(retv, inlen, "stop\n");
-	} else if (!strcmp(key, "lxc.start")) {
+	} else if (strequal(key, "lxc.start")) {
 		strprint(retv, inlen, "auto\n");
 		strprint(retv, inlen, "delay\n");
 		strprint(retv, inlen, "order\n");
-	} else if (!strcmp(key, "lxc.monitor")) {
+	} else if (strequal(key, "lxc.monitor")) {
 		strprint(retv, inlen, "unshare\n");
-	} else if (!strcmp(key, "lxc.keyring")) {
+	} else if (strequal(key, "lxc.keyring")) {
 		strprint(retv, inlen, "session\n");
 	} else {
 		fulllen = ret_errno(EINVAL);
@@ -5831,23 +6074,22 @@ int lxc_list_subkeys(struct lxc_conf *conf, const char *key, char *retv,
 
 int lxc_list_net(struct lxc_conf *c, const char *key, char *retv, int inlen)
 {
-	int len;
-	const char *idxstring;
+	struct config_net_info info = {};
 	struct lxc_netdev *netdev;
+	int len, ret;
+	const char *idxstring;
 	int fulllen = 0;
-	ssize_t idx = -1;
 
-	idxstring = key + 8;
+	idxstring = key + STRLITERALLEN("lxc.net.");
 	if (!isdigit(*idxstring))
-		return -1;
-
-	(void)get_network_config_ops(key, c, &idx, NULL);
-	if (idx < 0)
 		return ret_errno(EINVAL);
 
-	netdev = lxc_get_netdev_by_idx(c, (unsigned int)idx, false);
-	if (!netdev)
-		return ret_errno(EINVAL);
+	ret = get_network_config_ops(key, c, &info, false);
+	if (ret) {
+		if (ret != -ENOENT)
+			return ret_errno(EINVAL);
+	}
+	netdev = info.netdev;
 
 	if (!retv)
 		inlen = 0;
@@ -5891,4 +6133,36 @@ int lxc_list_net(struct lxc_conf *c, const char *key, char *retv, int inlen)
 	}
 
 	return fulllen;
+}
+
+static int set_config_sched_core(const char *key, const char *value,
+				 struct lxc_conf *lxc_conf, void *data)
+{
+	int ret;
+	unsigned int nr;
+
+	if (lxc_config_value_empty(value))
+		return clr_config_sched_core(key, lxc_conf, data);
+
+	ret = lxc_safe_uint(value, &nr);
+	if (ret)
+		return ret_errno(EINVAL);
+
+	if (nr != 0 && nr != 1)
+		return ret_errno(EINVAL);
+
+	lxc_conf->sched_core = (nr == 1);
+	return 0;
+}
+
+static int get_config_sched_core(const char *key, char *retv, int inlen,
+				 struct lxc_conf *c, void *data)
+{
+	return lxc_get_conf_bool(c, retv, inlen, c->sched_core);
+}
+
+static int clr_config_sched_core(const char *key, struct lxc_conf *c, void *data)
+{
+	c->sched_core = false;
+	return 0;
 }

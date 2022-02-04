@@ -1,14 +1,17 @@
 /* SPDX-License-Identifier: LGPL-2.1+ */
 
-#ifndef _GNU_SOURCE
-#define _GNU_SOURCE 1
-#endif
+#include "config.h"
+
 #include <stdlib.h>
 
-#include "config.h"
 #include "lsm/lsm.h"
 
 static char *nop_process_label_get(struct lsm_ops *ops, pid_t pid)
+{
+	return NULL;
+}
+
+static char *nop_process_label_get_at(struct lsm_ops *ops, int fd_pid)
 {
 	return NULL;
 }
@@ -63,8 +66,9 @@ static struct lsm_ops nop_ops = {
     	.prepare			= nop_prepare,
     	.process_label_fd_get		= nop_process_label_fd_get,
     	.process_label_get		= nop_process_label_get,
-    	.process_label_set		= nop_process_label_set,
-    	.process_label_set_at		= nop_process_label_set_at,
+	.process_label_set		= nop_process_label_set,
+	.process_label_get_at		= nop_process_label_get_at,
+	.process_label_set_at		= nop_process_label_set_at,
 };
 
 struct lsm_ops *lsm_nop_ops_init(void)

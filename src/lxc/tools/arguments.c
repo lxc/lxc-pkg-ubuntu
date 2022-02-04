@@ -1,8 +1,7 @@
 /* SPDX-License-Identifier: LGPL-2.1+ */
 
-#ifndef _GNU_SOURCE
-#define _GNU_SOURCE 1
-#endif
+#include "config.h"
+
 #include <ctype.h>
 #include <errno.h>
 #include <limits.h>
@@ -13,12 +12,9 @@
 #include <sys/types.h>
 #include <unistd.h>
 
-#include <lxc/lxccontainer.h>
-#include <lxc/version.h>
+#include "lxc.h"
 
 #include "arguments.h"
-#include "compiler.h"
-#include "config.h"
 #include "initutils.h"
 #include "namespace.h"
 
@@ -116,7 +112,7 @@ __noreturn static void print_usage_exit(const struct option longopts[],
 	exit(EXIT_SUCCESS);
 }
 
-__noreturn static void print_version_exit()
+__noreturn static void print_version_exit(void)
 {
 	printf("%s\n", lxc_get_version());
 	exit(EXIT_SUCCESS);

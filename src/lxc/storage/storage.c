@@ -1,8 +1,7 @@
 /* SPDX-License-Identifier: LGPL-2.1+ */
 
-#ifndef _GNU_SOURCE
-#define _GNU_SOURCE 1
-#endif
+#include "config.h"
+
 #include <dirent.h>
 #include <errno.h>
 #include <fcntl.h>
@@ -22,7 +21,6 @@
 
 #include "btrfs.h"
 #include "conf.h"
-#include "config.h"
 #include "dir.h"
 #include "error.h"
 #include "log.h"
@@ -42,8 +40,8 @@
 #include "utils.h"
 #include "zfs.h"
 
-#ifndef HAVE_STRLCPY
-#include "include/strlcpy.h"
+#if !HAVE_STRLCPY
+#include "strlcpy.h"
 #endif
 
 #ifndef BLKGETSIZE64
@@ -314,6 +312,14 @@ struct lxc_storage *storage_copy(struct lxc_container *c, const char *cname,
 	const char *oldpath = c->config_path;
 	char cmd_output[PATH_MAX] = {0};
 	struct rsync_data data = {0};
+	struct lxc_rootfs new_rootfs = {
+		.managed		= true,
+		.dfd_mnt		= -EBADF,
+		.dfd_dev		= -EBADF,
+		.dfd_host		= -EBADF,
+		.fd_path_pin		= -EBADF,
+		.dfd_idmapped		= -EBADF,
+	};
 
 	if (!src) {
 		ERROR("No rootfs specified");
@@ -329,10 +335,20 @@ struct lxc_storage *storage_copy(struct lxc_container *c, const char *cname,
 		return NULL;
 	}
 
-	orig = storage_init(c->lxc_conf);
-	if (!orig) {
+	ret = lxc_storage_prepare(c->lxc_conf);
+	if (ret) {
 		ERROR("Failed to detect storage driver for \"%s\"", oldname);
 		return NULL;
+	}
+	orig = c->lxc_conf->rootfs.storage;
+
+	if (c->lxc_conf->rootfs.dfd_idmapped >= 0) {
+		new_rootfs.dfd_idmapped = dup_cloexec(c->lxc_conf->rootfs.dfd_idmapped);
+		if (new_rootfs.dfd_idmapped < 0) {
+			SYSERROR("Failed to duplicate user namespace file descriptor");
+			lxc_storage_put(c->lxc_conf);
+			return NULL;
+		}
 	}
 
 	if (!orig->dest) {
@@ -404,6 +420,7 @@ struct lxc_storage *storage_copy(struct lxc_container *c, const char *cname,
 		goto on_error_put_orig;
 	}
 	TRACE("Initialized %s storage driver", new->type);
+	new->rootfs = &new_rootfs;
 
 	/* create new paths */
 	ret = new->ops->clone_paths(orig, new, oldname, cname, oldpath, lxcpath,
@@ -499,7 +516,7 @@ struct lxc_storage *storage_copy(struct lxc_container *c, const char *cname,
 	}
 
 on_success:
-	storage_put(orig);
+	lxc_storage_put(c->lxc_conf);
 
 	return new;
 
@@ -507,7 +524,7 @@ on_error_put_new:
 	storage_put(new);
 
 on_error_put_orig:
-	storage_put(orig);
+	lxc_storage_put(c->lxc_conf);
 
 	return NULL;
 }
@@ -587,7 +604,7 @@ struct lxc_storage *storage_init(struct lxc_conf *conf)
 	const struct lxc_storage_type *q;
 	const char *src = conf->rootfs.path;
 	const char *dst = conf->rootfs.mount;
-	const char *mntopts = conf->rootfs.options;
+	const char *mntopts = conf->rootfs.mnt_opts.raw_options;
 
 	BUILD_BUG_ON(LXC_STORAGE_INTERNAL_OVERLAY_RESTORE <= LXC_CLONE_MAXFLAGS);
 
@@ -598,14 +615,13 @@ struct lxc_storage *storage_init(struct lxc_conf *conf)
 	if (!q)
 		return NULL;
 
-	bdev = malloc(sizeof(struct lxc_storage));
+	bdev = zalloc(sizeof(struct lxc_storage));
 	if (!bdev)
 		return NULL;
 
-	memset(bdev, 0, sizeof(struct lxc_storage));
-
-	bdev->ops = q->ops;
-	bdev->type = q->name;
+	bdev->ops	= q->ops;
+	bdev->type	= q->name;
+	bdev->rootfs	= &conf->rootfs;
 
 	if (mntopts)
 		bdev->mntopts = strdup(mntopts);
@@ -644,10 +660,12 @@ bool storage_is_dir(struct lxc_conf *conf)
 
 void storage_put(struct lxc_storage *bdev)
 {
-	free(bdev->mntopts);
-	free(bdev->src);
-	free(bdev->dest);
-	free(bdev);
+	if (bdev) {
+		free_disarm(bdev->mntopts);
+		free_disarm(bdev->src);
+		free_disarm(bdev->dest);
+		free_disarm(bdev);
+	}
 }
 
 bool rootfs_is_blockdev(struct lxc_conf *conf)

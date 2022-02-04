@@ -39,12 +39,12 @@
 #include "syscall_wrappers.h"
 #include "utils.h"
 
-#ifndef HAVE_STRLCPY
-#include "include/strlcpy.h"
+#if !HAVE_STRLCPY
+#include "strlcpy.h"
 #endif
 
-#ifndef HAVE_STRLCAT
-#include "include/strlcat.h"
+#if !HAVE_STRLCAT
+#include "strlcat.h"
 #endif
 
 #ifndef O_PATH
@@ -80,18 +80,18 @@ static int _recursive_rmdir(const char *dirname, dev_t pdev,
 		int rc;
 		struct stat mystat;
 
-		if (!strcmp(direntp->d_name, ".") ||
-		    !strcmp(direntp->d_name, ".."))
+		if (strequal(direntp->d_name, ".") ||
+		    strequal(direntp->d_name, ".."))
 			continue;
 
-		rc = snprintf(pathname, PATH_MAX, "%s/%s", dirname, direntp->d_name);
-		if (rc < 0 || rc >= PATH_MAX) {
+		rc = strnprintf(pathname, sizeof(pathname), "%s/%s", dirname, direntp->d_name);
+		if (rc < 0) {
 			ERROR("The name of path is too long");
 			failed = 1;
 			continue;
 		}
 
-		if (!level && exclude && !strcmp(direntp->d_name, exclude)) {
+		if (!level && exclude && strequal(direntp->d_name, exclude)) {
 			ret = rmdir(pathname);
 			if (ret < 0) {
 				switch (errno) {
@@ -238,7 +238,7 @@ int mkdir_p(const char *dir, mode_t mode)
 	return 0;
 }
 
-char *get_rundir()
+char *get_rundir(void)
 {
 	__do_free char *rundir = NULL;
 	char *static_rundir;
@@ -267,8 +267,8 @@ char *get_rundir()
 	if (!rundir)
 		return NULL;
 
-	ret = snprintf(rundir, len, "%s/.cache/lxc/run/", homedir);
-	if (ret < 0 || (size_t)ret >= len)
+	ret = strnprintf(rundir, len, "%s/.cache/lxc/run/", homedir);
+	if (ret < 0)
 		return ret_set_errno(NULL, EIO);
 
 	return move_ptr(rundir);
@@ -329,6 +329,24 @@ again:
 	return status;
 }
 
+bool wait_exited(pid_t pid)
+{
+	int status;
+
+	status = lxc_wait_for_pid_status(pid);
+	if (status < 0)
+		return log_error(false, "Failed to reap on child process %d", pid);
+	if (WIFSIGNALED(status))
+		return log_error(false, "Child process %d terminated by signal %d", pid, WTERMSIG(status));
+	if (!WIFEXITED(status))
+		return log_error(false, "Child did not termiate correctly");
+	if (WEXITSTATUS(status))
+		return log_error(false, "Child terminated with error %d", WEXITSTATUS(status));
+
+	TRACE("Reaped child process %d", pid);
+	return true;
+}
+
 #ifdef HAVE_OPENSSL
 #include <openssl/evp.h>
 
@@ -356,7 +374,8 @@ int sha1sum_file(char *fnam, unsigned char *digest, unsigned int *md_len)
 	__do_free char *buf = NULL;
 	__do_fclose FILE *f = NULL;
 	int ret;
-	long flen;
+	ssize_t flen;
+	ssize_t nbytes;
 
 	if (!fnam)
 		return -1;
@@ -379,7 +398,8 @@ int sha1sum_file(char *fnam, unsigned char *digest, unsigned int *md_len)
 	if (!buf)
 		return log_error_errno(-1, ENOMEM, "Out of memory");
 
-	if (fread(buf, 1, flen, f) != flen)
+	nbytes = fread(buf, 1, flen, f);
+	if (nbytes < 0 || nbytes != flen)
 		return log_error_errno(-1, errno, "Failed to read template");
 
 	buf[flen] = '\0';
@@ -625,7 +645,7 @@ bool is_shared_mountpoint(const char *path)
 			continue;
 
 		*slider2 = '\0';
-		if (strcmp(slider1 + 1, path) == 0) {
+		if (strequal(slider1 + 1, path)) {
 			/* This is the path. Is it shared? */
 			slider1 = strchr(slider2 + 1, ' ');
 			if (slider1 && strstr(slider1, "shared:"))
@@ -660,8 +680,8 @@ bool switch_to_ns(pid_t pid, const char *ns)
 		    + LXC_NAMESPACE_NAME_MAX];
 
 	/* Switch to new ns */
-	ret = snprintf(nspath, sizeof(nspath), "/proc/%d/ns/%s", pid, ns);
-	if (ret < 0 || ret >= sizeof(nspath))
+	ret = strnprintf(nspath, sizeof(nspath), "/proc/%d/ns/%s", pid, ns);
+	if (ret < 0)
 		return false;
 
 	fd = open(nspath, O_RDONLY | O_CLOEXEC);
@@ -706,10 +726,10 @@ bool detect_ramfs_rootfs(void)
 		if (!p2)
 			continue;
 		*p2 = '\0';
-		if (strcmp(p + 1, "/") == 0) {
+		if (strequal(p + 1, "/")) {
 			/* This is '/'. Is it the ramfs? */
 			p = strchr(p2 + 1, '-');
-			if (p && strncmp(p, "- rootfs ", 9) == 0)
+			if (p && strnequal(p, "- rootfs ", 9))
 				return true;
 		}
 	}
@@ -734,11 +754,10 @@ char *on_path(const char *cmd, const char *rootfs)
 
 	lxc_iterate_parts(entry, path, ":") {
 		if (rootfs)
-			ret = snprintf(cmdpath, PATH_MAX, "%s/%s/%s", rootfs,
-				       entry, cmd);
+			ret = strnprintf(cmdpath, sizeof(cmdpath), "%s/%s/%s", rootfs, entry, cmd);
 		else
-			ret = snprintf(cmdpath, PATH_MAX, "%s/%s", entry, cmd);
-		if (ret < 0 || ret >= PATH_MAX)
+			ret = strnprintf(cmdpath, sizeof(cmdpath), "%s/%s", entry, cmd);
+		if (ret < 0)
 			continue;
 
 		if (access(cmdpath, X_OK) == 0)
@@ -746,11 +765,6 @@ char *on_path(const char *cmd, const char *rootfs)
 	}
 
 	return NULL;
-}
-
-bool cgns_supported(void)
-{
-	return file_exists("/proc/self/ns/cgroup");
 }
 
 /* historically lxc-init has been under /usr/lib/lxc and under
@@ -788,8 +802,8 @@ char *choose_init(const char *rootfs)
 	else
 		tmp = empty;
 
-	ret = snprintf(retv, PATH_MAX, "%s/%s/%s", tmp, SBINDIR, "/init.lxc");
-	if (ret < 0 || ret >= PATH_MAX) {
+	ret = strnprintf(retv, PATH_MAX, "%s/%s/%s", tmp, SBINDIR, "/init.lxc");
+	if (ret < 0) {
 		ERROR("The name of path is too long");
 		goto out1;
 	}
@@ -797,8 +811,8 @@ char *choose_init(const char *rootfs)
 	if (access(retv, X_OK) == 0)
 		return retv;
 
-	ret = snprintf(retv, PATH_MAX, "%s/%s/%s", tmp, LXCINITDIR, "/lxc/lxc-init");
-	if (ret < 0 || ret >= PATH_MAX) {
+	ret = strnprintf(retv, PATH_MAX, "%s/%s/%s", tmp, LXCINITDIR, "/lxc/lxc-init");
+	if (ret < 0) {
 		ERROR("The name of path is too long");
 		goto out1;
 	}
@@ -806,8 +820,8 @@ char *choose_init(const char *rootfs)
 	if (access(retv, X_OK) == 0)
 		return retv;
 
-	ret = snprintf(retv, PATH_MAX, "%s/usr/lib/lxc/lxc-init", tmp);
-	if (ret < 0 || ret >= PATH_MAX) {
+	ret = strnprintf(retv, PATH_MAX, "%s/usr/lib/lxc/lxc-init", tmp);
+	if (ret < 0) {
 		ERROR("The name of path is too long");
 		goto out1;
 	}
@@ -815,8 +829,8 @@ char *choose_init(const char *rootfs)
 	if (access(retv, X_OK) == 0)
 		return retv;
 
-	ret = snprintf(retv, PATH_MAX, "%s/sbin/lxc-init", tmp);
-	if (ret < 0 || ret >= PATH_MAX) {
+	ret = strnprintf(retv, PATH_MAX, "%s/sbin/lxc-init", tmp);
+	if (ret < 0) {
 		ERROR("The name of path is too long");
 		goto out1;
 	}
@@ -834,8 +848,8 @@ char *choose_init(const char *rootfs)
 	if (rootfs)
 		goto out1;
 
-	ret = snprintf(retv, PATH_MAX, "/init.lxc.static");
-	if (ret < 0 || ret >= PATH_MAX) {
+	ret = strnprintf(retv, PATH_MAX, "/init.lxc.static");
+	if (ret < 0) {
 		WARN("Nonsense - name /lxc.init.static too long");
 		goto out1;
 	}
@@ -874,8 +888,8 @@ char *get_template_path(const char *t)
 	if (!tpath)
 		return NULL;
 
-	ret = snprintf(tpath, len, "%s/lxc-%s", LXCTEMPLATEDIR, t);
-	if (ret < 0 || ret >= len) {
+	ret = strnprintf(tpath, len, "%s/lxc-%s", LXCTEMPLATEDIR, t);
+	if (ret < 0) {
 		free(tpath);
 		return NULL;
 	}
@@ -925,7 +939,7 @@ static bool is_subdir(const char *subdir, const char *dir, size_t len)
 	if (subdirlen < len)
 		return false;
 
-	if (strncmp(subdir, dir, len) != 0)
+	if (!strnequal(subdir, dir, len))
 		return false;
 
 	if (dir[len-1] == '/')
@@ -1081,8 +1095,8 @@ int __safe_mount_beneath_at(int beneath_fd, const char *src, const char *dst, co
 {
 	__do_close int source_fd = -EBADF, target_fd = -EBADF;
 	struct lxc_open_how how = {
-		.flags		= O_RDONLY | O_CLOEXEC | O_PATH,
-		.resolve	= RESOLVE_NO_SYMLINKS | RESOLVE_NO_MAGICLINKS | RESOLVE_BENEATH,
+		.flags		= PROTECT_OPATH_DIRECTORY,
+		.resolve	= PROTECT_LOOKUP_BENEATH_WITH_MAGICLINKS,
 	};
 	int ret;
 	char src_buf[LXC_PROC_PID_FD_LEN], tgt_buf[LXC_PROC_PID_FD_LEN];
@@ -1094,8 +1108,8 @@ int __safe_mount_beneath_at(int beneath_fd, const char *src, const char *dst, co
 		source_fd = openat2(beneath_fd, src, &how, sizeof(how));
 		if (source_fd < 0)
 			return -errno;
-		ret = snprintf(src_buf, sizeof(src_buf), "/proc/self/fd/%d", source_fd);
-		if (ret < 0 || ret >= sizeof(src_buf))
+		ret = strnprintf(src_buf, sizeof(src_buf), "/proc/self/fd/%d", source_fd);
+		if (ret < 0)
 			return -EIO;
 	} else {
 		src_buf[0] = '\0';
@@ -1103,9 +1117,9 @@ int __safe_mount_beneath_at(int beneath_fd, const char *src, const char *dst, co
 
 	target_fd = openat2(beneath_fd, dst, &how, sizeof(how));
 	if (target_fd < 0)
-		return -errno;
-	ret = snprintf(tgt_buf, sizeof(tgt_buf), "/proc/self/fd/%d", target_fd);
-	if (ret < 0 || ret >= sizeof(tgt_buf))
+		return log_error_errno(-errno, errno, "Failed to open %d(%s)", beneath_fd, dst);
+	ret = strnprintf(tgt_buf, sizeof(tgt_buf), "/proc/self/fd/%d", target_fd);
+	if (ret < 0)
 		return -EIO;
 
 	if (!is_empty_string(src_buf))
@@ -1122,7 +1136,7 @@ int safe_mount_beneath(const char *beneath, const char *src, const char *dst, co
 	__do_close int beneath_fd = -EBADF;
 	const char *path = beneath ? beneath : "/";
 
-	beneath_fd = openat(-1, path, O_RDONLY | O_CLOEXEC | O_DIRECTORY | O_PATH);
+	beneath_fd = openat(-1, path, PROTECT_OPATH_DIRECTORY);
 	if (beneath_fd < 0)
 		return log_error_errno(-errno, errno, "Failed to open %s", path);
 
@@ -1163,8 +1177,8 @@ int safe_mount(const char *src, const char *dest, const char *fstype,
 		if (srcfd < 0)
 			return srcfd;
 
-		ret = snprintf(srcbuf, sizeof(srcbuf), "/proc/self/fd/%d", srcfd);
-		if (ret < 0 || ret >= (int)sizeof(srcbuf)) {
+		ret = strnprintf(srcbuf, sizeof(srcbuf), "/proc/self/fd/%d", srcfd);
+		if (ret < 0) {
 			close(srcfd);
 			ERROR("Out of memory");
 			return -EINVAL;
@@ -1183,8 +1197,8 @@ int safe_mount(const char *src, const char *dest, const char *fstype,
 		return destfd;
 	}
 
-	ret = snprintf(destbuf, sizeof(destbuf), "/proc/self/fd/%d", destfd);
-	if (ret < 0 || ret >= (int)sizeof(destbuf)) {
+	ret = strnprintf(destbuf, sizeof(destbuf), "/proc/self/fd/%d", destfd);
+	if (ret < 0) {
 		if (srcfd != -1)
 			close(srcfd);
 
@@ -1206,77 +1220,6 @@ int safe_mount(const char *src, const char *dest, const char *fstype,
 	}
 
 	return 0;
-}
-
-/*
- * Mount a proc under @rootfs if proc self points to a pid other than
- * my own.  This is needed to have a known-good proc mount for setting
- * up LSMs both at container startup and attach.
- *
- * @rootfs : the rootfs where proc should be mounted
- *
- * Returns < 0 on failure, 0 if the correct proc was already mounted
- * and 1 if a new proc was mounted.
- *
- * NOTE: not to be called from inside the container namespace!
- */
-int lxc_mount_proc_if_needed(const char *rootfs)
-{
-	char path[PATH_MAX] = {0};
-	int link_to_pid, linklen, mypid, ret;
-	char link[INTTYPE_TO_STRLEN(pid_t)] = {0};
-
-	ret = snprintf(path, PATH_MAX, "%s/proc/self", rootfs);
-	if (ret < 0 || ret >= PATH_MAX) {
-		SYSERROR("The name of proc path is too long");
-		return -1;
-	}
-
-	linklen = readlink(path, link, sizeof(link));
-
-	ret = snprintf(path, PATH_MAX, "%s/proc", rootfs);
-	if (ret < 0 || ret >= PATH_MAX) {
-		SYSERROR("The name of proc path is too long");
-		return -1;
-	}
-
-	/* /proc not mounted */
-	if (linklen < 0) {
-		if (mkdir(path, 0755) && errno != EEXIST)
-			return -1;
-
-		goto domount;
-	} else if (linklen >= sizeof(link)) {
-		link[linklen - 1] = '\0';
-		ERROR("Readlink returned truncated content: \"%s\"", link);
-		return -1;
-	}
-
-	mypid = lxc_raw_getpid();
-	INFO("I am %d, /proc/self points to \"%s\"", mypid, link);
-
-	if (lxc_safe_int(link, &link_to_pid) < 0)
-		return -1;
-
-	/* correct procfs is already mounted */
-	if (link_to_pid == mypid)
-		return 0;
-
-	ret = umount2(path, MNT_DETACH);
-	if (ret < 0)
-		SYSWARN("Failed to umount \"%s\" with MNT_DETACH", path);
-
-domount:
-	/* rootfs is NULL */
-	if (!strcmp(rootfs, ""))
-		ret = mount("proc", path, "proc", 0, NULL);
-	else
-		ret = safe_mount("proc", path, "proc", 0, NULL, rootfs);
-	if (ret < 0)
-		return -1;
-
-	INFO("Mounted /proc in container for security transition");
-	return 1;
 }
 
 int open_devnull(void)
@@ -1337,8 +1280,8 @@ bool task_blocks_signal(pid_t pid, int signal)
 	size_t n = 0;
 	bool bret = false;
 
-	ret = snprintf(status, __PROC_STATUS_LEN, "/proc/%d/status", pid);
-	if (ret < 0 || ret >= __PROC_STATUS_LEN)
+	ret = strnprintf(status, sizeof(status), "/proc/%d/status", pid);
+	if (ret < 0)
 		return bret;
 
 	f = fopen(status, "re");
@@ -1348,7 +1291,7 @@ bool task_blocks_signal(pid_t pid, int signal)
 	while (getline(&line, &n, f) != -1) {
 		char *numstr;
 
-		if (strncmp(line, "SigBlk:", 7))
+		if (!strnequal(line, "SigBlk:", 7))
 			continue;
 
 		numstr = lxc_trim_whitespace_in_place(line + 7);
@@ -1376,10 +1319,10 @@ int lxc_preserve_ns(const int pid, const char *ns)
 	 * are supported by the kernel by passing in the NULL or the empty
 	 * string.
 	 */
-	ret = snprintf(path, __NS_PATH_LEN, "/proc/%d/ns%s%s", pid,
-		       !ns || strcmp(ns, "") == 0 ? "" : "/",
-		       !ns || strcmp(ns, "") == 0 ? "" : ns);
-	if (ret < 0 || (size_t)ret >= __NS_PATH_LEN)
+	ret = strnprintf(path, sizeof(path), "/proc/%d/ns%s%s", pid,
+			 !ns || strequal(ns, "") ? "" : "/",
+			 !ns || strequal(ns, "") ? "" : ns);
+	if (ret < 0)
 		return ret_errno(EIO);
 
 	return open(path, O_RDONLY | O_CLOEXEC);
@@ -1411,14 +1354,32 @@ bool lxc_switch_uid_gid(uid_t uid, gid_t gid)
 }
 
 /* Simple convenience function which enables uniform logging. */
-bool lxc_setgroups(int size, gid_t list[])
+bool lxc_drop_groups(void)
 {
-	if (setgroups(size, list) < 0) {
-		SYSERROR("Failed to setgroups()");
-		return false;
-	}
-	NOTICE("Dropped additional groups");
+	int ret;
 
+	ret = setgroups(0, NULL);
+	if (ret)
+		return log_error_errno(false, errno, "Failed to drop supplimentary groups");
+
+	NOTICE("Dropped supplimentary groups");
+	return ret == 0;
+}
+
+bool lxc_setgroups(gid_t list[], size_t size)
+{
+	int ret;
+
+	ret = setgroups(size, list);
+	if (ret)
+		return log_error_errno(false, errno, "Failed to set supplimentary groups");
+
+	if (size > 0 && lxc_log_trace()) {
+		for (size_t i = 0; i < size; i++)
+			TRACE("Setting supplimentary group %d", list[i]);
+	}
+
+	NOTICE("Set supplimentary groups");
 	return true;
 }
 
@@ -1436,7 +1397,7 @@ static int lxc_get_unused_loop_dev_legacy(char *loop_name)
 	}
 
 	while ((dp = readdir(dir))) {
-		if (strncmp(dp->d_name, "loop", 4) != 0)
+		if (!strnequal(dp->d_name, "loop", 4))
 			continue;
 
 		dfd = dirfd(dir);
@@ -1457,8 +1418,8 @@ static int lxc_get_unused_loop_dev_legacy(char *loop_name)
 			}
 		}
 
-		ret = snprintf(loop_name, LO_NAME_SIZE, "/dev/%s", dp->d_name);
-		if (ret < 0 || ret >= LO_NAME_SIZE) {
+		ret = strnprintf(loop_name, LO_NAME_SIZE, "/dev/%s", dp->d_name);
+		if (ret < 0) {
 			close(fd);
 			fd = -1;
 			continue;
@@ -1492,15 +1453,15 @@ static int lxc_get_unused_loop_dev(char *name_loop)
 		goto on_error;
 	}
 
-	ret = snprintf(name_loop, LO_NAME_SIZE, "/dev/loop%d", loop_nr);
-	if (ret < 0 || ret >= LO_NAME_SIZE)
+	ret = strnprintf(name_loop, LO_NAME_SIZE, "/dev/loop%d", loop_nr);
+	if (ret < 0)
 		goto on_error;
 
 	fd_tmp = open(name_loop, O_RDWR | O_CLOEXEC);
 	if (fd_tmp < 0) {
 		/* on Android loop devices are moved under /dev/block, give it a shot */
-		ret = snprintf(name_loop, LO_NAME_SIZE, "/dev/block/loop%d", loop_nr);
-                if (ret < 0 || ret >= LO_NAME_SIZE)
+		ret = strnprintf(name_loop, LO_NAME_SIZE, "/dev/block/loop%d", loop_nr);
+                if (ret < 0)
                         goto on_error;
 
 		fd_tmp = open(name_loop, O_RDWR | O_CLOEXEC);
@@ -1683,11 +1644,11 @@ bool lxc_nic_exists(char *nic)
 	int ret;
 	struct stat sb;
 
-	if (!strcmp(nic, "none"))
+	if (strequal(nic, "none"))
 		return true;
 
-	ret = snprintf(path, __LXC_SYS_CLASS_NET_LEN, "/sys/class/net/%s", nic);
-	if (ret < 0 || (size_t)ret >= __LXC_SYS_CLASS_NET_LEN)
+	ret = strnprintf(path, sizeof(path), "/sys/class/net/%s", nic);
+	if (ret < 0)
 		return false;
 
 	ret = stat(path, &sb);
@@ -1741,7 +1702,7 @@ static int process_dead(/* takes */ int status_fd)
 	while (getline(&line, &n, f) != -1) {
 		char *state;
 
-		if (strncmp(line, "State:", 6))
+		if (!strnequal(line, "State:", 6))
 			continue;
 
 		state = lxc_trim_whitespace_in_place(line + 6);
@@ -1779,28 +1740,6 @@ int lxc_set_death_signal(int signal, pid_t parent, int parent_status_fd)
 	return 0;
 }
 
-int fd_cloexec(int fd, bool cloexec)
-{
-	int oflags, nflags;
-
-	oflags = fcntl(fd, F_GETFD, 0);
-	if (oflags < 0)
-		return -errno;
-
-	if (cloexec)
-		nflags = oflags | FD_CLOEXEC;
-	else
-		nflags = oflags & ~FD_CLOEXEC;
-
-	if (nflags == oflags)
-		return 0;
-
-	if (fcntl(fd, F_SETFD, nflags) < 0)
-		return -errno;
-
-	return 0;
-}
-
 int lxc_rm_rf(const char *dirname)
 {
 	__do_closedir DIR *dir = NULL;
@@ -1816,8 +1755,8 @@ int lxc_rm_rf(const char *dirname)
 		__do_free char *pathname = NULL;
 		struct stat mystat;
 
-		if (!strcmp(direntp->d_name, ".") ||
-		    !strcmp(direntp->d_name, ".."))
+		if (strequal(direntp->d_name, ".") ||
+		    strequal(direntp->d_name, ".."))
 			continue;
 
 		pathname = must_make_path(dirname, direntp->d_name, NULL);
@@ -1896,7 +1835,7 @@ int fix_stdio_permissions(uid_t uid)
 	if (ret)
 		return log_trace_errno(-errno, errno, "Failed to stat \"/dev/null\"");
 
-	for (int i = 0; i < ARRAY_SIZE(std_fds); i++) {
+	for (size_t i = 0; i < ARRAY_SIZE(std_fds); i++) {
 		ret = fstat(std_fds[i], &st);
 		if (ret) {
 			SYSWARN("Failed to stat standard I/O file descriptor %d", std_fds[i]);
@@ -1909,18 +1848,98 @@ int fix_stdio_permissions(uid_t uid)
 
 		ret = fchown(std_fds[i], uid, st.st_gid);
 		if (ret) {
-			TRACE("Failed to chown standard I/O file descriptor %d to uid %d and gid %d",
-			      std_fds[i], uid, st.st_gid);
+			SYSTRACE("Failed to chown standard I/O file descriptor %d to uid %d and gid %d",
+			         std_fds[i], uid, st.st_gid);
 			fret = -1;
 			continue;
 		}
 
 		ret = fchmod(std_fds[i], 0700);
 		if (ret) {
-			TRACE("Failed to chmod standard I/O file descriptor %d", std_fds[i]);
+			SYSTRACE("Failed to chmod standard I/O file descriptor %d", std_fds[i]);
 			fret = -1;
 		}
 	}
 
 	return fret;
+}
+
+bool multiply_overflow(int64_t base, uint64_t mult, int64_t *res)
+{
+	if (base > 0 && base > (int64_t)(INT64_MAX / mult))
+		return false;
+
+	if (base < 0 && base < (int64_t)(INT64_MIN / mult))
+		return false;
+
+	*res = (int64_t)(base * mult);
+	return true;
+}
+
+int print_r(int fd, const char *path)
+{
+	__do_close int dfd = -EBADF, dfd_dup = -EBADF;
+	__do_closedir DIR *dir = NULL;
+	int ret = 0;
+	struct dirent *direntp;
+	struct stat st;
+
+	if (is_empty_string(path)) {
+		char buf[LXC_PROC_SELF_FD_LEN];
+
+		ret = strnprintf(buf, sizeof(buf), "/proc/self/fd/%d", fd);
+		if (ret < 0)
+			return ret_errno(EIO);
+
+		/*
+		 * O_PATH file descriptors can't be used so we need to re-open
+		 * just in case.
+		 */
+		dfd = openat(-EBADF, buf, O_CLOEXEC | O_DIRECTORY, 0);
+	} else {
+		dfd = openat(fd, path, O_CLOEXEC | O_DIRECTORY, 0);
+	}
+	if (dfd < 0)
+		return -1;
+
+	dfd_dup = dup_cloexec(dfd);
+	if (dfd_dup < 0)
+		return -1;
+
+	dir = fdopendir(dfd);
+	if (!dir)
+		return -1;
+	/* Transfer ownership to fdopendir(). */
+	move_fd(dfd);
+
+	while ((direntp = readdir(dir))) {
+		if (!strcmp(direntp->d_name, ".") ||
+		    !strcmp(direntp->d_name, ".."))
+			continue;
+
+		ret = fstatat(dfd_dup, direntp->d_name, &st, AT_SYMLINK_NOFOLLOW);
+		if (ret < 0 && errno != ENOENT)
+			break;
+
+		ret = 0;
+		if (S_ISDIR(st.st_mode))
+			ret = print_r(dfd_dup, direntp->d_name);
+		else
+			INFO("mode(%o):uid(%d):gid(%d) -> %d/%s\n",
+			     (st.st_mode & ~S_IFMT), st.st_uid, st.st_gid, dfd_dup,
+			     direntp->d_name);
+		if (ret < 0 && errno != ENOENT)
+			break;
+	}
+
+	if (is_empty_string(path))
+		ret = fstatat(fd, "", &st, AT_NO_AUTOMOUNT | AT_SYMLINK_NOFOLLOW | AT_EMPTY_PATH);
+	else
+		ret = fstatat(fd, path, &st, AT_NO_AUTOMOUNT | AT_SYMLINK_NOFOLLOW);
+	if (ret)
+		return -1;
+	else
+		INFO("mode(%o):uid(%d):gid(%d) -> %s",
+		     (st.st_mode & ~S_IFMT), st.st_uid, st.st_gid, maybe_empty(path));
+	return ret;
 }

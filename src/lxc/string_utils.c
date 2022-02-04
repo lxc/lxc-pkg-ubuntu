@@ -1,9 +1,7 @@
 /* SPDX-License-Identifier: LGPL-2.1+ */
 
-#ifndef _GNU_SOURCE
-#define _GNU_SOURCE 1
-#endif
-#define __STDC_FORMAT_MACROS /* Required for PRIu64 to work. */
+#include "config.h"
+
 #include <ctype.h>
 #include <dirent.h>
 #include <errno.h>
@@ -26,20 +24,16 @@
 #include <sys/wait.h>
 #include <unistd.h>
 
-#include "config.h"
-#include "lxclock.h"
+#include "string_utils.h"
 #include "macro.h"
 #include "memory_utils.h"
-#include "namespace.h"
-#include "parse.h"
-#include "string_utils.h"
 
-#ifndef HAVE_STRLCPY
-#include "include/strlcpy.h"
+#if !HAVE_STRLCPY
+#include "strlcpy.h"
 #endif
 
-#ifndef HAVE_STRLCAT
-#include "include/strlcat.h"
+#if !HAVE_STRLCAT
+#include "strlcat.h"
 #endif
 
 char **lxc_va_arg_list_to_argv(va_list ap, size_t skip, int do_strdup)
@@ -156,7 +150,7 @@ char *lxc_string_replace(const char *needle, const char *replacement,
 bool lxc_string_in_array(const char *needle, const char **haystack)
 {
 	for (; haystack && *haystack; haystack++)
-		if (!strcmp(needle, *haystack))
+		if (strequal(needle, *haystack))
 			return true;
 
 	return false;
@@ -192,93 +186,65 @@ char *lxc_string_join(const char *sep, const char **parts, bool use_as_prefix)
 	return result;
 }
 
-char **lxc_normalize_path(const char *path)
+/* taken from systemd */
+char *path_simplify(const char *path)
 {
-	char **components;
-	char **p;
-	size_t components_len = 0;
-	size_t pos = 0;
+	__do_free char *path_new = NULL;
+	char *f, *t;
+	bool slash = false, ignore_slash = false, absolute;
 
-	components = lxc_string_split(path, '/');
-	if (!components)
+	path_new = strdup(path);
+	if (!path_new)
 		return NULL;
 
-	for (p = components; *p; p++)
-		components_len++;
+	if (is_empty_string(path_new))
+		return move_ptr(path_new);
 
-	/* resolve '.' and '..' */
-	for (pos = 0; pos < components_len;) {
-		if (!strcmp(components[pos], ".") ||
-		    (!strcmp(components[pos], "..") && pos == 0)) {
-			/* eat this element */
-			free(components[pos]);
-			memmove(&components[pos], &components[pos + 1],
-				sizeof(char *) * (components_len - pos));
-			components_len--;
-		} else if (!strcmp(components[pos], "..")) {
-			/* eat this and the previous element */
-			free(components[pos - 1]);
-			free(components[pos]);
-			memmove(&components[pos - 1], &components[pos + 1],
-				sizeof(char *) * (components_len - pos));
-			components_len -= 2;
-			pos--;
-		} else {
-			pos++;
-		}
+	absolute = abspath(path_new);
+
+	f = path_new;
+	if (*f == '.' && IN_SET(f[1], 0, '/')) {
+		ignore_slash = true;
+		f++;
 	}
 
-	return components;
-}
+	for (t = path_new; *f; f++) {
 
-char *lxc_deslashify(const char *path)
-{
-	char *dup, *p;
-	char **parts = NULL;
-	size_t n, len;
-
-	dup = strdup(path);
-	if (!dup)
-		return NULL;
-
-	parts = lxc_normalize_path(dup);
-	if (!parts) {
-		free(dup);
-		return NULL;
-	}
-
-	/* We'll end up here if path == "///" or path == "". */
-	if (!*parts) {
-		len = strlen(dup);
-		if (!len) {
-			lxc_free_array((void **)parts, free);
-			return dup;
+		if (*f == '/') {
+			slash = true;
+			continue;
 		}
 
-		n = strcspn(dup, "/");
-		if (n == len) {
-			free(dup);
-			lxc_free_array((void **)parts, free);
+		if (slash) {
+			if (*f == '.' && IN_SET(f[1], 0, '/'))
+				continue;
 
-			p = strdup("/");
-			if (!p)
-				return NULL;
-
-			return p;
+			slash = false;
+			if (ignore_slash)
+				ignore_slash = false;
+			else
+				*(t++) = '/';
 		}
+
+		*(t++) = *f;
 	}
 
-	p = lxc_string_join("/", (const char **)parts, *dup == '/');
-	free(dup);
-	lxc_free_array((void **)parts, free);
-	return p;
+	if (t == path_new) {
+		if (absolute)
+			*(t++) = '/';
+		else
+			*(t++) = '.';
+	}
+
+	*t = 0;
+	return move_ptr(path_new);
 }
 
 char *lxc_append_paths(const char *first, const char *second)
 {
+	__do_free char *result = NULL;
 	int ret;
 	size_t len;
-	char *result = NULL;
 	int pattern_type = 0;
 
 	len = strlen(first) + strlen(second) + 1;
@@ -287,20 +253,18 @@ char *lxc_append_paths(const char *first, const char *second)
 		pattern_type = 1;
 	}
 
-	result = calloc(1, len);
+	result = zalloc(len);
 	if (!result)
 		return NULL;
 
 	if (pattern_type == 0)
-		ret = snprintf(result, len, "%s%s", first, second);
+		ret = strnprintf(result, len, "%s%s", first, second);
 	else
-		ret = snprintf(result, len, "%s/%s", first, second);
-	if (ret < 0 || (size_t)ret >= len) {
-		free(result);
+		ret = strnprintf(result, len, "%s/%s", first, second);
+	if (ret < 0)
 		return NULL;
-	}
 
-	return result;
+	return move_ptr(result);
 }
 
 bool lxc_string_in_list(const char *needle, const char *haystack, char _sep)
@@ -314,7 +278,7 @@ bool lxc_string_in_list(const char *needle, const char *haystack, char _sep)
 
 	str = must_copy_string(haystack);
 	lxc_iterate_parts(token, str, sep)
-		if (strcmp(needle, token) == 0)
+		if (strequal(needle, token))
 			return 1;
 
 	return 0;
@@ -434,6 +398,9 @@ char **lxc_string_split_quoted(char *string)
 	if (state == 'a')
 		complete_word(&result, nextword, p, &result_capacity, &result_count);
 
+	if (result == NULL)
+		return calloc(1, sizeof(char *));
+
 	return realloc(result, (result_count + 1) * sizeof(char *));
 }
 
@@ -472,6 +439,9 @@ char **lxc_string_split_and_trim(const char *string, char _sep)
 
 		result_count++;
 	}
+
+	if (result == NULL)
+		return calloc(1, sizeof(char *));
 
 	/* if we allocated too much, reduce it */
 	return realloc(result, (result_count + 1) * sizeof(char *));
@@ -667,6 +637,52 @@ int lxc_safe_uint64(const char *numstr, uint64_t *converted, int base)
 	return 0;
 }
 
+int lxc_safe_int64_residual(const char *restrict numstr,
+			    int64_t *restrict converted, int base,
+			    char *restrict residual, size_t residual_len)
+{
+	char *remaining = NULL;
+	int64_t u;
+
+	if (residual && residual_len == 0)
+		return ret_errno(EINVAL);
+
+	if (!residual && residual_len != 0)
+		return ret_errno(EINVAL);
+
+	memset(residual, 0, residual_len);
+
+	while (isspace(*numstr))
+		numstr++;
+
+	errno = 0;
+	u = strtoll(numstr, &remaining, base);
+	if (errno == ERANGE && u == INT64_MAX)
+		return ret_errno(ERANGE);
+
+	if (remaining == numstr)
+		return -EINVAL;
+
+	if (residual) {
+		size_t len = 0;
+
+		if (*remaining == '\0')
+			goto out;
+
+		len = strlen(remaining);
+		if (len >= residual_len)
+			return ret_errno(EINVAL);
+
+		memcpy(residual, remaining, len);
+	} else if (*remaining != '\0') {
+		return ret_errno(EINVAL);
+	}
+
+out:
+	*converted = u;
+	return 0;
+}
+
 int lxc_safe_int(const char *numstr, int *converted)
 {
 	char *err = NULL;
@@ -770,6 +786,8 @@ char *must_make_path(const char *first, ...)
 	va_start(args, first);
 	while ((cur = va_arg(args, char *)) != NULL) {
 		buf_len = strlen(cur);
+		if (buf_len == 0)
+			continue;
 
 		full_len += buf_len;
 		if (cur[0] != '/')
@@ -852,22 +870,25 @@ void *must_realloc(void *orig, size_t sz)
 	return ret;
 }
 
-int parse_byte_size_string(const char *s, int64_t *converted)
+int parse_byte_size_string(const char *s, long long int *converted)
 {
 	int ret, suffix_len;
-	long long int conv;
-	int64_t mltpl, overflow;
+	long long int conv, mltpl;
 	char *end;
-	char dup[INTTYPE_TO_STRLEN(int64_t)];
+	char dup[INTTYPE_TO_STRLEN(long long int)] = {0};
 	char suffix[3] = {0};
+	size_t len;
 
-	if (!s || !strcmp(s, ""))
+	if (!s)
 		return ret_errno(EINVAL);
 
-	end = stpncpy(dup, s, sizeof(dup) - 1);
-	if (*end != '\0')
+	len = strlen(s);
+	if (len == 0 || len > sizeof(dup) - 1)
 		return ret_errno(EINVAL);
 
+	memcpy(dup, s, len);
+
+	end = dup + len;
 	if (isdigit(*(end - 1)))
 		suffix_len = 0;
 	else if (isalpha(*(end - 1)))
@@ -875,17 +896,26 @@ int parse_byte_size_string(const char *s, int64_t *converted)
 	else
 		return ret_errno(EINVAL);
 
-	if (suffix_len > 0 && (end - 2) == dup && !isdigit(*(end - 2)))
-		return ret_errno(EINVAL);
-
-	if (suffix_len > 0 && isalpha(*(end - 2)))
-		suffix_len++;
-
 	if (suffix_len > 0) {
+		if ((end - 1) == dup)
+			return ret_errno(EINVAL);
+
+		if ((end - 2) == dup) {
+			if (isalpha(*(end - 2)))
+				return ret_errno(EINVAL);
+			/* 1B */
+		} else {
+			if (isalpha(*(end - 2))) /* 12MB */
+				suffix_len++;
+
+			/* 12B */
+		}
+
 		memcpy(suffix, end - suffix_len, suffix_len);
 		*(suffix + suffix_len) = '\0';
 		*(end - suffix_len) = '\0';
 	}
+
 	dup[lxc_char_right_gc(dup, strlen(dup))] = '\0';
 
 	ret = lxc_safe_long_long(dup, &conv);
@@ -906,11 +936,9 @@ int parse_byte_size_string(const char *s, int64_t *converted)
 	else
 		return ret_errno(EINVAL);
 
-	overflow = conv * mltpl;
-	if (conv != 0 && (overflow / conv) != mltpl)
+	if (check_mul_overflow(conv, mltpl, converted))
 		return ret_errno(ERANGE);
 
-	*converted = overflow;
 	return 0;
 }
 
@@ -966,10 +994,9 @@ char *lxc_trim_whitespace_in_place(char *buffer)
 
 int lxc_is_line_empty(const char *line)
 {
-	int i;
 	size_t len = strlen(line);
 
-	for (i = 0; i < len; i++)
+	for (size_t i = 0; i < len; i++)
 		if (line[i] != ' ' && line[i] != '\t' &&
 		    line[i] != '\n' && line[i] != '\r' &&
 		    line[i] != '\f' && line[i] != '\0')

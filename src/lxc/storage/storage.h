@@ -3,18 +3,21 @@
 #ifndef __LXC_STORAGE_H
 #define __LXC_STORAGE_H
 
+#include "config.h"
+
 #include <stdint.h>
 #include <sys/mount.h>
 
-#include <lxc/lxccontainer.h>
+#include "lxc.h"
 
 #if IS_BIONIC
-#include <../include/lxcmntent.h>
+#include "lxcmntent.h"
 #else
 #include <mntent.h>
 #endif
 
 #include "compiler.h"
+#include "conf.h"
 
 #ifndef MS_DIRSYNC
 #define MS_DIRSYNC 128
@@ -87,6 +90,7 @@ struct lxc_storage {
 	/* index for the connected nbd device. */
 	int nbd_idx;
 	int flags;
+	struct lxc_rootfs *rootfs;
 };
 
 /**

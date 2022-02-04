@@ -3,6 +3,8 @@
 #ifndef __LXC_START_H
 #define __LXC_START_H
 
+#include "config.h"
+
 #include <linux/sched.h>
 #include <sched.h>
 #include <signal.h>
@@ -42,9 +44,6 @@ struct lxc_handler {
 		unsigned int ns_unshare_flags;
 		__aligned_u64 clone_flags;
 	};
-
-	/* File descriptor to pin the rootfs for privileged containers. */
-	int pinfd;
 
 	/* Signal file descriptor. */
 	int sigfd;
@@ -130,11 +129,15 @@ struct lxc_handler {
 
 	/* Static memory, don't free. */
 	struct lsm_ops *lsm_ops;
+
+	/* The namespace idx is guaranteed to match the stashed namespace path. */
+	char nsfd_paths[LXC_NS_MAX + 1][LXC_EXPOSE_NAMESPACE_LEN];
+	/* The namesace idx is _not_ guaranteed to match the stashed namespace path. */
+	lxc_namespace_t hook_argc;
+	char *hook_argv[LXC_NS_MAX + 1];
 };
 
 struct execute_args {
-	char *init_path;
-	int init_fd;
 	char *const *argv;
 	int quiet;
 };
@@ -175,5 +178,12 @@ __hidden extern int __lxc_start(struct lxc_handler *, struct lxc_operations *, v
 				bool, int *);
 
 __hidden extern int resolve_clone_flags(struct lxc_handler *handler);
+__hidden extern void lxc_expose_namespace_environment(const struct lxc_handler *handler);
+
+static inline bool container_uses_namespace(const struct lxc_handler *handler,
+					    unsigned int ns_flag)
+{
+	return (handler->ns_clone_flags & ns_flag);
+}
 
 #endif

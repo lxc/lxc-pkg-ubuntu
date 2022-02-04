@@ -1,8 +1,7 @@
 /* SPDX-License-Identifier: LGPL-2.1+ */
 
-#ifndef _GNU_SOURCE
-#define _GNU_SOURCE 1
-#endif
+#include "config.h"
+
 #include <errno.h>
 #include <fcntl.h>
 #include <stdio.h>
@@ -15,15 +14,16 @@
 #include <termios.h>
 #include <unistd.h>
 
-#include <lxc/lxccontainer.h>
+#include "lxc.h"
 
 #include "arguments.h"
 #include "attach.h"
 #include "caps.h"
-#include "config.h"
 #include "confile.h"
 #include "log.h"
+#ifdef ENFORCE_MEMFD_REXEC
 #include "rexec.h"
+#endif
 #include "utils.h"
 
 lxc_log_define(lxc_attach, lxc);
@@ -50,7 +50,7 @@ static int add_to_simple_array(char ***array, ssize_t *capacity, char *value);
 static bool stdfd_is_pty(void);
 static int lxc_attach_create_log_file(const char *log_file);
 
-static int elevated_privileges;
+static unsigned int elevated_privileges;
 static signed long new_personality = -1;
 static int namespace_flags = -1;
 static int remount_sys_proc;
@@ -59,6 +59,7 @@ static char **extra_env;
 static ssize_t extra_env_size;
 static char **extra_keep;
 static ssize_t extra_keep_size;
+static char *selinux_context = NULL;
 
 static const struct option my_longopts[] = {
 	{"elevated-privileges", optional_argument, 0, 'e'},
@@ -74,6 +75,7 @@ static const struct option my_longopts[] = {
 	{"rcfile", required_argument, 0, 'f'},
 	{"uid", required_argument, 0, 'u'},
 	{"gid", required_argument, 0, 'g'},
+        {"context", required_argument, 0, 'c'},
 	LXC_COMMON_OPTIONS
 };
 
@@ -126,6 +128,8 @@ Options :\n\
                     Load configuration file FILE\n\
   -u, --uid=UID     Execute COMMAND with UID inside the container\n\
   -g, --gid=GID     Execute COMMAND with GID inside the container\n\
+  -c, --context=context\n\
+                    SELinux Context to transition into\n\
 ",
 	.options      = my_longopts,
 	.parser       = my_parser,
@@ -148,8 +152,8 @@ static int my_parser(struct lxc_arguments *args, int c, char *arg)
 		break;
 	case 'R': remount_sys_proc = 1; break;
 	case 'a':
-		new_personality = lxc_config_parse_arch(arg);
-		if (new_personality < 0) {
+		ret = lxc_config_parse_arch(arg, &new_personality);
+		if (ret < 0) {
 			ERROR("Invalid architecture specified: %s", arg);
 			return -1;
 		}
@@ -201,6 +205,9 @@ static int my_parser(struct lxc_arguments *args, int c, char *arg)
 		if (lxc_safe_uint(arg, &args->gid) < 0)
 			return -1;
 		break;
+        case 'c':
+                selinux_context = arg;
+                break;
 	}
 
 	return 0;
@@ -268,10 +275,11 @@ int main(int argc, char *argv[])
 {
 	int ret = -1;
 	int wexit = 0;
-	struct lxc_log log;
-	pid_t pid;
 	lxc_attach_options_t attach_options = LXC_ATTACH_OPTIONS_DEFAULT;
 	lxc_attach_command_t command = (lxc_attach_command_t){.program = NULL};
+	pid_t pid;
+	struct lxc_container *c;
+	struct lxc_log log;
 
 	if (lxc_caps_init())
 		exit(EXIT_FAILURE);
@@ -279,12 +287,12 @@ int main(int argc, char *argv[])
 	if (lxc_arguments_parse(&my_args, argc, argv))
 		exit(EXIT_FAILURE);
 
-	log.name = my_args.name;
-	log.file = my_args.log_file;
-	log.level = my_args.log_priority;
-	log.prefix = my_args.progname;
-	log.quiet = my_args.quiet;
-	log.lxcpath = my_args.lxcpath[0];
+	log.name	= my_args.name;
+	log.file	= my_args.log_file;
+	log.level	= my_args.log_priority;
+	log.prefix	= my_args.progname;
+	log.quiet	= my_args.quiet;
+	log.lxcpath	= my_args.lxcpath[0];
 
 	if (lxc_log_init(&log))
 		exit(EXIT_FAILURE);
@@ -295,7 +303,7 @@ int main(int argc, char *argv[])
 			exit(EXIT_FAILURE);
 		}
 
-	struct lxc_container *c = lxc_container_new(my_args.name, my_args.lxcpath[0]);
+	c = lxc_container_new(my_args.name, my_args.lxcpath[0]);
 	if (!c)
 		exit(EXIT_FAILURE);
 
@@ -324,21 +332,36 @@ int main(int argc, char *argv[])
 	if (remount_sys_proc)
 		attach_options.attach_flags |= LXC_ATTACH_REMOUNT_PROC_SYS;
 
-	if (elevated_privileges)
+	if (elevated_privileges) {
+		if ((elevated_privileges & LXC_ATTACH_LSM_EXEC)) {
+			if (selinux_context) {
+				ERROR("Cannot combine elevated LSM privileges while requesting LSM profile");
+				goto out;
+			}
+
+			/*
+			 * While most LSM flags are off by default let's still
+			 * make sure they are stripped when elevated LSM
+			 * privileges are requested.
+			 */
+			elevated_privileges |= LXC_ATTACH_LSM;
+		}
+
 		attach_options.attach_flags &= ~(elevated_privileges);
+	}
 
 	if (stdfd_is_pty())
 		attach_options.attach_flags |= LXC_ATTACH_TERMINAL;
 
-	attach_options.namespaces = namespace_flags;
-	attach_options.personality = new_personality;
-	attach_options.env_policy = env_policy;
-	attach_options.extra_env_vars = extra_env;
-	attach_options.extra_keep_env = extra_keep;
+	attach_options.namespaces	= namespace_flags;
+	attach_options.personality	= new_personality;
+	attach_options.env_policy	= env_policy;
+	attach_options.extra_env_vars	= extra_env;
+	attach_options.extra_keep_env	= extra_keep;
 
 	if (my_args.argc > 0) {
 		command.program = my_args.argv[0];
-		command.argv = (char**)my_args.argv;
+		command.argv	= (char**)my_args.argv;
 	}
 
 	if (my_args.console_log) {
@@ -352,6 +375,12 @@ int main(int argc, char *argv[])
 
 	if (my_args.gid != LXC_INVALID_GID)
 		attach_options.gid = my_args.gid;
+
+	// selinux_context will be NULL if not set
+	if (selinux_context) {
+		attach_options.attach_flags |= LXC_ATTACH_LSM_LABEL;
+		attach_options.lsm_label = selinux_context;
+	}
 
 	if (command.program) {
 		ret = c->attach_run_wait(c, &attach_options, command.program,

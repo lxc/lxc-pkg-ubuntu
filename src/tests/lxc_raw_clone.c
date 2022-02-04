@@ -21,8 +21,8 @@
  * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA
  */
 
-#define _GNU_SOURCE
-#define __STDC_FORMAT_MACROS
+#include "config.h"
+
 #include <errno.h>
 #include <fcntl.h>
 #include <inttypes.h>
@@ -37,6 +37,7 @@
 #include <sys/stat.h>
 #include <sys/types.h>
 
+#include "cgroups/cgroup_utils.h"
 #include "lxctest.h"
 #include "namespace.h"
 #include "process_utils.h"

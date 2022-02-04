@@ -1,9 +1,7 @@
 /* SPDX-License-Identifier: LGPL-2.1+ */
 
-#ifndef _GNU_SOURCE
-#define _GNU_SOURCE 1
-#endif
-#define __STDC_FORMAT_MACROS /* Required for PRIu64 to work. */
+#include "config.h"
+
 #include <errno.h>
 #include <inttypes.h>
 #include <signal.h>
@@ -18,10 +16,9 @@
 #include <termios.h>
 #include <unistd.h>
 
-#include <lxc/lxccontainer.h>
+#include "lxc.h"
 
 #include "arguments.h"
-#include "config.h"
 #include "mainloop.h"
 #include "utils.h"
 
@@ -549,7 +546,7 @@ static void ct_realloc(int active_cnt)
 }
 
 static int stdin_handler(int fd, uint32_t events, void *data,
-			 struct lxc_epoll_descr *descr)
+			 struct lxc_async_descr *descr)
 {
 	char *in_char = data;
 
@@ -569,7 +566,7 @@ static int stdin_handler(int fd, uint32_t events, void *data,
 
 int main(int argc, char *argv[])
 {
-	struct lxc_epoll_descr descr;
+	struct lxc_async_descr descr;
 	int ret, ct_print_cnt;
 	char in_char;
 
@@ -594,7 +591,10 @@ int main(int argc, char *argv[])
 		goto out;
 	}
 
-	ret = lxc_mainloop_add_handler(&descr, 0, stdin_handler, &in_char);
+	ret = lxc_mainloop_add_handler(&descr, 0,
+				       stdin_handler,
+				       default_cleanup_handler,
+				       &in_char, "stdin_handler");
 	if (ret) {
 		fprintf(stderr, "Failed to add stdin handler\n");
 		ret = EXIT_FAILURE;

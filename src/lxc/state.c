@@ -1,8 +1,7 @@
 /* SPDX-License-Identifier: LGPL-2.1+ */
 
-#ifndef _GNU_SOURCE
-#define _GNU_SOURCE 1
-#endif
+#include "config.h"
+
 #include <errno.h>
 #include <fcntl.h>
 #include <stdio.h>
@@ -19,7 +18,6 @@
 #include "cgroup.h"
 #include "commands.h"
 #include "commands_utils.h"
-#include "config.h"
 #include "log.h"
 #include "lxc.h"
 #include "monitor.h"
@@ -36,18 +34,19 @@ static const char *const strstate[] = {
 const char *lxc_state2str(lxc_state_t state)
 {
 	if (state < STOPPED || state > MAX_STATE - 1)
-		return NULL;
+		return "INVALID STATE";
 	return strstate[state];
 }
 
 lxc_state_t lxc_str2state(const char *state)
 {
 	size_t len;
-	lxc_state_t i;
-	len = sizeof(strstate)/sizeof(strstate[0]);
-	for (i = 0; i < len; i++)
-		if (!strcmp(strstate[i], state))
+
+	len = sizeof(strstate) / sizeof(strstate[0]);
+	for (lxc_state_t i = 0; i < len; i++) {
+		if (strequal(strstate[i], state))
 			return i;
+	}
 
 	ERROR("invalid state '%s'", state);
 	return -1;

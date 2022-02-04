@@ -3,11 +3,12 @@
 #ifndef __LXC_CONFILE_H
 #define __LXC_CONFILE_H
 
+#include "config.h"
+
 #include <stdbool.h>
 #include <stdio.h>
 
-#include <lxc/attach_options.h>
-#include <lxc/lxccontainer.h>
+#include "lxc.h"
 
 #include "compiler.h"
 
@@ -32,11 +33,15 @@ typedef int (*config_get_cb)(const char *key, char *value, int inlen,
 typedef int (*config_clr_cb)(const char *key, struct lxc_conf *conf,
 			     void *data);
 
+#define LXC_CONFIG_MEMBERS \
+	char *name;        \
+	bool strict;       \
+	config_set_cb set; \
+	config_get_cb get; \
+	config_clr_cb clr
+
 struct lxc_config_t {
-	char *name;
-	config_set_cb set;
-	config_get_cb get;
-	config_clr_cb clr;
+	LXC_CONFIG_MEMBERS;
 };
 
 struct new_config_item {
@@ -78,10 +83,14 @@ __hidden extern bool lxc_config_define_load(struct lxc_list *defines, struct lxc
 
 __hidden extern void lxc_config_define_free(struct lxc_list *defines);
 
-/* needed for lxc-attach */
-__hidden extern signed long lxc_config_parse_arch(const char *arch);
+#define LXC_ARCH_UNCHANGED 0xffffffffL
+/*
+ * Parse personality of the container. Returns 0 if personality is valid,
+ * negative errno otherwise.
+ */
+__hidden extern int lxc_config_parse_arch(const char *arch, signed long *persona);
 
-__hidden extern int lxc_fill_elevated_privileges(char *flaglist, int *flags);
+__hidden extern int lxc_fill_elevated_privileges(char *flaglist, unsigned int *flags);
 
 __hidden extern int lxc_clear_config_item(struct lxc_conf *c, const char *key);
 
