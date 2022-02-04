@@ -1,4 +1,4 @@
-From d935cd445cb9dd8f4d4c6005044e5d9ce87aa2fe Mon Sep 17 00:00:00 2001
+From e5b8e1c91e4ff41e91ccdb4aab486a816b001844 Mon Sep 17 00:00:00 2001
 From: =?UTF-8?q?St=C3=A9phane=20Graber?= <stgraber@ubuntu.com>
 Date: Wed, 2 Feb 2022 21:28:55 -0500
 Subject: doc: Fix reverse allowlist/denylist

@@ -1,3 +1,2 @@
-0001-Allocate-new-lxcbr0-subnet-at-startup-time.patch
-0002-lxc-checkconfig-Fix-bashism.patch
-0003-doc-Fix-reverse-allowlist-denylist.patch
+0001-lxc-checkconfig-Fix-bashism.patch
+0002-doc-Fix-reverse-allowlist-denylist.patch
