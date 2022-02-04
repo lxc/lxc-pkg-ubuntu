@@ -1,5 +1,5 @@
 # Not quite true yet in Ubuntu
-lxc source: ored-build-depends-on-obsolete-package build-depends: hardening-wrapper => use dpkg-buildflags instead
+lxc source: ored-build-depends-on-obsolete-package Build-Depends: hardening-wrapper => use dpkg-buildflags instead
 
 # Intentional
 lxc source: intra-source-package-circular-dependency liblxc-common liblxc1

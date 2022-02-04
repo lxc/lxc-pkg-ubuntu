@@ -5,13 +5,13 @@ setuid-binary usr/lib/*/lxc/lxc-user-nic 4755 root/root
 package-contains-documentation-outside-usr-share-doc usr/share/lxc/config/common.conf.d/README
 
 # Used internally by LXC (located there for historical reasons)
-binary-without-manpage usr/sbin/init.lxc
-binary-without-manpage usr/sbin/init.lxc.static
+no-manual-page usr/sbin/init.lxc
+no-manual-page usr/sbin/init.lxc.static
 
 # Ships in /usr/lib/ARCH/lxc/
-manpage-without-executable usr/share/man/ja/man1/lxc-user-nic.1.gz
-manpage-without-executable usr/share/man/ko/man1/lxc-user-nic.1.gz
-manpage-without-executable usr/share/man/man1/lxc-user-nic.1.gz
+spare-manual-page usr/share/man/ja/man1/lxc-user-nic.1.gz
+spare-manual-page usr/share/man/ko/man1/lxc-user-nic.1.gz
+spare-manual-page usr/share/man/man1/lxc-user-nic.1.gz
 
 # LXC uses /usr/lib, not /usr/libexec
 executable-in-usr-lib usr/lib/*/lxc/hooks/unmount-namespace
