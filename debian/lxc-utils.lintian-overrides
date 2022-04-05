@@ -6,15 +6,10 @@ non-standard-dir-perm var/lib/lxc/ 0700 != 0755
 old-style-config-script usr/bin/lxc-update-config
 
 # Not an alternative init system on Ubuntu
+package-supports-alternative-init-but-no-init.d-script lib/systemd/system/lxc-monitord.service
 package-supports-alternative-init-but-no-init.d-script lib/systemd/system/lxc-net.service
 package-supports-alternative-init-but-no-init.d-script lib/systemd/system/lxc.service
 
 # LXC uses /usr/lib, not /usr/libexec
 executable-in-usr-lib usr/lib/*/lxc/lxc-containers
 executable-in-usr-lib usr/lib/*/lxc/lxc-net
-
-# Incorrectly flagging nft rules as bash
-bash-term-in-posix-shell [usr/lib/x86_64-linux-gnu/lxc/lxc-net:173] '{ type'
-bash-term-in-posix-shell [usr/lib/x86_64-linux-gnu/lxc/lxc-net:180] '{ type'
-bash-term-in-posix-shell [usr/lib/x86_64-linux-gnu/lxc/lxc-net:183] '{ type'
-bash-term-in-posix-shell [usr/lib/x86_64-linux-gnu/lxc/lxc-net:188] '{ type'

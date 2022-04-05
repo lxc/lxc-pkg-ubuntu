@@ -1,5 +1,5 @@
 # This is a setuid helper
-setuid-binary usr/lib/*/lxc/lxc-user-nic 4755 root/root
+elevated-privileges usr/lib/*/lxc/lxc-user-nic 4755 root/root
 
 # Documentation specific to the path
 package-contains-documentation-outside-usr-share-doc usr/share/lxc/config/common.conf.d/README
@@ -20,4 +20,4 @@ executable-in-usr-lib usr/lib/*/lxc/lxc-monitord
 executable-in-usr-lib usr/lib/*/lxc/lxc-user-nic
 
 # Incorrectly flagging help message as bash
-bash-term-in-posix-shell [usr/share/lxc/templates/lxc-download:131] '[ -a'
+bash-term-in-posix-shell '[ -a' [usr/share/lxc/templates/lxc-download:131]
