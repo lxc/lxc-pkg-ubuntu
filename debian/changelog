@@ -1,3 +1,9 @@
+lxc (1:4.0.12-0ubuntu2) jammy; urgency=medium
+
+  * No-change rebuild to update maintainer scripts, see LP: 1959054
+
+ -- Dave Jones <dave.jones@canonical.com>  Wed, 16 Feb 2022 17:06:54 +0000
+
 lxc (1:4.0.12-0ubuntu1) jammy; urgency=medium
   * Cherry-pick upstream bugfixes (stable-4.0):
     - 0002-lxc-checkconfig-Fix-bashism.patch
