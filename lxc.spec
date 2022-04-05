@@ -57,7 +57,7 @@ BuildRequires: systemd
 %endif
 
 Name: lxc
-Version: 4.0.12
+Version: 5.0.0
 Release: %{?beta_rel:0.1.%{beta_rel}}%{?!beta_rel:%{norm_rel}}%{?dist}
 URL: http://linuxcontainers.org
 Source: http://linuxcontainers.org/downloads/%{name}-%{version}%{?beta_dot}.tar.gz
@@ -255,6 +255,7 @@ fi
 %{_unitdir}/lxc-net.service
 %{_unitdir}/lxc.service
 %{_unitdir}/lxc@.service
+%{_unitdir}/lxc-monitord.service
 %else
 %{_sysconfdir}/rc.d/init.d/lxc
 %{_sysconfdir}/rc.d/init.d/lxc-net

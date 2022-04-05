@@ -657,6 +657,12 @@ by KATOH Yasufumi <karma at jazz.email.ne.jp>
               <option>lxc.net.[i].veth.ipv6.route</option> options.
               Several lines specify several routes.
               The route is in format x.y.z.t/m, eg. 192.168.1.0/24.
+
+              In <option>bridge</option> mode untagged VLAN membership can be set with the
+              <option>lxc.net.[i].veth.vlan.id</option> option. It accepts a special value of 'none' indicating
+              that the container port should be removed from the bridge's default untagged VLAN.
+              The <option>lxc.net.[i].veth.vlan.tagged.id</option> option can be specified multiple times to set
+              the container's bridge port membership to one or more tagged VLANs.
               -->
               <option>veth:</option> 一方がコンテナに、もう一方がホストに接続されるペアの仮想イーサネットデバイスを作成します。
               <option>lxc.net.[i].veth.mode</option> は、veth の親（ホスト側）がホスト上で使うモードを指定します。
@@ -674,6 +680,8 @@ by KATOH Yasufumi <karma at jazz.email.ne.jp>
               <option>lxc.net.[i].veth.ipv4.route</option>、<option>lxc.net.[i].veth.ipv6.route</option> オプションを使って、静的ルーティングをコンテナを指し示すホスト上に追加できます。
               複数のルートがある場合は複数の設定を指定します。
               ルートは x.y.z.t/m の形式です。例: 192.168.1.0/24
+
+	      <option>bridge</option> モードでは、タグなし VLAN は <option>lxc.net.[i].veth.vlan.id</option> で設定できます。このオプションでは、コンテナポートをブリッジのデフォルトのタグなし VLAN から削除するための特別な値 'none' が指定できます。コンテナのブリッジポートを複数のタグ付き VLAN に所属させるために、<option>lxc.net.[i].veth.vlan.tagged.id</option> を複数回指定できます。
             </para>
 
             <para>
@@ -922,8 +930,13 @@ by KATOH Yasufumi <karma at jazz.email.ne.jp>
               Specify the ipv4 address to assign to the virtualized interface.
               Several lines specify several ipv4 addresses. The address is in
               format x.y.z.t/m, eg. 192.168.1.123/24.
+              You can optionally specify the broadcast address after the IP adress,
+              e.g. 192.168.1.123/24 255.255.255.255.
+              Otherwise it is automatically calculated from the IP address.
               -->
               仮想インターフェースに割り当てる ipv4 アドレスを指定します。複数行により複数の ipv4 アドレスを指定します。このアドレスは x.y.z.t/m というフォーマットで指定します。例) 192.168.1.123/24
+              IP アドレスのあとにオプションでブロードキャストアドレスを指定できます。例）192.168.1.123/24 255.255.255.255
+              指定しなければ IP アドレスから自動的に計算されます。
             </para>
           </listitem>
         </varlistentry>
@@ -2204,7 +2217,7 @@ by KATOH Yasufumi <karma at jazz.email.ne.jp>
           <listitem>
             <para>
               <!--
-              A allowlist device rule
+              A denylist device rule
               <programlisting>
                 lxc.cgroup2.devices.deny = a
               </programlisting>
@@ -2213,7 +2226,7 @@ by KATOH Yasufumi <karma at jazz.email.ne.jp>
               must be added via the <option>lxc.cgroup2.devices.allow</option>
               key. This is referred to as a "allowlist" device program.
               -->
-              許可リスト（allowlist）のデバイスルール
+              拒否リスト（denylist）のデバイスルール
               <programlisting>
                 lxc.cgroup2.devices.deny = a
               </programlisting>
@@ -2225,7 +2238,7 @@ by KATOH Yasufumi <karma at jazz.email.ne.jp>
           <listitem>
             <para>
               <!--
-              A denylist device rule
+              An allowlist device rule
               <programlisting>
                 lxc.cgroup2.devices.allow = a
               </programlisting>
@@ -2234,7 +2247,7 @@ by KATOH Yasufumi <karma at jazz.email.ne.jp>
               must be added via <option>lxc.cgroup2.devices.deny</option> key.
               This is referred to as a "denylist" device program.
               -->
-              拒否リスト（denylist）のデバイスルール
+              許可リスト（allowlist）のデバイスルール
               <programlisting>
                 lxc.cgroup2.devices.allow = a
               </programlisting>
@@ -2355,7 +2368,7 @@ by KATOH Yasufumi <karma at jazz.email.ne.jp>
         </programlisting>
         <!--
         instead then the last line will cause LXC to reset the device list and
-        switch from a allowlist program to a denylist program.
+        switch from an allowlist program to a denylist program.
           -->
         前の例と違って最後の行によって、LXC はデバイスリストをリセットし、許可リスト（allowlist）から拒否リスト（denylist）にプログラムを変更してしまいます。
       </para>
@@ -2422,6 +2435,79 @@ by KATOH Yasufumi <karma at jazz.email.ne.jp>
               例えば、"c1" という名前のコンテナで <option>lxc.cgroup.dir = my-cgroup/first</option> のように設定すると、"my-cgroup" のサブ cgroup のようにコンテナの cgroup を作成します。
               例えば、ユーザのカレントの cgroup である "my-user" が cgroup v1 階層にある cpuset コントローラの root cgroup 内に存在する場合、この設定は "/sys/fs/cgroup/cpuset/my-user/my-cgroup/first/c1" という cgroup をこのコンテナ向けに作成します。
               存在しない cgroup は LXC が作成しますが、ユーザがカレントの cgroup に書き込み権を持っていることが前提となります。
+            </para>
+          </listitem>
+        </varlistentry>
+        <varlistentry>
+          <term>
+            <option>lxc.cgroup.dir.container</option>
+          </term>
+          <listitem>
+            <para>
+	      <!--
+              This is similar to <option>lxc.cgroup.dir</option>, but must be
+              used together with <option>lxc.cgroup.dir.monitor</option> and
+              affects only the container's cgroup path. This option is mutually
+              exclusive with <option>lxc.cgroup.dir</option>.
+              Note that the final path the container attaches to may be
+              extended further by the
+              <option>lxc.cgroup.dir.container.inner</option> option.
+	      -->
+	      これは <option>lxc.cgroup.dir</option> と同様の設定ですが、かならず <option>lxc.cgroup.dir.monitor</option> と同時に使わなければなりません。そして、設定はコンテナの cgroup パスにのみ影響を与えます。このオプションは <option>lxc.cgroup.dir</option> と同時に設定できません。コンテナがアタッチされる最終的なパスは <option>lxc.cgroup.dir.container.inner</option> オプションによりさらに変更される可能性があります。
+            </para>
+          </listitem>
+        </varlistentry>
+        <varlistentry>
+          <term>
+            <option>lxc.cgroup.dir.monitor</option>
+          </term>
+          <listitem>
+            <para>
+	      <!--
+              This is the monitor process counterpart to
+              <option>lxc.cgroup.dir.container</option>.
+	      -->
+	      このオプションは、モニタプロセスに対して<option>lxc.cgroup.dir.container</option> と同様の働きをします。
+            </para>
+          </listitem>
+        </varlistentry>
+        <varlistentry>
+          <term>
+            <option>lxc.cgroup.dir.monitor.pivot</option>
+          </term>
+          <listitem>
+            <para>
+              <!--
+              On container termination the PID of the monitor process is attached to this cgroup.
+              This path should not be a subpath of any other configured cgroup dir to ensure
+              proper removal of other cgroup paths on container termination.
+              -->
+              コンテナ終了時に、モニタープロセスの PID がここで指定した cgroup にアタッチされます。
+              コンテナ終了時に、他の cgroup パスが確実に適切に削除されるように、ここに設定するパスは他で設定した cgroup ディレクトリのサブパスにすべきではありません。
+            </para>
+          </listitem>
+        </varlistentry>
+        <varlistentry>
+          <term>
+            <option>lxc.cgroup.dir.container.inner</option>
+          </term>
+          <listitem>
+            <para>
+	      <!--
+              Specify an additional subdirectory where the cgroup namespace
+              will be created. With this option, the cgroup limits will be
+              applied to the outer path specified in
+              <option>lxc.cgroup.dir.container</option>, which is not accessible
+              from within the container, making it possible to better enforce
+              limits for privileged containers in a way they cannot override
+              them.
+              This only works in conjunction with the
+              <option>lxc.cgroup.dir.container</option> and
+              <option>lxc.cgroup.dir.monitor</option> options and has otherwise
+              no effect.
+	      -->
+	      cgroup 名前空間が作られる追加のサブディレクトリを指定します。このオプションを使うと、cgroup の制限は <option>lxc.cgroup.dir.container</option> で指定した外部パスに適用されます。<option>lxc.cgroup.dir.container</option> はコンテナ内部からアクセスできないため、特権コンテナに対する制限を上書きできない方法でよりよい方法で強制できます。
+	      このオプションは <option>lxc.cgroup.dir.container</option> と <option>lxc.cgroup.dir.monitor</option> と同時に指定したときのみ機能し、それ以外の場合は効果がありません。
             </para>
           </listitem>
         </varlistentry>
@@ -2678,6 +2764,39 @@ by KATOH Yasufumi <karma at jazz.email.ne.jp>
 
           </listitem>
         </varlistentry>
+
+        <varlistentry>
+          <term>
+            <option>lxc.time.offset.boot</option>
+          </term>
+          <listitem>
+            <para>
+              <!--
+            Specify a positive or negative offset for the boottime clock. The
+            format accepts hours (h), minutes (m), seconds (s),
+            milliseconds (ms), microseconds (us), and nanoseconds (ns).
+                -->
+              ブートタイム(boottime)クロックの正または負のオフセット値を指定します。フォーマットは、時(h)、分(m)、秒(s)、ミリ秒(ms)、マイクロ秒(us)、ナノ秒(ns)を指定できます。
+            </para>
+          </listitem>
+        </varlistentry>
+
+        <varlistentry>
+          <term>
+            <option>lxc.time.offset.monotonic</option>
+          </term>
+          <listitem>
+            <para>
+              <!--
+            Specify a positive or negative offset for the montonic clock. The
+            format accepts hours (h), minutes (m), seconds (s),
+            milliseconds (ms), microseconds (us), and nanoseconds (ns).
+                -->
+              monotonicクロックの正または負のオフセット値を指定します。フォーマットは、時(h)、分(m)、秒(s)、ミリ秒(ms)、マイクロ秒(us)、ナノ秒(ns)を指定できます。
+            </para>
+          </listitem>
+        </varlistentry>
+
       </variablelist>
     </refsect2>
 

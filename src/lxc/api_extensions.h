@@ -39,6 +39,9 @@ static char *api_extensions[] = {
 	"cgroup2_devices",
 	"cgroup2",
 	"pidfd",
+	"cgroup_advanced_isolation",
+	"network_bridge_vlan",
+	"time_namespace",
 	"seccomp_allow_deny_syntax",
 	"devpts_fd",
 #ifdef HAVE_DECL_SECCOMP_NOTIFY_FD

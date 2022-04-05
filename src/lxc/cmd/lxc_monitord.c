@@ -327,41 +327,46 @@ static void lxc_monitord_sig_handler(int sig)
 
 int main(int argc, char *argv[])
 {
-	int ret, pipefd;
-	char logpath[PATH_MAX];
+	int ret, pipefd = -1;
 	sigset_t mask;
-	char *lxcpath = argv[1];
+	const char *lxcpath = NULL;
 	bool mainloop_opened = false;
 	bool monitord_created = false;
-	struct lxc_log log;
+	bool persistent = false;
 
-	if (argc != 3) {
+	if (argc > 1 && !strcmp(argv[1], "--daemon")) {
+		persistent = true;
+		--argc;
+		++argv;
+	}
+
+	if (argc > 1) {
+		lxcpath = argv[1];
+		--argc;
+		++argv;
+	} else {
+		lxcpath = lxc_global_config_value("lxc.lxcpath");
+		if (!lxcpath) {
+			ERROR("Failed to get default lxcpath");
+			exit(EXIT_FAILURE);
+		}
+	}
+
+	if (argc > 1) {
+		if (lxc_safe_int(argv[1], &pipefd) < 0)
+			exit(EXIT_FAILURE);
+		--argc;
+		++argv;
+	}
+
+	if (argc != 1 || (persistent != (pipefd == -1))) {
 		fprintf(stderr,
-			"Usage: lxc-monitord lxcpath sync-pipe-fd\n\n"
+			"Usage: lxc-monitord lxcpath sync-pipe-fd\n"
+			"       lxc-monitord --daemon lxcpath\n\n"
 			"NOTE: lxc-monitord is intended for use by lxc internally\n"
 			"      and does not need to be run by hand\n\n");
 		exit(EXIT_FAILURE);
 	}
-
-	ret = snprintf(logpath, sizeof(logpath), "%s/lxc-monitord.log",
-		       (strcmp(LXCPATH, lxcpath) ? lxcpath : LOGPATH));
-	if (ret < 0 || (size_t)ret >= sizeof(logpath))
-		exit(EXIT_FAILURE);
-
-	log.name = NULL;
-	log.file = logpath;
-	log.level = "DEBUG";
-	log.prefix = "lxc-monitord";
-	log.quiet = 0;
-	log.lxcpath = lxcpath;
-
-	ret = lxc_log_init(&log);
-	if (ret)
-		INFO("Failed to open log file %s, log will be lost", lxcpath);
-	lxc_log_options_no_override();
-
-	if (lxc_safe_int(argv[2], &pipefd) < 0)
-		exit(EXIT_FAILURE);
 
 	if (sigfillset(&mask) ||
 	    sigdelset(&mask, SIGILL)  ||
@@ -417,7 +422,7 @@ int main(int argc, char *argv[])
 	       lxc_raw_getpid(), monitor.lxcpath);
 
 	for (;;) {
-		ret = lxc_mainloop(&monitor.descr, 1000 * 30);
+		ret = lxc_mainloop(&monitor.descr, persistent ? -1 : 1000 * 30);
 		if (ret) {
 			ERROR("mainloop returned an error");
 			break;

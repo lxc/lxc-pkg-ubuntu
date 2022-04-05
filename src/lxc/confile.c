@@ -29,6 +29,7 @@
 #include "netns_ifaddrs.h"
 #include "log.h"
 #include "lxcseccomp.h"
+#include "macro.h"
 #include "memory_utils.h"
 #include "network.h"
 #include "parse.h"
@@ -67,6 +68,10 @@ lxc_config_define(cap_keep);
 lxc_config_define(cgroup_controller);
 lxc_config_define(cgroup2_controller);
 lxc_config_define(cgroup_dir);
+lxc_config_define(cgroup_monitor_dir);
+lxc_config_define(cgroup_monitor_pivot_dir);
+lxc_config_define(cgroup_container_dir);
+lxc_config_define(cgroup_container_inner_dir);
 lxc_config_define(cgroup_relative);
 lxc_config_define(console_buffer_size);
 lxc_config_define(console_logfile);
@@ -99,6 +104,8 @@ lxc_config_define(mount_auto);
 lxc_config_define(mount_fstab);
 lxc_config_define(namespace_clone);
 lxc_config_define(namespace_keep);
+lxc_config_define(time_offset_boot);
+lxc_config_define(time_offset_monotonic);
 lxc_config_define(namespace_share);
 lxc_config_define(net);
 lxc_config_define(net_flags);
@@ -118,9 +125,13 @@ lxc_config_define(net_script_down);
 lxc_config_define(net_script_up);
 lxc_config_define(net_type);
 lxc_config_define(net_veth_mode);
+lxc_config_define(net_veth_n_rxqueues);
+lxc_config_define(net_veth_n_txqueues);
 lxc_config_define(net_veth_pair);
 lxc_config_define(net_veth_ipv4_route);
 lxc_config_define(net_veth_ipv6_route);
+lxc_config_define(net_veth_vlan_id);
+lxc_config_define(net_veth_vlan_tagged_id);
 lxc_config_define(net_vlan_id);
 lxc_config_define(no_new_privs);
 lxc_config_define(personality);
@@ -187,6 +198,10 @@ static struct lxc_config_t config_jump_table[] = {
 	{ "lxc.cap.drop",                   true,  set_config_cap_drop,                   get_config_cap_drop,                   clr_config_cap_drop,                   },
 	{ "lxc.cap.keep",                   true,  set_config_cap_keep,                   get_config_cap_keep,                   clr_config_cap_keep,                   },
 	{ "lxc.cgroup2",                    false, set_config_cgroup2_controller,         get_config_cgroup2_controller,         clr_config_cgroup2_controller,         },
+	{ "lxc.cgroup.dir.monitor.pivot",   true,  set_config_cgroup_monitor_pivot_dir,   get_config_cgroup_monitor_pivot_dir,   clr_config_cgroup_monitor_pivot_dir,   },
+	{ "lxc.cgroup.dir.monitor",         true,  set_config_cgroup_monitor_dir,         get_config_cgroup_monitor_dir,         clr_config_cgroup_monitor_dir,         },
+	{ "lxc.cgroup.dir.container.inner", true,  set_config_cgroup_container_inner_dir, get_config_cgroup_container_inner_dir, clr_config_cgroup_container_inner_dir, },
+	{ "lxc.cgroup.dir.container",       true,  set_config_cgroup_container_dir,       get_config_cgroup_container_dir,       clr_config_cgroup_container_dir,       },
 	{ "lxc.cgroup.dir",                 true,  set_config_cgroup_dir,                 get_config_cgroup_dir,                 clr_config_cgroup_dir,                 },
 	{ "lxc.cgroup.relative",            true,  set_config_cgroup_relative,            get_config_cgroup_relative,            clr_config_cgroup_relative,            },
 	{ "lxc.cgroup",                     false, set_config_cgroup_controller,          get_config_cgroup_controller,          clr_config_cgroup_controller,          },
@@ -231,6 +246,8 @@ static struct lxc_config_t config_jump_table[] = {
 	{ "lxc.namespace.clone",            true,  set_config_namespace_clone,            get_config_namespace_clone,            clr_config_namespace_clone,            },
 	{ "lxc.namespace.keep",             true,  set_config_namespace_keep,             get_config_namespace_keep,             clr_config_namespace_keep,             },
 	{ "lxc.namespace.share.",           false, set_config_namespace_share,            get_config_namespace_share,            clr_config_namespace_share,            },
+	{ "lxc.time.offset.boot",           true,  set_config_time_offset_boot,           get_config_time_offset_boot,           clr_config_time_offset_boot,           },
+	{ "lxc.time.offset.monotonic",      true,  set_config_time_offset_monotonic,      get_config_time_offset_monotonic,      clr_config_time_offset_monotonic,      },
 	{ "lxc.net.",                       false, set_config_jump_table_net,             get_config_jump_table_net,             clr_config_jump_table_net,             },
 	{ "lxc.net",                        true,  set_config_net,                        get_config_net,                        clr_config_net,                        },
 	{ "lxc.no_new_privs",	            true,  set_config_no_new_privs,               get_config_no_new_privs,               clr_config_no_new_privs,               },
@@ -292,9 +309,13 @@ static struct lxc_config_net_t config_jump_table_net[] = {
 	{ "type",                   true,  set_config_net_type,                   get_config_net_type,                   clr_config_net_type,                   },
 	{ "vlan.id",                true,  set_config_net_vlan_id,                get_config_net_vlan_id,                clr_config_net_vlan_id,                },
 	{ "veth.mode",              true,  set_config_net_veth_mode,              get_config_net_veth_mode,              clr_config_net_veth_mode,              },
+	{ "veth.n_rxqueues",        true,  set_config_net_veth_n_rxqueues,        get_config_net_veth_n_rxqueues,        clr_config_net_veth_n_rxqueues,        },
+	{ "veth.n_txqueues",        true,  set_config_net_veth_n_txqueues,        get_config_net_veth_n_txqueues,        clr_config_net_veth_n_txqueues,        },
 	{ "veth.pair",              true,  set_config_net_veth_pair,              get_config_net_veth_pair,              clr_config_net_veth_pair,              },
 	{ "veth.ipv4.route",        true,  set_config_net_veth_ipv4_route,        get_config_net_veth_ipv4_route,        clr_config_net_veth_ipv4_route,        },
 	{ "veth.ipv6.route",        true,  set_config_net_veth_ipv6_route,        get_config_net_veth_ipv6_route,        clr_config_net_veth_ipv6_route,        },
+	{ "veth.vlan.id",           true,  set_config_net_veth_vlan_id,           get_config_net_veth_vlan_id,           clr_config_net_veth_vlan_id,           },
+	{ "veth.vlan.tagged.id",    true,  set_config_net_veth_vlan_tagged_id,    get_config_net_veth_vlan_tagged_id,    clr_config_net_veth_vlan_tagged_id,    },
 };
 
 static struct lxc_config_net_t unsupported_config_net_key = {
@@ -570,6 +591,56 @@ static int set_config_net_veth_mode(const char *key, const char *value,
 	return lxc_veth_mode_to_flag(&netdev->priv.veth_attr.mode, value);
 }
 
+static int set_config_net_veth_n_rxqueues(const char *key, const char *value,
+					  struct lxc_conf *lxc_conf, void *data)
+{
+	int n_rxqueues;
+	struct lxc_netdev *netdev = data;
+
+	if (!netdev)
+		return ret_errno(EINVAL);
+
+	if (netdev->type != LXC_NET_VETH)
+		return ret_errno(EINVAL);
+
+	if (lxc_config_value_empty(value))
+		return clr_config_net_veth_n_rxqueues(key, lxc_conf, data);
+
+	if (lxc_safe_int(value, &n_rxqueues))
+		return ret_errno(EINVAL);
+
+	if (n_rxqueues <= 0)
+		return ret_errno(EINVAL);
+
+	netdev->priv.veth_attr.n_rxqueues = n_rxqueues;
+	return 0;
+}
+
+static int set_config_net_veth_n_txqueues(const char *key, const char *value,
+				     struct lxc_conf *lxc_conf, void *data)
+{
+	int n_txqueues;
+	struct lxc_netdev *netdev = data;
+
+	if (!netdev)
+		return ret_errno(EINVAL);
+
+	if (netdev->type != LXC_NET_VETH)
+		return ret_errno(EINVAL);
+
+	if (lxc_config_value_empty(value))
+		return clr_config_net_veth_n_txqueues(key, lxc_conf, data);
+
+	if (lxc_safe_int(value, &n_txqueues))
+		return ret_errno(EINVAL);
+
+	if (n_txqueues <= 0)
+		return ret_errno(EINVAL);
+
+	netdev->priv.veth_attr.n_txqueues = n_txqueues;
+	return 0;
+}
+
 static int set_config_net_veth_pair(const char *key, const char *value,
 				    struct lxc_conf *lxc_conf, void *data)
 {
@@ -586,6 +657,76 @@ static int set_config_net_veth_pair(const char *key, const char *value,
 
 	return network_ifname(netdev->priv.veth_attr.pair, value,
 			      sizeof(netdev->priv.veth_attr.pair));
+}
+
+static int set_config_net_veth_vlan_id(const char *key, const char *value,
+				       struct lxc_conf *lxc_conf, void *data)
+{
+	int ret;
+	struct lxc_netdev *netdev = data;
+
+	if (!netdev)
+		return ret_errno(EINVAL);
+
+	if (netdev->type != LXC_NET_VETH)
+		return ret_errno(EINVAL);
+
+	if (lxc_config_value_empty(value))
+		return clr_config_net_veth_vlan_id(key, lxc_conf, data);
+
+	if (strequal(value, "none")) {
+		netdev->priv.veth_attr.vlan_id = BRIDGE_VLAN_NONE;
+	} else {
+		unsigned short vlan_id;
+
+		ret = get_u16(&vlan_id, value, 0);
+		if (ret < 0)
+			return ret_errno(EINVAL);
+
+		if (vlan_id > BRIDGE_VLAN_ID_MAX)
+			return ret_errno(EINVAL);
+
+		netdev->priv.veth_attr.vlan_id = vlan_id;
+	}
+
+	netdev->priv.veth_attr.vlan_id_set = true;
+	return 0;
+}
+
+static int set_config_net_veth_vlan_tagged_id(const char *key, const char *value,
+					      struct lxc_conf *lxc_conf,
+					      void *data)
+{
+	__do_free struct lxc_list *list = NULL;
+	int ret;
+	unsigned short vlan_id;
+	struct lxc_netdev *netdev = data;
+
+	if (!netdev)
+		return ret_errno(EINVAL);
+
+	if (netdev->type != LXC_NET_VETH)
+		return ret_errno(EINVAL);
+
+	if (lxc_config_value_empty(value))
+		return clr_config_net_veth_vlan_tagged_id(key, lxc_conf, data);
+
+	ret = get_u16(&vlan_id, value, 0);
+	if (ret < 0)
+		return ret_errno(EINVAL);
+
+	if (vlan_id > BRIDGE_VLAN_ID_MAX)
+		return ret_errno(EINVAL);
+
+	list = lxc_list_new();
+	if (!list)
+		return ret_errno(ENOMEM);
+
+	list->elem = UINT_TO_PTR(vlan_id);
+
+	lxc_list_add_tail(&netdev->priv.veth_attr.vlan_tagged_ids, move_ptr(list));
+
+	return 0;
 }
 
 static int set_config_net_macvlan_mode(const char *key, const char *value,
@@ -1501,8 +1642,7 @@ static int set_config_apparmor_profile(const char *key, const char *value,
 #if HAVE_APPARMOR
 	return set_config_string_item(&lxc_conf->lsm_aa_profile, value);
 #else
-	SYSWARN("Built without AppArmor support");
-	return 0;
+	return syserror_set(-EINVAL, "Built without AppArmor support");
 #endif
 }
 
@@ -1528,8 +1668,7 @@ static int set_config_apparmor_allow_incomplete(const char *key,
 
 	return 0;
 #else
-	SYSWARN("Built without AppArmor support");
-	return 0;
+	return syserror_set(-EINVAL, "Built without AppArmor support");
 #endif
 }
 
@@ -1553,8 +1692,7 @@ static int set_config_apparmor_allow_nesting(const char *key,
 
 	return 0;
 #else
-	SYSWARN("Built without AppArmor support");
-	return 0;
+	return syserror_set(-EINVAL, "Built without AppArmor support");
 #endif
 }
 
@@ -1584,8 +1722,7 @@ static int set_config_apparmor_raw(const char *key,
 
 	return 0;
 #else
-	SYSWARN("Built without AppArmor support");
-	return 0;
+	return syserror_set(-EINVAL, "Built without AppArmor support");
 #endif
 }
 
@@ -1595,8 +1732,7 @@ static int set_config_selinux_context(const char *key, const char *value,
 #if HAVE_SELINUX
 	return set_config_string_item(&lxc_conf->lsm_se_context, value);
 #else
-	SYSWARN("Built without SELinux support");
-	return 0;
+	return syserror_set(-EINVAL, "Built without SELinux support");
 #endif
 }
 
@@ -1606,8 +1742,7 @@ static int set_config_selinux_context_keyring(const char *key, const char *value
 #if HAVE_SELINUX
 	return set_config_string_item(&lxc_conf->lsm_se_keyring_context, value);
 #else
-	SYSWARN("Built without SELinux support");
-	return 0;
+	return syserror_set(-EINVAL, "Built without SELinux support");
 #endif
 }
 
@@ -1838,6 +1973,69 @@ static int set_config_cgroup_dir(const char *key, const char *value,
 		return syserror_set(-EINVAL, "%s paths may not walk upwards via \"../\"", key);
 
 	return set_config_path_item(&lxc_conf->cgroup_meta.dir, value);
+}
+
+static int set_config_cgroup_monitor_dir(const char *key, const char *value,
+					 struct lxc_conf *lxc_conf, void *data)
+{
+	if (lxc_config_value_empty(value))
+		return clr_config_cgroup_monitor_dir(key, lxc_conf, NULL);
+
+	if (abspath(value))
+		return syserror_set(-EINVAL, "%s paths may not be absolute", key);
+
+	if (dotdot(value))
+		return syserror_set(-EINVAL, "%s paths may not walk upwards via \"../\"", key);
+
+	return set_config_path_item(&lxc_conf->cgroup_meta.monitor_dir, value);
+}
+
+static int set_config_cgroup_monitor_pivot_dir(const char *key, const char *value,
+					 struct lxc_conf *lxc_conf, void *data)
+{
+	if (lxc_config_value_empty(value))
+		return clr_config_cgroup_monitor_pivot_dir(key, lxc_conf, NULL);
+
+	if (abspath(value))
+		return syserror_set(-EINVAL, "%s paths may not be absolute", key);
+
+	if (dotdot(value))
+		return syserror_set(-EINVAL, "%s paths may not walk upwards via \"../\"", key);
+
+	return set_config_path_item(&lxc_conf->cgroup_meta.monitor_pivot_dir, value);
+}
+
+static int set_config_cgroup_container_dir(const char *key, const char *value,
+					   struct lxc_conf *lxc_conf,
+					   void *data)
+{
+	if (lxc_config_value_empty(value))
+		return clr_config_cgroup_container_dir(key, lxc_conf, NULL);
+
+	if (abspath(value))
+		return syserror_set(-EINVAL, "%s paths may not be absolute", key);
+
+	if (dotdot(value))
+		return syserror_set(-EINVAL, "%s paths may not walk upwards via \"../\"", key);
+
+	return set_config_path_item(&lxc_conf->cgroup_meta.container_dir, value);
+}
+
+static int set_config_cgroup_container_inner_dir(const char *key,
+						 const char *value,
+						 struct lxc_conf *lxc_conf,
+						 void *data)
+{
+	if (lxc_config_value_empty(value))
+		return clr_config_cgroup_container_inner_dir(key, lxc_conf, NULL);
+
+	if (abspath(value))
+		return syserror_set(-EINVAL, "%s paths may not be absolute", key);
+
+	if (strchr(value, '/') || strequal(value, ".") || strequal(value, ".."))
+		return log_error_errno(-EINVAL, EINVAL, "lxc.cgroup.dir.container.inner must be a single directory name");
+
+	return set_config_string_item(&lxc_conf->cgroup_meta.namespace_dir, value);
 }
 
 static int set_config_cgroup_relative(const char *key, const char *value,
@@ -2742,6 +2940,84 @@ static int set_config_namespace_keep(const char *key, const char *value,
 	return 0;
 }
 
+static int set_config_time_offset_boot(const char *key, const char *value,
+				       struct lxc_conf *lxc_conf, void *data)
+{
+	int ret;
+	char *unit;
+	int64_t offset = 0;
+	char buf[STRLITERALLEN("ms") + 1];
+
+	if (lxc_config_value_empty(value))
+		return clr_config_time_offset_boot(key, lxc_conf, data);
+
+	ret = lxc_safe_int64_residual(value, &offset, 10, buf, sizeof(buf));
+	if (ret)
+		return ret;
+
+	unit = lxc_trim_whitespace_in_place(buf);
+	if (strequal(unit, "h")) {
+		if (!multiply_overflow(offset, 3600, &lxc_conf->timens.s_boot))
+			return ret_errno(EOVERFLOW);
+	} else if (strequal(unit, "m")) {
+		if (!multiply_overflow(offset, 60, &lxc_conf->timens.s_boot))
+			return ret_errno(EOVERFLOW);
+	} else if (strequal(unit, "s")) {
+		lxc_conf->timens.s_boot = offset;
+	} else if (strequal(unit, "ms")) {
+		if (!multiply_overflow(offset, 1000000, &lxc_conf->timens.ns_boot))
+			return ret_errno(EOVERFLOW);
+	} else if (strequal(unit, "us")) {
+		if (!multiply_overflow(offset, 1000, &lxc_conf->timens.ns_boot))
+			return ret_errno(EOVERFLOW);
+	} else if (strequal(unit, "ns")) {
+		lxc_conf->timens.ns_boot = offset;
+	} else {
+		return ret_errno(EINVAL);
+	}
+
+	return 0;
+}
+
+static int set_config_time_offset_monotonic(const char *key, const char *value,
+					    struct lxc_conf *lxc_conf, void *data)
+{
+	int ret;
+	char *unit;
+	int64_t offset = 0;
+	char buf[STRLITERALLEN("ms") + 1];
+
+	if (lxc_config_value_empty(value))
+		return clr_config_time_offset_monotonic(key, lxc_conf, data);
+
+	ret = lxc_safe_int64_residual(value, &offset, 10, buf, sizeof(buf));
+	if (ret)
+		return ret;
+
+	unit = lxc_trim_whitespace_in_place(buf);
+	if (strequal(unit, "h")) {
+		if (!multiply_overflow(offset, 3600, &lxc_conf->timens.s_monotonic))
+			return ret_errno(EOVERFLOW);
+	} else if (strequal(unit, "m")) {
+		if (!multiply_overflow(offset, 60, &lxc_conf->timens.s_monotonic))
+			return ret_errno(EOVERFLOW);
+	} else if (strequal(unit, "s")) {
+		lxc_conf->timens.s_monotonic = offset;
+	} else if (strequal(unit, "ms")) {
+		if (!multiply_overflow(offset, 1000000, &lxc_conf->timens.ns_monotonic))
+			return ret_errno(EOVERFLOW);
+	} else if (strequal(unit, "us")) {
+		if (!multiply_overflow(offset, 1000, &lxc_conf->timens.ns_monotonic))
+			return ret_errno(EOVERFLOW);
+	} else if (strequal(unit, "ns")) {
+		lxc_conf->timens.ns_monotonic = offset;
+	} else {
+		return ret_errno(EINVAL);
+	}
+
+	return 0;
+}
+
 static int set_config_namespace_share(const char *key, const char *value,
 				      struct lxc_conf *lxc_conf, void *data)
 {
@@ -3534,8 +3810,7 @@ static int get_config_apparmor_profile(const char *key, char *retv, int inlen,
 #if HAVE_APPARMOR
 	return lxc_get_conf_str(retv, inlen, c->lsm_aa_profile);
 #else
-	SYSWARN("Built without AppArmor support");
-	return 0;
+	return syserror_set(-EINVAL, "Built without AppArmor support");
 #endif
 }
 
@@ -3546,8 +3821,7 @@ static int get_config_apparmor_allow_incomplete(const char *key, char *retv,
 #if HAVE_APPARMOR
 	return lxc_get_conf_int(c, retv, inlen, c->lsm_aa_allow_incomplete);
 #else
-	SYSWARN("Built without AppArmor support");
-	return 0;
+	return syserror_set(-EINVAL, "Built without AppArmor support");
 #endif
 }
 
@@ -3558,8 +3832,7 @@ static int get_config_apparmor_allow_nesting(const char *key, char *retv,
 #if HAVE_APPARMOR
 	return lxc_get_conf_int(c, retv, inlen, c->lsm_aa_allow_nesting);
 #else
-	SYSWARN("Built without AppArmor support");
-	return 0;
+	return syserror_set(-EINVAL, "Built without AppArmor support");
 #endif
 }
 
@@ -3583,8 +3856,7 @@ static int get_config_apparmor_raw(const char *key, char *retv,
 
 	return fulllen;
 #else
-	SYSWARN("Built without AppArmor support");
-	return 0;
+	return syserror_set(-EINVAL, "Built without AppArmor support");
 #endif
 }
 
@@ -3594,8 +3866,7 @@ static int get_config_selinux_context(const char *key, char *retv, int inlen,
 #if HAVE_SELINUX
 	return lxc_get_conf_str(retv, inlen, c->lsm_se_context);
 #else
-	SYSWARN("Built without SELinux support");
-	return 0;
+	return syserror_set(-EINVAL, "Built without SELinux support");
 #endif
 }
 
@@ -3605,8 +3876,7 @@ static int get_config_selinux_context_keyring(const char *key, char *retv, int i
 #if HAVE_SELINUX
 	return lxc_get_conf_str(retv, inlen, c->lsm_se_keyring_context);
 #else
-	SYSWARN("Built without SELinux support");
-	return 0;
+	return syserror_set(-EINVAL, "Built without SELinux support");
 #endif
 }
 
@@ -3707,6 +3977,74 @@ static int get_config_cgroup_dir(const char *key, char *retv, int inlen,
 		memset(retv, 0, inlen);
 
 	strprint(retv, inlen, "%s", lxc_conf->cgroup_meta.dir);
+
+	return fulllen;
+}
+
+static int get_config_cgroup_monitor_dir(const char *key, char *retv, int inlen,
+					 struct lxc_conf *lxc_conf, void *data)
+{
+	int len;
+	int fulllen = 0;
+
+	if (!retv)
+		inlen = 0;
+	else
+		memset(retv, 0, inlen);
+
+	strprint(retv, inlen, "%s", lxc_conf->cgroup_meta.monitor_dir);
+
+	return fulllen;
+}
+
+static int get_config_cgroup_monitor_pivot_dir(const char *key, char *retv, int inlen,
+					 struct lxc_conf *lxc_conf, void *data)
+{
+	int len;
+	int fulllen = 0;
+
+	if (!retv)
+		inlen = 0;
+	else
+		memset(retv, 0, inlen);
+
+	strprint(retv, inlen, "%s", lxc_conf->cgroup_meta.monitor_pivot_dir);
+
+	return fulllen;
+}
+
+static int get_config_cgroup_container_dir(const char *key, char *retv,
+					   int inlen,
+					   struct lxc_conf *lxc_conf,
+					   void *data)
+{
+	int len;
+	int fulllen = 0;
+
+	if (!retv)
+		inlen = 0;
+	else
+		memset(retv, 0, inlen);
+
+	strprint(retv, inlen, "%s", lxc_conf->cgroup_meta.container_dir);
+
+	return fulllen;
+}
+
+static int get_config_cgroup_container_inner_dir(const char *key, char *retv,
+						 int inlen,
+						 struct lxc_conf *lxc_conf,
+						 void *data)
+{
+	int len;
+	int fulllen = 0;
+
+	if (!retv)
+		inlen = 0;
+	else
+		memset(retv, 0, inlen);
+
+	strprint(retv, inlen, "%s", lxc_conf->cgroup_meta.namespace_dir);
 
 	return fulllen;
 }
@@ -4413,6 +4751,46 @@ static int get_config_namespace_keep(const char *key, char *retv, int inlen,
 	return fulllen;
 }
 
+static int get_config_time_offset_boot(const char *key, char *retv, int inlen, struct lxc_conf *c,
+				       void *data)
+{
+	int len;
+	int fulllen = 0;
+
+	if (!retv)
+		inlen = 0;
+	else
+		memset(retv, 0, inlen);
+
+	if (c->timens.s_boot) {
+		strprint(retv, inlen, "%" PRId64 " s\n", c->timens.s_boot);
+	} else {
+		strprint(retv, inlen, "%" PRId64 " ns\n", c->timens.ns_boot);
+	}
+
+	return fulllen;
+}
+
+static int get_config_time_offset_monotonic(const char *key, char *retv, int inlen,
+					    struct lxc_conf *c, void *data)
+{
+	int len;
+	int fulllen = 0;
+
+	if (!retv)
+		inlen = 0;
+	else
+		memset(retv, 0, inlen);
+
+	if (c->timens.s_monotonic) {
+		strprint(retv, inlen, "%" PRId64 "s\n", c->timens.s_monotonic);
+	} else {
+		strprint(retv, inlen, "%" PRId64 "ns\n", c->timens.ns_monotonic);
+	}
+
+	return fulllen;
+}
+
 static int get_config_namespace_share(const char *key, char *retv, int inlen,
 				      struct lxc_conf *c, void *data)
 {
@@ -4474,8 +4852,7 @@ static inline int clr_config_apparmor_profile(const char *key,
 	free_disarm(c->lsm_aa_profile);
 	return 0;
 #else
-	SYSWARN("Built without AppArmor support");
-	return 0;
+	return syserror_set(-EINVAL, "Built without AppArmor support");
 #endif
 }
 
@@ -4487,8 +4864,7 @@ static inline int clr_config_apparmor_allow_incomplete(const char *key,
 	c->lsm_aa_allow_incomplete = 0;
 	return 0;
 #else
-	SYSWARN("Built without AppArmor support");
-	return 0;
+	return syserror_set(-EINVAL, "Built without AppArmor support");
 #endif
 }
 
@@ -4500,8 +4876,7 @@ static inline int clr_config_apparmor_allow_nesting(const char *key,
 	c->lsm_aa_allow_nesting = 0;
 	return 0;
 #else
-	SYSWARN("Built without AppArmor support");
-	return 0;
+	return syserror_set(-EINVAL, "Built without AppArmor support");
 #endif
 }
 
@@ -4512,8 +4887,7 @@ static inline int clr_config_apparmor_raw(const char *key,
 #if HAVE_APPARMOR
 	return lxc_clear_apparmor_raw(c);
 #else
-	SYSWARN("Built without AppArmor support");
-	return 0;
+	return syserror_set(-EINVAL, "Built without AppArmor support");
 #endif
 }
 
@@ -4524,8 +4898,7 @@ static inline int clr_config_selinux_context(const char *key,
 	free_disarm(c->lsm_se_context);
 	return 0;
 #else
-	SYSWARN("Built without SELinux support");
-	return 0;
+	return syserror_set(-EINVAL, "Built without SELinux support");
 #endif
 }
 
@@ -4536,8 +4909,7 @@ static inline int clr_config_selinux_context_keyring(const char *key,
 	free_disarm(c->lsm_se_keyring_context);
 	return 0;
 #else
-	SYSWARN("Built without SELinux support");
-	return 0;
+	return syserror_set(-EINVAL, "Built without SELinux support");
 #endif
 }
 
@@ -4569,6 +4941,38 @@ static int clr_config_cgroup_dir(const char *key, struct lxc_conf *lxc_conf,
 	if (lxc_conf->cgroup_meta.dir)
 		free_disarm(lxc_conf->cgroup_meta.dir);
 
+	return 0;
+}
+
+static int clr_config_cgroup_monitor_dir(const char *key,
+					 struct lxc_conf *lxc_conf,
+					 void *data)
+{
+	free_disarm(lxc_conf->cgroup_meta.monitor_dir);
+	return 0;
+}
+
+static int clr_config_cgroup_monitor_pivot_dir(const char *key,
+					 struct lxc_conf *lxc_conf,
+					 void *data)
+{
+	free_disarm(lxc_conf->cgroup_meta.monitor_pivot_dir);
+	return 0;
+}
+
+static int clr_config_cgroup_container_dir(const char *key,
+					   struct lxc_conf *lxc_conf,
+					   void *data)
+{
+	free_disarm(lxc_conf->cgroup_meta.container_dir);
+	return 0;
+}
+
+static int clr_config_cgroup_container_inner_dir(const char *key,
+						 struct lxc_conf *lxc_conf,
+						 void *data)
+{
+	free_disarm(lxc_conf->cgroup_meta.namespace_dir);
 	return 0;
 }
 
@@ -4941,6 +5345,20 @@ static int clr_config_namespace_keep(const char *key, struct lxc_conf *lxc_conf,
 	return 0;
 }
 
+static int clr_config_time_offset_boot(const char *key, struct lxc_conf *lxc_conf, void *data)
+{
+	lxc_conf->timens.s_boot = 0;
+	lxc_conf->timens.ns_boot = 0;
+	return 0;
+}
+
+static int clr_config_time_offset_monotonic(const char *key, struct lxc_conf *lxc_conf, void *data)
+{
+	lxc_conf->timens.s_monotonic = 0;
+	lxc_conf->timens.ns_monotonic = 0;
+	return 0;
+}
+
 static int clr_config_namespace_share(const char *key,
 				      struct lxc_conf *lxc_conf, void *data)
 {
@@ -5213,6 +5631,39 @@ static int clr_config_net_veth_mode(const char *key,
 	return 0;
 }
 
+static int clr_config_net_veth_n_rxqueues(const char *key, struct lxc_conf *lxc_conf,
+					  void *data)
+{
+	struct lxc_netdev *netdev = data;
+
+	if (!netdev)
+		return ret_errno(EINVAL);
+
+	if (netdev->type != LXC_NET_VETH)
+		return 0;
+
+	netdev->priv.veth_attr.n_rxqueues = -1;
+
+	return 0;
+}
+
+static int clr_config_net_veth_n_txqueues(const char *key, struct lxc_conf *lxc_conf,
+					  void *data)
+{
+	struct lxc_netdev *netdev = data;
+
+	if (!netdev)
+		return ret_errno(EINVAL);
+
+	if (netdev->type != LXC_NET_VETH)
+		return 0;
+
+	netdev->priv.veth_attr.n_txqueues = -1;
+
+	return 0;
+}
+
+
 static int clr_config_net_veth_pair(const char *key, struct lxc_conf *lxc_conf,
 				    void *data)
 {
@@ -5228,6 +5679,44 @@ static int clr_config_net_veth_pair(const char *key, struct lxc_conf *lxc_conf,
 
 	return 0;
 }
+
+static int clr_config_net_veth_vlan_id(const char *key, struct lxc_conf *lxc_conf,
+				  void *data)
+{
+	struct lxc_netdev *netdev = data;
+
+	if (!netdev)
+		return ret_errno(EINVAL);
+
+	if (netdev->type != LXC_NET_VETH)
+		return 0;
+
+	netdev->priv.veth_attr.vlan_id = 0;
+	netdev->priv.veth_attr.vlan_id_set = false;
+
+	return 0;
+}
+
+static int clr_config_net_veth_vlan_tagged_id(const char *key,
+				       struct lxc_conf *lxc_conf, void *data)
+{
+	struct lxc_netdev *netdev = data;
+	struct lxc_list *cur, *next;
+
+	if (!netdev)
+		return ret_errno(EINVAL);
+
+	if (netdev->type != LXC_NET_VETH)
+		return 0;
+
+	lxc_list_for_each_safe(cur, &netdev->priv.veth_attr.vlan_tagged_ids, next) {
+		lxc_list_del(cur);
+		free(cur);
+	}
+
+	return 0;
+}
+
 
 static int clr_config_net_script_up(const char *key, struct lxc_conf *lxc_conf,
 				    void *data)
@@ -5665,6 +6154,54 @@ static int get_config_net_veth_mode(const char *key, char *retv, int inlen,
 	return fulllen;
 }
 
+static int get_config_net_veth_n_rxqueues(const char *key, char *retv, int inlen,
+				     struct lxc_conf *c, void *data)
+{
+	int len;
+	int fulllen = 0;
+	struct lxc_netdev *netdev = data;
+
+	if (!netdev)
+		return ret_errno(EINVAL);
+
+	if (netdev->type != LXC_NET_VETH)
+		return ret_errno(EINVAL);
+
+	if (!retv)
+		inlen = 0;
+	else
+		memset(retv, 0, inlen);
+
+	if (netdev->priv.veth_attr.n_rxqueues > 0)
+		strprint(retv, inlen, "%d", netdev->priv.veth_attr.n_rxqueues);
+
+	return fulllen;
+}
+
+static int get_config_net_veth_n_txqueues(const char *key, char *retv, int inlen,
+				     struct lxc_conf *c, void *data)
+{
+	int len;
+	int fulllen = 0;
+	struct lxc_netdev *netdev = data;
+
+	if (!netdev)
+		return ret_errno(EINVAL);
+
+	if (netdev->type != LXC_NET_VETH)
+		return ret_errno(EINVAL);
+
+	if (!retv)
+		inlen = 0;
+	else
+		memset(retv, 0, inlen);
+
+	if (netdev->priv.veth_attr.n_txqueues > 0)
+		strprint(retv, inlen, "%d", netdev->priv.veth_attr.n_txqueues);
+
+	return fulllen;
+}
+
 static int get_config_net_veth_pair(const char *key, char *retv, int inlen,
 				    struct lxc_conf *c, void *data)
 {
@@ -5687,6 +6224,60 @@ static int get_config_net_veth_pair(const char *key, char *retv, int inlen,
 		 netdev->priv.veth_attr.pair[0] != '\0'
 		     ? netdev->priv.veth_attr.pair
 		     : netdev->priv.veth_attr.veth1);
+
+	return fulllen;
+}
+
+static int get_config_net_veth_vlan_id(const char *key, char *retv, int inlen,
+				       struct lxc_conf *c, void *data)
+{
+	int len;
+	int fulllen = 0;
+	struct lxc_netdev *netdev = data;
+
+	if (!netdev)
+		return ret_errno(EINVAL);
+
+	if (netdev->type != LXC_NET_VETH)
+		return ret_errno(EINVAL);
+
+	if (!retv)
+		inlen = 0;
+	else
+		memset(retv, 0, inlen);
+
+	strprint(retv, inlen, "%d", netdev->priv.veth_attr.vlan_id);
+
+	return fulllen;
+}
+
+static int get_config_net_veth_vlan_tagged_id(const char *key, char *retv,
+					      int inlen, struct lxc_conf *c,
+					      void *data)
+{
+	int len;
+	size_t listlen;
+	struct lxc_list *it;
+	int fulllen = 0;
+	struct lxc_netdev *netdev = data;
+
+	if (!netdev)
+		return ret_errno(EINVAL);
+
+	if (netdev->type != LXC_NET_VETH)
+		return ret_errno(EINVAL);
+
+	if (!retv)
+		inlen = 0;
+	else
+		memset(retv, 0, inlen);
+
+	listlen = lxc_list_len(&netdev->priv.veth_attr.vlan_tagged_ids);
+
+	lxc_list_for_each(it, &netdev->priv.veth_attr.vlan_tagged_ids) {
+		unsigned short i = PTR_TO_USHORT(it->elem);
+		strprint(retv, inlen, "%u%s", i, (listlen-- > 1) ? "\n" : "");
+	}
 
 	return fulllen;
 }
@@ -6117,6 +6708,7 @@ int lxc_list_net(struct lxc_conf *c, const char *key, char *retv, int inlen)
 		strprint(retv, inlen, "veth.pair\n");
 		strprint(retv, inlen, "veth.ipv4.route\n");
 		strprint(retv, inlen, "veth.ipv6.route\n");
+		strprint(retv, inlen, "veth.vlan.id\n");
 		break;
 	case LXC_NET_MACVLAN:
 		strprint(retv, inlen, "macvlan.mode\n");

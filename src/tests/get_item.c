@@ -30,7 +30,7 @@
 #include <errno.h>
 #include <string.h>
 
-#include "lxc/state.h"
+#include "state.h"
 #include "lxctest.h"
 #include "utils.h"
 
@@ -42,10 +42,28 @@
 
 int main(int argc, char *argv[])
 {
-	int ret;
-	struct lxc_container *c;
+	int fd_log, ret;
+	struct lxc_container *c = NULL;
 	int fret = EXIT_FAILURE;
 	char v1[2], v2[256], v3[2048];
+	struct lxc_log log = {};
+	char template[sizeof(P_tmpdir"/attach_XXXXXX")];
+
+	(void)strlcpy(template, P_tmpdir"/attach_XXXXXX", sizeof(template));
+
+	fd_log = lxc_make_tmpfile(template, false);
+	if (fd_log < 0) {
+		lxc_error("Failed to create temporary log file for container %s\n", MYNAME);
+		exit(EXIT_FAILURE);
+	}
+	log.name = MYNAME;
+	log.file = template;
+	log.level = "TRACE";
+	log.prefix = "get_item";
+	log.quiet = false;
+	log.lxcpath = NULL;
+	if (lxc_log_init(&log))
+		goto out;
 
 	if ((c = lxc_container_new("testxyz", NULL)) == NULL) {
 		fprintf(stderr, "%d: error opening lxc_container %s\n", __LINE__, MYNAME);
@@ -143,6 +161,59 @@ int main(int argc, char *argv[])
 		goto out;
 	}
 	printf("lxc.init_gid returned %d %s\n", ret, v2);
+
+	if (c->set_config_item(c, "lxc.init.groups", "10,20,foo,40")) {
+		fprintf(stderr, "%d: managed to set lxc.init.groups to '10,20,foo,40'\n", __LINE__);
+		goto out;
+	}
+
+	if (!c->set_config_item(c, "lxc.init.groups", "10,20,30,40")) {
+		fprintf(stderr, "%d: managed to set lxc.init.groups to '10,20,30,40'\n", __LINE__);
+		goto out;
+	}
+
+	ret = c->get_config_item(c, "lxc.init.groups", v2, 255);
+	if (ret < 0) {
+		fprintf(stderr, "%d: failed to get lxc.init.groups\n", __LINE__);
+		goto out;
+	}
+	ret = strcmp("10,20,30,40", v2);
+	printf("%d: lxc.init.groups returned %d %s\n", __LINE__, ret, v2);
+	if (ret != 0) {
+		goto out;
+	}
+
+	if (!c->set_config_item(c, "lxc.init.groups", "50,60,70,80")) {
+		fprintf(stderr, "%d: failed to set lxc.init.groups to '50,60,70,80'\n", __LINE__);
+		goto out;
+	}
+
+	ret = c->get_config_item(c, "lxc.init.groups", v2, 255);
+	if (ret < 0) {
+		fprintf(stderr, "%d: failed to get lxc.init.groups\n", __LINE__);
+		goto out;
+	}
+	ret = strcmp("10,20,30,40,50,60,70,80", v2);
+	printf("%d: lxc.init.groups returned %d %s\n", __LINE__, ret, v2);
+	if (ret != 0) {
+		goto out;
+	}
+
+	if (!c->set_config_item(c, "lxc.init.groups", "")) {
+		fprintf(stderr, "%d: failed to set lxc.init.groups to ''\n", __LINE__);
+		goto out;
+	}
+
+	ret = c->get_config_item(c, "lxc.init.groups", v2, 255);
+	if (ret < 0) {
+		fprintf(stderr, "%d: failed to get lxc.init.groups\n", __LINE__);
+		goto out;
+	}
+	ret = strcmp("", v2);
+	printf("%d: lxc.init.groups returned %d %s\n", __LINE__, ret, v2);
+	if (ret != 0) {
+		goto out;
+	}
 
 #define HNAME "hostname1"
 	// demonstrate proper usage:
@@ -410,7 +481,6 @@ int main(int argc, char *argv[])
 	}
 	printf("lxc.proc returned %d %s\n", ret, v3);
 
-#if HAVE_APPARMOR
 	if (!c->set_config_item(c, "lxc.apparmor.profile", "unconfined")) {
 		fprintf(stderr, "%d: failed to set aa_profile\n", __LINE__);
 		goto out;
@@ -422,7 +492,6 @@ int main(int argc, char *argv[])
 		goto out;
 	}
 	printf("lxc.aa_profile returned %d %s\n", ret, v2);
-#endif
 
 	lxc_container_put(c);
 
@@ -629,6 +698,17 @@ out:
 		c->destroy(c);
 		lxc_container_put(c);
 	}
+	if (fret != EXIT_SUCCESS) {
+		char buf[4096];
+		ssize_t buflen;
+		while ((buflen = read(fd_log, buf, 1024)) > 0) {
+			buflen = write(STDERR_FILENO, buf, buflen);
+			if (buflen <= 0)
+				break;
+		}
+		close(fd_log);
+	}
+	(void)unlink(template);
 
 	exit(fret);
 }
