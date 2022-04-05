@@ -103,7 +103,8 @@ am__configure_deps = $(am__aclocal_m4_deps) $(CONFIGURE_DEPENDENCIES) \
 DIST_COMMON = $(srcdir)/Makefile.am $(am__DIST_COMMON)
 mkinstalldirs = $(install_sh) -d
 CONFIG_HEADER = $(top_builddir)/src/config.h
-CONFIG_CLEAN_FILES = lxc.service lxc@.service lxc-net.service
+CONFIG_CLEAN_FILES = lxc.service lxc@.service lxc-net.service \
+	lxc-monitord.service
 CONFIG_CLEAN_VPATH_FILES =
 am__vpath_adj_setup = srcdirstrip=`echo "$(srcdir)" | sed 's|.|.|g'`;
 am__vpath_adj = case $$p in \
@@ -154,7 +155,8 @@ am__can_run_installinfo = \
     *) (install-info --version) >/dev/null 2>&1;; \
   esac
 am__tagged_files = $(HEADERS) $(SOURCES) $(TAGS_FILES) $(LISP)
-am__DIST_COMMON = $(srcdir)/Makefile.in $(srcdir)/lxc-net.service.in \
+am__DIST_COMMON = $(srcdir)/Makefile.in \
+	$(srcdir)/lxc-monitord.service.in $(srcdir)/lxc-net.service.in \
 	$(srcdir)/lxc.service.in $(srcdir)/lxc@.service.in
 DISTFILES = $(DIST_COMMON) $(DIST_SOURCES) $(TEXINFOS) $(EXTRA_DIST)
 ACLOCAL = @ACLOCAL@
@@ -350,9 +352,10 @@ EXTRA_DIST = \
 	lxc-apparmor-load \
 	lxc.service.in \
 	lxc@.service.in \
-	lxc-net.service.in
+	lxc-net.service.in \
+	lxc-monitord.service.in
 
-@INIT_SCRIPT_SYSTEMD_TRUE@BUILT_SOURCES = lxc.service lxc@.service lxc-net.service
+@INIT_SCRIPT_SYSTEMD_TRUE@BUILT_SOURCES = lxc.service lxc@.service lxc-net.service lxc-monitord.service
 @INIT_SCRIPT_SYSTEMD_TRUE@pkglibexec_SCRIPTS = lxc-apparmor-load
 all: $(BUILT_SOURCES)
 	$(MAKE) $(AM_MAKEFLAGS) all-am
@@ -392,6 +395,8 @@ lxc.service: $(top_builddir)/config.status $(srcdir)/lxc.service.in
 lxc@.service: $(top_builddir)/config.status $(srcdir)/lxc@.service.in
 	cd $(top_builddir) && $(SHELL) ./config.status $(subdir)/$@
 lxc-net.service: $(top_builddir)/config.status $(srcdir)/lxc-net.service.in
+	cd $(top_builddir) && $(SHELL) ./config.status $(subdir)/$@
+lxc-monitord.service: $(top_builddir)/config.status $(srcdir)/lxc-monitord.service.in
 	cd $(top_builddir) && $(SHELL) ./config.status $(subdir)/$@
 install-pkglibexecSCRIPTS: $(pkglibexec_SCRIPTS)
 	@$(NORMAL_INSTALL)
@@ -601,14 +606,15 @@ uninstall-am: uninstall-local uninstall-pkglibexecSCRIPTS
 .PRECIOUS: Makefile
 
 
-@INIT_SCRIPT_SYSTEMD_TRUE@install-systemd: lxc.service lxc@.service lxc-net.service lxc-apparmor-load
+@INIT_SCRIPT_SYSTEMD_TRUE@install-systemd: lxc.service lxc@.service lxc-net.service lxc-monitord.service lxc-apparmor-load
 @INIT_SCRIPT_SYSTEMD_TRUE@	$(MKDIR_P) $(DESTDIR)$(SYSTEMD_UNIT_DIR)
-@INIT_SCRIPT_SYSTEMD_TRUE@	$(INSTALL_DATA) lxc.service lxc@.service lxc-net.service $(DESTDIR)$(SYSTEMD_UNIT_DIR)/
+@INIT_SCRIPT_SYSTEMD_TRUE@	$(INSTALL_DATA) lxc.service lxc@.service lxc-net.service lxc-monitord.service $(DESTDIR)$(SYSTEMD_UNIT_DIR)/
 
 @INIT_SCRIPT_SYSTEMD_TRUE@uninstall-systemd:
 @INIT_SCRIPT_SYSTEMD_TRUE@	rm -f $(DESTDIR)$(SYSTEMD_UNIT_DIR)/lxc.service
 @INIT_SCRIPT_SYSTEMD_TRUE@	rm -f $(DESTDIR)$(SYSTEMD_UNIT_DIR)/lxc@.service
 @INIT_SCRIPT_SYSTEMD_TRUE@	rm -f $(DESTDIR)$(SYSTEMD_UNIT_DIR)/lxc-net.service
+@INIT_SCRIPT_SYSTEMD_TRUE@	rm -f $(DESTDIR)$(SYSTEMD_UNIT_DIR)/lxc-monitord.service
 @INIT_SCRIPT_SYSTEMD_TRUE@	rmdir $(DESTDIR)$(SYSTEMD_UNIT_DIR) || :
 
 @INIT_SCRIPT_SYSTEMD_TRUE@install-data-local: install-systemd

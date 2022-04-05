@@ -33,7 +33,7 @@
 
 #include "conf.h"
 #include "confile_utils.h"
-#include "lxc/state.h"
+#include "state.h"
 #include "lxctest.h"
 #include "utils.h"
 
@@ -794,6 +794,21 @@ int main(int argc, char *argv[])
 
 	if (set_get_compare_clear_save_load_network(c, "lxc.net.0.veth.ipv6.route", "2001:db8::1/128", tmpf, true, "veth")) {
 		lxc_error("%s\n", "lxc.net.0.veth.ipv6.route");
+		return -1;
+	}
+
+	if (set_get_compare_clear_save_load_network(c, "lxc.net.0.veth.vlan.id", "none", tmpf, false, "veth")) {
+		lxc_error("%s\n", "lxc.net.0.veth.vlan.id");
+		return -1;
+	}
+
+	if (set_get_compare_clear_save_load_network(c, "lxc.net.0.veth.vlan.id", "2", tmpf, true, "veth")) {
+		lxc_error("%s\n", "lxc.net.0.veth.vlan.id");
+		return -1;
+	}
+
+	if (set_get_compare_clear_save_load_network(c, "lxc.net.0.veth.vlan.tagged.id", "2", tmpf, true, "veth")) {
+		lxc_error("%s\n", "lxc.net.0.veth.vlan.tagged.id");
 		return -1;
 	}
 
