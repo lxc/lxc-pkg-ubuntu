@@ -1,3 +1,25 @@
+lxc (1:5.0.0~git2209-g5a7b9ce67-0ubuntu1) jammy; urgency=medium
+
+  * Pre-release snapshot of LXC 5.0 LTS (LP: #1967620)
+    - New configuration keys:
+      - lxc.cgroup.dir.monitor.pivot
+      - lxc.cgroup.dir.monitor
+      - lxc.cgroup.dir.container.inner
+      - lxc.cgroup.dir.container
+      - lxc.time.offset.boot
+      - lxc.time.offset.monotonic
+      - veth.n_rxqueues
+      - veth.n_txqueues
+      - veth.vlan.id
+      - veth.vlan.tagged.id
+  * Drop patches (now upstreamed):
+    - 0002-lxc-checkconfig-Fix-bashism.patch
+    - 0003-doc-Fix-reverse-allowlist-denylist.patch
+  * Update lintian overrides for current lintian version
+  * debian/control: Switch to debhelper-compat
+
+ -- Stéphane Graber <stgraber@ubuntu.com>  Tue, 05 Apr 2022 18:07:22 -0400
+
 lxc (1:4.0.12-0ubuntu2) jammy; urgency=medium
 
   * No-change rebuild to update maintainer scripts, see LP: 1959054
