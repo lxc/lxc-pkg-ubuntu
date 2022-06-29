@@ -128,6 +128,23 @@ for testbin in lxc-test-*; do
     [ "$testbin" = "lxc-test-state-server" ] && \
         ignore "$STRING" && continue
 
+    # Skip some tests due to cgroup v2 incompatibility
+    if [ -e /sys/fs/cgroup/system.slice/memory.current ]; then
+
+        [ "$testbin" = "lxc-test-apparmor-mount" ] && \
+            ignore "$STRING" && continue
+
+        [ "$testbin" = "lxc-test-autostart" ] && \
+            ignore "$STRING" && continue
+
+        [ "$testbin" = "lxc-test-no-new-privs" ] && \
+            ignore "$STRING" && continue
+
+        [ "$testbin" = "lxc-test-unpriv" ] && \
+            ignore "$STRING" && continue
+
+    fi
+
     OUT=$(mktemp)
     START_TIME=$(date +%s)
     ./$testbin >$OUT 2>&1 && pass "$STRING" || fail "$STRING" "$testbin" "$OUT"

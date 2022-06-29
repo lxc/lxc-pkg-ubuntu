@@ -10,14 +10,12 @@ SHELL := sh -e
 DEB_HOST_MULTIARCH ?= $(shell dpkg-architecture -qDEB_HOST_MULTIARCH)
 
 %:
-	dh ${@} --with autoreconf --with systemd
+	dh ${@} --buildsystem=meson
 
 override_dh_auto_configure:
-	dh_auto_configure -- --libdir=\$${prefix}/lib/$(DEB_HOST_MULTIARCH) \
-		--libexecdir=\$${prefix}/lib/$(DEB_HOST_MULTIARCH) \
-		--with-rootfs-path=\$${prefix}/lib/$(DEB_HOST_MULTIARCH)/lxc \
-		$(shell dpkg-buildflags --export=configure) \
-		--enable-doc --disable-rpath --with-distro=ubuntu --enable-pam
+	dh_auto_configure -- -Dman=true -Dpam-cgroup=true \
+		-Dlibexecdir=/usr/lib/$(DEB_HOST_MULTIARCH) \
+		-Dinit-script=systemd,sysvinit,upstart
 
 override_dh_install:
 	if [ -x /usr/bin/dh_apparmor ]; then \
@@ -42,6 +40,10 @@ override_dh_install:
 	# move the examples
 	mv debian/tmp/usr/share/doc/lxc debian/tmp/usr/share/doc/liblxc-common
 
+	# move the PAM module
+	mkdir -p debian/tmp/lib/$(DEB_HOST_MULTIARCH)/
+	mv debian/tmp/usr/lib/$(DEB_HOST_MULTIARCH)/security/ debian/tmp/lib/$(DEB_HOST_MULTIARCH)/
+
 	# move the special manpages
 	mkdir -p debian/libpam-cgfs/usr/share/man/man8/
 	mkdir -p debian/libpam-cgfs/usr/share/man/ja/man8/
@@ -58,14 +60,14 @@ override_dh_install:
 
 	dh_install
 
-override_dh_fixperms:
-	dh_fixperms
-	chmod u+s debian/liblxc-common/usr/lib/${DEB_HOST_MULTIARCH}/lxc/lxc-user-nic
-
 override_dh_builddeb:
 	# prevent system users from using setuid-root binaries under /var/lib/lxc
 	chmod 700 debian/lxc-utils/var/lib/lxc
 	chmod 700 debian/lxc-utils/var/cache/lxc
+
+	# mark lxc-user-nic as setuid
+	chmod u+s debian/liblxc-common/usr/lib/${DEB_HOST_MULTIARCH}/lxc/lxc-user-nic
+
 	dh_builddeb
 
 override_dh_installinit:
@@ -77,10 +79,10 @@ else
 	cp debian/lxc-utils/etc/init/lxc.conf debian/lxc-utils.upstart
 	cp debian/lxc-utils/etc/init/lxc-instance.conf debian/lxc-utils.lxc-instance.upstart
 	cp debian/lxc-utils/etc/init/lxc-net.conf debian/lxc-utils.lxc-net.upstart
-	dh_installinit --no-start --no-restart-on-upgrade --name=lxc-instance
+	dh_installinit --no-start --no-stop-on-upgrade --name=lxc-instance
 endif
-	dh_installinit --no-restart-on-upgrade --name=lxc
-	dh_installinit --no-restart-on-upgrade --name=lxc-net
+	dh_installinit --no-stop-on-upgrade --name=lxc
+	dh_installinit --no-stop-on-upgrade --name=lxc-net
 
-override_dh_systemd_start:
-	dh_systemd_start --no-restart-on-upgrade
+override_dh_installsystemd:
+	dh_installsystemd --no-stop-on-upgrade
