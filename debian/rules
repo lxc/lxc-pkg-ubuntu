@@ -15,7 +15,7 @@ DEB_HOST_MULTIARCH ?= $(shell dpkg-architecture -qDEB_HOST_MULTIARCH)
 override_dh_auto_configure:
 	dh_auto_configure -- -Dman=true -Dpam-cgroup=true \
 		-Dlibexecdir=/usr/lib/$(DEB_HOST_MULTIARCH) \
-		-Dinit-script=systemd,sysvinit,upstart
+		-Dinit-script=systemd,sysvinit
 
 override_dh_install:
 	if [ -x /usr/bin/dh_apparmor ]; then \
@@ -71,16 +71,6 @@ override_dh_builddeb:
 	dh_builddeb
 
 override_dh_installinit:
-ifeq (,$(findstring $(DEB_DISTRIBUTION), trusty xenial))
-	# Disable upstart integration on artful+
-	cp debian/lxc-utils.maintscript.in debian/lxc-utils.maintscript
-	rm -f debian/lxc-utils/etc/init/*.conf
-else
-	cp debian/lxc-utils/etc/init/lxc.conf debian/lxc-utils.upstart
-	cp debian/lxc-utils/etc/init/lxc-instance.conf debian/lxc-utils.lxc-instance.upstart
-	cp debian/lxc-utils/etc/init/lxc-net.conf debian/lxc-utils.lxc-net.upstart
-	dh_installinit --no-start --no-stop-on-upgrade --name=lxc-instance
-endif
 	dh_installinit --no-stop-on-upgrade --name=lxc
 	dh_installinit --no-stop-on-upgrade --name=lxc-net
 
