@@ -1,6 +1,5 @@
 etc/default
 etc/dnsmasq.d-available
-etc/init
 etc/lxc
 lib/systemd
 usr/bin/lxc-*
