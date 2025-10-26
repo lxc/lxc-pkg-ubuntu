@@ -1,7 +1,8 @@
 etc/default
+etc/init.d
 etc/dnsmasq.d-available
 etc/lxc
-lib/systemd
+${env:systemdsystemunitdir}
 usr/bin/lxc-*
 usr/lib/*/lxc/lxc-containers
 usr/lib/*/lxc/lxc-net
