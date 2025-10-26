@@ -53,6 +53,10 @@ override_dh_install:
 	mv debian/tmp/usr/share/man/ja/man8/pam_cgfs.8 debian/libpam-cgfs/usr/share/man/ja/man8/
 	rmdir debian/tmp/usr/share/man/man8 debian/tmp/usr/share/man/ja/man8
 
+	# fix the sysvinit script name
+	mv $(CURDIR)/debian/tmp/etc/init.d/lxc-containers \
+		$(CURDIR)/debian/tmp/etc/init.d/lxc
+
 	mkdir -p debian/liblxc-common/usr/share/man/man1/
 	mkdir -p debian/liblxc-common/usr/share/man/ja/man1/
 	mkdir -p debian/liblxc-common/usr/share/man/ko/man1/
