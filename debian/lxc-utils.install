@@ -1,4 +1,5 @@
 etc/default
+etc/init.d
 etc/dnsmasq.d-available
 etc/lxc
 ${env:systemdsystemunitdir}
